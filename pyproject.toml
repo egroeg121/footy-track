@@ -6,8 +6,11 @@ readme = "README.md"
 authors = [
     { name = "george barnett", email = "george.it.help@gmail.com" }
 ]
-requires-python = ">=3.13"
-dependencies = []
+requires-python = ">=3.12"
+dependencies = [
+    "mkdocs>=1.5.3",
+    "mkdocs-material>=9.4.6"
+]
 
 [project.scripts]
 footy-track = "footy_track:main"

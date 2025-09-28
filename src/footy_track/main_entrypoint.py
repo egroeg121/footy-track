@@ -1,0 +1,1 @@
+"""The main entrypoint for the footy_track package/pipeline."""

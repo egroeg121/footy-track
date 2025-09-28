@@ -1,0 +1,25 @@
+site_name: Footy Scan
+site_description: Tracking players, actions, and events in football matches.
+theme:
+  name: material
+plugins:
+  - search
+nav:
+  - Home: index.md
+  - Development:
+      - Getting Started: development.md
+      - Pipeline Architecture: pipeline_architecture.md
+      - Time Formats: timings.md
+  - Contributing:
+      - Agent Guidelines: agent_guidelines.md
+markdown_extensions:
+  - admonition
+  - toc:
+      permalink: true
+  - tables
+  - pymdownx.details
+  - pymdownx.superfences
+watch:
+  - src
+  - docs
+docs_dir: docs
