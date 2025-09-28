@@ -27,6 +27,18 @@ uv run mkdocs serve
 
 Visit http://127.0.0.1:8000 for the full documentation.
 
+## Makefile quick start
+
+You can use the Makefile for common tasks:
+
+```bash
+# Discover available commands
+make help
+
+# Install deps and project in editable mode
+make setup
+```
+
 ## Key points about outputs
 
 - Outputs may be produced at variable frequency and timing — events and per-frame outputs are time-accurate and should be treated as continuous-time submissions.

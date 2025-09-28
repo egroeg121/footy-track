@@ -26,6 +26,13 @@ uv pip install -e .
 uv pip install "torch" "opencv-python" "tqdm"
 ```
 
+## Using the Makefile (recommended)
+
+Common repo-wide tasks are captured in the Makefile to standardize workflows:
+
+make setup 
+make deps-update
+
 ## Development Tools
 
 ### Documentation
