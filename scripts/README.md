@@ -28,3 +28,36 @@ uvx scripts/split_video.py /path/to/video.mp4 --reencode --bitrate 4M
 # Show help
 uvx scripts/split_video.py -h
 ```
+
+## `extract_frames.py`
+Extract frames from a video into images using ffmpeg.
+
+- Default: 1 FPS, JPEG images into `<input_stem>_frames/`
+- Supports PNG and WEBP, adjustable quality
+- Optional resize with `--width/--height`
+- Can extract only keyframes with `--keyframes`
+
+Examples:
+
+```bash
+# Default: 1 FPS JPEGs next to the video
+uvx scripts/extract_frames.py /path/to/video.mp4
+
+# Faster sampling and custom output dir
+uvx scripts/extract_frames.py /path/to/video.mp4 --fps 5 --outdir ./frames
+
+# Start at 30s for 2 minutes
+uvx scripts/extract_frames.py /path/to/video.mp4 --start 30 --duration 120
+
+# Resize while keeping aspect (use one of width/height or both)
+uvx scripts/extract_frames.py /path/to/video.mp4 --width 1280
+
+# Different format and quality
+uvx scripts/extract_frames.py /path/to/video.mp4 --format webp --quality 85
+
+# Only keyframes (I-frames)
+uvx scripts/extract_frames.py /path/to/video.mp4 --keyframes
+
+# Show help
+uvx scripts/extract_frames.py -h
+```

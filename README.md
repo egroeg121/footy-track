@@ -92,7 +92,7 @@ See our [Development Guide](docs/development.md) for complete setup instructions
 - `uv` for Python environment and dependency management
 - MkDocs with Material theme for documentation
 - Python 3.12+ for implementation
-- Core ML dependencies: torch, opencv-python, tqdm
+- Core ML dependencies: torch, opencv-python, numpy, tqdm, ultralytics
 
 ```bash
 # Quick development setup
