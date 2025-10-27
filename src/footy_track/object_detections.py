@@ -1,9 +1,9 @@
-"""Object detection interfaces and implementations.
+"""Detectors and schema for object detection outputs.
 
-Provides:
-- Pydantic models describing detections and per-frame outputs
-- Ultralytics YOLO-based detector adapted to return Pydantic outputs
-- Grounding DINO (Hugging Face) ball-only detector returning the same schema
+This module defines small Pydantic models for normalized detections (`Detection`) and per-image results
+(`FrameDetections`), plus two detectors that return this schema:
+- `UltralyticsObjectDetector` wraps YOLO from ultralytics
+- `GroundingDinoObjectDetector` uses Hugging Face Grounding DINO (ball-only -> label "football")
 """
 
 # embed_folder.py
@@ -46,7 +46,7 @@ class Detection(BaseModel):
 
 
 class FrameDetections(BaseModel):
-    image_path: pathlib.Path
+    uri: pathlib.Path = Field(..., description="Path to the image file or identifier")
     width: int
     height: int
     detections: List[Detection]
@@ -185,7 +185,7 @@ class UltralyticsObjectDetector(ObjectDetector):
             )
 
         return FrameDetections(
-            image_path=pathlib.Path(image_path),
+            uri=pathlib.Path(image_path),
             width=int(w),
             height=int(h),
             detections=detections,
@@ -272,7 +272,7 @@ class GroundingDinoObjectDetector(ObjectDetector):
             )
 
         return FrameDetections(
-            image_path=pathlib.Path(image_path),
+            uri=pathlib.Path(image_path),
             width=int(w),
             height=int(h),
             detections=detections,

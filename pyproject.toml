@@ -44,3 +44,10 @@ metaflow = [
     "metaflow>=2.12",
     "kubernetes>=29.0.0",
 ]
+
+
+[tool.pytest.ini_options]
+addopts = "-q"
+markers = [
+    "slow: tests that run models and may take longer",
+]
