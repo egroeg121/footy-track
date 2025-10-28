@@ -1,0 +1,90 @@
+# See https://pre-commit.com for usage and config
+# After creating this file:
+#   - Install hooks: uvx pre-commit install
+#   - Run on all files once: uvx pre-commit run --all-files
+
+ci:
+  autofix_commit_msg: "chore(pre-commit): auto fixes"
+  autoupdate_commit_msg: "chore(pre-commit): autoupdate"
+  autoupdate_schedule: monthly
+
+# Avoid running on large/binary or generated content
+exclude: |
+  ^(
+    data/|
+    metaflow/|
+    runs/|
+    export/|
+    notebooks/data/|
+    .*\.pt$|
+    uv\.lock
+  )
+
+repos:
+  # General, fast checks
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: mixed-line-ending
+        args: ["--fix=lf"]
+      - id: check-merge-conflict
+      - id: check-case-conflict
+      - id: detect-private-key
+      - id: check-yaml
+        args: ["--unsafe"]
+      - id: check-toml
+      # - id: check-json  # use json5 check
+      - id: debug-statements
+      - id: check-added-large-files
+        args: ["--maxkb=750"]
+      - id: check-ast
+
+  - repo: https://gitlab.com/bmares/check-json5
+    rev: v1.0.0
+    hooks:
+    - id: check-json5
+
+
+  # Python: Ruff for lint + import sorting + formatter
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.14.2
+    hooks:
+      - id: ruff
+        name: ruff (lint + fix)
+        args: ["--fix", "--exit-non-zero-on-fix"]
+        files: ^(src|tests|scripts)/.*\.py$
+      - id: ruff-format
+        name: ruff (format)
+        files: ^(src|tests|scripts)/.*\.py$
+
+  # Spell checking (skip large/generated folders)
+  - repo: https://github.com/codespell-project/codespell
+    rev: v2.4.1
+    hooks:
+      - id: codespell
+        additional_dependencies: []
+        args:
+          [
+            "--skip",
+            "data,metaflow,runs,export,*.pt,*.lock",
+            "--ignore-words-list",
+            "crate,fo,nd",
+            "--quiet-level",
+            "2",
+          ]
+
+  # Keep pyproject.toml tidy
+  - repo: https://github.com/tox-dev/pyproject-fmt
+    rev: v2.11.0
+    hooks:
+      - id: pyproject-fmt
+
+  # Strip outputs from notebooks to keep diffs small
+  - repo: https://github.com/kynan/nbstripout
+    rev: 0.8.1
+    hooks:
+      - id: nbstripout
+        files: \.ipynb$
+        exclude: ^(data/|runs/|export/)

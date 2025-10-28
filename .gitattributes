@@ -1,0 +1,4 @@
+# Track large media via Git LFS
+# Specific file requested
+data/arsenal_mancity_example_video.mp4 filter=lfs diff=lfs merge=lfs -text
+

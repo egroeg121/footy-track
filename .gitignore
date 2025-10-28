@@ -1,3 +1,5 @@
+data/
+
 # Python-generated files
 __pycache__/
 *.py[oc]
@@ -11,3 +13,6 @@ wheels/
 
 # Local debug artifacts
 .debug/
+
+# Serena project files (local tooling)
+.serena/
