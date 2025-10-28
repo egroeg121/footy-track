@@ -1,0 +1,21 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		// If tasks are simple, they should be a make script
+		{
+			"label": "pytest object detectors",
+			"type": "shell",
+			"command": "uv run pytest -q tests/test_object_detectors.py"
+		},
+		{
+			"label": "pre-commit (staged)",
+			"type": "shell",
+			"command": "make pre-commit-staged"
+		},
+		{
+			"label": "pre-commit (all files)",
+			"type": "shell",
+			"command": "make pre-commit-all"
+		}
+	]
+}

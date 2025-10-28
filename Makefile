@@ -44,3 +44,16 @@ docs-build: ## Build MkDocs site
 .PHONY: docs-deploy
 docs-deploy: ## Deploy MkDocs to GitHub Pages
 	$(UV) run mkdocs gh-deploy
+
+# -----------------------------
+# Linting / pre-commit
+# -----------------------------
+.PHONY: pre-commit-staged
+pcr: pre-commit-staged
+pre-commit-staged: ## Run pre-commit on staged files only
+	$(UV) run pre-commit run
+
+.PHONY: pre-commit-all
+pcra: pre-commit-all
+pre-commit-all: ## Run pre-commit on all files
+	$(UV) run pre-commit run --all-files
