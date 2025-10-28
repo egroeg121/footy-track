@@ -101,6 +101,12 @@ uv pip install "torch" "opencv-python" "tqdm"  # ML dependencies
 
 # Run documentation locally
 uv run mkdocs serve
+
+# Run tests
+uv run pytest .
+
+# Run pre-commit (to check all )
+uv run pre-commit run
 ```
 
 If you prefer pinning versions, create a small requirements file (for example `requirements-ml.txt`) and install from that.

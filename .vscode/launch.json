@@ -1,0 +1,29 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Python: Run footy_track.main_entrypoint (module)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "footy_track.main_entrypoint",
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}",
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}/src"
+      },
+      "justMyCode": false
+    },
+    {
+      "name": "Python: Run main_entrypoint (file)",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/src/footy_track/main_entrypoint.py",
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}",
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}/src"
+      },
+      "justMyCode": false
+    }
+  ]
+}
