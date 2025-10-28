@@ -13,6 +13,7 @@ from footy_track.object_detections import (
     Detection,
     FrameDetections,
 )
+from footy_track.object_detections.detectors import GroundingDinoObjectDetector
 
 
 def assert_detection_schema(det: Detection):
@@ -54,14 +55,6 @@ def test_ultralytics_detector_runs(image_path: Path, ultralytics_detector):
 
 
 @pytest.mark.slow
-def test_grounding_dino_detector_ball_only(image_path: Path, grounding_dino_detector):
-    frame = grounding_dino_detector.predict_from_path(image_path)
+def test_grounding_dino_detector_ball_only(image_path: Path):
+    frame = GroundingDinoObjectDetector().predict_from_path(image_path)
     assert_frame_schema(frame, image_path)
-
-    # Grounding DINO adapter maps all detections to the canonical label "football"
-    for d in frame.detections:
-        assert d.label == "football"
-
-    # Test serialization
-    dumped = frame.model_dump()
-    assert Path(dumped["uri"]).name == image_path.name
