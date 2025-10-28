@@ -1,53 +1,95 @@
+[build-system]
+build-backend = "uv_build"
+
+requires = [
+  "uv-build>=0.8.22,<0.9",
+]
+
 [project]
 name = "footy-track"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
 authors = [
-    { name = "george barnett", email = "george.it.help@gmail.com" }
+  { name = "george barnett", email = "george.it.help@gmail.com" },
 ]
 requires-python = ">=3.12"
+classifiers = [
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.12",
+]
 dependencies = [
-    "lap>=0.5.12",
-    "mkdocs>=1.5.3",
-    "mkdocs-material>=9.4.6",
-    "numpy>=1.26",
-    "opencv-python>=4.8",
-    "tqdm>=4.66",
-    "ultralytics>=8.2",
-    "piexif>=1.1.3",
+  "lap>=0.5.12",
+  "mkdocs>=1.5.3",
+  "mkdocs-material>=9.4.6",
+  "numpy>=1.26",
+  "openai>=2.6.1",
+  "opencv-python>=4.8",
+  "piexif>=1.1.3",
+  "tqdm>=4.66",
+  "transformers>=4.57",
+  "ultralytics>=8.2",
 ]
 
+scripts.footy-track = "footy_track:main"
 
-[project.scripts]
-footy-track = "footy_track:main"
-
-[build-system]
-requires = ["uv_build>=0.8.22,<0.9.0"]
-build-backend = "uv_build"
-
-[dependency-groups]
-dev = [
-    "fiftyone>=1.8.1",
-    "ipython>=9.5.0",
-    "jupyter>=1.1.1",
-    "metaflow>=2.18.9",
-    "pylint>=3.3.8",
-    "pyrefly>=0.34.0",
-    "ruff>=0.13.2",
-    "umap-learn>=0.5.9.post2",
-    "pytest>=8.3",
-    "labelbox>=7.2.0",
-    "transformers>=4.57.0",
-]
-metaflow = [
-    "metaflow>=2.12",
-    "kubernetes>=29.0.0",
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+extend-exclude = [
+  "data",
+  "docs",
+  "export",
+  "metaflow",
+  "notebooks",
+  "runs",
+  "yolo11n.pt",
 ]
 
+format.indent-style = "space"
+format.quote-style = "double"
+format.line-ending = "lf"
+# Enable common rule sets: E,F (pycodestyle/pyflakes), I (isort), B (flake8-bugbear),
+# UP (pyupgrade), SIM (flake8-simplify), PL (pylint), C4 (flake8-comprehensions)
+lint.select = [
+  "B",
+  "C4",
+  "E",
+  "F",
+  "I",
+  "PL",
+  "SIM",
+  "UP",
+]
+# Let the formatter handle line length instead of emitting E501
+lint.ignore = [
+  "E501",
+]
 
 [tool.pytest.ini_options]
 addopts = "-q"
 markers = [
-    "slow: tests that run models and may take longer",
+  "slow: tests that run models and may take longer",
+]
+
+# Ruff configuration for linting and formatting
+
+[dependency-groups]
+dev = [
+  "fiftyone>=1.8.1",
+  "ipython>=9.5.0",
+  "jupyter>=1.1.1",
+  "metaflow>=2.18.9",
+  "pylint>=3.3.8",
+  "pyrefly>=0.34.0",
+  "ruff>=0.13.2",
+  "umap-learn>=0.5.9.post2",
+  "pytest>=8.3",
+  "labelbox>=7.2.0",
+  "transformers>=4.57.0",
+  "pre-commit>=3.7.0",
+]
+metaflow = [
+  "metaflow>=2.12",
+  "kubernetes>=29.0.0",
 ]
