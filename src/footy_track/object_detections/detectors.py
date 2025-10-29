@@ -1,29 +1,30 @@
-from __future__ import annotations
-
-from abc import ABC
-from pathlib import Path
-from typing import Iterable, Optional
-
+import json
 import os
+import re
+from base64 import b64encode
+from collections.abc import Iterable
+from mimetypes import guess_type
+from pathlib import Path
+from typing import Any
+
+import openai  # type: ignore
 import torch
 from PIL import Image
-
-from .schema import Detection, FrameDetections, FrameDetectionsWithMeta
-from .utils import ultralytics_result_to_detections, _clamp01, extract_json
+from transformers import (
+    AutoModelForZeroShotObjectDetection,
+    AutoProcessor,
+    infer_device,
+)
 
 # Optional heavy imports are placed here to avoid import-time costs when unused
 from ultralytics import YOLO
 from ultralytics.engine.results import Results as UltralyticsResults
 
-from transformers import (
-    AutoProcessor,
-    AutoModelForZeroShotObjectDetection,
-    infer_device,
-)
-import openai  # type: ignore
+from .schema import Detection, FrameDetections, FrameDetectionsWithMeta
+from .utils import _clamp01, ultralytics_result_to_detections
 
 
-class ObjectDetector(ABC):
+class ObjectDetector:
     pass
 
 
@@ -55,9 +56,8 @@ class UltralyticsObjectDetector(ObjectDetector):
     @torch.no_grad()
     def predict_from_path(self, image_path: Path, *args, **kwargs) -> FrameDetections:
         """Run detection and return FrameDetections."""
-        result: UltralyticsResults = self.model.predict(
-            image_path, device=self.device, *args, **kwargs, **self.predict_kwargs
-        )[0]
+        pred_kwargs = {**self.predict_kwargs, **kwargs, "device": self.device}
+        result: UltralyticsResults = self.model.predict(image_path, *args, **pred_kwargs)[0]
 
         # Image size
         h, w = result.orig_shape[:2]
@@ -73,10 +73,16 @@ class UltralyticsObjectDetector(ObjectDetector):
         )
 
 
+BALL_TAG = "ball"
+PERSON_TAG = "person"
 # Multiple prompts map to a single class label
 GROUND_DINO_PROMPT_TO_CLASS: dict[str, list[str]] = {
-    "ball": ["soccer ball", "football", "ball"],
-    "person": ["player", "referee", "coach"],
+    BALL_TAG: ["soccer ball", "football", "ball"],
+    PERSON_TAG: [
+        "player",
+        "referee",
+        "coach",
+    ],
 }
 
 
@@ -107,19 +113,14 @@ class GroundingDinoObjectDetector(ObjectDetector):
             else ("mps" if torch.backends.mps.is_available() else "cpu")
         )
         self.processor = AutoProcessor.from_pretrained(model_id)
-        self.model = AutoModelForZeroShotObjectDetection.from_pretrained(model_id).to(
-            self.device
-        )
+        self.model = AutoModelForZeroShotObjectDetection.from_pretrained(model_id).to(self.device)
 
         # Prompts focused on ball/person detection; can be customized
         self.class_prompts_mapping = GROUND_DINO_PROMPT_TO_CLASS
         self._lower_synonyms = {
-            key: {s.lower() for s in labels}
-            for key, labels in self.class_prompts_mapping.items()
+            key: {s.lower() for s in labels} for key, labels in self.class_prompts_mapping.items()
         }
-        self.text_labels = [
-            list(labels) for labels in self.class_prompts_mapping.values()
-        ]
+        self.text_labels = [list(labels) for labels in self.class_prompts_mapping.values()]
         self.box_threshold = float(box_threshold)
         self.text_threshold = float(text_threshold)
 
@@ -135,9 +136,9 @@ class GroundingDinoObjectDetector(ObjectDetector):
 
         # Treat each prompt group independently to avoid cross-group interaction
         for canonical_label, synonyms in self.class_prompts_mapping.items():
-            inputs = self.processor(
-                images=img, text=list(synonyms), return_tensors="pt"
-            ).to(self.model.device)
+            inputs = self.processor(images=img, text=list(synonyms), return_tensors="pt").to(
+                self.model.device
+            )
             outputs = self.model(**inputs)
 
             results = self.processor.post_process_grounded_object_detection(
@@ -155,7 +156,7 @@ class GroundingDinoObjectDetector(ObjectDetector):
 
             allowed = self._lower_synonyms.get(canonical_label, set())
 
-            for box, score, label in zip(boxes, scores, labels):
+            for box, score, label in zip(boxes, scores, labels, strict=False):
                 lbl = str(label).strip().lower()
                 if allowed and lbl not in allowed:
                     continue
@@ -205,8 +206,8 @@ class ChatGPTObjectDetector(ObjectDetector):
     def __init__(
         self,
         model: str = "gpt-4o-mini",
-        api_key: Optional[str] = None,
-        system_prompt: Optional[str] = None,
+        api_key: str | None = None,
+        system_prompt: str | None = None,
     ):
         if openai is None:
             raise ImportError(
@@ -214,9 +215,7 @@ class ChatGPTObjectDetector(ObjectDetector):
             )
         key = api_key or os.getenv("OPENAI_API_KEY")
         if not key:
-            raise RuntimeError(
-                "OPENAI_API_KEY not set. Provide api_key or set env var."
-            )
+            raise RuntimeError("OPENAI_API_KEY not set. Provide api_key or set env var.")
         # New-style client
         self.client = openai.OpenAI(api_key=key)  # type: ignore[attr-defined]
         self.model = model
@@ -224,9 +223,6 @@ class ChatGPTObjectDetector(ObjectDetector):
 
     @torch.no_grad()
     def predict_from_path(self, image_path: Path) -> FrameDetectionsWithMeta:
-        from base64 import b64encode
-        from mimetypes import guess_type
-
         img = Image.open(image_path).convert("RGB")
         w, h = img.size
 
@@ -256,11 +252,11 @@ class ChatGPTObjectDetector(ObjectDetector):
             )
             content = resp.choices[0].message.content  # type: ignore[index]
         except Exception as e:  # pragma: no cover
-            raise RuntimeError(f"OpenAI request failed: {e}")
+            raise RuntimeError(f"OpenAI request failed: {e}") from e
 
         result_json: dict = {"clock": None, "objects": []}
         if content:
-            parsed = extract_json(content)
+            parsed = self._extract_json(content)
             if isinstance(parsed, dict):
                 result_json = parsed
 
@@ -289,3 +285,18 @@ class ChatGPTObjectDetector(ObjectDetector):
             detections=detections,
             clock=result_json.get("clock"),
         )
+
+    def _extract_json(self, text: str) -> dict[str, Any] | None:
+        """Best-effort JSON object extraction from LLM responses."""
+
+        fence = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.DOTALL)
+        cand = fence.group(1) if fence else None
+        if not cand:
+            brace = re.search(r"(\{.*\})", text, re.DOTALL)
+            cand = brace.group(1) if brace else None
+        if not cand:
+            return None
+        try:
+            return json.loads(cand)
+        except Exception:
+            return None

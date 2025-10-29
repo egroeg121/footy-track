@@ -9,11 +9,13 @@
 		},
 		{
 			"label": "pre-commit (staged)",
+			"detail": "Step 1: Run pre-commit, Step 2: If issues found fix them and re-run pre-commit command",
 			"type": "shell",
 			"command": "make pre-commit-staged"
 		},
 		{
 			"label": "pre-commit (all files)",
+			"detail": "Step 1: Run pre-commit, Step 2: If issues found fix them and re-run pre-commit command",
 			"type": "shell",
 			"command": "make pre-commit-all"
 		}
