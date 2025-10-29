@@ -73,10 +73,16 @@ class UltralyticsObjectDetector(ObjectDetector):
         )
 
 
+BALL_TAG = "ball"
+PERSON_TAG = "person"
 # Multiple prompts map to a single class label
 GROUND_DINO_PROMPT_TO_CLASS: dict[str, list[str]] = {
-    "ball": ["soccer ball", "football", "ball"],
-    "person": ["player", "referee", "coach"],
+    BALL_TAG: ["soccer ball", "football", "ball"],
+    PERSON_TAG: [
+        "player",
+        "referee",
+        "coach",
+    ],
 }
 
 
