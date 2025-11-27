@@ -12,7 +12,7 @@ class Detection(BaseModel):
     y: float = Field(..., ge=0.0, le=1.0, description="Top-left y (normalized)")
     w: float = Field(..., ge=0.0, le=1.0, description="Width (normalized)")
     h: float = Field(..., ge=0.0, le=1.0, description="Height (normalized)")
-
+    model: str | None = Field(None, description="Model name or identifier")
     model_config = {"frozen": True}
 
 

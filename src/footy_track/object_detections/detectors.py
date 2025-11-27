@@ -12,7 +12,6 @@ from PIL import Image
 from transformers import (
     AutoModelForZeroShotObjectDetection,
     AutoProcessor,
-    infer_device,
 )
 
 try:  # optional accelerated NMS
@@ -108,6 +107,7 @@ def nms_by_label(detections: list["Detection"], iou_threshold: float = 0.5) -> l
 
     return filtered
 
+
 def _available_device():
     if torch.backends.mps.is_available():
         device = torch.device("mps")
@@ -130,18 +130,26 @@ class UltralyticsObjectDetector(ObjectDetector):
         model_uri: str = "yolo11n.pt",
         verbose: bool = False,
         compile: bool = False,
+        min_confidence: float = 0.3,
+        iou_threshold: float = 0.90,
     ):
         self.device = "mps" if torch.backends.mps.is_available() else "cpu"
         self.model = YOLO(model_uri)
         self.predict_kwargs = {
             "verbose": verbose,
             "compile": compile,
+            "conf": min_confidence,
+            "iou": iou_threshold,
         }
 
     @property
     def classes(self) -> list[str]:
         """Get the list of class names the model can detect."""
-        return self.model.names
+        # return self.model.names
+        return {
+            0: PERSON_TAG,
+            32: BALL_TAG,
+        }
 
     @torch.no_grad()
     def predict_from_path(self, image_path: Path, *args, **kwargs) -> FrameDetections:
@@ -197,7 +205,8 @@ class GroundingDinoObjectDetector(ObjectDetector):
         # device inference prefers CUDA/MPS when available
         self.device = _available_device()
         self.processor = AutoProcessor.from_pretrained(model_id)
-        self.model = AutoModelForZeroShotObjectDetection.from_pretrained(model_id).to('mps')
+        self.model_id = model_id
+        self.model = AutoModelForZeroShotObjectDetection.from_pretrained(model_id).to("mps")
 
         # Prompts focused on ball/person detection; can be customized
         self.class_prompts_mapping = GROUND_DINO_PROMPT_TO_CLASS
@@ -274,6 +283,7 @@ class GroundingDinoObjectDetector(ObjectDetector):
             width=int(w),
             height=int(h),
             detections=deduplicated_detections,
+            model=self.model_id,
         )
 
 
@@ -374,6 +384,7 @@ class ChatGPTObjectDetector(ObjectDetector):
             height=int(h),
             detections=detections,
             clock=result_json.get("clock"),
+            model=self.model,
         )
 
     def _extract_json(self, text: str) -> dict[str, Any] | None:
