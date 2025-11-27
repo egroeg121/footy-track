@@ -2,7 +2,6 @@ import json
 import os
 import re
 from base64 import b64encode
-from collections.abc import Iterable
 from mimetypes import guess_type
 from pathlib import Path
 from typing import Any
@@ -16,9 +15,16 @@ from transformers import (
     infer_device,
 )
 
+try:  # optional accelerated NMS
+    from torchvision.ops import nms as tv_nms  # type: ignore[import-untyped]
+except Exception:  # pragma: no cover
+    tv_nms = None  # type: ignore[assignment]
+
 # Optional heavy imports are placed here to avoid import-time costs when unused
 from ultralytics import YOLO
 from ultralytics.engine.results import Results as UltralyticsResults
+
+from footy_track.object_detections.constants import BALL_TAG, PERSON_TAG
 
 from .schema import Detection, FrameDetections, FrameDetectionsWithMeta
 from .utils import _clamp01, ultralytics_result_to_detections
@@ -26,6 +32,90 @@ from .utils import _clamp01, ultralytics_result_to_detections
 
 class ObjectDetector:
     pass
+
+
+# --- Simple IoU and NMS helpers ---
+def _iou_xywh_norm(a: "Detection", b: "Detection") -> float:
+    """IoU for normalized [x, y, w, h] boxes in [0,1]."""
+    ax, ay, aw, ah = float(a.x), float(a.y), float(a.w), float(a.h)
+    bx, by, bw, bh = float(b.x), float(b.y), float(b.w), float(b.h)
+
+    ax2, ay2 = ax + aw, ay + ah
+    bx2, by2 = bx + bw, by + bh
+
+    ix1, iy1 = max(ax, bx), max(ay, by)
+    ix2, iy2 = min(ax2, bx2), min(ay2, by2)
+    iw, ih = max(0.0, ix2 - ix1), max(0.0, iy2 - iy1)
+    inter = iw * ih
+    union = aw * ah + bw * bh - inter
+    return 0.0 if union <= 0.0 else inter / union
+
+
+def _nms_single_label(dets: list["Detection"], iou_threshold: float) -> list["Detection"]:
+    """Greedy NMS for a single label using confidence descending order."""
+    if not dets:
+        return dets
+    order = sorted(range(len(dets)), key=lambda i: float(dets[i].confidence), reverse=True)
+    keep: list[int] = []
+    suppressed = [False] * len(dets)
+
+    for i_idx in order:
+        if suppressed[i_idx]:
+            continue
+        keep.append(i_idx)
+        for j_idx in order:
+            if j_idx == i_idx or suppressed[j_idx]:
+                continue
+            if _iou_xywh_norm(dets[i_idx], dets[j_idx]) >= iou_threshold:
+                suppressed[j_idx] = True
+
+    return [dets[i] for i in keep]
+
+
+def nms_by_label(detections: list["Detection"], iou_threshold: float = 0.5) -> list["Detection"]:
+    """Run NMS independently per label and return filtered detections.
+
+    - detections: list of Detection with normalized boxes [x,y,w,h]
+    - iou_threshold: IoU threshold for suppression
+    """
+    if not detections:
+        return detections
+
+    by_label: dict[str, list[Detection]] = {}
+    for d in detections:
+        by_label.setdefault(d.label, []).append(d)
+
+    filtered: list[Detection] = []
+    for _, dets in by_label.items():
+        if tv_nms is not None and dets:
+            # Convert to xyxy normalized for torchvision
+            boxes_xyxy = []
+            scores = []
+            for d in dets:
+                x1 = _clamp01(float(d.x))
+                y1 = _clamp01(float(d.y))
+                x2 = _clamp01(float(d.x) + float(d.w))
+                y2 = _clamp01(float(d.y) + float(d.h))
+                boxes_xyxy.append([x1, y1, x2, y2])
+                scores.append(float(d.confidence))
+
+            boxes_t = torch.tensor(boxes_xyxy, dtype=torch.float32)
+            scores_t = torch.tensor(scores, dtype=torch.float32)
+            keep_idx = tv_nms(boxes_t, scores_t, float(iou_threshold)).tolist()  # type: ignore[operator]
+            filtered.extend([dets[i] for i in keep_idx])
+        else:
+            filtered.extend(_nms_single_label(dets, iou_threshold))
+
+    return filtered
+
+def _available_device():
+    if torch.backends.mps.is_available():
+        device = torch.device("mps")
+    elif torch.cuda.is_available():
+        device = torch.device("cuda")
+    else:
+        device = torch.device("cpu")
+    return device
 
 
 class UltralyticsObjectDetector(ObjectDetector):
@@ -73,8 +163,6 @@ class UltralyticsObjectDetector(ObjectDetector):
         )
 
 
-BALL_TAG = "ball"
-PERSON_TAG = "person"
 # Multiple prompts map to a single class label
 GROUND_DINO_PROMPT_TO_CLASS: dict[str, list[str]] = {
     BALL_TAG: ["soccer ball", "football", "ball"],
@@ -99,7 +187,7 @@ class GroundingDinoObjectDetector(ObjectDetector):
         model_id: str = "IDEA-Research/grounding-dino-tiny",
         box_threshold: float = 0.40,
         text_threshold: float = 0.30,
-        prompts: Iterable[str] | None = None,
+        nms_iou_threshold: float | None = 0.95,
     ) -> None:
         if AutoProcessor is None or AutoModelForZeroShotObjectDetection is None:
             raise ImportError(
@@ -107,13 +195,9 @@ class GroundingDinoObjectDetector(ObjectDetector):
             )
 
         # device inference prefers CUDA/MPS when available
-        self.device = (
-            infer_device()
-            if infer_device is not None
-            else ("mps" if torch.backends.mps.is_available() else "cpu")
-        )
+        self.device = _available_device()
         self.processor = AutoProcessor.from_pretrained(model_id)
-        self.model = AutoModelForZeroShotObjectDetection.from_pretrained(model_id).to(self.device)
+        self.model = AutoModelForZeroShotObjectDetection.from_pretrained(model_id).to('mps')
 
         # Prompts focused on ball/person detection; can be customized
         self.class_prompts_mapping = GROUND_DINO_PROMPT_TO_CLASS
@@ -123,6 +207,7 @@ class GroundingDinoObjectDetector(ObjectDetector):
         self.text_labels = [list(labels) for labels in self.class_prompts_mapping.values()]
         self.box_threshold = float(box_threshold)
         self.text_threshold = float(text_threshold)
+        self.nms_iou_threshold = float(nms_iou_threshold) if nms_iou_threshold is not None else None
 
     def _internal_predict(self, image: Image.Image) -> FrameDetections:  # placeholder
         raise NotImplementedError
@@ -170,7 +255,7 @@ class GroundingDinoObjectDetector(ObjectDetector):
 
                 detections.append(
                     Detection(
-                        label="ball" if canonical_label == "ball" else "person",
+                        label=BALL_TAG if canonical_label == BALL_TAG else PERSON_TAG,
                         confidence=float(score),
                         x=x,
                         y=y,
@@ -179,11 +264,16 @@ class GroundingDinoObjectDetector(ObjectDetector):
                     )
                 )
 
+        deduplicated_detections = (
+            nms_by_label(detections, self.nms_iou_threshold)
+            if self.nms_iou_threshold is not None
+            else detections
+        )
         return FrameDetections(
             uri=Path(image_path),
             width=int(w),
             height=int(h),
-            detections=detections,
+            detections=deduplicated_detections,
         )
 
 
