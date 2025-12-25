@@ -51,7 +51,7 @@ docs-deploy: ## Deploy MkDocs to GitHub Pages
 .PHONY: pre-commit-staged
 pcr: pre-commit-staged
 pre-commit-staged: ## Run pre-commit on staged files only
-	$(UV) run pre-commit run
+	$(UV) run prek run
 
 .PHONY: pre-commit-all
 pcra: pre-commit-all
