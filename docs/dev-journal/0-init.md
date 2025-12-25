@@ -28,4 +28,6 @@ Get data and scripts to create 1fps start
 
 Use 1fps initially for training/labelling as it's good yield and variation between frames.
 
-Create a 'split_video'
+Create a 'split_video'. Need to extract frames, but putting a single large video would make it unwieldy. So instead ,we split into 10s intervals and then will extract frames.
+
+Split the video into 10s chunks. Also create a test for 30s to be broken into 10s chunks.

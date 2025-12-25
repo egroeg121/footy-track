@@ -26,7 +26,8 @@ dependencies = [
   "ultralytics",
 ]
 
-scripts.footy-track = "footy_track:main"
+scripts.footy-track-extract-frames = "footy_track.scripts.extract_frames:main"
+scripts.footy-track-split-video = "footy_track.scripts.split_video:main"
 
 [dependency-groups]
 dev = [
