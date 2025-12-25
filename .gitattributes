@@ -3,3 +3,4 @@
 tests/data/** filter=lfs diff=lfs merge=lfs -text
 # Specific large video for testing
 data/arsenal_mancity/temp_30s_chunks_for_review/arsenal_mancity_20250925_part192.mp4 filter=lfs diff=lfs merge=lfs -text
+tests/data/arsenal_mancity_20250925_part192.mp4 filter=lfs diff=lfs merge=lfs -text

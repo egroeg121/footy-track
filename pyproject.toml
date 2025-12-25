@@ -37,6 +37,8 @@ dev = [
   "prek",
   "pytest",
   "ruff",
+  "tox",
+  "tox-uv",
   "ty",
 ]
 metaflow = [
