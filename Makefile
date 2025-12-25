@@ -46,14 +46,20 @@ docs-deploy: ## Deploy MkDocs to GitHub Pages
 	$(UV) run mkdocs gh-deploy
 
 # -----------------------------
-# Linting / pre-commit
+# Linting / pre-commit (prek)
 # -----------------------------
-.PHONY: pre-commit-staged
+.PHONY: pre-commit-staged pcr
 pcr: pre-commit-staged
 pre-commit-staged: ## Run pre-commit on staged files only
-	$(UV) run pre-commit run
+	$(UV) run prek run
 
-.PHONY: pre-commit-all
+.PHONY: pre-commit-all pcra
 pcra: pre-commit-all
-pre-commit-all: ## Run pre-commit on all files
-	$(UV) run pre-commit run --all-files
+pre-commit-all: ## Run pre-commit on staged +unstaged files
+	$(UV) run prek run
+
+.PHONY: pre-commit-staged-unstaged pcrs
+pcrs: pre-commit-staged-unstaged
+pre-commit-staged-unstaged: ## Run pre-commit on staged files only, using PCR
+	@STAGED_FILES=$$(git diff --name-only --cached); \
+	$(UV) run prek run --files $$STAGED_FILES; \
