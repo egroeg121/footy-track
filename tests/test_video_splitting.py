@@ -33,7 +33,9 @@ def test_split_30s_video_into_10s_chunks():
 
     with tempfile.TemporaryDirectory() as temp_dir:
         temp_dir_path = Path(temp_dir)
-        video_path = Path("tests/data/test_video_30s.mp4")
+        video_path = Path(
+            "data/arsenal_mancity/temp_30s_chunks_for_review/arsenal_mancity_20250925_part192.mp4"
+        )
 
         # Split the 30s video into 10s chunks
         split_video(

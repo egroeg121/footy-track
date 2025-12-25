@@ -1,7 +1,5 @@
 # Track large media via Git LFS
-
 # Track all files in tests/data via Git LFS
 tests/data/** filter=lfs diff=lfs merge=lfs -text
-
 # Specific large video for testing
-tests/data/test_video_30s.mp4 filter=lfs diff=lfs merge=lfs -text
+data/arsenal_mancity/temp_30s_chunks_for_review/arsenal_mancity_20250925_part192.mp4 filter=lfs diff=lfs merge=lfs -text
