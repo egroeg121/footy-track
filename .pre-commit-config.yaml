@@ -49,7 +49,7 @@ repos:
 
   # Python: Ruff for lint + import sorting + formatter
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.14.2
+    rev: v0.14.10
     hooks:
       - id: ruff
         name: ruff (lint + fix)
@@ -77,13 +77,13 @@ repos:
 
   # Keep pyproject.toml tidy
   - repo: https://github.com/tox-dev/pyproject-fmt
-    rev: v2.11.0
+    rev: v2.11.1
     hooks:
       - id: pyproject-fmt
 
   # Strip outputs from notebooks to keep diffs small
   - repo: https://github.com/kynan/nbstripout
-    rev: 0.8.1
+    rev: 0.8.2
     hooks:
       - id: nbstripout
         files: \.ipynb$
