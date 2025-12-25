@@ -18,6 +18,7 @@ from footy_track.object_detections.detectors import (
     GROUND_DINO_PROMPT_TO_CLASS,
     PERSON_TAG,
     GroundingDinoObjectDetector,
+    UltralyticsSam3ObjectDetector,
 )
 
 
@@ -162,3 +163,32 @@ def test_grounding_dino_detector_players_ref_coach_etc(
         f"Only {matched_gt}/{len(gt_person_boxes)} GT persons ({gt_ratio:.2%}) are matched "
         f"with IoU >= {iou_threshold}; required >= {required_gt_detection_ratio:.2%}"
     )
+
+
+@pytest.fixture
+def ultralytics_sam3_detector() -> UltralyticsSam3ObjectDetector:
+    """SAM3 detector fixture."""
+    return UltralyticsSam3ObjectDetector()
+
+
+@pytest.mark.slow
+def test_ultralytics_sam3_detector_runs(image_path: Path, ultralytics_sam3_detector):
+    frame = ultralytics_sam3_detector.predict_from_path(image_path)
+    assert_frame_schema(frame, image_path)
+
+    # If any detections, ensure labels are strings and normalization holds
+    if frame.detections:
+        labels = {d.label for d in frame.detections}
+        assert BALL_TAG in labels
+        assert PERSON_TAG in labels
+        for d in frame.detections:
+            assert isinstance(d.label, str)
+            assert 0.0 <= d.x <= 1.0
+            assert 0.0 <= d.y <= 1.0
+            assert 0.0 <= d.w <= 1.0
+            assert 0.0 <= d.h <= 1.0
+
+    # Test pydantic serialization roundtrip
+    dumped = frame.model_dump()
+    assert dumped["width"] == frame.width
+    assert dumped["height"] == frame.height

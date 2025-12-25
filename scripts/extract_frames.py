@@ -13,6 +13,7 @@ Examples:
 
 Requires: ffmpeg on PATH (macOS: brew install ffmpeg)
 """
+
 from __future__ import annotations
 
 import argparse
@@ -84,7 +85,9 @@ def build_output_dir(input_path: Path, outdir: str | None) -> Path:
     return out
 
 
-def make_vf_chain(fps: float | None, width: int | None, height: int | None, keyframes_only: bool) -> str | None:
+def make_vf_chain(
+    fps: float | None, width: int | None, height: int | None, keyframes_only: bool
+) -> str | None:
     parts: list[str] = []
     if keyframes_only:
         # Only keep I-frames
@@ -101,8 +104,11 @@ def make_vf_chain(fps: float | None, width: int | None, height: int | None, keyf
 
 
 # New helper to embed EXIF metadata in JPEGs
-def _embed_metadata_jpeg(files: list[Path], *, video_id: str, start_number: int, fps: float, start: float | None) -> None:
+def _embed_metadata_jpeg(
+    files: list[Path], *, video_id: str, start_number: int, fps: float, start: float | None
+) -> None:
     import json
+
     try:
         import piexif
         from piexif import ExifIFD
@@ -130,7 +136,9 @@ def _embed_metadata_jpeg(files: list[Path], *, video_id: str, start_number: int,
             # Store a stable unique id combining video id and frame index
             exif_dict["Exif"][ExifIFD.ImageUniqueID] = str(f"{video_id}:{frame_index}")
             # Store JSON in UserComment
-            exif_dict["Exif"][ExifIFD.UserComment] = UserComment.dump(json.dumps(payload), encoding="unicode")
+            exif_dict["Exif"][ExifIFD.UserComment] = UserComment.dump(
+                json.dumps(payload), encoding="unicode"
+            )
             exif_bytes = piexif.dump(exif_dict)
             piexif.insert(exif_bytes, str(fpath))
         except Exception as e:  # pragma: no cover
@@ -206,23 +214,46 @@ def extract_frames(
     if embed_metadata and ext == ".jpg":
         files = sorted(output_dir.glob(f"{name_prefix}_*.jpg"))
         if files:
-            _embed_metadata_jpeg(files, video_id=video_id or input_path.stem, start_number=start_number, fps=fps, start=start)
+            _embed_metadata_jpeg(
+                files,
+                video_id=video_id or input_path.stem,
+                start_number=start_number,
+                fps=fps,
+                start=start,
+            )
     return rc
 
 
 def main(argv: list[str] | None = None) -> int:
-    p = argparse.ArgumentParser(description="Extract frames from a video and save as images (ffmpeg)")
+    p = argparse.ArgumentParser(
+        description="Extract frames from a video and save as images (ffmpeg)"
+    )
     p.add_argument("input", help="Path to input video file")
-    p.add_argument("--outdir", "-o", help="Output directory (default: <input_stem>_frames next to input)")
-    p.add_argument("--fps", type=float, default=1.0, help="Frames per second to extract (default: 1.0)")
-    p.add_argument("--format", choices=["jpg", "jpeg", "png", "webp"], default="jpg", help="Image format (default: jpg)")
-    p.add_argument("--quality", type=int, help="Image quality (jpg/webp: 2-31 lower=better; png: 0-100 higher=better)")
+    p.add_argument(
+        "--outdir", "-o", help="Output directory (default: <input_stem>_frames next to input)"
+    )
+    p.add_argument(
+        "--fps", type=float, default=1.0, help="Frames per second to extract (default: 1.0)"
+    )
+    p.add_argument(
+        "--format",
+        choices=["jpg", "jpeg", "png", "webp"],
+        default="jpg",
+        help="Image format (default: jpg)",
+    )
+    p.add_argument(
+        "--quality",
+        type=int,
+        help="Image quality (jpg/webp: 2-31 lower=better; png: 0-100 higher=better)",
+    )
     p.add_argument("--start", type=float, help="Start time in seconds (fast seek)")
     p.add_argument("--duration", type=float, help="Duration in seconds to process")
     p.add_argument("--width", type=int, help="Scale output to width (keeps aspect)")
     p.add_argument("--height", type=int, help="Scale output to height (keeps aspect)")
     p.add_argument("--prefix", help="Output filename prefix (default: input stem)")
-    p.add_argument("--start-number", type=int, default=0, help="Start index for image numbering (default: 0)")
+    p.add_argument(
+        "--start-number", type=int, default=0, help="Start index for image numbering (default: 0)"
+    )
     p.add_argument("--keyframes", action="store_true", help="Extract only keyframes (I-frames)")
     p.add_argument(
         "--ffmpeg-arg",
@@ -231,7 +262,11 @@ def main(argv: list[str] | None = None) -> int:
         help="Extra raw ffmpeg arg(s). Can be used multiple times, e.g., --ffmpeg-arg -an",
     )
     # New CLI options
-    p.add_argument("--embed-metadata", action="store_true", help="Embed video_id, frame_index, timestamp_seconds into JPEG EXIF")
+    p.add_argument(
+        "--embed-metadata",
+        action="store_true",
+        help="Embed video_id, frame_index, timestamp_seconds into JPEG EXIF",
+    )
     p.add_argument("--video-id", help="Video identifier to embed (default: input file stem)")
 
     args = p.parse_args(argv)

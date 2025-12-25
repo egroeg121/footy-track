@@ -3,6 +3,7 @@
 Delete Labelbox projects and datasets whose name starts with the configured prefixes.
 Usage: set LABELBOX_API_KEY (or LB_API_KEY) in environment and run this script.
 """
+
 import os
 import sys
 from datetime import datetime
@@ -25,7 +26,9 @@ client = Client(api_key=API_KEY)
 PROJECT_PREFIX = "GroundingDINO"
 DATASET_PREFIX = "GroundingDINO"
 
-print(f"Connecting to Labelbox...\nProject prefix: {PROJECT_PREFIX!r}\nDataset prefix: {DATASET_PREFIX!r}")
+print(
+    f"Connecting to Labelbox...\nProject prefix: {PROJECT_PREFIX!r}\nDataset prefix: {DATASET_PREFIX!r}"
+)
 
 deleted_projects = []
 failed_projects = []
@@ -52,11 +55,10 @@ for p in projects:
                 p.delete()
             elif hasattr(client, "delete_project"):
                 client.delete_project(uid)
+            elif hasattr(client, "_api") and hasattr(client._api, "delete"):
+                client._api.delete(f"/projects/{uid}")
             else:
-                if hasattr(client, "_api") and hasattr(client._api, "delete"):
-                    client._api.delete(f"/projects/{uid}")
-                else:
-                    raise RuntimeError("No delete method available on project or client")
+                raise RuntimeError("No delete method available on project or client")
             deleted_projects.append((uid, name))
         except Exception as e:
             print(f"  Failed to delete project {uid}: {e}")
@@ -83,11 +85,10 @@ for d in datasets:
                 d.delete()
             elif hasattr(client, "delete_dataset"):
                 client.delete_dataset(uid)
+            elif hasattr(client, "_api") and hasattr(client._api, "delete"):
+                client._api.delete(f"/datasets/{uid}")
             else:
-                if hasattr(client, "_api") and hasattr(client._api, "delete"):
-                    client._api.delete(f"/datasets/{uid}")
-                else:
-                    raise RuntimeError("No delete method available on dataset or client")
+                raise RuntimeError("No delete method available on dataset or client")
             deleted_datasets.append((uid, name))
         except Exception as e:
             print(f"  Failed to delete dataset {uid}: {e}")

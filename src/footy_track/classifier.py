@@ -1,16 +1,35 @@
+import logging
 import os
+from enum import StrEnum
 from pathlib import Path
 
+import fiftyone as fo
 from inference import get_model
 from pydantic import BaseModel
 from roboflow import Roboflow
+
+logger = logging.getLogger(__name__)
+
+
+class EnumBroadcastClassification(StrEnum):
+    """Enumeration for broadcast classification."""
+
+    YES = "Yes"
+    NO = "No"
+    UNLABELED = "Unlabeled"
 
 
 class ClassificationResult(BaseModel):
     """Schema for a classification result."""
 
-    label: str
+    label: EnumBroadcastClassification
     confidence: float
+
+    def to_fiftyone_sample(self, image_path: Path, key: str = "prediction") -> fo.Sample:
+        """Convert to FiftyOne format."""
+        sample = fo.Sample(filepath=str(image_path))
+        sample[key] = fo.Classification(label=str(self.label), confidence=self.confidence)
+        return sample
 
 
 class Classifier:
@@ -30,7 +49,7 @@ class RoboflowClassifier(Classifier):
         self,
         workspace_name: str,
         project_name: str,
-        version: int | None = None,
+        version_number: int | None = None,
         api_key: str = None,
     ):
         """
@@ -47,11 +66,15 @@ class RoboflowClassifier(Classifier):
 
         rf = Roboflow(api_key=self.api_key)
         project = rf.workspace(workspace_name).project(project_name)
-        # version_number = version or max(versions, key=lambda v: int(v.version))
-        version_number = 1
-        model = project.version(version_number).model
+        if version_number is None:
+            versions = [v for v in project.versions() if v.model is not None]
+            version_obj = max(versions, key=lambda v: v.created)
+            version_number = int(version_obj.version)
+        version = project.version(version_number)
+        logger.info(f"Loading version {version.version}")
+        model = version.model
         self.model = get_model(
-            model_id=f"{model.name}/{version_number}",
+            model_id=f"{model.name}/{version.version}",
             onnxruntime_execution_providers=["CoreMLExecutionProvider", "CPUExecutionProvider"],
         )
 

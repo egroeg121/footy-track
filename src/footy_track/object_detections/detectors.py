@@ -20,7 +20,7 @@ except Exception:  # pragma: no cover
     tv_nms = None  # type: ignore[assignment]
 
 # Optional heavy imports are placed here to avoid import-time costs when unused
-from ultralytics import YOLO
+from ultralytics import SAM, YOLO
 from ultralytics.engine.results import Results as UltralyticsResults
 
 from footy_track.object_detections.constants import BALL_TAG, PERSON_TAG
@@ -30,7 +30,9 @@ from .utils import _clamp01, ultralytics_result_to_detections
 
 
 class ObjectDetector:
-    pass
+    def predict_from_path(self, image_path: Path) -> FrameDetections:
+        """Predict objects in an image from its path."""
+        raise NotImplementedError
 
 
 # --- Simple IoU and NMS helpers ---
@@ -127,10 +129,10 @@ class UltralyticsObjectDetector(ObjectDetector):
 
     def __init__(
         self,
-        model_uri: str = "yolo11n.pt",
+        model_uri: str = "yolo11x.pt",
         verbose: bool = False,
         compile: bool = False,
-        min_confidence: float = 0.3,
+        min_confidence: float = 0.2,
         iou_threshold: float = 0.90,
     ):
         self.device = "mps" if torch.backends.mps.is_available() else "cpu"
@@ -162,6 +164,71 @@ class UltralyticsObjectDetector(ObjectDetector):
 
         # Build detections via modular converter
         detections = ultralytics_result_to_detections(result, self.classes)
+
+        return FrameDetections(
+            uri=Path(image_path),
+            width=int(w),
+            height=int(h),
+            detections=detections,
+        )
+
+
+class UltralyticsSam3ObjectDetector(ObjectDetector):
+    """YOLO-based object detector returning Pydantic outputs.
+
+    Uses the ultralytics YOLO models and returns a FrameDetections instance
+    with normalized [x, y, w, h] boxes in [0, 1].
+    """
+
+    def __init__(
+        self,
+        model_uri: str = "sam3.pt",
+        verbose: bool = False,
+        compile: bool = False,
+        min_confidence: float = 0.3,
+        iou_threshold: float = 0.90,
+    ):
+        self.device = "mps" if torch.backends.mps.is_available() else "cpu"
+        self.model = SAM(model_uri)
+        self.predict_kwargs = {
+            "verbose": verbose,
+            "compile": compile,
+            "conf": min_confidence,
+            "iou": iou_threshold,
+        }
+
+    @property
+    def classes(self) -> list[str]:
+        """Get the list of class names the model can detect."""
+        # return self.model.names
+        return {
+            0: PERSON_TAG,
+            1: BALL_TAG,
+        }
+
+    @torch.no_grad()
+    def predict_from_path(self, image_path: Path, *args, **kwargs) -> FrameDetections:
+        """Run detection and return FrameDetections."""
+        pred_kwargs = {**self.predict_kwargs, **kwargs, "device": self.device}
+
+        # Run prediction for players
+        player_results: UltralyticsResults = self.model.predict(
+            image_path, *args, **pred_kwargs, prompt=PERSON_TAG
+        )[0]
+
+        # Run prediction for the ball
+        ball_results: UltralyticsResults = self.model.predict(
+            image_path, *args, **pred_kwargs, prompt=BALL_TAG
+        )[0]
+
+        # Image size
+        h, w = player_results.orig_shape[:2]
+
+        # Build detections via modular converter
+        player_detections = ultralytics_result_to_detections(player_results, {0: PERSON_TAG})
+        ball_detections = ultralytics_result_to_detections(ball_results, {0: BALL_TAG})
+
+        detections = player_detections + ball_detections
 
         return FrameDetections(
             uri=Path(image_path),

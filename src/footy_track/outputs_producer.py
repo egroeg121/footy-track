@@ -1,11 +1,12 @@
+import logging
 from abc import ABC
 from pathlib import Path
-import logging
 
 import cv2
 from ultralytics.engine.results import Results as UltralyticsResults
 
 logger = logging.getLogger(__name__)
+
 
 class OutputProducer(ABC):
     def __init__(self, save_path: Path | str):
@@ -13,6 +14,7 @@ class OutputProducer(ABC):
 
     def run(self):
         pass
+
 
 class UltralyticsResultsToVideo(OutputProducer):
     def __init__(self, input_video_path, save_path: Path | str):
@@ -37,12 +39,7 @@ class UltralyticsResultsToVideo(OutputProducer):
         w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
-        writer = cv2.VideoWriter(
-            str(save_path_abs),
-            cv2.VideoWriter_fourcc(*"mp4v"),
-            fps,
-            (w, h)
-        )
+        writer = cv2.VideoWriter(str(save_path_abs), cv2.VideoWriter_fourcc(*"mp4v"), fps, (w, h))
         if not writer.isOpened():
             cap.release()
             raise RuntimeError(f"Failed to open VideoWriter for path: {save_path_abs}")
@@ -60,6 +57,7 @@ class UltralyticsResultsToVideo(OutputProducer):
         # Simple trace to help locate the output
         logger.info(f"Video written to: {save_path_abs}")
         return str(save_path_abs)
+
 
 class UltralyticsResultsToJson(OutputProducer):
     def __init__(self, save_path: Path | str):

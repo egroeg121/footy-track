@@ -41,7 +41,7 @@ uv run footy-track
   - System components
   - Data flow
   - Extension points
-  
+
 - **[Time Formats](timings.md)**
   - Time representation
   - Format conversion

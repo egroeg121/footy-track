@@ -1,22 +1,23 @@
 """Compute embeddings for video frames using a pretrained model."""
 
 # embed_folder.py
-from abc import ABC
 import pathlib
-from typing import Callable
+from abc import ABC
+from collections.abc import Callable
 
-import torch
 import numpy as np
+import torch
 from PIL import Image
-from torchvision.models import resnet50, ResNet50_Weights
-from torchvision.models import convnext_base, ConvNeXt_Base_Weights
+from torchvision.models import ConvNeXt_Base_Weights, ResNet50_Weights, convnext_base, resnet50
 from torchvision.models.feature_extraction import create_feature_extractor
+
 
 class FeatureExtractor(ABC):
     pass
 
+
 class TorchvisionFeatureExtractor(FeatureExtractor):
-    def __init__(self, weights: str, model:  Callable[[str], torch.nn.Module]):
+    def __init__(self, weights: str, model: Callable[[str], torch.nn.Module]):
         self.device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
         weights = ResNet50_Weights.DEFAULT
         self.model = resnet50(weights=weights).eval().to(self.device)
@@ -39,10 +40,12 @@ class TorchvisionFeatureExtractor(FeatureExtractor):
         img = Image.open(image_path)
         return self.extract(img)
 
+
 class ResNet50FeatureExtractor(TorchvisionFeatureExtractor):
     def __init__(self):
         super().__init__(weights=ResNet50_Weights.DEFAULT, model=resnet50)
 
+
 class ConvNeXtBaseFeatureExtractor(TorchvisionFeatureExtractor):
     def __init__(self):
-       super().__init__(weights=ConvNeXt_Base_Weights.DEFAULT, model=convnext_base)
+        super().__init__(weights=ConvNeXt_Base_Weights.DEFAULT, model=convnext_base)

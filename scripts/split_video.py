@@ -15,6 +15,7 @@ Usage examples:
 Requires: ffmpeg to be installed and available on PATH.
 macOS install hint: brew install ffmpeg
 """
+
 from __future__ import annotations
 
 import argparse
@@ -126,9 +127,15 @@ def split_video(
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description="Split a video into fixed-length chunks using ffmpeg.")
     p.add_argument("input", help="Path to input video file")
-    p.add_argument("--outdir", "-o", help="Output directory (default: <input_stem>_chunks next to input)")
-    p.add_argument("--chunk", type=float, default=10.0, help="Chunk length in seconds (default: 10)")
-    p.add_argument("--reencode", action="store_true", help="Re-encode to force exact boundaries (slower)")
+    p.add_argument(
+        "--outdir", "-o", help="Output directory (default: <input_stem>_chunks next to input)"
+    )
+    p.add_argument(
+        "--chunk", type=float, default=10.0, help="Chunk length in seconds (default: 10)"
+    )
+    p.add_argument(
+        "--reencode", action="store_true", help="Re-encode to force exact boundaries (slower)"
+    )
     p.add_argument("--vcodec", help="Video codec when re-encoding (default: libx264)")
     p.add_argument("--acodec", help="Audio codec when re-encoding (default: aac)")
     p.add_argument("--bitrate", help="Target video bitrate when re-encoding, e.g., 4M")
