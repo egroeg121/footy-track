@@ -30,11 +30,12 @@ scripts.footy-track = "footy_track:main"
 
 [dependency-groups]
 dev = [
-  "ipython>=9.5",
-  "jupyter>=1.1.1",
-  "pre-commit>=3.7",
-  "pytest>=8.3",
-  "ruff>=0.13.2",
+  "ipython",
+  "jupyter",
+  "prek",
+  "pytest",
+  "ruff",
+  "ty",
 ]
 metaflow = [
   "kubernetes>=29",
