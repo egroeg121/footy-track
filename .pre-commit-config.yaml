@@ -69,8 +69,6 @@ repos:
           [
             "--skip",
             "data,metaflow,runs,export,*.pt,*.lock",
-            "--ignore-words-list",
-            "crate,fo,nd",
             "--quiet-level",
             "2",
           ]
