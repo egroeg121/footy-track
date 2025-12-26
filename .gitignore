@@ -21,3 +21,6 @@ wheels/
 
 # Serena project files (local tooling)
 .serena/
+
+# Test artifacts
+tests/data/tmp_extracted_frames

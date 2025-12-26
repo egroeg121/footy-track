@@ -15,6 +15,7 @@ Usage examples:
 Requires: ffmpeg to be installed and available on PATH.
 macOS install hint: brew install ffmpeg
 """
+
 from __future__ import annotations
 
 import argparse
@@ -37,19 +38,16 @@ def check_ffmpeg() -> str:
 
 
 def build_output_dir(input_path: Path, outdir: str | None) -> Path:
-    if outdir:
-        out = Path(outdir)
-    else:
-        out = input_path.parent / f"{input_path.stem}_chunks"
+    out = Path(outdir) if outdir else input_path.parent / f"{input_path.stem}_chunks"
     out.mkdir(parents=True, exist_ok=True)
     return out
 
 
-def split_video(
+def split_video(  # noqa: PLR0913
     input_path: Path,
     output_dir: Path,
     chunk_seconds: float,
-    reencode: bool,
+    re_encode: bool,
     vcodec: str | None,
     acodec: str | None,
     bitrate: str | None,
@@ -74,7 +72,7 @@ def split_video(
         str(input_path),
     ]
 
-    if reencode:
+    if re_encode:
         # Re-encode video so we can force keyframes at exact segment boundaries.
         # This ensures chunks are very close to the requested duration.
         # Choose sensible defaults if codecs not provided.
@@ -126,9 +124,18 @@ def split_video(
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description="Split a video into fixed-length chunks using ffmpeg.")
     p.add_argument("input", help="Path to input video file")
-    p.add_argument("--outdir", "-o", help="Output directory (default: <input_stem>_chunks next to input)")
-    p.add_argument("--chunk", type=float, default=10.0, help="Chunk length in seconds (default: 10)")
-    p.add_argument("--reencode", action="store_true", help="Re-encode to force exact boundaries (slower)")
+    p.add_argument(
+        "--outdir", "-o", help="Output directory (default: <input_stem>_chunks next to input)"
+    )
+    p.add_argument(
+        "--chunk", type=float, default=10.0, help="Chunk length in seconds (default: 10)"
+    )
+    p.add_argument(
+        "--re-encode",
+        dest="re_encode",
+        action="store_true",
+        help="Re-encode to force exact boundaries (slower)",
+    )
     p.add_argument("--vcodec", help="Video codec when re-encoding (default: libx264)")
     p.add_argument("--acodec", help="Audio codec when re-encoding (default: aac)")
     p.add_argument("--bitrate", help="Target video bitrate when re-encoding, e.g., 4M")
@@ -152,7 +159,7 @@ def main(argv: list[str] | None = None) -> int:
         input_path=input_path,
         output_dir=output_dir,
         chunk_seconds=args.chunk,
-        reencode=args.reencode,
+        re_encode=args.re_encode,
         vcodec=args.vcodec,
         acodec=args.acodec,
         bitrate=args.bitrate,

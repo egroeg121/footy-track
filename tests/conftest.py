@@ -4,17 +4,14 @@ Provides repository root, sample image path, and detector instances. Skips
 cleanly if the sample image or optional `transformers` dependency is missing.
 """
 
-import json
+import random
 from pathlib import Path
 
+import numpy as np
 import pytest
-from PIL import Image
+import torch
 
-from footy_track.object_detections import (
-    Detection,
-    FrameDetections,
-    _clamp01,
-)
+from footy_track.scripts import extract_frames
 
 
 @pytest.fixture(scope="session")
@@ -23,60 +20,57 @@ def repo_root() -> Path:
 
 
 @pytest.fixture(scope="session")
-def arsenal_mancity_image_path(repo_root: Path) -> Path:
-    return repo_root / "tests" / "data" / "arsenal_mancity_test_detection.jpg"
+def video_path(repo_root: Path) -> Path:
+    """Fixture for the video file path."""
+    path = repo_root / "tests" / "data" / "video" / "arsenal_mancity_20250925_part192.mp4"
+    assert path.exists(), f"Video file not found at {path}"
+    return path
 
 
 @pytest.fixture(scope="session")
-def arsenal_mancity_json_path(repo_root: Path) -> Path:
-    return repo_root / "tests" / "data" / "arsenal_mancity_test_detections.json"
+def frames_path(repo_root: Path) -> Path:
+    """Fixture for the frames directory path."""
+    path = repo_root / "tests/data/tmp_extracted_frames"
+    assert path.exists(), f"Frames directory not found at {path}"
+    return path
 
 
 @pytest.fixture(scope="session")
-def arsenal_mancity_test_detection_as_frame(
-    repo_root: Path, arsenal_mancity_json_path: Path
-) -> FrameDetections:
-    """Return the curated Arsenal/Man City frame as FrameDetections.
+def extracted_frames(video_path: Path, frames_path: Path) -> list[Path]:
+    """Fixture for the frames directory path."""
 
-    - JSON bboxes are in top-left [x, y, w, h] normalized format (matches schema)
-    - No coordinate conversion is performed here to avoid double-conversion bugs
-    """
-    image_path = repo_root / "tests" / "data" / "arsenal_mancity_test_detection.jpg"
-    if not image_path.exists():
-        raise FileNotFoundError(f"Test image not found: {image_path}")
+    if frames_path.exists() and any(frames_path.iterdir()):
+        # Frames already extracted
+        frames = list(frames_path.glob("*.png"))
+        return frames
 
-    with arsenal_mancity_json_path.open("r") as f:
-        data = json.load(f)
-
-    objects = data.get("objects") or []
-
-    detections: list[Detection] = []
-    for obj in objects:
-        label = str(obj.get("label", "")).strip()
-        bbox = obj.get("bbox", [0, 0, 0, 0])
-        try:
-            x, y, w, h = [float(v) for v in bbox]
-        except Exception:
-            x = y = w = h = 0.0
-        detections.append(
-            Detection(
-                label=label,
-                confidence=1.0,
-                x=_clamp01(x),
-                y=_clamp01(y),
-                w=_clamp01(w),
-                h=_clamp01(h),
-            )
-        )
-
-    # Get image size
-    with Image.open(image_path) as im:
-        img = im.convert("RGB")
-        width, height = img.size
-
-    return FrameDetections(
-        uri=image_path,
-        width=int(width),
-        height=int(height),
-        detections=detections,
+    # Extract frames at 1 FPS
+    extract_frames.extract_frames(
+        input_path=video_path,
+        output_dir=frames_path,
+        fps=1,
+        img_format="png",
+        quality=None,
+        start=None,
+        duration=None,
+        width=None,
+        height=None,
+        prefix=None,
+        start_number=0,
+        keyframes_only=False,
+        extra_ffmpeg_args=[],
     )
+
+    # Check that 30 frames were created
+    frames = list(frames_path.glob("*.png"))
+    return frames
+
+
+@pytest.fixture(scope="session", autouse=True)
+def random_seed():
+    """Fixture to set a fixed random seed for tests."""
+    random.seed(42)
+    # You can add more seeding for other libraries if needed, e.g.,
+
+    np.random.seed(42)
+    torch.manual_seed(42)
