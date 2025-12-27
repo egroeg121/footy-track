@@ -188,3 +188,35 @@ def detection_to_fiftyone(d: ObjectDetection) -> fo.Detection:
 def frame_to_fiftyone_detections(frame: FrameDetections) -> list[fo.Detection]:
     """Convert FrameDetections to a list of FiftyOne Detection objects."""
     return [detection_to_fiftyone(d) for d in frame.detections]
+
+
+def calculate_iou(box1: ObjectDetection, box2: ObjectDetection) -> float:
+    """Calculate the Intersection over Union (IoU) of two bounding boxes."""
+    # Convert from (x, y, w, h) to (x1, y1, x2, y2)
+    box1_x1, box1_y1, box1_x2, box1_y2 = (
+        box1.x,
+        box1.y,
+        box1.x + box1.w,
+        box1.y + box1.h,
+    )
+    box2_x1, box2_y1, box2_x2, box2_y2 = (
+        box2.x,
+        box2.y,
+        box2.x + box2.w,
+        box2.y + box2.h,
+    )
+
+    # Calculate the area of intersection
+    inter_x1 = max(box1_x1, box2_x1)
+    inter_y1 = max(box1_y1, box2_y1)
+    inter_x2 = min(box1_x2, box2_x2)
+    inter_y2 = min(box1_y2, box2_y2)
+    inter_area = max(0, inter_x2 - inter_x1) * max(0, inter_y2 - inter_y1)
+
+    # Calculate the area of both bounding boxes
+    box1_area = box1.w * box1.h
+    box2_area = box2.w * box2.h
+
+    # Calculate the IoU
+    iou = inter_area / float(box1_area + box2_area - inter_area)
+    return iou
