@@ -75,16 +75,21 @@ class UltralyticsClassifier(Classifier):
         Returns:
             YOLO: The loaded YOLO model.
         """
+        model_name_path = Path(model_name)
+        if model_name_path.is_file():
+            logger.info(f"Loading model directly from {model_name_path}")
+            return YOLO(model_name_path)
+
         model_dir = Path(model_dir)
         model_dir.mkdir(parents=True, exist_ok=True)
-        model_path = model_dir / model_name
+        model_path = model_dir / model_name_path.name
 
         if not model_path.exists():
             logger.info(f"Model not found at {model_path}, downloading...")
             # Load normally (downloads to cwd)
             YOLO(model_name)
             # Move the file
-            downloaded_model = Path(model_name)
+            downloaded_model = Path(model_name_path.name)
             if downloaded_model.exists():
                 downloaded_model.rename(model_path)
             else:
