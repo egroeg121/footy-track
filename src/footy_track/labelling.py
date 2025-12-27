@@ -5,7 +5,7 @@ from pathlib import Path
 
 from roboflow import Roboflow
 
-from footy_track.classifier import CURRENT_BEST_GUESS_CLASSIFIER_CLASS, Classifier
+from footy_track.classifier import Classifier, get_current_best_guess_classifier
 from footy_track.constants import IMAGE_FORMAT
 from footy_track.detectors.base import ObjectDetector
 from footy_track.schema import FrameClassifications, FrameDetections
@@ -60,7 +60,7 @@ class RoboflowClassificationHandler(BaseRoboflowHandler):
         self.project_name = project_name
         self.project = self.get_project(project_name)
         if classifier is None:
-            classifier = CURRENT_BEST_GUESS_CLASSIFIER_CLASS
+            classifier = get_current_best_guess_classifier()
         self.classifier = classifier
 
     def download_dataset(self, version_number: int, data_location: Path) -> Path:
@@ -158,7 +158,7 @@ class RoboflowObjectDetectionHandler(BaseRoboflowHandler):
         self.project_name = project_name
         self.project = self.get_project(project_name)
         self.detector = detector or UltralyticsObjectDetector()
-        self.classifier = classifier or CURRENT_BEST_GUESS_CLASSIFIER_CLASS
+        self.classifier = classifier or get_current_best_guess_classifier()
 
     def upload_dir(
         self,
@@ -203,7 +203,9 @@ class RoboflowObjectDetectionHandler(BaseRoboflowHandler):
             for img_path in tqdm(
                 path_to_detections.keys(), desc="Running object detection"
             ):
-                path_to_detections[img_path] = self.detector.predict_from_path(img_path)
+                path_to_detections[img_path] = self.detector.predict_from_path(
+                    image_path=img_path
+                )
 
         for img_path, detections in tqdm(
             path_to_detections.items(), desc="Uploading images to Roboflow"
@@ -212,9 +214,15 @@ class RoboflowObjectDetectionHandler(BaseRoboflowHandler):
                 annotation_path = img_path.with_suffix(".txt")
                 with open(annotation_path, "w") as f:
                     for det in detections.detections:
+                        if det.label not in self.project.classes:
+                            _logger.warning(
+                                f"Skipping detection with unknown label: {det.label}. "
+                                f"Allowed classes are: {self.project.classes}"
+                            )
+                            continue
                         # darknet format
                         f.write(
-                            f"{self.project.classes.index(det.label)} {det.x} {det.y} {det.w} {det.h}\\n"
+                            f"{self.project.classes[det.label]} {det.x} {det.y} {det.w} {det.h}\n"
                         )
 
                 self.project.upload(

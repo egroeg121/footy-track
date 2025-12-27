@@ -45,12 +45,14 @@ class UltralyticsObjectDetector(ObjectDetector):
         }
 
     @torch.no_grad()
-    def predict_from_path(self, image_path: Path, *args, **kwargs) -> FrameDetections:
+    def predict_from_path(
+        self,
+        image_path: Path,
+    ) -> FrameDetections:
         """Run detection and return FrameDetections."""
-        pred_kwargs = {**self.predict_kwargs, **kwargs, "device": self.device}
-        result: UltralyticsResults = self.model.predict(
-            image_path, *args, **pred_kwargs
-        )[0]
+        result: UltralyticsResults = self.model.predict(image_path, device=self.device)[
+            0
+        ]
 
         # Image size
         h, w = result.orig_shape[:2]

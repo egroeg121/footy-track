@@ -19,6 +19,8 @@ def test_ultralytics_object_detector_predict_from_path():
     assert isinstance(frame_detections, FrameDetections)
     assert frame_detections.uri == test_image_path
     assert len(frame_detections.detections) > 0
+    for detection in frame_detections.detections:
+        assert detection.label in ["person", "ball"]
 
 
 def test_ultralytics_object_detector_iou():
