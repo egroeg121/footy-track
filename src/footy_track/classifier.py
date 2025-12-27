@@ -57,7 +57,7 @@ class UltralyticsClassifier(Classifier):
 
     def __init__(
         self,
-        model_name: str = "yolo11n-cls.pt",
+        model_name: str | Path = "yolo11n-cls.pt",
         model_dir: Path | None = None,
     ):
         if model_dir is None:
@@ -65,16 +65,17 @@ class UltralyticsClassifier(Classifier):
         super().__init__()
         self.model = self._load_model(model_name, model_dir)
 
-    def _load_model(self, model_name: str, model_dir: Path) -> YOLO:
+    def _load_model(self, model_name: str | Path, model_dir: Path) -> YOLO:
         """Loads the YOLO model, downloading it if necessary.
 
         Args:
-            model_name (str): The name of the model to load.
+            model_name (str | Path): The name of the model to load or a path to a local model.
             model_dir (Path): The directory to save the model in.
 
         Returns:
             YOLO: The loaded YOLO model.
         """
+        model_dir = Path(model_dir)
         model_dir.mkdir(parents=True, exist_ok=True)
         model_path = model_dir / model_name
 
@@ -103,9 +104,9 @@ class UltralyticsClassifier(Classifier):
         """
         # HACK: a little fudging to get the desired output
         if predicted_class_label in ("sports ball", "soccer ball"):
-            return EnumBroadcastClassification.NO
-        else:
             return EnumBroadcastClassification.YES
+        else:
+            return EnumBroadcastClassification.NO
 
     def predict_from_path(self, image_path: Path) -> FrameClassifications:
         """Predict the class of an image from its path."""
