@@ -47,6 +47,7 @@ dev = [
   "pylint>=3.3.8",
   "pyrefly>=0.34",
   "pytest>=8.3",
+  "pytest-xdist>=3.5",
   "ruff>=0.13.2",
   "transformers>=4.57",
   "umap-learn>=0.5.9.post2",
@@ -95,7 +96,7 @@ lint.ignore = [
 lint.per-file-ignores."tests/*.py" = [ "PLR2004" ]
 
 [tool.pytest.ini_options]
-addopts = "-q"
+addopts = "-q -n 4"
 markers = [
   "slow: tests that run models and may take longer",
 ]

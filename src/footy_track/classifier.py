@@ -1,5 +1,6 @@
 import logging
 import random
+import tempfile
 from abc import ABC, abstractmethod
 from pathlib import Path
 
@@ -57,8 +58,10 @@ class UltralyticsClassifier(Classifier):
     def __init__(
         self,
         model_name: str = "yolo11n-cls.pt",
-        model_dir: Path = Path("model_saves/classifier"),
+        model_dir: Path | None = None,
     ):
+        if model_dir is None:
+            model_dir = Path(tempfile.gettempdir()) / "yolo_models"
         super().__init__()
         self.model = self._load_model(model_name, model_dir)
 

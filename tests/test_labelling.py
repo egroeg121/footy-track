@@ -34,6 +34,7 @@ class TestRoboflowClassificationHandlerIntegration:
         assert handler.project is not None
         assert handler.project.id == f"{self.WORKSPACE}/{self.PROJECT}"
 
+    @pytest.mark.slow
     def test_upload_images(self, classifier, extracted_frames):
         """Tests the upload_images method."""
         handler = RoboflowClassificationHandler(
@@ -49,6 +50,7 @@ class TestRoboflowClassificationHandlerIntegration:
             # TODO: Implement batch deletion when the SDK supports it
             pass
 
+    @pytest.mark.slow
     def test_upload_dir(self, classifier, frames_path):
         """Tests the upload_dir method."""
         handler = RoboflowClassificationHandler(
@@ -63,6 +65,7 @@ class TestRoboflowClassificationHandlerIntegration:
             # TODO: Implement batch deletion when the SDK supports it
             pass
 
+    @pytest.mark.slow
     def test_upload_dir_with_sampling(self, classifier, frames_path):
         """Tests the upload_dir method with sampling."""
         handler = RoboflowClassificationHandler(
