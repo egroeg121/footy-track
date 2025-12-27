@@ -28,7 +28,7 @@ ml-deps: ## Install optional ML/video extras
 run: ## Run the main entrypoint
 	$(UV) run footy-track
 
-# test target intentionally commented out
+
 
 .PHONY: docs
 docs: docs-serve ## Serve docs locally (alias)
@@ -44,6 +44,14 @@ docs-build: ## Build MkDocs site
 .PHONY: docs-deploy
 docs-deploy: ## Deploy MkDocs to GitHub Pages
 	$(UV) run mkdocs gh-deploy
+
+# -----------------------------
+# Tests
+# -----------------------------
+
+.PHONY: tests
+tests: ## Run all tests
+	$(UV) run pytest tests/
 
 # -----------------------------
 # Linting / pre-commit

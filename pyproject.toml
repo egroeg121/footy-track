@@ -28,6 +28,7 @@ dependencies = [
   "openai>=2.6.1",
   "opencv-python>=4.8",
   "piexif>=1.1.3",
+  "roboflow>=1.2.11",
   "tqdm>=4.66",
   "transformers>=4.57",
   "ultralytics>=8.2",
