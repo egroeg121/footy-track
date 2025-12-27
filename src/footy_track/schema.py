@@ -20,8 +20,8 @@ class BaseSchema(BaseModel):
 class EnumBroadcastClassification(StrEnum):
     """Enumeration for broadcast classification."""
 
-    Yes = "yes"
-    No = "no"
+    YES = "Yes"
+    NO = "No"
 
 
 class BroadcastClassification(BaseModel):

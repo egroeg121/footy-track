@@ -1,5 +1,6 @@
 import logging
 import random
+import tempfile
 from abc import ABC, abstractmethod
 from pathlib import Path
 
@@ -12,6 +13,16 @@ from footy_track.schema import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+# This is set a the bottom of the file using the function after the class definitions and then we run the function, but this
+# makes it easy to see and change when there is a better classifier available.
+CURRENT_BEST_GUESS_CLASSIFIER_CLASS = None
+
+
+def get_current_best_guess_classifier() -> "Classifier":
+    """Returns the current best guess classifier class."""
+    return RandomClassifier()
 
 
 class Classifier(ABC):
@@ -47,8 +58,10 @@ class UltralyticsClassifier(Classifier):
     def __init__(
         self,
         model_name: str = "yolo11n-cls.pt",
-        model_dir: Path = Path("model_saves/classifier"),
+        model_dir: Path | None = None,
     ):
+        if model_dir is None:
+            model_dir = Path(tempfile.gettempdir()) / "yolo_models"
         super().__init__()
         self.model = self._load_model(model_name, model_dir)
 
@@ -90,9 +103,9 @@ class UltralyticsClassifier(Classifier):
         """
         # HACK: a little fudging to get the desired output
         if predicted_class_label in ("sports ball", "soccer ball"):
-            return EnumBroadcastClassification.No
+            return EnumBroadcastClassification.NO
         else:
-            return EnumBroadcastClassification.Yes
+            return EnumBroadcastClassification.YES
 
     def predict_from_path(self, image_path: Path) -> FrameClassifications:
         """Predict the class of an image from its path."""
@@ -108,3 +121,6 @@ class UltralyticsClassifier(Classifier):
             uri=image_path,
             classification=BroadcastClassification(label=label, confidence=top1_confidence),
         )
+
+
+CURRENT_BEST_GUESS_CLASSIFIER_CLASS = get_current_best_guess_classifier()

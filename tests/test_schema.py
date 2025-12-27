@@ -28,8 +28,8 @@ FRAME_HEIGHT = 1080
 
 def test_broadcast_classification():
     """Test the BroadcastClassification model."""
-    bc = BroadcastClassification(label=EnumBroadcastClassification.Yes, confidence=CONFIDENCE)
-    assert bc.label == "yes"
+    bc = BroadcastClassification(label=EnumBroadcastClassification.YES, confidence=CONFIDENCE)
+    assert bc.label == "Yes"
     assert bc.confidence == CONFIDENCE
 
 
@@ -80,7 +80,7 @@ def test_frame_detections():
 
 def test_frame_classifications():
     """Test the FrameClassifications model."""
-    bc = BroadcastClassification(label=EnumBroadcastClassification.No, confidence=0.95)
+    bc = BroadcastClassification(label=EnumBroadcastClassification.NO, confidence=0.95)
     fc = FrameClassifications(
         uri=pathlib.Path("/path/to/another/frame.png"),
         classification=bc,
