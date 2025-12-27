@@ -56,7 +56,6 @@ metaflow = [
 ]
 
 [tool.uv]
-line-length = 100
 extend-exclude = [
   "data",
   "docs",
@@ -67,22 +66,7 @@ extend-exclude = [
   "yolo11n.pt",
 ]
 
-[tool.ruff]
-target-version = "py312"
-line-length = 100
-extend-exclude = [
-  "data",
-  "docs",
-  "export",
-  "metaflow",
-  "notebooks",
-  "runs",
-  "yolo11n.pt",
-]
-
-[tool.pylint]
-py-version = "3.12"
-
+format.line-length = 120
 format.indent-style = "space"
 format.quote-style = "double"
 format.line-ending = "lf"
@@ -98,6 +82,7 @@ lint.select = [
   "SIM",
   "UP",
 ]
+lint.target-version = "py312"
 # Let the formatter handle line length instead of emitting E501
 lint.ignore = [
   "E501",

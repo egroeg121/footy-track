@@ -8,6 +8,7 @@ import pathlib
 from enum import StrEnum
 from typing import Literal
 
+import fiftyone as fo
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -52,6 +53,16 @@ class FrameDetections(BaseModel):
 class FrameClassifications(BaseModel):
     uri: pathlib.Path = Field(..., description="Path to the image file or identifier")
     classification: BroadcastClassification
+
+    def to_fiftyone_sample(self) -> fo.Sample:
+        """Convert to a FiftyOne Sample."""
+
+        sample = fo.Sample(filepath=str(self.uri))
+        sample["broadcast_classification"] = fo.Classification(
+            label=self.classification.label.value,
+            confidence=self.classification.confidence,
+        )
+        return sample
 
 
 class FrameDetectionsWithMeta(FrameDetections):

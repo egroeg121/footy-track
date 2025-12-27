@@ -34,7 +34,7 @@ class BaseRoboflowHandler:
 
     def _download_roboflow_dataset(
         self, project_name: str, version_number: int, data_location: Path
-    ):
+    ) -> Path:
         """Download and set up a roboflow dataset for training"""
         project = self.workspace.project(project_name)
         version = project.version(version_number)
@@ -43,7 +43,7 @@ class BaseRoboflowHandler:
         dataset = version.download(model_format="folder", location=str(dataset_path))
         dataset_location = dataset.location
         _logger.info(f"Dataset downloaded to: {dataset_location}")
-        return dataset_location
+        return Path(dataset_location)
 
 
 class RoboflowClassificationHandler(BaseRoboflowHandler):
@@ -61,6 +61,14 @@ class RoboflowClassificationHandler(BaseRoboflowHandler):
         if classifier is None:
             classifier = CURRENT_BEST_GUESS_CLASSIFIER_CLASS
         self.classifier = classifier
+
+    def download_dataset(self, version_number: int, data_location: Path) -> Path:
+        """Downloads a dataset from Roboflow."""
+        return self._download_roboflow_dataset(
+            project_name=self.project_name,
+            version_number=version_number,
+            data_location=data_location,
+        )
 
     def _classify_image(self, img_path: Path) -> FrameClassifications:
         """Runs the classifier on a local image path."""
@@ -123,7 +131,11 @@ class RoboflowClassificationHandler(BaseRoboflowHandler):
         for ext in image_extensions:
             all_image_paths.extend(Path(image_dir).glob(ext))
 
-        if not sample_number or sample_number <= 0 or sample_number >= len(all_image_paths):
+        if (
+            not sample_number
+            or sample_number <= 0
+            or sample_number >= len(all_image_paths)
+        ):
             return sorted(all_image_paths)
         else:
             return sorted(random.sample(all_image_paths, k=sample_number))

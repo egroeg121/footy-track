@@ -22,7 +22,10 @@ CURRENT_BEST_GUESS_CLASSIFIER_CLASS = None
 
 def get_current_best_guess_classifier() -> "Classifier":
     """Returns the current best guess classifier class."""
-    return RandomClassifier()
+    repo_root = Path(__file__).resolve().parents[2]
+    return UltralyticsClassifier(
+        model_path=repo_root / "model_saves/classifier/20251226-yolo11n-cls/0.987.pt"
+    )
 
 
 class Classifier(ABC):
@@ -88,19 +91,21 @@ class UltralyticsClassifier(Classifier):
 
         model_dir = Path(model_dir)
         model_dir.mkdir(parents=True, exist_ok=True)
-        model_path = model_dir / model_name_path.name
+        model_download_path = model_dir / model_name_path.name
 
-        if not model_path.exists():
-            logger.info(f"Model not found at {model_path}, downloading...")
+        if not model_download_path.exists():
+            logger.info(f"Model not found at {model_download_path}, downloading...")
             # Load normally (downloads to cwd)
-            YOLO(model_path)
+            YOLO(model_name_path.name)
             # Move the file
             downloaded_model = Path(model_name_path.name)
             if downloaded_model.exists():
-                downloaded_model.rename(model_path)
+                downloaded_model.rename(model_download_path)
             else:
-                raise FileNotFoundError(f"Failed to download model {model_path}, it should exist")
-        return YOLO(model_path)
+                raise FileNotFoundError(
+                    f"Failed to download model {model_name_path.name}, it should exist"
+                )
+        return YOLO(model_download_path)
 
     def _check_output(self, predicted_class_label: str) -> EnumBroadcastClassification:
         """Checks the predicted class label and returns a broadcast classification."""
@@ -114,9 +119,12 @@ class UltralyticsClassifier(Classifier):
             )
         return EnumBroadcastClassification.NO
 
+    def _model_infer(self, image_path: Path):
+        return self.model.predict(source=image_path, device="mps", verbose=False)
+
     def predict_from_path(self, image_path: Path) -> FrameClassifications:
         """Predict the class of an image from its path."""
-        results = self.model(image_path, verbose=False)
+        results = self._model_infer(image_path=image_path)
         result = results[0]
         top1_index = result.probs.top1
         top1_confidence = result.probs.top1conf.item()
