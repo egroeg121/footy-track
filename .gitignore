@@ -25,3 +25,4 @@ wheels/
 # Test artifacts
 tests/data/tmp_extracted_frames
 tests/data/split_videos/
+model_saves/

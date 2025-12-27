@@ -32,18 +32,18 @@ class BaseRoboflowHandler:
         self._project = project
         return project
 
-    def get_or_create_project(self, project_name: str, project_type: str):
-        """Get or create a Roboflow project."""
-        try:
-            return self.get_project(project_name)
-        except Exception:
-            _logger.info(f"Project '{project_name}' not found. Creating a new one.")
-            project = self.workspace.create_project(
-                project_name=project_name,
-                project_type=project_type,
-            )
-            self._project = project
-            return project
+    def _download_roboflow_dataset(
+        self, project_name: str, version_number: int, data_location: Path
+    ):
+        """Download and set up a roboflow dataset for training"""
+        project = self.workspace.project(project_name)
+        version = project.version(version_number)
+        dataset_folder = f"roboflow_dataset_{version_number}"
+        dataset_path = data_location / dataset_folder
+        dataset = version.download(model_format="folder", location=str(dataset_path))
+        dataset_location = dataset.location
+        _logger.info(f"Dataset downloaded to: {dataset_location}")
+        return dataset_location
 
 
 class RoboflowClassificationHandler(BaseRoboflowHandler):
@@ -57,8 +57,7 @@ class RoboflowClassificationHandler(BaseRoboflowHandler):
     ):
         super().__init__(workspace_name)
         self.project_name = project_name
-        self.project_type = "single-label-classification"
-        self.project = self.get_or_create_project(project_name, self.project_type)
+        self.project = self.get_project(project_name)
         if classifier is None:
             classifier = CURRENT_BEST_GUESS_CLASSIFIER_CLASS
         self.classifier = classifier

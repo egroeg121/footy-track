@@ -1,0 +1,1 @@
+Trained with version 6 of footy-track-broadcast-formatter
