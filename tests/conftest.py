@@ -35,7 +35,7 @@ def frames_path(repo_root: Path) -> Path:
     return path
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="session", autouse=True)
 def extracted_frames(video_path: Path, frames_path: Path) -> list[Path]:
     """Fixture for the frames directory path."""
 
@@ -70,7 +70,11 @@ def extracted_frames(video_path: Path, frames_path: Path) -> list[Path]:
 def random_seed():
     """Fixture to set a fixed random seed for tests."""
     random.seed(42)
-    # You can add more seeding for other libraries if needed, e.g.,
-
     np.random.seed(42)
     torch.manual_seed(42)
+
+
+@pytest.fixture
+def roboflow_test_project_name() -> str:
+    """Returns the name of the test roboflow broadcast project."""
+    return "footy-track-broadcast-frame-test"
