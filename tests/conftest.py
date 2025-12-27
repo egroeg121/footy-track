@@ -11,6 +11,7 @@ import numpy as np
 import pytest
 import torch
 
+from footy_track.constants import ROBOFLOW_BROADCAST_PROJECT_TEST_PROJECT
 from footy_track.scripts import extract_frames
 
 
@@ -77,4 +78,4 @@ def random_seed():
 @pytest.fixture
 def roboflow_test_project_name() -> str:
     """Returns the name of the test roboflow broadcast project."""
-    return "footy-track-broadcast-frame-test"
+    return ROBOFLOW_BROADCAST_PROJECT_TEST_PROJECT

@@ -14,6 +14,16 @@ from footy_track.schema import (
 logger = logging.getLogger(__name__)
 
 
+# This is set a the bottom of the file using the function after the class definitions and then we run the function, but this
+# makes it easy to see and change when there is a better classifier available.
+CURRENT_BEST_GUESS_CLASSIFIER_CLASS = None
+
+
+def get_current_best_guess_classifier() -> "Classifier":
+    """Returns the current best guess classifier class."""
+    return RandomClassifier()
+
+
 class Classifier(ABC):
     """Base class fiftyoner classifiers."""
 
@@ -108,3 +118,6 @@ class UltralyticsClassifier(Classifier):
             uri=image_path,
             classification=BroadcastClassification(label=label, confidence=top1_confidence),
         )
+
+
+CURRENT_BEST_GUESS_CLASSIFIER_CLASS = get_current_best_guess_classifier()
