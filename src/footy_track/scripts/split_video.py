@@ -29,8 +29,7 @@ def check_ffmpeg() -> str:
     ffmpeg = shutil.which("ffmpeg")
     if not ffmpeg:
         print(
-            "Error: ffmpeg not found on PATH.\n"
-            "Install it (e.g., on macOS: brew install ffmpeg) and try again.",
+            "Error: ffmpeg not found on PATH.\nInstall it (e.g., on macOS: brew install ffmpeg) and try again.",
             file=sys.stderr,
         )
         sys.exit(1)
@@ -122,13 +121,20 @@ def split_video(  # noqa: PLR0913
 
 
 def main(argv: list[str] | None = None) -> int:
-    p = argparse.ArgumentParser(description="Split a video into fixed-length chunks using ffmpeg.")
+    p = argparse.ArgumentParser(
+        description="Split a video into fixed-length chunks using ffmpeg."
+    )
     p.add_argument("input", help="Path to input video file")
     p.add_argument(
-        "--outdir", "-o", help="Output directory (default: <input_stem>_chunks next to input)"
+        "--outdir",
+        "-o",
+        help="Output directory (default: <input_stem>_chunks next to input)",
     )
     p.add_argument(
-        "--chunk", type=float, default=10.0, help="Chunk length in seconds (default: 10)"
+        "--chunk",
+        type=float,
+        default=10.0,
+        help="Chunk length in seconds (default: 10)",
     )
     p.add_argument(
         "--re-encode",

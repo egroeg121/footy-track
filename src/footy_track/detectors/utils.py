@@ -6,7 +6,18 @@ import torch
 from PIL import Image
 from torchvision import transforms, utils
 
-from .schema import Detection, FrameDetections
+from footy_track.schema import FrameDetections, ObjectDetection
+
+
+def _available_device():
+    if torch.backends.mps.is_available():
+        device = torch.device("mps")
+    elif torch.cuda.is_available():
+        device = torch.device("cuda")
+    else:
+        device = torch.device("cpu")
+    return device
+
 
 color_map = {
     "person": (70, 130, 180),  # players are all blue-ish
@@ -112,7 +123,7 @@ def visualise_detections_on_image(
 
 def ultralytics_result_to_detections(
     result: Any, classes: list[str] | dict[int, str]
-) -> list[Detection]:
+) -> list[ObjectDetection]:
     """Convert an Ultralytics YOLO `Results` object to a list of `Detection`.
 
     Parameters
@@ -129,7 +140,7 @@ def ultralytics_result_to_detections(
     scores = result.boxes.conf.tolist()
     xyxyn = result.boxes.xyxyn.tolist()  # normalized x1,y1,x2,y2
 
-    out: list[Detection] = []
+    out: list[ObjectDetection] = []
     for label_idx, score, (x1, y1, x2, y2) in zip(labels, scores, xyxyn, strict=False):
         x = _clamp01(float(x1))
         y = _clamp01(float(y1))
@@ -142,7 +153,7 @@ def ultralytics_result_to_detections(
             label_name = str(int(label_idx))
 
         out.append(
-            Detection(
+            ObjectDetection(
                 label=str(label_name),
                 confidence=float(score),
                 x=x,
@@ -159,7 +170,7 @@ def ultralytics_result_to_detections(
 # ------------------------------
 
 
-def detection_to_fiftyone(d: Detection) -> fo.Detection:
+def detection_to_fiftyone(d: ObjectDetection) -> fo.Detection:
     """Convert a single Detection to a FiftyOne Detection.
 
     Returns
