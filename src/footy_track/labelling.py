@@ -1,9 +1,11 @@
 import logging
 import os
 import random
+import tempfile
 from pathlib import Path
 
 from roboflow import Roboflow
+from tqdm.auto import tqdm
 
 from footy_track.classifier import Classifier, get_current_best_guess_classifier
 from footy_track.constants import IMAGE_FORMAT
@@ -45,6 +47,23 @@ class BaseRoboflowHandler:
         dataset_location = dataset.location
         _logger.info(f"Dataset downloaded to: {dataset_location}")
         return Path(dataset_location)
+
+    def _load_local_images(
+        self, image_dir: Path, sample_number: int | None = None
+    ) -> list[Path]:
+        image_extensions = [f"*.{IMAGE_FORMAT}"]
+        all_image_paths = []
+        for ext in image_extensions:
+            all_image_paths.extend(Path(image_dir).glob(ext))
+
+        if (
+            not sample_number
+            or sample_number <= 0
+            or sample_number >= len(all_image_paths)
+        ):
+            return sorted(all_image_paths)
+        else:
+            return sorted(random.sample(all_image_paths, k=sample_number))
 
 
 class RoboflowClassificationHandler(BaseRoboflowHandler):
@@ -126,21 +145,6 @@ class RoboflowClassificationHandler(BaseRoboflowHandler):
                 if annotation_path and Path(annotation_path).exists():
                     os.remove(annotation_path)
 
-    def _load_local_images(self, image_dir: Path, sample_number: int = 0) -> list[Path]:
-        image_extensions = [f"*.{IMAGE_FORMAT}"]
-        all_image_paths = []
-        for ext in image_extensions:
-            all_image_paths.extend(Path(image_dir).glob(ext))
-
-        if (
-            not sample_number
-            or sample_number <= 0
-            or sample_number >= len(all_image_paths)
-        ):
-            return sorted(all_image_paths)
-        else:
-            return sorted(random.sample(all_image_paths, k=sample_number))
-
 
 class RoboflowObjectDetectionHandler(BaseRoboflowHandler):
     """Handler for Roboflow object detection projects."""
@@ -185,7 +189,6 @@ class RoboflowObjectDetectionHandler(BaseRoboflowHandler):
         filter_by_broadcast_classifier: bool = True,
     ) -> None:
         """Upload images to the dataset associated with this project."""
-        from tqdm import tqdm
 
         path_to_detections: dict[Path, FrameDetections] = dict.fromkeys(image_paths)
 
@@ -203,9 +206,19 @@ class RoboflowObjectDetectionHandler(BaseRoboflowHandler):
             for img_path in tqdm(
                 path_to_detections.keys(), desc="Running object detection"
             ):
-                path_to_detections[img_path] = self.detector.predict_from_path(
-                    image_path=img_path
-                )
+                det = self.detector.predict_from_path(image_path=img_path)
+                path_to_detections[img_path] = det
+
+        # Create a temporary labelmap file
+        labelmap_content = "\n".join(list(self.project.classes.keys()))
+        labelmap_file = tempfile.NamedTemporaryFile(
+            mode="w", delete=False, suffix=".txt"
+        )
+        try:
+            labelmap_file.write(labelmap_content)
+            labelmap_path = Path(labelmap_file.name)
+        finally:
+            labelmap_file.close()
 
         for img_path, detections in tqdm(
             path_to_detections.items(), desc="Uploading images to Roboflow"
@@ -230,6 +243,7 @@ class RoboflowObjectDetectionHandler(BaseRoboflowHandler):
                     annotation_path=str(annotation_path),
                     batch_name=batch_name,
                     is_prediction=True,
+                    annotation_labelmap=str(labelmap_path),
                 )
                 annotation_path.unlink()
             else:
@@ -237,19 +251,8 @@ class RoboflowObjectDetectionHandler(BaseRoboflowHandler):
                     image_path=str(img_path),
                     batch_name=batch_name,
                     is_prediction=False,
+                    annotation_labelmap=str(labelmap_content),  # Pass content directly
                 )
-
-    def _load_local_images(self, image_dir: Path, sample_number: int = 0) -> list[Path]:
-        image_extensions = [f"*.{IMAGE_FORMAT}"]
-        all_image_paths = []
-        for ext in image_extensions:
-            all_image_paths.extend(Path(image_dir).glob(ext))
-
-        if (
-            not sample_number
-            or sample_number <= 0
-            or sample_number >= len(all_image_paths)
-        ):
-            return sorted(all_image_paths)
-        else:
-            return sorted(random.sample(all_image_paths, k=sample_number))
+        # Clean up the temporary labelmap file
+        if labelmap_path and labelmap_path.exists():
+            os.remove(labelmap_path)
