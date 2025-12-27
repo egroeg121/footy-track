@@ -32,19 +32,6 @@ class BaseRoboflowHandler:
         self._project = project
         return project
 
-    def get_or_create_project(self, project_name: str, project_type: str):
-        """Get or create a Roboflow project."""
-        try:
-            return self.get_project(project_name)
-        except Exception:
-            _logger.info(f"Project '{project_name}' not found. Creating a new one.")
-            project = self.workspace.create_project(
-                project_name=project_name,
-                project_type=project_type,
-            )
-            self._project = project
-            return project
-
 
 class RoboflowClassificationHandler(BaseRoboflowHandler):
     """Handler for Roboflow classification projects with yes/no classes."""
@@ -57,8 +44,7 @@ class RoboflowClassificationHandler(BaseRoboflowHandler):
     ):
         super().__init__(workspace_name)
         self.project_name = project_name
-        self.project_type = "single-label-classification"
-        self.project = self.get_or_create_project(project_name, self.project_type)
+        self.project = self.get_project(project_name)
         if classifier is None:
             classifier = CURRENT_BEST_GUESS_CLASSIFIER_CLASS
         self.classifier = classifier
