@@ -100,9 +100,9 @@ class UltralyticsClassifier(Classifier):
         """
         # HACK: a little fudging to get the desired output
         if predicted_class_label in ("sports ball", "soccer ball"):
-            return EnumBroadcastClassification.No
+            return EnumBroadcastClassification.NO
         else:
-            return EnumBroadcastClassification.Yes
+            return EnumBroadcastClassification.YES
 
     def predict_from_path(self, image_path: Path) -> FrameClassifications:
         """Predict the class of an image from its path."""
