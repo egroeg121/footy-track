@@ -32,6 +32,19 @@ class BaseRoboflowHandler:
         self._project = project
         return project
 
+    def _download_roboflow_dataset(
+        self, project_name: str, version_number: int, data_location: Path
+    ):
+        """Download and set up a roboflow dataset for training"""
+        project = self.workspace.project(project_name)
+        version = project.version(version_number)
+        dataset_folder = f"roboflow_dataset_{version_number}"
+        dataset_path = data_location / dataset_folder
+        dataset = version.download(model_format="folder", location=str(dataset_path))
+        dataset_location = dataset.location
+        _logger.info(f"Dataset downloaded to: {dataset_location}")
+        return dataset_location
+
 
 class RoboflowClassificationHandler(BaseRoboflowHandler):
     """Handler for Roboflow classification projects with yes/no classes."""
