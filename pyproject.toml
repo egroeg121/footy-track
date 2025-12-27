@@ -17,6 +17,8 @@ requires-python = ">=3.12"
 classifiers = [
   "Programming Language :: Python :: 3 :: Only",
   "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
 ]
 dependencies = [
   "lap>=0.5.12",
@@ -26,12 +28,33 @@ dependencies = [
   "openai>=2.6.1",
   "opencv-python>=4.8",
   "piexif>=1.1.3",
+  "roboflow>=1.2.11",
   "tqdm>=4.66",
   "transformers>=4.57",
   "ultralytics>=8.2",
 ]
 
 scripts.footy-track = "footy_track:main"
+
+[dependency-groups]
+dev = [
+  "fiftyone>=1.8.1",
+  "ipython>=9.5",
+  "jupyter>=1.1.1",
+  "labelbox>=7.2",
+  "metaflow>=2.18.9",
+  "pre-commit>=3.7",
+  "pylint>=3.3.8",
+  "pyrefly>=0.34",
+  "pytest>=8.3",
+  "ruff>=0.13.2",
+  "transformers>=4.57",
+  "umap-learn>=0.5.9.post2",
+]
+metaflow = [
+  "kubernetes>=29",
+  "metaflow>=2.12",
+]
 
 [tool.ruff]
 target-version = "py312"
@@ -73,23 +96,3 @@ markers = [
 ]
 
 # Ruff configuration for linting and formatting
-
-[dependency-groups]
-dev = [
-  "fiftyone>=1.8.1",
-  "ipython>=9.5.0",
-  "jupyter>=1.1.1",
-  "metaflow>=2.18.9",
-  "pylint>=3.3.8",
-  "pyrefly>=0.34.0",
-  "ruff>=0.13.2",
-  "umap-learn>=0.5.9.post2",
-  "pytest>=8.3",
-  "labelbox>=7.2.0",
-  "transformers>=4.57.0",
-  "pre-commit>=3.7.0",
-]
-metaflow = [
-  "metaflow>=2.12",
-  "kubernetes>=29.0.0",
-]
