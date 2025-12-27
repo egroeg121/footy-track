@@ -7,7 +7,8 @@ from roboflow import Roboflow
 
 from footy_track.classifier import CURRENT_BEST_GUESS_CLASSIFIER_CLASS, Classifier
 from footy_track.constants import IMAGE_FORMAT
-from footy_track.schema import FrameClassifications
+from footy_track.detectors.base import ObjectDetector
+from footy_track.schema import FrameClassifications, FrameDetections
 
 _logger = logging.getLogger(__name__)
 
@@ -124,6 +125,111 @@ class RoboflowClassificationHandler(BaseRoboflowHandler):
                 # Clean up the temporary annotation file
                 if annotation_path and Path(annotation_path).exists():
                     os.remove(annotation_path)
+
+    def _load_local_images(self, image_dir: Path, sample_number: int = 0) -> list[Path]:
+        image_extensions = [f"*.{IMAGE_FORMAT}"]
+        all_image_paths = []
+        for ext in image_extensions:
+            all_image_paths.extend(Path(image_dir).glob(ext))
+
+        if (
+            not sample_number
+            or sample_number <= 0
+            or sample_number >= len(all_image_paths)
+        ):
+            return sorted(all_image_paths)
+        else:
+            return sorted(random.sample(all_image_paths, k=sample_number))
+
+
+class RoboflowObjectDetectionHandler(BaseRoboflowHandler):
+    """Handler for Roboflow object detection projects."""
+
+    def __init__(
+        self,
+        workspace_name: str,
+        project_name: str,
+        detector: ObjectDetector | None = None,
+        classifier: "Classifier | None" = None,
+    ):
+        from footy_track.detectors.ultralytics import UltralyticsObjectDetector
+
+        super().__init__(workspace_name)
+        self.project_name = project_name
+        self.project = self.get_project(project_name)
+        self.detector = detector or UltralyticsObjectDetector()
+        self.classifier = classifier or CURRENT_BEST_GUESS_CLASSIFIER_CLASS
+
+    def upload_dir(
+        self,
+        image_dir: Path,
+        sample_number: int = 0,
+        batch_name: str = "uploads",
+        pre_annotate: bool = True,
+        filter_by_broadcast_classifier: bool = True,
+    ) -> None:
+        """Uploads a directory of images to the project."""
+        image_paths = self._load_local_images(image_dir, sample_number)
+        return self.upload_images(
+            image_paths,
+            batch_name=batch_name,
+            pre_annotate=pre_annotate,
+            filter_by_broadcast_classifier=filter_by_broadcast_classifier,
+        )
+
+    def upload_images(
+        self,
+        image_paths: list[Path],
+        batch_name: str = "uploads",
+        pre_annotate: bool = True,
+        filter_by_broadcast_classifier: bool = True,
+    ) -> None:
+        """Upload images to the dataset associated with this project."""
+        from tqdm import tqdm
+
+        path_to_detections: dict[Path, FrameDetections] = dict.fromkeys(image_paths)
+
+        if filter_by_broadcast_classifier and self.classifier:
+            filtered_image_paths = []
+            for img_path in tqdm(
+                image_paths, desc="Filtering images by broadcast classifier"
+            ):
+                classification = self.classifier.predict_from_path(img_path)
+                if classification.classification.label == "Yes":
+                    filtered_image_paths.append(img_path)
+            path_to_detections = dict.fromkeys(filtered_image_paths)
+
+        if pre_annotate:
+            for img_path in tqdm(
+                path_to_detections.keys(), desc="Running object detection"
+            ):
+                path_to_detections[img_path] = self.detector.predict_from_path(img_path)
+
+        for img_path, detections in tqdm(
+            path_to_detections.items(), desc="Uploading images to Roboflow"
+        ):
+            if detections and detections.detections:
+                annotation_path = img_path.with_suffix(".txt")
+                with open(annotation_path, "w") as f:
+                    for det in detections.detections:
+                        # darknet format
+                        f.write(
+                            f"{self.project.classes.index(det.label)} {det.x} {det.y} {det.w} {det.h}\\n"
+                        )
+
+                self.project.upload(
+                    image_path=str(img_path),
+                    annotation_path=str(annotation_path),
+                    batch_name=batch_name,
+                    is_prediction=True,
+                )
+                annotation_path.unlink()
+            else:
+                self.project.upload(
+                    image_path=str(img_path),
+                    batch_name=batch_name,
+                    is_prediction=False,
+                )
 
     def _load_local_images(self, image_dir: Path, sample_number: int = 0) -> list[Path]:
         image_extensions = [f"*.{IMAGE_FORMAT}"]
