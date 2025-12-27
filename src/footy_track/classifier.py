@@ -57,25 +57,31 @@ class UltralyticsClassifier(Classifier):
 
     def __init__(
         self,
-        model_name: str | Path = "yolo11n-cls.pt",
+        model_path: str | Path = None,
         model_dir: Path | None = None,
     ):
+        """Load the Ultralytics YOLO classification model.
+        model_path: str | Path, path to a local model or name of a model to download
+        model_dir: Path if models are downloaded, this is where to save them
+        """
+        if model_path is None:
+            model_path = "yolo11n-cls.pt"
         if model_dir is None:
             model_dir = Path(tempfile.gettempdir()) / "yolo_models"
         super().__init__()
-        self.model = self._load_model(model_name, model_dir)
+        self.model = self._load_model(model_path=model_path, model_dir=model_dir)
 
-    def _load_model(self, model_name: str | Path, model_dir: Path) -> YOLO:
+    def _load_model(self, model_path: str | Path, model_dir: Path) -> YOLO:
         """Loads the YOLO model, downloading it if necessary.
 
         Args:
-            model_name (str | Path): The name of the model to load or a path to a local model.
+            model_path (str | Path): The path to a local model or the name of a model to download.
             model_dir (Path): The directory to save the model in.
 
         Returns:
             YOLO: The loaded YOLO model.
         """
-        model_name_path = Path(model_name)
+        model_name_path = Path(model_path)
         if model_name_path.is_file():
             logger.info(f"Loading model directly from {model_name_path}")
             return YOLO(model_name_path)
@@ -87,31 +93,26 @@ class UltralyticsClassifier(Classifier):
         if not model_path.exists():
             logger.info(f"Model not found at {model_path}, downloading...")
             # Load normally (downloads to cwd)
-            YOLO(model_name)
+            YOLO(model_path)
             # Move the file
             downloaded_model = Path(model_name_path.name)
             if downloaded_model.exists():
                 downloaded_model.rename(model_path)
             else:
-                raise FileNotFoundError(f"Failed to download model {model_name}, it should exist")
+                raise FileNotFoundError(f"Failed to download model {model_path}, it should exist")
         return YOLO(model_path)
 
     def _check_output(self, predicted_class_label: str) -> EnumBroadcastClassification:
-        """Checks the predicted class label and returns a broadcast classification.
-
-        This method can be overridden by subclasses to implement custom logic.
-
-        Args:
-            predicted_class_label (str): The class label predicted by the model.
-
-        Returns:
-            EnumBroadcastClassification: The broadcast classification.
-        """
-        # HACK: a little fudging to get the desired output
-        if predicted_class_label in ("sports ball", "soccer ball"):
-            return EnumBroadcastClassification.YES
-        else:
-            return EnumBroadcastClassification.NO
+        """Checks the predicted class label and returns a broadcast classification."""
+        try:
+            # Attempt to pass into classification, otherwise No
+            return EnumBroadcastClassification(predicted_class_label)
+        except ValueError:
+            logger.debug(
+                f"Predicted class label '{predicted_class_label}' is not a valid broadcast classification."
+                " Returning NO."
+            )
+        return EnumBroadcastClassification.NO
 
     def predict_from_path(self, image_path: Path) -> FrameClassifications:
         """Predict the class of an image from its path."""
@@ -121,11 +122,13 @@ class UltralyticsClassifier(Classifier):
         top1_confidence = result.probs.top1conf.item()
         predicted_class_label = self.model.names[top1_index]
 
-        label = self._check_output(predicted_class_label)
+        classification = self._check_output(predicted_class_label)
 
         return FrameClassifications(
             uri=image_path,
-            classification=BroadcastClassification(label=label, confidence=top1_confidence),
+            classification=BroadcastClassification(
+                label=classification, confidence=top1_confidence
+            ),
         )
 
 
