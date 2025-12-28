@@ -374,6 +374,18 @@ wheels = [
 ]
 
 [[package]]
+name = "clip"
+version = "1.0"
+source = { git = "https://github.com/ultralytics/CLIP.git#643beff3883b5720d94b6b9c9eca12fa9fb72fb1" }
+dependencies = [
+    { name = "ftfy" },
+    { name = "regex" },
+    { name = "torch" },
+    { name = "torchvision" },
+    { name = "tqdm" },
+]
+
+[[package]]
 name = "colorama"
 version = "0.4.6"
 source = { registry = "https://pypi.org/simple" }
@@ -701,6 +713,7 @@ name = "footy-track"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "clip" },
     { name = "lap" },
     { name = "mkdocs" },
     { name = "mkdocs-material" },
@@ -738,6 +751,7 @@ metaflow = [
 
 [package.metadata]
 requires-dist = [
+    { name = "clip", git = "https://github.com/ultralytics/CLIP.git" },
     { name = "lap", specifier = ">=0.5.12" },
     { name = "mkdocs", specifier = ">=1.5.3" },
     { name = "mkdocs-material", specifier = ">=9.4.6" },

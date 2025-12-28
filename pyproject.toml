@@ -19,6 +19,7 @@ classifiers = [
   "Programming Language :: Python :: 3.12",
 ]
 dependencies = [
+  "clip @ git+https://github.com/ultralytics/CLIP.git",
   "lap>=0.5.12",
   "mkdocs>=1.5.3",
   "mkdocs-material>=9.4.6",
