@@ -5,6 +5,7 @@ import tempfile
 import json
 from collections import defaultdict
 from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from roboflow import Roboflow
 from tqdm.auto import tqdm
@@ -196,6 +197,7 @@ class RoboflowObjectDetectionHandler(BaseRoboflowHandler):
         batch_name: str = "uploads",
         pre_annotate: bool = True,
         filter_by_broadcast_classifier: bool = True,
+        max_workers: int = 8,
     ) -> None:
         """Upload images to the dataset associated with this project using COCO JSON."""
 
@@ -214,6 +216,8 @@ class RoboflowObjectDetectionHandler(BaseRoboflowHandler):
                     != EnumBroadcastClassification.NO
                 ):
                     filtered_image_paths.append(img_path)
+                else:
+                    result_counter["non_broadcast"] += 1
             path_to_detections = dict.fromkeys(filtered_image_paths)
 
         if pre_annotate:
@@ -233,7 +237,7 @@ class RoboflowObjectDetectionHandler(BaseRoboflowHandler):
 
         if not path_to_detections_with_annos:
             _logger.info("No images with detections to upload.")
-            return
+            return result_counter
 
         # Write a temporary COCO JSON file containing all annotations
         with tempfile.NamedTemporaryFile(
@@ -242,22 +246,37 @@ class RoboflowObjectDetectionHandler(BaseRoboflowHandler):
             annotation_path = Path(tmp_file.name)
             self._write_coco_annotations(path_to_detections_with_annos, annotation_path)
 
+        def _upload_one(img: Path) -> tuple[Path, bool, str | None]:
+            try:
+                self.project.upload(
+                    image_path=str(img),
+                    annotation_path=str(annotation_path),
+                    batch_name=batch_name,
+                    is_prediction=True,
+                    # give the SDK a couple retries client-side
+                    num_retry_uploads=2,
+                )
+                return img, True, None
+            except Exception as exc:  # noqa: BLE001 - surface SDK/network errors
+                return img, False, str(exc)
+
         try:
-            for img_path in tqdm(
-                path_to_detections_with_annos.keys(),
-                desc="Uploading images to Roboflow",
-            ):
-                try:
-                    self.project.upload(
-                        image_path=str(img_path),
-                        annotation_path=str(annotation_path),
-                        batch_name=batch_name,
-                        is_prediction=True,
-                    )
-                    result_counter["uploaded"] += 1
-                except Exception as e:
-                    _logger.error(f"Failed to upload {img_path}: {e}")
-                    result_counter["error"] += 1
+            with ThreadPoolExecutor(max_workers=max_workers) as ex:
+                futures = [
+                    ex.submit(_upload_one, p)
+                    for p in path_to_detections_with_annos.keys()
+                ]
+                for fut in tqdm(
+                    as_completed(futures),
+                    total=len(futures),
+                    desc="Uploading images to Roboflow",
+                ):
+                    img, ok, err = fut.result()
+                    if ok:
+                        result_counter["uploaded"] += 1
+                    else:
+                        _logger.error(f"Failed to upload {img}: {err}")
+                        result_counter["error"] += 1
         finally:
             try:
                 if annotation_path and annotation_path.exists():
@@ -265,6 +284,7 @@ class RoboflowObjectDetectionHandler(BaseRoboflowHandler):
             except Exception:
                 pass
         _logger.info(f"Stats: {result_counter}")
+        return result_counter
 
     def _write_coco_annotations(
         self, path_to_detections: dict[Path, FrameDetections], output_path: Path

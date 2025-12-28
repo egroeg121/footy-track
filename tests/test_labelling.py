@@ -165,7 +165,10 @@ class TestRoboflowObjectDetectionHandlerIntegration:
             f"sdk-test-obj-det-batch-dir-{datetime.now().strftime('%Y%m%d%H%M%S')}"
         )
         try:
-            handler.upload_dir(frames_path, batch_name=batch_name)
+            stats = handler.upload_dir(frames_path, batch_name=batch_name)
+            # Expect that 27 images are uploaded and 3 are skipped (e.g., filtered/no detections)
+            assert stats.get("uploaded", 0) == 27
+            assert stats.get("skipped", 0) == 3
         finally:
             # TODO: Implement batch deletion when the SDK supports it
             pass
