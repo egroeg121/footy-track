@@ -32,8 +32,7 @@ def check_ffmpeg() -> str:
     ffmpeg = shutil.which("ffmpeg")
     if not ffmpeg:
         print(
-            "Error: ffmpeg not found on PATH.\n"
-            "Install it (e.g., on macOS: brew install ffmpeg) and try again.",
+            "Error: ffmpeg not found on PATH.\nInstall it (e.g., on macOS: brew install ffmpeg) and try again.",
             file=sys.stderr,
         )
         sys.exit(1)
@@ -107,7 +106,12 @@ def make_vf_chain(
 
 # New helper to embed EXIF metadata in JPEGs
 def _embed_metadata_jpeg(
-    files: list[Path], *, video_id: str, start_number: int, fps: float, start: float | None
+    files: list[Path],
+    *,
+    video_id: str,
+    start_number: int,
+    fps: float,
+    start: float | None,
 ) -> None:
     if not piexif:
         print(
@@ -141,7 +145,10 @@ def _embed_metadata_jpeg(
             exif_bytes = piexif.dump(exif_dict)
             piexif.insert(exif_bytes, str(fpath))
         except Exception as e:  # pragma: no cover
-            print(f"Warning: failed to embed metadata for {fpath.name}: {e}", file=sys.stderr)
+            print(
+                f"Warning: failed to embed metadata for {fpath.name}: {e}",
+                file=sys.stderr,
+            )
 
 
 def extract_frames(  # noqa: PLR0913
@@ -179,7 +186,9 @@ def extract_frames(  # noqa: PLR0913
     if duration is not None and duration > 0:
         cmd += ["-t", str(duration)]
 
-    vf = make_vf_chain(fps=fps, width=width, height=height, keyframes_only=keyframes_only)
+    vf = make_vf_chain(
+        fps=fps, width=width, height=height, keyframes_only=keyframes_only
+    )
     if vf:
         cmd += ["-vf", vf]
 
@@ -229,10 +238,15 @@ def main(argv: list[str] | None = None) -> int:
     )
     p.add_argument("input", help="Path to input video file")
     p.add_argument(
-        "--outdir", "-o", help="Output directory (default: <input_stem>_frames next to input)"
+        "--outdir",
+        "-o",
+        help="Output directory (default: <input_stem>_frames next to input)",
     )
     p.add_argument(
-        "--fps", type=float, default=1.0, help="Frames per second to extract (default: 1.0)"
+        "--fps",
+        type=float,
+        default=1.0,
+        help="Frames per second to extract (default: 1.0)",
     )
     p.add_argument(
         "--format",
@@ -251,9 +265,14 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--height", type=int, help="Scale output to height (keeps aspect)")
     p.add_argument("--prefix", help="Output filename prefix (default: input stem)")
     p.add_argument(
-        "--start-number", type=int, default=0, help="Start index for image numbering (default: 0)"
+        "--start-number",
+        type=int,
+        default=0,
+        help="Start index for image numbering (default: 0)",
     )
-    p.add_argument("--keyframes", action="store_true", help="Extract only keyframes (I-frames)")
+    p.add_argument(
+        "--keyframes", action="store_true", help="Extract only keyframes (I-frames)"
+    )
     p.add_argument(
         "--ffmpeg-arg",
         action="append",
@@ -266,7 +285,9 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Embed video_id, frame_index, timestamp_seconds into JPEG EXIF",
     )
-    p.add_argument("--video-id", help="Video identifier to embed (default: input file stem)")
+    p.add_argument(
+        "--video-id", help="Video identifier to embed (default: input file stem)"
+    )
 
     args = p.parse_args(argv)
 

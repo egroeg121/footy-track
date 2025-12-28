@@ -43,6 +43,16 @@ class ObjectDetection(BaseModel):
     model_config = {"frozen": True}
 
 
+class Person(ObjectDetection):
+    label: Literal["person"]
+
+
+class Ball(ObjectDetection):
+    """Schema for a ball"""
+
+    label: Literal["ball"]
+
+
 class FrameDetections(BaseModel):
     uri: pathlib.Path = Field(..., description="Path to the image file or identifier")
     width: int
@@ -69,22 +79,11 @@ class FrameDetectionsWithMeta(FrameDetections):
     clock: str | None = None
 
 
-class Ball(ObjectDetection):
-    """Schema for a ball"""
-
-    label: Literal["ball"] = "ball"
-    # id: str
-
-
 # class OutOfBoundsBall(Ball):
 #     """Schema for an out of bounds ball"""
 
 #     label: Literal["out_of_bounds_ball"] = "out_of_bounds_ball"
 #     reason: str  # e.g., "out of play", "goal", etc.
-
-
-class Person(ObjectDetection):
-    label: Literal["person"] = "person"
 
 
 # class Player(Person):

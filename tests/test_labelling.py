@@ -3,13 +3,19 @@ from datetime import datetime
 
 import pytest
 
-from footy_track.classifier import RandomClassifier
+from footy_track.classifier import Classifier, get_current_best_guess_classifier
 from footy_track.constants import (
     ROBOFLOW_BROADCAST_PROJECT,
     ROBOFLOW_BROADCAST_PROJECT_TEST_PROJECT,
+    ROBOFLOW_DETECTION_PROJECT_TEST_PROJECT,
     ROBOFLOW_WORKSPACE,
 )
-from footy_track.labelling import BaseRoboflowHandler, RoboflowClassificationHandler
+from footy_track.labelling import (
+    BaseRoboflowHandler,
+    RoboflowClassificationHandler,
+    RoboflowObjectDetectionHandler,
+)
+from footy_track.detectors.ultralytics import UltralyticsObjectDetector
 
 ROBOFLOW_API_KEY = os.getenv("ROBOFLOW_API_KEY")
 
@@ -36,9 +42,9 @@ class TestRoboflowClassificationHandlerIntegration:
     PROJECT = ROBOFLOW_BROADCAST_PROJECT_TEST_PROJECT
 
     @pytest.fixture
-    def classifier(self):
-        """Returns a RandomClassifier instance."""
-        return RandomClassifier()
+    def classifier(self) -> Classifier:
+        """Returns the best classifier instance."""
+        return get_current_best_guess_classifier()
 
     def test_handler_init(self, classifier):
         """Tests the initialization of the RoboflowClassificationHandler."""
@@ -90,7 +96,93 @@ class TestRoboflowClassificationHandlerIntegration:
             project_name=self.PROJECT,
             classifier=classifier,
         )
-        batch_name = f"sdk-test-batch-dir-sample-{datetime.now().strftime('%Y%m%d%H%M%S')}"
+        batch_name = (
+            f"sdk-test-batch-dir-sample-{datetime.now().strftime('%Y%m%d%H%M%S')}"
+        )
+        try:
+            handler.upload_dir(frames_path, sample_number=5, batch_name=batch_name)
+        finally:
+            # TODO: Implement batch deletion when the SDK supports it
+            pass
+
+
+@pytest.mark.skipif(not ROBOFLOW_API_KEY, reason="ROBOFLOW_API_KEY not set")
+class TestRoboflowObjectDetectionHandlerIntegration:
+    WORKSPACE = ROBOFLOW_WORKSPACE
+    PROJECT = ROBOFLOW_DETECTION_PROJECT_TEST_PROJECT
+
+    @pytest.fixture
+    def detector(self):
+        """Returns an UltralyticsObjectDetector instance."""
+        return UltralyticsObjectDetector()
+
+    @pytest.fixture
+    def classifier(self) -> Classifier:
+        """Returns a RandomClassifier instance."""
+        return get_current_best_guess_classifier()
+
+    def test_handler_init(self, detector, classifier):
+        """Tests the initialization of the RoboflowObjectDetectionHandler."""
+        handler = RoboflowObjectDetectionHandler(
+            workspace_name=self.WORKSPACE,
+            project_name=self.PROJECT,
+            detector=detector,
+            classifier=classifier,
+        )
+        assert handler.workspace is not None
+        assert handler.project is not None
+        assert handler.project.id == f"{self.WORKSPACE}/{self.PROJECT}"
+
+    @pytest.mark.slow
+    def test_upload_images(self, detector, classifier, extracted_frames):
+        """Tests the upload_images method."""
+        handler = RoboflowObjectDetectionHandler(
+            workspace_name=self.WORKSPACE,
+            project_name=self.PROJECT,
+            detector=detector,
+            classifier=classifier,
+        )
+        batch_name = (
+            f"sdk-test-obj-det-batch-images-{datetime.now().strftime('%Y%m%d%H%M%S')}"
+        )
+        try:
+            # Upload a small sample to keep tests fast
+            handler.upload_images(extracted_frames[:2], batch_name=batch_name)
+        finally:
+            # TODO: Implement batch deletion when the SDK supports it
+            pass
+
+    @pytest.mark.slow
+    def test_upload_dir(self, detector, classifier, frames_path):
+        """Tests the upload_dir method."""
+        handler = RoboflowObjectDetectionHandler(
+            workspace_name=self.WORKSPACE,
+            project_name=self.PROJECT,
+            detector=detector,
+            classifier=classifier,
+        )
+        batch_name = (
+            f"sdk-test-obj-det-batch-dir-{datetime.now().strftime('%Y%m%d%H%M%S')}"
+        )
+        try:
+            stats = handler.upload_dir(frames_path, batch_name=batch_name)
+            # Expect that 27 images are uploaded and 3 are skipped (e.g., filtered/no detections)
+            assert stats.get("uploaded", 0) == 27
+            assert stats.get("skipped", 0) == 3
+        finally:
+            # TODO: Implement batch deletion when the SDK supports it
+            pass
+
+    @pytest.mark.slow
+    def test_upload_dir_with_sampling(self, detector, classifier, frames_path):
+        """Tests the upload_dir method with sampling."""
+        handler = RoboflowObjectDetectionHandler(
+            workspace_name=self.WORKSPACE,
+            project_name=self.PROJECT,
+            detector=detector,
+            classifier=classifier,
+        )
+        batch_name = f"sdk-test-obj-det-batch-dir-sample-{datetime.now().strftime('%Y%m%d%H%M%S')}"
         try:
             handler.upload_dir(frames_path, sample_number=5, batch_name=batch_name)
         finally:

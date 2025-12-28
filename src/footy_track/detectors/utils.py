@@ -6,7 +6,18 @@ import torch
 from PIL import Image
 from torchvision import transforms, utils
 
-from .schema import Detection, FrameDetections
+from footy_track.schema import FrameDetections, ObjectDetection
+
+
+def _available_device():
+    if torch.backends.mps.is_available():
+        device = torch.device("mps")
+    elif torch.cuda.is_available():
+        device = torch.device("cuda")
+    else:
+        device = torch.device("cpu")
+    return device
+
 
 color_map = {
     "person": (70, 130, 180),  # players are all blue-ish
@@ -22,6 +33,29 @@ color_map = {
 
 def _clamp01(v: float) -> float:
     return float(max(0.0, min(1.0, v)))
+
+
+def top_left_wh_to_yolo_xywh(
+    x: float, y: float, w: float, h: float
+) -> tuple[float, float, float, float]:
+    """Convert normalized top-left box to YOLO-normalized center box.
+
+    Input and output are all expected to be in the normalized [0,1] range.
+
+    Args:
+        x: top-left x (normalized)
+        y: top-left y (normalized)
+        w: width (normalized)
+        h: height (normalized)
+
+    Returns:
+        (xc, yc, w, h) where xc/yc are centers, clamped to [0,1].
+    """
+    xc = _clamp01(float(x) + float(w) / 2.0)
+    yc = _clamp01(float(y) + float(h) / 2.0)
+    wn = _clamp01(float(w))
+    hn = _clamp01(float(h))
+    return xc, yc, wn, hn
 
 
 def draw_bounding_boxes_pil(
@@ -112,7 +146,7 @@ def visualise_detections_on_image(
 
 def ultralytics_result_to_detections(
     result: Any, classes: list[str] | dict[int, str]
-) -> list[Detection]:
+) -> list[ObjectDetection]:
     """Convert an Ultralytics YOLO `Results` object to a list of `Detection`.
 
     Parameters
@@ -129,7 +163,7 @@ def ultralytics_result_to_detections(
     scores = result.boxes.conf.tolist()
     xyxyn = result.boxes.xyxyn.tolist()  # normalized x1,y1,x2,y2
 
-    out: list[Detection] = []
+    out: list[ObjectDetection] = []
     for label_idx, score, (x1, y1, x2, y2) in zip(labels, scores, xyxyn, strict=False):
         x = _clamp01(float(x1))
         y = _clamp01(float(y1))
@@ -142,7 +176,7 @@ def ultralytics_result_to_detections(
             label_name = str(int(label_idx))
 
         out.append(
-            Detection(
+            ObjectDetection(
                 label=str(label_name),
                 confidence=float(score),
                 x=x,
@@ -159,7 +193,7 @@ def ultralytics_result_to_detections(
 # ------------------------------
 
 
-def detection_to_fiftyone(d: Detection) -> fo.Detection:
+def detection_to_fiftyone(d: ObjectDetection) -> fo.Detection:
     """Convert a single Detection to a FiftyOne Detection.
 
     Returns
@@ -177,3 +211,35 @@ def detection_to_fiftyone(d: Detection) -> fo.Detection:
 def frame_to_fiftyone_detections(frame: FrameDetections) -> list[fo.Detection]:
     """Convert FrameDetections to a list of FiftyOne Detection objects."""
     return [detection_to_fiftyone(d) for d in frame.detections]
+
+
+def calculate_iou(box1: ObjectDetection, box2: ObjectDetection) -> float:
+    """Calculate the Intersection over Union (IoU) of two bounding boxes."""
+    # Convert from (x, y, w, h) to (x1, y1, x2, y2)
+    box1_x1, box1_y1, box1_x2, box1_y2 = (
+        box1.x,
+        box1.y,
+        box1.x + box1.w,
+        box1.y + box1.h,
+    )
+    box2_x1, box2_y1, box2_x2, box2_y2 = (
+        box2.x,
+        box2.y,
+        box2.x + box2.w,
+        box2.y + box2.h,
+    )
+
+    # Calculate the area of intersection
+    inter_x1 = max(box1_x1, box2_x1)
+    inter_y1 = max(box1_y1, box2_y1)
+    inter_x2 = min(box1_x2, box2_x2)
+    inter_y2 = min(box1_y2, box2_y2)
+    inter_area = max(0, inter_x2 - inter_x1) * max(0, inter_y2 - inter_y1)
+
+    # Calculate the area of both bounding boxes
+    box1_area = box1.w * box1.h
+    box2_area = box2.w * box2.h
+
+    # Calculate the IoU
+    iou = inter_area / float(box1_area + box2_area - inter_area)
+    return iou
