@@ -95,7 +95,7 @@ class UltralyticsSam3Detector(ObjectDetector):
         # Defaults per request: ball -> 0.10, sports player -> 0.50
         # Store as (prompt, label, min_conf_threshold)
         self.prompt_specs: list[tuple[str, str, float]] = [
-            ("soccer ball", BALL_TAG, 0.10),
+            ("soccer ball", BALL_TAG, 0.5),
             ("sports player", PERSON_TAG, 0.50),
         ]
 
@@ -110,6 +110,13 @@ class UltralyticsSam3Detector(ObjectDetector):
             model=model_uri,
             verbose=verbose,
             device=self.device,
+            # disable all Ultralytics auto-saving; we handle visualization ourselves
+            save=False,
+            save_txt=False,
+            save_json=False,
+            save_conf=False,
+            save_crop=False,
+            show=False,
         )
         self.predictor = SAM3SemanticPredictor(overrides=overrides)
 

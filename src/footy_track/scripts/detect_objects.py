@@ -1,5 +1,6 @@
 import argparse
 import logging
+from collections import Counter
 from pathlib import Path
 
 from tqdm import tqdm
@@ -7,6 +8,7 @@ from tqdm import tqdm
 from rich.logging import RichHandler
 
 from footy_track.detectors.ultralytics import UltralyticsSam3Detector
+from footy_track.detectors.utils import visualise_detections_on_image
 
 logging.basicConfig(
     level="INFO",
@@ -56,14 +58,29 @@ def main():
         logging.warning(f"No image files found in {args.frames_folder}")
         return
 
-    total_detections = 0
-    for frame in tqdm(frames):
-        detections = detector.predict_from_path(frame)
-        num_detections = len(detections.detections)
-        total_detections += num_detections
-        logging.info(f"{frame.name}: {num_detections} detections")
+    # Where to save annotated images
+    save_root = Path("runs/detect_objects") / args.frames_folder.name
+    save_root.mkdir(parents=True, exist_ok=True)
 
-    logging.info(f"Total detections across {len(frames)} frames: {total_detections}")
+    total_detections = 0
+    total_by_label: Counter[str] = Counter()
+    for frame in tqdm(frames):
+        fd = detector.predict_from_path(frame)
+        labels = [d.label for d in fd.detections]
+        by_label = Counter(labels)
+        num_detections = len(fd.detections)
+        total_detections += num_detections
+        total_by_label.update(by_label)
+        # Save visualisation; do not pop a viewer
+        out_path = save_root / frame.name
+        visualise_detections_on_image(fd, save_path=out_path, show=False)
+        logging.info(
+            f"{frame.name}: {num_detections} detections | per-label {dict(by_label)}"
+        )
+
+    logging.info(
+        f"Total detections across {len(frames)} frames: {total_detections} | per-label {dict(total_by_label)}"
+    )
 
 
 if __name__ == "__main__":

@@ -103,7 +103,9 @@ def visualise_detections_on_image(
     img = Image.open(img_path).convert("RGB")
     w, h = img.size
 
-    thickness = max(2, min(6, int(round(min(w, h) * 0.003))))
+    # Thicker boxes and larger font for clearer visuals
+    box_thickness = max(3, min(12, int(round(min(w, h) * 0.006))))
+    font_size = max(12, int(round(min(w, h) * 0.03)))
 
     # Build boxes tensor in (xmin, ymin, xmax, ymax) absolute pixels
     boxes_list: list[list[float]] = []
@@ -129,7 +131,8 @@ def visualise_detections_on_image(
             boxes_tensor,
             labels=labels,
             colors=colors,
-            width=thickness,
+            width=box_thickness,
+            font_size=font_size,
         )
 
     out_path: Path | None = None
