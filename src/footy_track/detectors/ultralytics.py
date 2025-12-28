@@ -91,8 +91,20 @@ class UltralyticsSam3Detector(ObjectDetector):
         # Use shared device selection util for consistency across detectors
         dev = _available_device()
         self.device = dev.type if isinstance(dev, torch.device) else str(dev)
+        # Prompt-specific thresholds (confidence) per concept
+        # Defaults per request: ball -> 0.10, sports player -> 0.50
+        # Store as (prompt, label, min_conf_threshold)
+        self.prompt_specs: list[tuple[str, str, float]] = [
+            ("soccer ball", BALL_TAG, 0.10),
+            ("sports player", PERSON_TAG, 0.50),
+        ]
+
+        # Use the lowest threshold globally in predictor to avoid premature filtering,
+        # then apply prompt-specific thresholds post-predict
+        global_conf = min(min_confidence, *(thr for _, _, thr in self.prompt_specs))
+
         overrides = dict(
-            conf=min_confidence,
+            conf=global_conf,
             task="segment",
             mode="predict",
             model=model_uri,
@@ -101,10 +113,9 @@ class UltralyticsSam3Detector(ObjectDetector):
         )
         self.predictor = SAM3SemanticPredictor(overrides=overrides)
 
-        # Mapping from prompt -> canonical label used in our schema
+        # Back-compat mapping if needed elsewhere
         self.prompt_label_map: list[tuple[str, str]] = [
-            ("soccer ball", BALL_TAG),
-            ("sports player", PERSON_TAG),
+            (p, lbl) for (p, lbl, _thr) in self.prompt_specs
         ]
 
     @torch.no_grad()
@@ -116,7 +127,7 @@ class UltralyticsSam3Detector(ObjectDetector):
         detections: list[ObjectDetection] = []
         width, height = 0, 0
 
-        for prompt, label in self.prompt_label_map:
+        for prompt, label, min_thr in self.prompt_specs:
             results = self.predictor(text=[prompt])
 
             if not results:
@@ -154,6 +165,9 @@ class UltralyticsSam3Detector(ObjectDetector):
                     h_n = max(0.0, min(1.0, y2 - y1))
 
                     conf = float(scores[j]) if j < len(scores) else 1.0
+                    # Apply prompt-specific confidence threshold
+                    if conf < float(min_thr):
+                        continue
                     detections.append(
                         ObjectDetection(
                             label=label,
