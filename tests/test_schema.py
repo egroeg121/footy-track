@@ -28,7 +28,9 @@ FRAME_HEIGHT = 1080
 
 def test_broadcast_classification():
     """Test the BroadcastClassification model."""
-    bc = BroadcastClassification(label=EnumBroadcastClassification.YES, confidence=CONFIDENCE)
+    bc = BroadcastClassification(
+        label=EnumBroadcastClassification.YES, confidence=CONFIDENCE
+    )
     assert bc.label == "Yes"
     assert bc.confidence == CONFIDENCE
 
@@ -96,7 +98,14 @@ def test_ball_schema():
 
     # Test that providing a different label raises a validation error
     with pytest.raises(ValidationError):
-        Ball(label="not a ball", confidence=CONFIDENCE, x=X_COORD, y=X_COORD, w=X_COORD, h=X_COORD)
+        Ball(
+            label="not a ball",
+            confidence=CONFIDENCE,
+            x=X_COORD,
+            y=X_COORD,
+            w=X_COORD,
+            h=X_COORD,
+        )
 
 
 def test_person_schema():
@@ -106,4 +115,11 @@ def test_person_schema():
 
     # Test that providing a different label raises a validation error
     with pytest.raises(ValidationError):
-        Person(label="not a person", confidence=0.8, x=Y_COORD, y=Y_COORD, w=Y_COORD, h=Y_COORD)
+        Person(
+            label="not a person",
+            confidence=0.8,
+            x=Y_COORD,
+            y=Y_COORD,
+            w=Y_COORD,
+            h=Y_COORD,
+        )

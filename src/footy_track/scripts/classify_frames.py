@@ -17,7 +17,9 @@ logging.basicConfig(
 def main():
     """Run the classifier on a folder of frames and print the breakdown."""
     parser = argparse.ArgumentParser(description="Classify frames in a folder.")
-    parser.add_argument("frames_folder", type=Path, help="Path to the folder of frames.")
+    parser.add_argument(
+        "frames_folder", type=Path, help="Path to the folder of frames."
+    )
     parser.add_argument(
         "--model_path",
         type=str,
@@ -31,7 +33,9 @@ def main():
         model_input = Path(model_input)
 
     classifier = UltralyticsClassifier(model_input)
-    frames = list(args.frames_folder.glob("*.png")) + list(args.frames_folder.glob("*.jpg"))
+    frames = list(args.frames_folder.glob("*.png")) + list(
+        args.frames_folder.glob("*.jpg")
+    )
 
     if not frames:
         logging.warning(f"No image files found in {args.frames_folder}")

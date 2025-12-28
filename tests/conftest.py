@@ -23,7 +23,9 @@ def repo_root() -> Path:
 @pytest.fixture(scope="session")
 def video_path(repo_root: Path) -> Path:
     """Fixture for the video file path."""
-    path = repo_root / "tests" / "data" / "video" / "arsenal_mancity_20250925_part192.mp4"
+    path = (
+        repo_root / "tests" / "data" / "video" / "arsenal_mancity_20250925_part192.mp4"
+    )
     assert path.exists(), f"Video file not found at {path}"
     return path
 
