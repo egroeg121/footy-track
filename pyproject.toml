@@ -58,8 +58,8 @@ metaflow = [
   "metaflow>=2.12",
 ]
 
-[tool.uv]
-extend-exclude = [
+[tool.ruff]
+exclude = [
   "data",
   "docs",
   "export",
@@ -69,10 +69,10 @@ extend-exclude = [
   "yolo11n.pt",
 ]
 
-format.line-length = 120
 format.indent-style = "space"
 format.quote-style = "double"
 format.line-ending = "lf"
+format.line-length = 120
 # Enable common rule sets: E,F (pycodestyle/pyflakes), I (isort), B (flake8-bugbear),
 # UP (pyupgrade), SIM (flake8-simplify), PL (pylint), C4 (flake8-comprehensions)
 lint.select = [
@@ -85,7 +85,6 @@ lint.select = [
   "SIM",
   "UP",
 ]
-lint.target-version = "py312"
 # Let the formatter handle line length instead of emitting E501
 lint.ignore = [
   "E501",
@@ -95,6 +94,7 @@ lint.ignore = [
 ]
 
 lint.per-file-ignores."tests/*.py" = [ "PLR2004" ]
+lint.target-version = "py312"
 
 [tool.pytest.ini_options]
 addopts = "-q -n 4"
