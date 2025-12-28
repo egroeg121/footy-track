@@ -134,29 +134,30 @@ class UltralyticsSam3Detector(ObjectDetector):
         detections: list[ObjectDetection] = []
         width, height = 0, 0
 
-        for prompt, label, min_thr in self.prompt_specs:
-            results = self.predictor(text=[prompt])
+        # Run all prompts at once for efficiency
+        prompt_list = [p for (p, _lbl, _thr) in self.prompt_specs]
+        results = self.predictor(text=prompt_list)
 
-            if not results:
-                continue
-
+        if results:
             if width == 0 and height == 0:
                 h, w = results[0].orig_shape[:2]
                 width, height = int(w), int(h)
 
-            for result in results:
-                if getattr(result, "boxes", None) is None:
-                    continue
-
-                xyxyn = (
-                    result.boxes.xyxyn.tolist()
-                    if hasattr(result.boxes, "xyxyn")
+            # SAM3SemanticPredictor returns a single Results for multiple prompts.
+            result = results[0]
+            if getattr(result, "boxes", None) is not None:
+                boxes = result.boxes
+                xyxyn = boxes.xyxyn.tolist() if hasattr(boxes, "xyxyn") else []
+                scores = (
+                    boxes.conf.tolist()
+                    if hasattr(boxes, "conf") and boxes.conf is not None
                     else []
                 )
-                scores = (
-                    result.boxes.conf.tolist()
-                    if hasattr(result.boxes, "conf") and result.boxes.conf is not None
-                    else []
+                # Class indices correspond to the prompt order we passed in
+                cls_indices = (
+                    boxes.cls.int().tolist()
+                    if hasattr(boxes, "cls") and boxes.cls is not None
+                    else [0] * len(xyxyn)
                 )
 
                 for j, b in enumerate(xyxyn):
@@ -172,7 +173,9 @@ class UltralyticsSam3Detector(ObjectDetector):
                     h_n = max(0.0, min(1.0, y2 - y1))
 
                     conf = float(scores[j]) if j < len(scores) else 1.0
-                    # Apply prompt-specific confidence threshold
+                    cls_id = int(cls_indices[j]) if j < len(cls_indices) else 0
+                    # Map class id (prompt index) to label and threshold
+                    _, label, min_thr = self.prompt_specs[cls_id]
                     if conf < float(min_thr):
                         continue
                     detections.append(
