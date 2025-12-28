@@ -1,11 +1,11 @@
 import argparse
 import logging
 from collections import Counter
+from datetime import datetime
 from pathlib import Path
 
-from tqdm import tqdm
-
 from rich.logging import RichHandler
+from tqdm import tqdm
 
 from footy_track.detectors.ultralytics import UltralyticsSam3Detector
 from footy_track.detectors.utils import visualise_detections_on_image
@@ -59,7 +59,10 @@ def main():
         return
 
     # Where to save annotated images
-    save_root = Path("runs/detect_objects") / args.frames_folder.name
+    save_root = (
+        Path("runs/detect_objects")
+        / f"{args.frames_folder.name}_{datetime.now():%Y%m%d_%H%M%S}"
+    )
     save_root.mkdir(parents=True, exist_ok=True)
 
     total_detections = 0
