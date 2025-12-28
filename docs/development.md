@@ -30,7 +30,7 @@ uv pip install "torch" "opencv-python" "tqdm"
 
 Common repo-wide tasks are captured in the Makefile to standardize workflows:
 
-make setup 
+make setup
 make deps-update
 
 ## Development Tools
