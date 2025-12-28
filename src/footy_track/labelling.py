@@ -2,6 +2,8 @@ import logging
 import os
 import random
 import tempfile
+import json
+from collections import defaultdict
 from pathlib import Path
 
 from roboflow import Roboflow
@@ -10,7 +12,11 @@ from tqdm.auto import tqdm
 from footy_track.classifier import Classifier, get_current_best_guess_classifier
 from footy_track.constants import IMAGE_FORMAT
 from footy_track.detectors.base import ObjectDetector
-from footy_track.schema import FrameClassifications, FrameDetections
+from footy_track.schema import (
+    EnumBroadcastClassification,
+    FrameClassifications,
+    FrameDetections,
+)
 
 _logger = logging.getLogger(__name__)
 
@@ -163,6 +169,9 @@ class RoboflowObjectDetectionHandler(BaseRoboflowHandler):
         self.project = self.get_project(project_name)
         self.detector = detector or UltralyticsObjectDetector()
         self.classifier = classifier or get_current_best_guess_classifier()
+        # Roboflow returns classes as {name: index}
+        # Keep a local mapping for COCO categories
+        self.class_map: dict[str, int] = dict(self.project.classes)
 
     def upload_dir(
         self,
@@ -188,8 +197,9 @@ class RoboflowObjectDetectionHandler(BaseRoboflowHandler):
         pre_annotate: bool = True,
         filter_by_broadcast_classifier: bool = True,
     ) -> None:
-        """Upload images to the dataset associated with this project."""
+        """Upload images to the dataset associated with this project using COCO JSON."""
 
+        result_counter: dict[str, int] = defaultdict(int)
         path_to_detections: dict[Path, FrameDetections] = dict.fromkeys(image_paths)
 
         if filter_by_broadcast_classifier and self.classifier:
@@ -198,61 +208,125 @@ class RoboflowObjectDetectionHandler(BaseRoboflowHandler):
                 image_paths, desc="Filtering images by broadcast classifier"
             ):
                 classification = self.classifier.predict_from_path(img_path)
-                if classification.classification.label == "Yes":
+                # Keep anything that is not an explicit NO
+                if (
+                    classification.classification.label
+                    != EnumBroadcastClassification.NO
+                ):
                     filtered_image_paths.append(img_path)
             path_to_detections = dict.fromkeys(filtered_image_paths)
 
         if pre_annotate:
             for img_path in tqdm(
-                path_to_detections.keys(), desc="Running object detection"
+                list(path_to_detections.keys()), desc="Running object detection"
             ):
                 det = self.detector.predict_from_path(image_path=img_path)
                 path_to_detections[img_path] = det
 
-        # Create a temporary labelmap file
-        labelmap_content = "\n".join(list(self.project.classes.keys()))
-        labelmap_file = tempfile.NamedTemporaryFile(
-            mode="w", delete=False, suffix=".txt"
-        )
+        # If pre-annotated, only upload images with detections
+        if pre_annotate:
+            path_to_detections_with_annos = {
+                p: d for p, d in path_to_detections.items() if d and d.detections
+            }
+        else:
+            path_to_detections_with_annos = path_to_detections
+
+        if not path_to_detections_with_annos:
+            _logger.info("No images with detections to upload.")
+            return
+
+        # Write a temporary COCO JSON file containing all annotations
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".json", delete=False
+        ) as tmp_file:
+            annotation_path = Path(tmp_file.name)
+            self._write_coco_annotations(path_to_detections_with_annos, annotation_path)
+
         try:
-            labelmap_file.write(labelmap_content)
-            labelmap_path = Path(labelmap_file.name)
+            for img_path in tqdm(
+                path_to_detections_with_annos.keys(),
+                desc="Uploading images to Roboflow",
+            ):
+                try:
+                    self.project.upload(
+                        image_path=str(img_path),
+                        annotation_path=str(annotation_path),
+                        batch_name=batch_name,
+                        is_prediction=True,
+                    )
+                    result_counter["uploaded"] += 1
+                except Exception as e:
+                    _logger.error(f"Failed to upload {img_path}: {e}")
+                    result_counter["error"] += 1
         finally:
-            labelmap_file.close()
+            try:
+                if annotation_path and annotation_path.exists():
+                    annotation_path.unlink()
+            except Exception:
+                pass
+        _logger.info(f"Stats: {result_counter}")
 
-        for img_path, detections in tqdm(
-            path_to_detections.items(), desc="Uploading images to Roboflow"
-        ):
-            if detections and detections.detections:
-                annotation_path = img_path.with_suffix(".txt")
-                with open(annotation_path, "w") as f:
-                    for det in detections.detections:
-                        if det.label not in self.project.classes:
-                            _logger.warning(
-                                f"Skipping detection with unknown label: {det.label}. "
-                                f"Allowed classes are: {self.project.classes}"
-                            )
-                            continue
-                        # darknet format
-                        f.write(
-                            f"{self.project.classes[det.label]} {det.x} {det.y} {det.w} {det.h}\n"
+    def _write_coco_annotations(
+        self, path_to_detections: dict[Path, FrameDetections], output_path: Path
+    ) -> None:
+        """Converts FrameDetections to COCO JSON and writes to `output_path`.
+
+        Notes:
+            - Our internal detections are normalized [0,1]. COCO expects pixels.
+        """
+        images: list[dict] = []
+        annotations: list[dict] = []
+        categories = [{"id": i, "name": name} for name, i in self.class_map.items()]
+
+        annotation_id = 1
+        for image_id, (img_path, frame_det) in enumerate(path_to_detections.items()):
+            if not frame_det:
+                continue
+
+            images.append(
+                {
+                    "id": image_id,
+                    "file_name": img_path.name,
+                    "width": int(frame_det.width),
+                    "height": int(frame_det.height),
+                }
+            )
+
+            if frame_det.detections:
+                for d in frame_det.detections:
+                    if d.label not in self.class_map:
+                        _logger.warning(
+                            f"Label '{d.label}' not in Roboflow project class map. Skipping."
                         )
+                        continue
 
-                self.project.upload(
-                    image_path=str(img_path),
-                    annotation_path=str(annotation_path),
-                    batch_name=batch_name,
-                    is_prediction=True,
-                    annotation_labelmap=str(labelmap_path),
-                )
-                annotation_path.unlink()
-            else:
-                self.project.upload(
-                    image_path=str(img_path),
-                    batch_name=batch_name,
-                    is_prediction=False,
-                    annotation_labelmap=str(labelmap_content),  # Pass content directly
-                )
-        # Clean up the temporary labelmap file
-        if labelmap_path and labelmap_path.exists():
-            os.remove(labelmap_path)
+                    category_id = self.class_map[d.label]
+
+                    # Convert normalized box to pixel COCO bbox [x_min, y_min, width, height]
+                    x_min = float(d.x) * float(frame_det.width)
+                    y_min = float(d.y) * float(frame_det.height)
+                    w_px = float(d.w) * float(frame_det.width)
+                    h_px = float(d.h) * float(frame_det.height)
+                    bbox = [x_min, y_min, w_px, h_px]
+                    area = w_px * h_px
+
+                    annotations.append(
+                        {
+                            "id": annotation_id,
+                            "image_id": image_id,
+                            "category_id": int(category_id),
+                            "bbox": bbox,
+                            "area": area,
+                            "iscrowd": 0,
+                        }
+                    )
+                    annotation_id += 1
+
+        coco_data = {
+            "images": images,
+            "annotations": annotations,
+            "categories": categories,
+        }
+
+        with open(output_path, "w") as f:
+            json.dump(coco_data, f, indent=2)

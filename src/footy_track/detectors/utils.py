@@ -35,6 +35,29 @@ def _clamp01(v: float) -> float:
     return float(max(0.0, min(1.0, v)))
 
 
+def top_left_wh_to_yolo_xywh(
+    x: float, y: float, w: float, h: float
+) -> tuple[float, float, float, float]:
+    """Convert normalized top-left box to YOLO-normalized center box.
+
+    Input and output are all expected to be in the normalized [0,1] range.
+
+    Args:
+        x: top-left x (normalized)
+        y: top-left y (normalized)
+        w: width (normalized)
+        h: height (normalized)
+
+    Returns:
+        (xc, yc, w, h) where xc/yc are centers, clamped to [0,1].
+    """
+    xc = _clamp01(float(x) + float(w) / 2.0)
+    yc = _clamp01(float(y) + float(h) / 2.0)
+    wn = _clamp01(float(w))
+    hn = _clamp01(float(h))
+    return xc, yc, wn, hn
+
+
 def draw_bounding_boxes_pil(
     image: Image.Image,
     boxes: torch.Tensor,
