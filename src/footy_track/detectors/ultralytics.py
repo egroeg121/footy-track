@@ -9,7 +9,7 @@ from footy_track.schema import FrameDetections, ObjectDetection
 
 from .base import ObjectDetector
 from .constants import BALL_TAG, PERSON_TAG
-from .utils import ultralytics_result_to_detections
+from .utils import ultralytics_result_to_detections, _available_device
 
 
 class UltralyticsObjectDetector(ObjectDetector):
@@ -27,7 +27,9 @@ class UltralyticsObjectDetector(ObjectDetector):
         min_confidence: float = 0.3,
         iou_threshold: float = 0.90,
     ):
-        self.device = "mps" if torch.backends.mps.is_available() else "cpu"
+        # Use shared device selection util (prefers MPS on Apple, then CUDA, then CPU)
+        dev = _available_device()
+        self.device = dev.type if isinstance(dev, torch.device) else str(dev)
         self.model = YOLO(model_uri)
         self.predict_kwargs = {
             "verbose": verbose,
@@ -86,12 +88,16 @@ class UltralyticsSam3Detector(ObjectDetector):
         min_confidence: float = 0.25,
         verbose: bool = False,
     ) -> None:
+        # Use shared device selection util for consistency across detectors
+        dev = _available_device()
+        self.device = dev.type if isinstance(dev, torch.device) else str(dev)
         overrides = dict(
             conf=min_confidence,
             task="segment",
             mode="predict",
             model=model_uri,
             verbose=verbose,
+            device=self.device,
         )
         self.predictor = SAM3SemanticPredictor(overrides=overrides)
 
