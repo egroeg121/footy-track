@@ -5,6 +5,7 @@ import pathlib
 import pytest
 from pydantic import ValidationError
 
+from footy_track.constants import BALL_TAG, PERSON_TAG
 from footy_track.schema import (
     Ball,
     BroadcastClassification,
@@ -94,7 +95,7 @@ def test_frame_classifications():
 def test_ball_schema():
     """Test the Ball schema to ensure the label is always 'ball'."""
     ball = Ball(confidence=CONFIDENCE, x=X_COORD, y=X_COORD, w=X_COORD, h=X_COORD)
-    assert ball.label == "ball"
+    assert ball.label == BALL_TAG
 
     # Test that providing a different label raises a validation error
     with pytest.raises(ValidationError):
@@ -111,7 +112,7 @@ def test_ball_schema():
 def test_person_schema():
     """Test the Person schema to ensure the label is always 'person'."""
     person = Person(confidence=0.8, x=Y_COORD, y=Y_COORD, w=Y_COORD, h=Y_COORD)
-    assert person.label == "person"
+    assert person.label == PERSON_TAG
 
     # Test that providing a different label raises a validation error
     with pytest.raises(ValidationError):

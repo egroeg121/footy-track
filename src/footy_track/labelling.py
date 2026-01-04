@@ -1,11 +1,11 @@
+import json
 import logging
 import os
 import random
 import tempfile
-import json
 from collections import defaultdict
-from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from pathlib import Path
 
 from roboflow import Roboflow
 from tqdm.auto import tqdm
@@ -13,6 +13,7 @@ from tqdm.auto import tqdm
 from footy_track.classifier import Classifier, get_current_best_guess_classifier
 from footy_track.constants import IMAGE_FORMAT
 from footy_track.detectors.base import ObjectDetector
+from footy_track.detectors.ultralytics import UltralyticsObjectDetector
 from footy_track.schema import (
     EnumBroadcastClassification,
     FrameClassifications,
@@ -89,6 +90,11 @@ class RoboflowClassificationHandler(BaseRoboflowHandler):
             classifier = get_current_best_guess_classifier()
         self.classifier = classifier
 
+    @property
+    def classifier_name(self) -> str:
+        """Returns the name of the classifier."""
+        return self.classifier.__class__.__name__
+
     def download_dataset(self, version_number: int, data_location: Path) -> Path:
         """Downloads a dataset from Roboflow."""
         return self._download_roboflow_dataset(
@@ -163,8 +169,6 @@ class RoboflowObjectDetectionHandler(BaseRoboflowHandler):
         detector: ObjectDetector | None = None,
         classifier: "Classifier | None" = None,
     ):
-        from footy_track.detectors.ultralytics import UltralyticsObjectDetector
-
         super().__init__(workspace_name)
         self.project_name = project_name
         self.project = self.get_project(project_name)
@@ -172,7 +176,20 @@ class RoboflowObjectDetectionHandler(BaseRoboflowHandler):
         self.classifier = classifier or get_current_best_guess_classifier()
         # Roboflow returns classes as {name: index}
         # Keep a local mapping for COCO categories
-        self.class_map: dict[str, int] = dict(self.project.classes)
+        # self.class_map: dict[str, int] = dict(self.project.classes) <- Think this is wrong
+        self.class_map = [
+            {"id": i, "name": name} for i, name in enumerate(self.project.classes)
+        ]
+
+    @property
+    def classifier_name(self) -> str:
+        """Returns the name of the classifier."""
+        return self.classifier.__class__.__name__
+
+    @property
+    def detector_name(self) -> str:
+        """Returns the name of the detector."""
+        return self.detector.__class__.__name__
 
     def upload_dir(
         self,
@@ -191,7 +208,7 @@ class RoboflowObjectDetectionHandler(BaseRoboflowHandler):
             filter_by_broadcast_classifier=filter_by_broadcast_classifier,
         )
 
-    def upload_images(
+    def upload_images(  # noqa: PLR0912
         self,
         image_paths: list[Path],
         batch_name: str = "uploads",
@@ -263,8 +280,7 @@ class RoboflowObjectDetectionHandler(BaseRoboflowHandler):
         try:
             with ThreadPoolExecutor(max_workers=max_workers) as ex:
                 futures = [
-                    ex.submit(_upload_one, p)
-                    for p in path_to_detections_with_annos.keys()
+                    ex.submit(_upload_one, p) for p in path_to_detections_with_annos
                 ]
                 for fut in tqdm(
                     as_completed(futures),
@@ -296,7 +312,8 @@ class RoboflowObjectDetectionHandler(BaseRoboflowHandler):
         """
         images: list[dict] = []
         annotations: list[dict] = []
-        categories = [{"id": i, "name": name} for name, i in self.class_map.items()]
+        categories = [{"id": i, "name": name} for i, name in enumerate(self.class_map)]
+        categories_to_id = {cat["name"]: cat["id"] for cat in categories}
 
         annotation_id = 1
         for image_id, (img_path, frame_det) in enumerate(path_to_detections.items()):
@@ -314,13 +331,7 @@ class RoboflowObjectDetectionHandler(BaseRoboflowHandler):
 
             if frame_det.detections:
                 for d in frame_det.detections:
-                    if d.label not in self.class_map:
-                        _logger.warning(
-                            f"Label '{d.label}' not in Roboflow project class map. Skipping."
-                        )
-                        continue
-
-                    category_id = self.class_map[d.label]
+                    category_id = categories_to_id[d.label]
 
                     # Convert normalized box to pixel COCO bbox [x_min, y_min, width, height]
                     x_min = float(d.x) * float(frame_det.width)

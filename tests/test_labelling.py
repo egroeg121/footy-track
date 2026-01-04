@@ -10,12 +10,15 @@ from footy_track.constants import (
     ROBOFLOW_DETECTION_PROJECT_TEST_PROJECT,
     ROBOFLOW_WORKSPACE,
 )
+from footy_track.detectors.ultralytics import (
+    UltralyticsObjectDetector,
+    UltralyticsSam3Detector,
+)
 from footy_track.labelling import (
     BaseRoboflowHandler,
     RoboflowClassificationHandler,
     RoboflowObjectDetectionHandler,
 )
-from footy_track.detectors.ultralytics import UltralyticsObjectDetector
 
 ROBOFLOW_API_KEY = os.getenv("ROBOFLOW_API_KEY")
 
@@ -65,7 +68,7 @@ class TestRoboflowClassificationHandlerIntegration:
             project_name=self.PROJECT,
             classifier=classifier,
         )
-        batch_name = f"sdk-test-batch-images-{datetime.now().strftime('%Y%m%d%H%M%S')}"
+        batch_name = f"sdk-test-batch-images-{handler.detector_name}-{datetime.now().strftime('%Y%m%d%H%M%S')}"
         try:
             # Upload a small sample to keep tests fast
             handler.upload_images(extracted_frames[:2], batch_name=batch_name)
@@ -111,10 +114,10 @@ class TestRoboflowObjectDetectionHandlerIntegration:
     WORKSPACE = ROBOFLOW_WORKSPACE
     PROJECT = ROBOFLOW_DETECTION_PROJECT_TEST_PROJECT
 
-    @pytest.fixture
-    def detector(self):
-        """Returns an UltralyticsObjectDetector instance."""
-        return UltralyticsObjectDetector()
+    @pytest.fixture(params=[UltralyticsObjectDetector, UltralyticsSam3Detector])
+    def detector(self, request):
+        """Returns an detector instance."""
+        return request.param()
 
     @pytest.fixture
     def classifier(self) -> Classifier:
@@ -127,7 +130,7 @@ class TestRoboflowObjectDetectionHandlerIntegration:
             workspace_name=self.WORKSPACE,
             project_name=self.PROJECT,
             detector=detector,
-            classifier=classifier,
+            # classifier=classifier,
         )
         assert handler.workspace is not None
         assert handler.project is not None
@@ -161,14 +164,12 @@ class TestRoboflowObjectDetectionHandlerIntegration:
             detector=detector,
             classifier=classifier,
         )
-        batch_name = (
-            f"sdk-test-obj-det-batch-dir-{datetime.now().strftime('%Y%m%d%H%M%S')}"
-        )
+        batch_name = f"sdk-test-obj-det-batch-dir-{handler.detector_name}-{datetime.now().strftime('%Y-%m-%d_%H:%M:%S')}"
         try:
             stats = handler.upload_dir(frames_path, batch_name=batch_name)
             # Expect that 27 images are uploaded and 3 are skipped (e.g., filtered/no detections)
             assert stats.get("uploaded", 0) == 27
-            assert stats.get("skipped", 0) == 3
+            assert stats.get("non_broadcast", 0) == 3
         finally:
             # TODO: Implement batch deletion when the SDK supports it
             pass

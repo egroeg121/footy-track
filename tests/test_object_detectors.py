@@ -1,11 +1,12 @@
-from pathlib import Path
 import json
+from pathlib import Path
+
 from footy_track.detectors.ultralytics import (
     UltralyticsObjectDetector,
     UltralyticsSam3Detector,
 )
-from footy_track.schema import FrameDetections, ObjectDetection
 from footy_track.detectors.utils import calculate_iou
+from footy_track.schema import FrameDetections, ObjectDetection
 
 
 class TestUltralyticsYOLODetector:
@@ -68,7 +69,7 @@ class TestUltralyticsYOLODetector:
         ]
 
         if not gt_persons or not pred_persons:
-            assert False, "No persons found in ground truth or predictions"
+            raise AssertionError("No persons found in ground truth or predictions")
 
         # For each ground truth person, find the best matching prediction
         matches = 0
@@ -76,8 +77,7 @@ class TestUltralyticsYOLODetector:
             best_iou = 0
             for pred_person in pred_persons:
                 iou = calculate_iou(gt_person, pred_person)
-                if iou > best_iou:
-                    best_iou = iou
+                best_iou = max(best_iou, iou)
 
             if best_iou >= 0.5:
                 matches += 1
@@ -101,7 +101,8 @@ class TestUltralyticsSam3Detector:
         assert frame_detections.uri == test_image_path
         assert len(frame_detections.detections) > 0
         for detection in frame_detections.detections:
-            assert detection.label in ["person", "ball"]
+            # assert detection.label in ["person", "ball"]
+            assert detection.label in detector.output_classes
 
     def test_ultralytics_sam3_detector_iou(self):
         """Similar IoU quality check for SAM3 on persons."""
@@ -146,7 +147,7 @@ class TestUltralyticsSam3Detector:
         ]
 
         if not gt_persons or not pred_persons:
-            assert False, "No persons found in ground truth or predictions"
+            raise AssertionError("No persons found in ground truth or predictions")
 
         # For each ground truth person, find the best matching prediction
         matches = 0
@@ -154,8 +155,7 @@ class TestUltralyticsSam3Detector:
             best_iou = 0
             for pred_person in pred_persons:
                 iou = calculate_iou(gt_person, pred_person)
-                if iou > best_iou:
-                    best_iou = iou
+                best_iou = max(best_iou, iou)
 
             if best_iou >= 0.5:
                 matches += 1

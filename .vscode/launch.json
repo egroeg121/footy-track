@@ -1,0 +1,20 @@
+
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python: Debug Pytest (Sequential)",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/.venv/bin/pytest",
+            "args": [
+                "tests",
+                "-n",
+                "0"
+            ],
+            "justMyCode": true,
+            "purpose": ["debug-test"],
+            "console": "integratedTerminal"
+        }
+    ]
+}

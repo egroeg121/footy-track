@@ -25,8 +25,11 @@ color_map = {
     "referee": (65, 105, 225),
     "coach": (100, 149, 237),
     "ball": (255, 200, 0),  # balls are all yellow/orange
+    # support both naming styles
     "ball_in_play": (255, 215, 0),
+    "in_play_ball": (255, 215, 0),
     "ball_out_of_play": (255, 140, 0),
+    "out_of_play_ball": (255, 140, 0),
     "unknown": (128, 0, 128),  # purple for unknown
 }
 
