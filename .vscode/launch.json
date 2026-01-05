@@ -15,6 +15,21 @@
             "justMyCode": true,
             "purpose": ["debug-test"],
             "console": "integratedTerminal"
+        },
+        {
+            "name": "Python: Upload Frames",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/src/footy_track/scripts/upload_frames.py",
+            "console": "integratedTerminal",
+            "args": [
+                "data/arsenal_mancity/full_video_frames",
+                "--num_samples",
+                "1001",
+                "--batch_name",
+                "sam3_huge_upload_"
+            ],
+            "justMyCode": true
         }
     ]
 }
