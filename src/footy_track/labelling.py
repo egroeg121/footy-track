@@ -80,8 +80,8 @@ class RoboflowClassificationHandler(BaseRoboflowHandler):
 
     def __init__(
         self,
-        workspace_name: str,
-        project_name: str,
+        workspace_name: str = constants.ROBOFLOW_WORKSPACE,
+        project_name: str = constants.ROBOFLOW_BROADCAST_PROJECT,
         classifier: Classifier | None = None,
     ):
         super().__init__(workspace_name)
@@ -131,7 +131,7 @@ class RoboflowClassificationHandler(BaseRoboflowHandler):
     ) -> None:
         """Upload images to the classification project with yes/no labels."""
 
-        for img_path in image_paths:
+        for img_path in tqdm(image_paths, desc="Uploading images"):
             annotation_path = None
             is_prediction = False
             if self.classifier:

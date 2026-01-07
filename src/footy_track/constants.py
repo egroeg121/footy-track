@@ -5,7 +5,7 @@ ROBOFLOW_DETECTION_PROJECT_TEST_PROJECT = "footy-track-detection-test"
 ROBOFLOW_WORKSPACE = "egroeg121"
 
 
-IMAGE_FORMAT = "png"
+IMAGE_FORMAT = "jpg"
 BALL_TAG = "ball"
 PERSON_TAG = "person"
 OUT_OF_PLAY_BALL_TAG = "out_of_play_ball"

@@ -60,7 +60,10 @@ def get_image_paths(frames_dir: Path, num_samples: int | None) -> list[Path]:
 
 
 def main(
-    frames_dir: Path, num_samples: int | None, batch_name: str, batch_size: int
+    frames_dir: Path,
+    num_samples: int | None,
+    batch_name: str,
+    batch_size: int | None = None,
 ) -> None:
     """
     Main function to handle the process of uploading frames to Roboflow.
@@ -79,13 +82,16 @@ def main(
 
     image_paths = get_image_paths(frames_dir, num_samples)
 
+    if batch_size is None or batch_size <= 0:
+        batch_size = len(image_paths)
+
     if not image_paths:
         _logger.info("No images to upload.")
         return
 
     # Initialize the Roboflow handler
-    handler = labelling.RoboflowObjectDetectionHandler()
-    model_name = handler.detector_name
+    handler = labelling.RoboflowClassificationHandler()
+    model_name = handler.classifier_name
     current_time = datetime.now().strftime("%Y-%m-%d_%H%M")
     batch_name = f"{batch_name}__{model_name}__{current_time}"
 
