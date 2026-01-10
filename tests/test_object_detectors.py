@@ -1,9 +1,11 @@
 import json
 from pathlib import Path
 
+from footy_track.constants import COACH_TAG, PLAYER_SUB_TAG, PLAYER_TAG, REFEREE_TAG
 from footy_track.detectors.ultralytics import (
     UltralyticsObjectDetector,
     UltralyticsSam3Detector,
+    UltralyticsSam3VideoDetector,
 )
 from footy_track.detectors.utils import calculate_iou
 from footy_track.schema import FrameDetections, ObjectDetection
@@ -42,9 +44,9 @@ class TestUltralyticsYOLODetector:
             label = obj["label"]
             if (
                 "player" in label
-                or "referee" in label
-                or "coach" in label
-                or "goalkeeper" in label
+                or label == "goalkeeper"
+                or label == "referee"
+                or label == "coach"
             ):
                 label = "person"
             elif "ball" in label:
@@ -120,11 +122,11 @@ class TestUltralyticsSam3Detector:
             label = obj["label"]
             if (
                 "player" in label
-                or "referee" in label
-                or "coach" in label
-                or "goalkeeper" in label
+                or label == "goalkeeper"
+                or label == "referee"
+                or label == "coach"
             ):
-                label = "person"
+                label = PLAYER_TAG
             elif "ball" in label:
                 label = "ball"
 
@@ -141,9 +143,12 @@ class TestUltralyticsSam3Detector:
             )
 
         # Filter for persons
-        gt_persons = [gt for gt in ground_truths if gt.label == "person"]
+        gt_persons = [gt for gt in ground_truths if gt.label == PLAYER_TAG]
+        person_like_labels = {PLAYER_TAG, PLAYER_SUB_TAG, REFEREE_TAG, COACH_TAG}
         pred_persons = [
-            det for det in frame_detections.detections if det.label == "person"
+            det
+            for det in frame_detections.detections
+            if det.label in person_like_labels
         ]
 
         if not gt_persons or not pred_persons:
@@ -162,3 +167,25 @@ class TestUltralyticsSam3Detector:
 
         # Check if at least half the persons have an IoU of 0.5 or greater
         assert matches / len(gt_persons) >= 0.5
+
+
+class TestUltralyticsSam3VideoDetector:
+    def test_ultralytics_sam3_video_detector_init(self):
+        """Test that the UltralyticsSam3VideoDetector can be initialized."""
+        detector = UltralyticsSam3VideoDetector()
+        assert detector is not None
+
+    def test_ultralytics_sam3_video_detector_predict_from_video_path(self):
+        """Test that the SAM3 predict_from_video_path returns a list of FrameDetections."""
+        detector = UltralyticsSam3VideoDetector()
+        test_video_path = Path(
+            "tests/data/split_videos/arsenal_mancity_20250925_part192_part000.mp4"
+        )
+        frame_detections_list = detector.predict_from_video_path(test_video_path)
+        assert isinstance(frame_detections_list, list)
+        assert len(frame_detections_list) > 0
+        for frame_detections in frame_detections_list:
+            assert isinstance(frame_detections, FrameDetections)
+            # Allow empty detections for now
+            for detection in frame_detections.detections:
+                assert detection.label in detector.output_classes

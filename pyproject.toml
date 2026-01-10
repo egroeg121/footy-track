@@ -92,7 +92,7 @@ ignore = [
 per-file-ignores."tests/*.py" = [ "PLR2004" ]
 
 [tool.pytest.ini_options]
-addopts = "-q -n 2"
+addopts = "-q"
 markers = [
   "slow: tests that run models and may take longer",
 ]
