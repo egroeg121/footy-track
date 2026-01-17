@@ -30,3 +30,6 @@ yolo11n.pt
 
 # Training/Inference folders
 runs/
+wandb/
+footy_scan_detection/
+footy_scan_detection/optuna_trial_0_2026-01-17_22-48_model_name='yolo11m'_epochs=3_freeze_layers=19/weights/best.pt
