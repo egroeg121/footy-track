@@ -25,8 +25,11 @@ color_map = {
     "referee": (65, 105, 225),
     "coach": (100, 149, 237),
     "ball": (255, 200, 0),  # balls are all yellow/orange
+    # support both naming styles
     "ball_in_play": (255, 215, 0),
+    "in_play_ball": (255, 215, 0),
     "ball_out_of_play": (255, 140, 0),
+    "out_of_play_ball": (255, 140, 0),
     "unknown": (128, 0, 128),  # purple for unknown
 }
 
@@ -103,7 +106,9 @@ def visualise_detections_on_image(
     img = Image.open(img_path).convert("RGB")
     w, h = img.size
 
-    thickness = max(2, min(6, int(round(min(w, h) * 0.003))))
+    # Thicker boxes and larger font for clearer visuals
+    box_thickness = max(3, min(12, int(round(min(w, h) * 0.006))))
+    font_size = max(12, int(round(min(w, h) * 0.03)))
 
     # Build boxes tensor in (xmin, ymin, xmax, ymax) absolute pixels
     boxes_list: list[list[float]] = []
@@ -129,7 +134,8 @@ def visualise_detections_on_image(
             boxes_tensor,
             labels=labels,
             colors=colors,
-            width=thickness,
+            width=box_thickness,
+            font_size=font_size,
         )
 
     out_path: Path | None = None

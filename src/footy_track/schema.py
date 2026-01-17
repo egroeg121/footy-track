@@ -11,6 +11,28 @@ from typing import Literal
 import fiftyone as fo
 from pydantic import BaseModel, ConfigDict, Field
 
+from footy_track.constants import (
+    BALL_TAG,
+    COACH_TAG,
+    IN_PLAY_BALL_TAG,
+    OUT_OF_PLAY_BALL_TAG,
+    PERSON_TAG,
+    PLAYER_SUB_TAG,
+    PLAYER_TAG,
+    REFEREE_TAG,
+)
+
+DETECTION_CLASSES = [
+    PERSON_TAG,
+    BALL_TAG,
+    OUT_OF_PLAY_BALL_TAG,
+    IN_PLAY_BALL_TAG,
+    PLAYER_TAG,
+    PLAYER_SUB_TAG,
+    REFEREE_TAG,
+    COACH_TAG,
+]
+
 
 class BaseSchema(BaseModel):
     """Base Schema for Footy Track"""
@@ -44,13 +66,13 @@ class ObjectDetection(BaseModel):
 
 
 class Person(ObjectDetection):
-    label: Literal["person"]
+    label: Literal["person"] = "person"
 
 
 class Ball(ObjectDetection):
     """Schema for a ball"""
 
-    label: Literal["ball"]
+    label: Literal["ball"] = "ball"
 
 
 class FrameDetections(BaseModel):

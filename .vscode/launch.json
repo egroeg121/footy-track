@@ -1,0 +1,35 @@
+
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python: Debug Pytest (Sequential)",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/.venv/bin/pytest",
+            "args": [
+                "tests",
+                "-n",
+                "0"
+            ],
+            "justMyCode": true,
+            "purpose": ["debug-test"],
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "Python: Upload Frames",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/src/footy_track/scripts/upload_frames.py",
+            "console": "integratedTerminal",
+            "args": [
+                "data/arsenal_mancity/full_video_frames",
+                "--num_samples",
+                "1001",
+                "--batch_name",
+                "sam3_huge_upload_"
+            ],
+            "justMyCode": true
+        }
+    ]
+}

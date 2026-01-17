@@ -1,18 +1,20 @@
+import json
 import logging
 import os
 import random
 import tempfile
-import json
 from collections import defaultdict
 from pathlib import Path
-from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from roboflow import Roboflow
 from tqdm.auto import tqdm
 
+from footy_track import constants
 from footy_track.classifier import Classifier, get_current_best_guess_classifier
-from footy_track.constants import IMAGE_FORMAT
 from footy_track.detectors.base import ObjectDetector
+from footy_track.detectors.ultralytics import (
+    UltralyticsSam3Detector,
+)
 from footy_track.schema import (
     EnumBroadcastClassification,
     FrameClassifications,
@@ -58,7 +60,7 @@ class BaseRoboflowHandler:
     def _load_local_images(
         self, image_dir: Path, sample_number: int | None = None
     ) -> list[Path]:
-        image_extensions = [f"*.{IMAGE_FORMAT}"]
+        image_extensions = [f"*.{constants.IMAGE_FORMAT}"]
         all_image_paths = []
         for ext in image_extensions:
             all_image_paths.extend(Path(image_dir).glob(ext))
@@ -78,8 +80,8 @@ class RoboflowClassificationHandler(BaseRoboflowHandler):
 
     def __init__(
         self,
-        workspace_name: str,
-        project_name: str,
+        workspace_name: str = constants.ROBOFLOW_WORKSPACE,
+        project_name: str = constants.ROBOFLOW_BROADCAST_PROJECT,
         classifier: Classifier | None = None,
     ):
         super().__init__(workspace_name)
@@ -88,6 +90,11 @@ class RoboflowClassificationHandler(BaseRoboflowHandler):
         if classifier is None:
             classifier = get_current_best_guess_classifier()
         self.classifier = classifier
+
+    @property
+    def classifier_name(self) -> str:
+        """Returns the name of the classifier."""
+        return self.classifier.__class__.__name__
 
     def download_dataset(self, version_number: int, data_location: Path) -> Path:
         """Downloads a dataset from Roboflow."""
@@ -124,7 +131,7 @@ class RoboflowClassificationHandler(BaseRoboflowHandler):
     ) -> None:
         """Upload images to the classification project with yes/no labels."""
 
-        for img_path in image_paths:
+        for img_path in tqdm(image_paths, desc="Uploading images"):
             annotation_path = None
             is_prediction = False
             if self.classifier:
@@ -158,21 +165,32 @@ class RoboflowObjectDetectionHandler(BaseRoboflowHandler):
 
     def __init__(
         self,
-        workspace_name: str,
-        project_name: str,
+        workspace_name: str = constants.ROBOFLOW_WORKSPACE,
+        project_name: str = constants.ROBOFLOW_DETECTION_PROJECT,
         detector: ObjectDetector | None = None,
         classifier: "Classifier | None" = None,
     ):
-        from footy_track.detectors.ultralytics import UltralyticsObjectDetector
-
         super().__init__(workspace_name)
         self.project_name = project_name
         self.project = self.get_project(project_name)
-        self.detector = detector or UltralyticsObjectDetector()
+        self.detector = detector or UltralyticsSam3Detector()
         self.classifier = classifier or get_current_best_guess_classifier()
         # Roboflow returns classes as {name: index}
         # Keep a local mapping for COCO categories
-        self.class_map: dict[str, int] = dict(self.project.classes)
+        # self.class_map: dict[str, int] = dict(self.project.classes) <- Think this is wrong
+        self.class_map = [
+            {"id": i, "name": name} for i, name in enumerate(self.project.classes)
+        ]
+
+    @property
+    def classifier_name(self) -> str:
+        """Returns the name of the classifier."""
+        return self.classifier.__class__.__name__
+
+    @property
+    def detector_name(self) -> str:
+        """Returns the name of the detector."""
+        return self.detector.model_tag
 
     def upload_dir(
         self,
@@ -181,7 +199,7 @@ class RoboflowObjectDetectionHandler(BaseRoboflowHandler):
         batch_name: str = "uploads",
         pre_annotate: bool = True,
         filter_by_broadcast_classifier: bool = True,
-    ) -> None:
+    ) -> dict[str, int]:
         """Uploads a directory of images to the project."""
         image_paths = self._load_local_images(image_dir, sample_number)
         return self.upload_images(
@@ -197,98 +215,65 @@ class RoboflowObjectDetectionHandler(BaseRoboflowHandler):
         batch_name: str = "uploads",
         pre_annotate: bool = True,
         filter_by_broadcast_classifier: bool = True,
-        max_workers: int = 8,
-    ) -> None:
-        """Upload images to the dataset associated with this project using COCO JSON."""
+    ) -> dict[str, int]:
+        """Upload images to the dataset associated with this project."""
 
         result_counter: dict[str, int] = defaultdict(int)
-        path_to_detections: dict[Path, FrameDetections] = dict.fromkeys(image_paths)
 
-        if filter_by_broadcast_classifier and self.classifier:
-            filtered_image_paths = []
-            for img_path in tqdm(
-                image_paths, desc="Filtering images by broadcast classifier"
-            ):
+        for img_path in tqdm(image_paths, desc="Processing and uploading images"):
+            # Step 1: Filter by broadcast classifier
+            if filter_by_broadcast_classifier and self.classifier:
                 classification = self.classifier.predict_from_path(img_path)
-                # Keep anything that is not an explicit NO
                 if (
                     classification.classification.label
-                    != EnumBroadcastClassification.NO
+                    == EnumBroadcastClassification.NO
                 ):
-                    filtered_image_paths.append(img_path)
-                else:
                     result_counter["non_broadcast"] += 1
-            path_to_detections = dict.fromkeys(filtered_image_paths)
+                    continue
 
-        if pre_annotate:
-            for img_path in tqdm(
-                list(path_to_detections.keys()), desc="Running object detection"
-            ):
-                det = self.detector.predict_from_path(image_path=img_path)
-                path_to_detections[img_path] = det
+            # Step 2: Pre-annotate with object detector
+            detections = None
+            if pre_annotate:
+                detections = self.detector.predict_from_path(image_path=img_path)
+                if not detections or not detections.detections:
+                    result_counter["no_detections"] += 1
+                    continue  # Don't upload if pre-annotating and no detections found
 
-        # If pre-annotated, only upload images with detections
-        if pre_annotate:
-            path_to_detections_with_annos = {
-                p: d for p, d in path_to_detections.items() if d and d.detections
-            }
-        else:
-            path_to_detections_with_annos = path_to_detections
-
-        if not path_to_detections_with_annos:
-            _logger.info("No images with detections to upload.")
-            return result_counter
-
-        # Write a temporary COCO JSON file containing all annotations
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".json", delete=False
-        ) as tmp_file:
-            annotation_path = Path(tmp_file.name)
-            self._write_coco_annotations(path_to_detections_with_annos, annotation_path)
-
-        def _upload_one(img: Path) -> tuple[Path, bool, str | None]:
+            # Step 3: Upload image with annotations (if any)
+            annotation_path = None
             try:
+                if detections:
+                    # Write a temporary COCO JSON file for this single image
+                    with tempfile.NamedTemporaryFile(
+                        mode="w", suffix=".json", delete=False, encoding="utf-8"
+                    ) as tmp_f:
+                        annotation_path = Path(tmp_f.name)
+                        self._write_coco_annotations(
+                            {img_path: detections}, annotation_path
+                        )
+
                 self.project.upload(
-                    image_path=str(img),
-                    annotation_path=str(annotation_path),
+                    image_path=str(img_path),
+                    annotation_path=str(annotation_path) if annotation_path else None,
                     batch_name=batch_name,
                     is_prediction=True,
-                    # give the SDK a couple retries client-side
                     num_retry_uploads=2,
+                    tag_names=[self.detector_name, batch_name],
                 )
-                return img, True, None
-            except Exception as exc:  # noqa: BLE001 - surface SDK/network errors
-                return img, False, str(exc)
-
-        try:
-            with ThreadPoolExecutor(max_workers=max_workers) as ex:
-                futures = [
-                    ex.submit(_upload_one, p)
-                    for p in path_to_detections_with_annos.keys()
-                ]
-                for fut in tqdm(
-                    as_completed(futures),
-                    total=len(futures),
-                    desc="Uploading images to Roboflow",
-                ):
-                    img, ok, err = fut.result()
-                    if ok:
-                        result_counter["uploaded"] += 1
-                    else:
-                        _logger.error(f"Failed to upload {img}: {err}")
-                        result_counter["error"] += 1
-        finally:
-            try:
+                result_counter["uploaded"] += 1
+            except Exception as exc:
+                _logger.error(f"Failed to upload {img_path}: {exc}")
+                result_counter["error"] += 1
+            finally:
                 if annotation_path and annotation_path.exists():
-                    annotation_path.unlink()
-            except Exception:
-                pass
+                    os.remove(annotation_path)
+
         _logger.info(f"Stats: {result_counter}")
         return result_counter
 
     def _write_coco_annotations(
         self, path_to_detections: dict[Path, FrameDetections], output_path: Path
-    ) -> None:
+    ) -> dict:
         """Converts FrameDetections to COCO JSON and writes to `output_path`.
 
         Notes:
@@ -296,7 +281,10 @@ class RoboflowObjectDetectionHandler(BaseRoboflowHandler):
         """
         images: list[dict] = []
         annotations: list[dict] = []
-        categories = [{"id": i, "name": name} for name, i in self.class_map.items()]
+        categories = [
+            {"id": i, "name": cls["name"]} for i, cls in enumerate(self.class_map)
+        ]
+        categories_to_id = {cat["name"]: cat["id"] for cat in categories}
 
         annotation_id = 1
         for image_id, (img_path, frame_det) in enumerate(path_to_detections.items()):
@@ -314,13 +302,7 @@ class RoboflowObjectDetectionHandler(BaseRoboflowHandler):
 
             if frame_det.detections:
                 for d in frame_det.detections:
-                    if d.label not in self.class_map:
-                        _logger.warning(
-                            f"Label '{d.label}' not in Roboflow project class map. Skipping."
-                        )
-                        continue
-
-                    category_id = self.class_map[d.label]
+                    category_id = categories_to_id[d.label]
 
                     # Convert normalized box to pixel COCO bbox [x_min, y_min, width, height]
                     x_min = float(d.x) * float(frame_det.width)
@@ -350,3 +332,4 @@ class RoboflowObjectDetectionHandler(BaseRoboflowHandler):
 
         with open(output_path, "w") as f:
             json.dump(coco_data, f, indent=2)
+        return coco_data

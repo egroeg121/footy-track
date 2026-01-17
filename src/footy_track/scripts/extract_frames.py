@@ -27,6 +27,8 @@ import piexif
 from piexif import ExifIFD
 from piexif.helper import UserComment
 
+from footy_track import constants
+
 
 def check_ffmpeg() -> str:
     ffmpeg = shutil.which("ffmpeg")
@@ -251,7 +253,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument(
         "--format",
         choices=["jpg", "jpeg", "png", "webp"],
-        default="jpg",
+        default=constants.IMAGE_FORMAT,
         help="Image format (default: jpg)",
     )
     p.add_argument(
