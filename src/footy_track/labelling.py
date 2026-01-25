@@ -23,6 +23,8 @@ from footy_track.schema import (
 
 _logger = logging.getLogger(__name__)
 
+_class_warnings_list = []
+
 
 class BaseRoboflowHandler:
     """Base handler for Roboflow API interactions."""
@@ -302,6 +304,13 @@ class RoboflowObjectDetectionHandler(BaseRoboflowHandler):
 
             if frame_det.detections:
                 for d in frame_det.detections:
+                    if d.label not in categories_to_id:
+                        if d.label not in _class_warnings_list:
+                            _logger.warning(
+                                f"Detection label '{d.label}' not in project categories, skipping."
+                            )
+                            _class_warnings_list.append(d.label)
+                        continue
                     category_id = categories_to_id[d.label]
 
                     # Convert normalized box to pixel COCO bbox [x_min, y_min, width, height]
