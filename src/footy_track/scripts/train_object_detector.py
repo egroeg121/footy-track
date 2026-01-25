@@ -47,7 +47,7 @@ def train_detector(
     )
 
     # Set up training run
-    run_name = f"{datetime.now():%Y-%m-%d_%H-%M}_{model_name=}_{dataset_version=}_{epochs=}_{freeze_layers=}"
+    run_name = f"{datetime.now():%Y-%m-%d_%H-%M}_model_name={str(model_name)}_dataset_version={dataset_version}_epochs={epochs}_freeze_layers={freeze_layers}"
     if name_prepend:
         run_name = f"{name_prepend}_{run_name}"
     model_path = f"{model_name}.pt"
