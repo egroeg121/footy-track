@@ -24,7 +24,7 @@ def get_current_best_guess_classifier() -> "Classifier":
     """Returns the current best guess classifier class."""
     repo_root = Path(__file__).resolve().parents[2]
     return UltralyticsClassifier(
-        model_path=repo_root / "model_saves/classifier/20251226-yolo11n-cls/0.987.pt"
+        model_path=repo_root / "model_saves/classifier/20260125-yolo11n-cls/best.pt"
     )
 
 
