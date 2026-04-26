@@ -12,6 +12,7 @@ nav:
       - Getting Started: development.md
       - Pipeline Architecture: pipeline_architecture.md
       - Time Formats: timings.md
+      - Training: training.md
   - Contributing:
       - Agent Guidelines: agent_guidelines.md
 markdown_extensions:
