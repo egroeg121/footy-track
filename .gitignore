@@ -35,3 +35,6 @@ yolo11n.pt
 
 # Training/Inference folders
 runs/
+wandb/
+footy_scan_detection/
+footy_scan_classifier/
