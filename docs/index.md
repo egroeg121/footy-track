@@ -15,6 +15,7 @@ Footy Scan is an application that:
 → [Development Guide](development.md): Complete setup and development instructions
 → [Pipeline Architecture](pipeline_architecture.md): Understanding the system design
 → [Time Formats](timings.md): How we handle match timing data
+→ [Data Formats](data_formats.md): Raw match layout, Roboflow dataset structure, and env vars
 
 ## Quick Development Setup
 
@@ -46,6 +47,11 @@ uv run footy-track
   - Time representation
   - Format conversion
   - Video sync details
+
+- **[Data Formats](data_formats.md)**
+  - Raw match directory layout (`original_video/`, `full_video_frames/`)
+  - Roboflow dataset structure (detection + classifier)
+  - Required environment variables
 
 - **[Agent Guidelines](agent_guidelines.md)**
   - Automated tooling rules
