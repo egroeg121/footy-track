@@ -10,13 +10,13 @@
       
       
       
-        <link rel="canonical" href="https://egroeg121.github.io/footy-track/pipeline_architecture/">
+        <link rel="canonical" href="https://egroeg121.github.io/footy-track/training/">
       
       
-        <link rel="prev" href="../development/">
+        <link rel="prev" href="../timings/">
       
       
-        <link rel="next" href="../timings/">
+        <link rel="next" href="../agent_guidelines/">
       
       
       <link rel="icon" href="../assets/images/favicon.png">
@@ -24,7 +24,7 @@
     
     
       
-        <title>Pipeline Architecture - Footy Scan</title>
+        <title>Training - Footy Scan</title>
       
     
     
@@ -66,7 +66,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#pipeline-architecture" class="md-skip">
+        <a href="#object-detector-training" class="md-skip">
           Skip to content
         </a>
       
@@ -102,7 +102,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Pipeline Architecture
+              Training
             
           </span>
         </div>
@@ -303,32 +303,10 @@
                 
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    Pipeline Architecture
-    
-  </span>
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../pipeline_architecture/" class="md-nav__link">
         
   
   
@@ -339,71 +317,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#components" class="md-nav__link">
-    <span class="md-ellipsis">
-      Components
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#dataflow" class="md-nav__link">
-    <span class="md-ellipsis">
-      Dataflow
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#timestamps-and-time-handling" class="md-nav__link">
-    <span class="md-ellipsis">
-      Timestamps and time handling
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#implementation-guidance" class="md-nav__link">
-    <span class="md-ellipsis">
-      Implementation guidance
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#extensibility" class="md-nav__link">
-    <span class="md-ellipsis">
-      Extensibility
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -436,10 +349,32 @@
                 
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../training/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    Training
+    
+  </span>
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -450,6 +385,146 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#script-train_object_detectorpy" class="md-nav__link">
+    <span class="md-ellipsis">
+      Script: train_object_detector.py
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Script: train_object_detector.py">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#prerequisites" class="md-nav__link">
+    <span class="md-ellipsis">
+      Prerequisites
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#usage" class="md-nav__link">
+    <span class="md-ellipsis">
+      Usage
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#arguments" class="md-nav__link">
+    <span class="md-ellipsis">
+      Arguments
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#outputs" class="md-nav__link">
+    <span class="md-ellipsis">
+      Outputs
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dataset" class="md-nav__link">
+    <span class="md-ellipsis">
+      Dataset
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#baseline-run-results" class="md-nav__link">
+    <span class="md-ellipsis">
+      Baseline Run Results
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Baseline Run Results">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      Configuration
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#epoch-by-epoch-metrics-validation" class="md-nav__link">
+    <span class="md-ellipsis">
+      Epoch-by-Epoch Metrics (validation)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#final-validation-bestpt" class="md-nav__link">
+    <span class="md-ellipsis">
+      Final Validation (best.pt)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#observations" class="md-nav__link">
+    <span class="md-ellipsis">
+      Observations
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#wb-run" class="md-nav__link">
+    <span class="md-ellipsis">
+      W&amp;B Run
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -557,45 +632,120 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#components" class="md-nav__link">
+  <a href="#script-train_object_detectorpy" class="md-nav__link">
     <span class="md-ellipsis">
-      Components
+      Script: train_object_detector.py
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Script: train_object_detector.py">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#prerequisites" class="md-nav__link">
+    <span class="md-ellipsis">
+      Prerequisites
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#usage" class="md-nav__link">
+    <span class="md-ellipsis">
+      Usage
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#arguments" class="md-nav__link">
+    <span class="md-ellipsis">
+      Arguments
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#outputs" class="md-nav__link">
+    <span class="md-ellipsis">
+      Outputs
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dataset" class="md-nav__link">
+    <span class="md-ellipsis">
+      Dataset
     </span>
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#dataflow" class="md-nav__link">
+  <a href="#baseline-run-results" class="md-nav__link">
     <span class="md-ellipsis">
-      Dataflow
+      Baseline Run Results
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Baseline Run Results">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      Configuration
     </span>
   </a>
   
 </li>
-      
-        <li class="md-nav__item">
-  <a href="#timestamps-and-time-handling" class="md-nav__link">
+        
+          <li class="md-nav__item">
+  <a href="#epoch-by-epoch-metrics-validation" class="md-nav__link">
     <span class="md-ellipsis">
-      Timestamps and time handling
+      Epoch-by-Epoch Metrics (validation)
     </span>
   </a>
   
 </li>
-      
-        <li class="md-nav__item">
-  <a href="#implementation-guidance" class="md-nav__link">
+        
+          <li class="md-nav__item">
+  <a href="#final-validation-bestpt" class="md-nav__link">
     <span class="md-ellipsis">
-      Implementation guidance
+      Final Validation (best.pt)
     </span>
   </a>
   
 </li>
+        
+          <li class="md-nav__item">
+  <a href="#observations" class="md-nav__link">
+    <span class="md-ellipsis">
+      Observations
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
       
         <li class="md-nav__item">
-  <a href="#extensibility" class="md-nav__link">
+  <a href="#wb-run" class="md-nav__link">
     <span class="md-ellipsis">
-      Extensibility
+      W&amp;B Run
     </span>
   </a>
   
@@ -617,56 +767,278 @@
 
 
 
-<h1 id="pipeline-architecture">Pipeline Architecture<a class="headerlink" href="#pipeline-architecture" title="Permanent link">&para;</a></h1>
-<p>This document describes the high-level pipeline for Footy Scan.</p>
-<h2 id="components">Components<a class="headerlink" href="#components" title="Permanent link">&para;</a></h2>
+<h1 id="object-detector-training">Object Detector Training<a class="headerlink" href="#object-detector-training" title="Permanent link">&para;</a></h1>
+<p>This document covers how to run the object detector training script and documents baseline training results.</p>
+<h2 id="script-train_object_detectorpy">Script: <code>train_object_detector.py</code><a class="headerlink" href="#script-train_object_detectorpy" title="Permanent link">&para;</a></h2>
+<p><strong>Location:</strong> <code>src/footy_track/scripts/train_object_detector.py</code></p>
+<p>Downloads a labelled dataset from Roboflow, fine-tunes a YOLO model on it, and saves the best weights.</p>
+<h3 id="prerequisites">Prerequisites<a class="headerlink" href="#prerequisites" title="Permanent link">&para;</a></h3>
+<p>Set the Roboflow API key:</p>
+<div class="highlight"><pre><span></span><code><span class="nb">export</span><span class="w"> </span><span class="nv">ROBOFLOW_API_KEY</span><span class="o">=</span>&lt;your-api-key&gt;
+</code></pre></div>
+<p>The key can be found in your Roboflow workspace settings. Alternatively the SDK reads it from <code>~/.config/roboflow/config.json</code> if you have previously run <code>roboflow login</code>.</p>
+<h3 id="usage">Usage<a class="headerlink" href="#usage" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code>uv<span class="w"> </span>run<span class="w"> </span>python<span class="w"> </span>src/footy_track/scripts/train_object_detector.py<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--model<span class="w"> </span>yolo11n<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--dataset-version<span class="w"> </span><span class="m">3</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--freeze<span class="w"> </span><span class="m">9</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--epochs<span class="w"> </span><span class="m">5</span>
+</code></pre></div>
+<h3 id="arguments">Arguments<a class="headerlink" href="#arguments" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Argument</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--model</code></td>
+<td><code>yolo11n</code></td>
+<td>YOLO model variant (e.g. <code>yolo11n</code>, <code>yolo11m</code>). <code>.pt</code> is appended automatically.</td>
+</tr>
+<tr>
+<td><code>--dataset-version</code></td>
+<td><code>3</code></td>
+<td>Roboflow dataset version to download.</td>
+</tr>
+<tr>
+<td><code>--freeze</code></td>
+<td><code>9</code></td>
+<td>Number of backbone layers to freeze. Freezing early layers speeds up training when fine-tuning from a pretrained checkpoint.</td>
+</tr>
+<tr>
+<td><code>--epochs</code></td>
+<td><code>50</code></td>
+<td>Number of training epochs.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="outputs">Outputs<a class="headerlink" href="#outputs" title="Permanent link">&para;</a></h3>
+<p>Weights and plots are saved to:
+<div class="highlight"><pre><span></span><code>footy_scan_detection/&lt;run-name&gt;/weights/best.pt
+footy_scan_detection/&lt;run-name&gt;/weights/last.pt
+</code></pre></div></p>
+<p><code>&lt;run-name&gt;</code> encodes the timestamp and hyperparameters, for example:
+<div class="highlight"><pre><span></span><code>2026-04-26_08-33_model_name=yolo11n_dataset_version=3_epochs=5_freeze_layers=9
+</code></pre></div></p>
+<p>Training metrics are also logged to Weights &amp; Biases under the <code>footy_scan_detection</code> project.</p>
+<hr />
+<h2 id="dataset">Dataset<a class="headerlink" href="#dataset" title="Permanent link">&para;</a></h2>
 <ul>
-<li>InputConsumer</li>
-<li>
-<p>Reads video (file or live feed), decodes frames, and yields frames with timestamps.</p>
-</li>
-<li>
-<p>Processor</p>
-</li>
-<li>Responsible for transforming frame-level detections into tracked, time-accurate observations and events.</li>
-<li>
-<p>May be implemented as a single component or decomposed into three logical stages:</p>
-<ol>
-<li>Detection — run object detection to locate players, ball, referees, etc.</li>
-<li>Tracking — associate detections across frames to produce persistent IDs.</li>
-<li>Event extraction — infer higher-level events (passes, shots, tackles, set-pieces, substitutions) from trajectories and detection history.</li>
-</ol>
-</li>
-<li>
-<p>OutputProducer</p>
-</li>
-<li>Serializes processor outputs and writes to disk, a message bus, or an API. Supports JSON and CSV outputs; CSV is a flattened table view of the same objects.</li>
+<li><strong>Source:</strong> Roboflow workspace <code>egroeg121</code>, project <code>footy-track-detection</code></li>
+<li><strong>Version 3 split:</strong> 162 train / 49 val images</li>
+<li><strong>Classes (7):</strong> <code>coach</code>, <code>in_play_ball</code>, <code>person</code>, <code>player</code>, <code>player_sub</code>, <code>referee</code>, <code>+ keeper</code></li>
+<li><strong>Downloaded to:</strong> <code>data/detection_dataset/roboflow_dataset_&lt;version&gt;/</code></li>
 </ul>
-<h2 id="dataflow">Dataflow<a class="headerlink" href="#dataflow" title="Permanent link">&para;</a></h2>
-<ol>
-<li>InputConsumer decodes and timestamps frames (GameTime + optional video metadata).</li>
-<li>Processor runs detection and tracking, producing per-frame and per-event records with timestamps.</li>
-<li>OutputProducer writes time-accurate, continuous-time records to the selected output format.</li>
-</ol>
-<h2 id="timestamps-and-time-handling">Timestamps and time handling<a class="headerlink" href="#timestamps-and-time-handling" title="Permanent link">&para;</a></h2>
-<p>All timestamps used across the pipeline are stored and exchanged in ContinuousTime (seconds from game start). Video sources commonly expose GameTime (the referee/broadcast clock) which resets at half-time. To produce canonical, continuous outputs the pipeline must convert GameTime to ContinuousTime using GameMetadata supplied by the video source.</p>
+<hr />
+<h2 id="baseline-run-results">Baseline Run Results<a class="headerlink" href="#baseline-run-results" title="Permanent link">&para;</a></h2>
+<p><strong>Run:</strong> <code>2026-04-26_08-33_model_name=yolo11n_dataset_version=3_epochs=5_freeze_layers=9</code></p>
+<h3 id="configuration">Configuration<a class="headerlink" href="#configuration" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Model</td>
+<td>yolo11n (YOLO11 nano)</td>
+</tr>
+<tr>
+<td>Parameters</td>
+<td>2,591,205 (2.6M)</td>
+</tr>
+<tr>
+<td>GFLOPs</td>
+<td>6.4</td>
+</tr>
+<tr>
+<td>Dataset version</td>
+<td>3</td>
+</tr>
+<tr>
+<td>Epochs</td>
+<td>5</td>
+</tr>
+<tr>
+<td>Frozen layers</td>
+<td>9</td>
+</tr>
+<tr>
+<td>Image size</td>
+<td>640</td>
+</tr>
+<tr>
+<td>Device</td>
+<td>MPS (Apple M4)</td>
+</tr>
+<tr>
+<td>Optimizer</td>
+<td>AdamW (lr=0.000909, momentum=0.9)</td>
+</tr>
+<tr>
+<td>Augmentation</td>
+<td>RandAugment + mosaic</td>
+</tr>
+<tr>
+<td>Training time</td>
+<td>~1.3 min (0.022 hours)</td>
+</tr>
+</tbody>
+</table>
+<h3 id="epoch-by-epoch-metrics-validation">Epoch-by-Epoch Metrics (validation)<a class="headerlink" href="#epoch-by-epoch-metrics-validation" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Epoch</th>
+<th>box_loss</th>
+<th>cls_loss</th>
+<th>dfl_loss</th>
+<th>mAP50</th>
+<th>mAP50-95</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>1.286</td>
+<td>4.163</td>
+<td>0.926</td>
+<td>0.0454</td>
+<td>0.0135</td>
+</tr>
+<tr>
+<td>2</td>
+<td>1.223</td>
+<td>3.500</td>
+<td>0.882</td>
+<td>0.0412</td>
+<td>0.0111</td>
+</tr>
+<tr>
+<td>3</td>
+<td>1.251</td>
+<td>3.026</td>
+<td>0.886</td>
+<td>0.0667</td>
+<td>0.0214</td>
+</tr>
+<tr>
+<td>4</td>
+<td>1.251</td>
+<td>2.610</td>
+<td>0.876</td>
+<td>0.0767</td>
+<td>0.0379</td>
+</tr>
+<tr>
+<td>5</td>
+<td>1.240</td>
+<td>2.276</td>
+<td>0.897</td>
+<td>0.0892</td>
+<td>0.0482</td>
+</tr>
+</tbody>
+</table>
+<h3 id="final-validation-bestpt">Final Validation (best.pt)<a class="headerlink" href="#final-validation-bestpt" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Class</th>
+<th>Images</th>
+<th>Instances</th>
+<th>Precision</th>
+<th>Recall</th>
+<th>mAP50</th>
+<th>mAP50-95</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>all</strong></td>
+<td>49</td>
+<td>921</td>
+<td>0.022</td>
+<td>0.267</td>
+<td>0.091</td>
+<td>0.047</td>
+</tr>
+<tr>
+<td>player</td>
+<td>49</td>
+<td>778</td>
+<td>0.122</td>
+<td>0.730</td>
+<td>0.481</td>
+<td>0.241</td>
+</tr>
+<tr>
+<td>coach</td>
+<td>8</td>
+<td>13</td>
+<td>0.003</td>
+<td>0.615</td>
+<td>0.026</td>
+<td>0.020</td>
+</tr>
+<tr>
+<td>referee</td>
+<td>47</td>
+<td>77</td>
+<td>0.004</td>
+<td>0.130</td>
+<td>0.021</td>
+<td>0.009</td>
+</tr>
+<tr>
+<td>player_sub</td>
+<td>3</td>
+<td>8</td>
+<td>0.003</td>
+<td>0.125</td>
+<td>0.019</td>
+<td>0.010</td>
+</tr>
+<tr>
+<td>in_play_ball</td>
+<td>44</td>
+<td>44</td>
+<td>0.000</td>
+<td>0.000</td>
+<td>0.000</td>
+<td>0.000</td>
+</tr>
+<tr>
+<td>person</td>
+<td>1</td>
+<td>1</td>
+<td>0.000</td>
+<td>0.000</td>
+<td>0.000</td>
+<td>0.000</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Inference speed:</strong> 76.3 ms/image (preprocess: 0.1 ms, postprocess: 65.4 ms)</p>
+<h3 id="observations">Observations<a class="headerlink" href="#observations" title="Permanent link">&para;</a></h3>
 <ul>
-<li>ContinuousTime is canonical for storage and downstream consumers.</li>
-<li>Processor outputs MUST include precise ContinuousTime timestamps so downstream systems can reliably align and resample observations.</li>
+<li><strong>Player detection</strong> is the strongest class (mAP50 = 0.481), which is expected given it dominates the training set (778 of 921 validation instances).</li>
+<li><strong>Ball and person</strong> classes have zero mAP after 5 epochs — they are underrepresented or difficult at this scale. More epochs and/or a larger model will be needed for those classes.</li>
+<li><strong>Classification loss is still decreasing</strong> across all 5 epochs, indicating more training would improve results. This run is a baseline only.</li>
+<li><strong>5 epochs with 9 frozen layers</strong> is a minimal sanity-check run. For a production checkpoint, use more epochs (≥50) and consider unfreezing more layers or using a larger model variant (<code>yolo11m</code>, <code>yolo11l</code>).</li>
 </ul>
-<h2 id="implementation-guidance">Implementation guidance<a class="headerlink" href="#implementation-guidance" title="Permanent link">&para;</a></h2>
+<hr />
+<h2 id="wb-run">W&amp;B Run<a class="headerlink" href="#wb-run" title="Permanent link">&para;</a></h2>
+<p>Metrics, curves and model artifacts are synced to Weights &amp; Biases:</p>
 <ul>
-<li>Keep the processing stages small and testable. The Processor can be composed of separate detector, tracker and event extractor classes, or implemented as a single pipeline class that calls the three stages in sequence.</li>
-<li>Ensure every output record includes a precise timestamp in ContinuousTime so downstream systems can reliably align and resample observations.</li>
-<li>Document any assumptions about GameMetadata fields required to convert GameTime to ContinuousTime.</li>
-<li>When consuming video streams:</li>
-<li>For first-half frames ContinuousTime == GameTime (if half_start_continuous == 0).</li>
-<li>For second-half frames ContinuousTime = GameTime + half_start_continuous, where half_start_continuous is the ContinuousTime when the second half kicked off (this accounts for stoppage time in the first half).</li>
-</ul>
-<h2 id="extensibility">Extensibility<a class="headerlink" href="#extensibility" title="Permanent link">&para;</a></h2>
-<ul>
-<li>Each component is intentionally small and replaceable.</li>
-<li>Implement custom detectors, trackers, or event extractors by adhering to the input/output timestamp conventions.</li>
+<li><strong>Project:</strong> <code>footy_scan_detection</code></li>
+<li><strong>Baseline run:</strong> <code>ze990tv6</code></li>
 </ul>
 
 
