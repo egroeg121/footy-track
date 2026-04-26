@@ -22,6 +22,11 @@ wheels/
 # Serena project files (local tooling)
 .serena/
 
+# Polecat runtime state
+.beads/
+.claude/
+.runtime/
+
 # Test artifacts
 tests/data/tmp_extracted_frames
 tests/data/split_videos/
