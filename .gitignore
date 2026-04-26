@@ -31,7 +31,6 @@ CLAUDE.md
 # Test artifacts
 tests/data/tmp_extracted_frames
 tests/data/split_videos/
-model_saves/
 yolo11n.pt
 
 # Training/Inference folders
@@ -39,3 +38,4 @@ runs/
 wandb/
 footy_scan_detection/
 footy_scan_classifier/
+/yolo11n-cls.pt
