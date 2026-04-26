@@ -26,6 +26,7 @@ wheels/
 .beads/
 .claude/
 .runtime/
+CLAUDE.md
 
 # Test artifacts
 tests/data/tmp_extracted_frames
