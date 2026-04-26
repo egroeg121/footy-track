@@ -39,7 +39,7 @@ scripts.footy-track = "footy_track:main"
 
 [dependency-groups]
 dev = [
-  "dvc[s3]>=3.0",
+  "dvc[s3]>=3",
   "fiftyone>=1.8.1",
   "ipython>=9.5",
   "jupyter>=1.1.1",
@@ -89,6 +89,9 @@ ignore = [
 
   # Ignore magic numbers in tests
   "PLR2004",
+
+  # Training scripts have naturally wide function signatures
+  "PLR0913",
 ]
 
 per-file-ignores."tests/*.py" = [ "PLR2004" ]

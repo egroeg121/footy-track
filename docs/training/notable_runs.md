@@ -34,7 +34,7 @@ Use `/train-classifier` to run training and auto-append a new entry here.
 
 **W&B:** `george-barnett-121/footy_scan_classifier/aakevy06`
 
-**Observations:** Best known result. Trained from the `football-scan` project path against a snapshot of dataset v10 where val/test splits likely contained `Unlabeled` samples (or the dataset was binary at the time), making train/val class counts consistent. Not reproducible against the current dataset v10 — see `n5fh28pv` for the reproduction attempt and root-cause analysis.
+**Observations:** Best previously-known result. Trained from the `football-scan` project path against the binary (No/Yes) snapshot of dataset v10. Not directly reproducible via Roboflow download because the current v10 dataset has a 3-class train split (adds `Unlabeled`) with only 2 classes in val/test. See `nsrl1x1g` for the confirmed reproduction using the local binary dataset.
 
 ---
 
@@ -45,7 +45,7 @@ Use `/train-classifier` to run training and auto-append a new entry here.
 | Model | yolo11n-cls |
 | Epochs | 5 |
 | Frozen layers | 9 |
-| Dataset version | 10 |
+| Dataset version | 10 (Roboflow download) |
 | Optimizer | AdamW (lr=0.001429, momentum=0.9) |
 | Image size | 224 |
 | Device | MPS (Apple M4) |
@@ -63,7 +63,7 @@ Use `/train-classifier` to run training and auto-append a new entry here.
 
 **W&B:** `george-barnett-121/footy_scan_classifier/ds9q9dr6`
 
-**Observations:** Minimal 5-epoch baseline run to verify end-to-end pipeline with `DATA_ROOT` env var. Accuracy stalls at 41.3% due to train/val class mismatch (3-class train, 2-class val). Established as the baseline for further runs.
+**Observations:** Minimal 5-epoch baseline run to verify end-to-end pipeline with `DATA_ROOT` env var. Accuracy stalls at 41.3% due to train/val class mismatch in the current Roboflow v10 download (3-class train, 2-class val/test).
 
 ---
 
@@ -74,7 +74,7 @@ Use `/train-classifier` to run training and auto-append a new entry here.
 | Model | yolo11n-cls |
 | Epochs | 50 |
 | Frozen layers | 9 |
-| Dataset version | 10 |
+| Dataset version | 10 (Roboflow download) |
 | Optimizer | AdamW (lr=0.001429, momentum=0.9) |
 | Image size | 224 |
 | Device | MPS (Apple M4) |
@@ -92,7 +92,46 @@ Use `/train-classifier` to run training and auto-append a new entry here.
 
 **W&B:** `george-barnett-121/footy_scan_classifier/n5fh28pv`
 
-**Observations:** Attempted reproduction of `aakevy06` using identical hyperparameters. Top1_acc reached only 0.442 vs reference 0.981. Root cause: current dataset v10 has `Unlabeled` class in train (5 samples) but not in val/test, creating a 3-class model evaluated against a 2-class val set. Accuracy actually falls below the 55.8% majority-class baseline, indicating the model is confused by the extra class. Fix: remove or merge `Unlabeled` into `No` in the Roboflow dataset, then re-export.
+**Observations:** Attempted reproduction of `aakevy06` using identical hyperparameters but via Roboflow download. Reached only 0.442 — below the 55.8% majority-class baseline — due to the train/val class mismatch (`Unlabeled` present in train only). Confirmed that the Roboflow v10 dataset is not suitable for training without first fixing the class split.
+
+---
+
+### nsrl1x1g — 2026-04-26
+
+| Parameter | Value |
+|---|---|
+| Model | yolo11n-cls |
+| Epochs | 50 |
+| Frozen layers | 9 |
+| Dataset | Local binary: `~/code/footy/footy_data/classifier_dataset/roboflow_dataset_10` |
+| Optimizer | AdamW (lr=0.001429, momentum=0.9) |
+| Image size | 224 |
+| Device | MPS (Apple M4) |
+| Training time | ~360 s (0.100 hours) |
+
+**Metrics (best.pt on val set):**
+
+| Metric | Value |
+|---|---|
+| top1_acc | **0.981** |
+| top5_acc | 1.0 |
+| train_loss | 0.024 |
+| val_loss | 0.023 |
+| Inference speed | 1.6 ms/image |
+
+**W&B:** `george-barnett-121/footy_scan_classifier/nsrl1x1g`
+
+**Command:**
+```bash
+uv run python src/footy_track/scripts/train_classifier.py \
+  --model yolo11n-cls \
+  --dataset-version 10 \
+  --freeze 9 \
+  --epochs 50 \
+  --local-dataset ~/code/footy/footy_data/classifier_dataset/roboflow_dataset_10
+```
+
+**Observations:** Confirmed reproduction of reference run `aakevy06`. Using the local binary (No/Yes only) dataset achieves identical accuracy (0.981) with the same hyperparameters. The `--local-dataset` flag added to `train_classifier.py` bypasses the Roboflow download. Accuracy reached 0.913 by epoch 1, 0.981 by epoch 4, and peaked at 1.0 around epoch 23 before settling at 0.981. The binary dataset is the correct training target — the current Roboflow v10 export should be fixed to remove or merge the `Unlabeled` class before use.
 
 ---
 
