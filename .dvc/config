@@ -1,4 +1,4 @@
 [core]
     remote = local_remote
 ['remote "local_remote"']
-    url = /Users/georgebarnett/code/footy/footy_data/dvc_remote
+    url = /Users/georgebarnett/code/dvc-remote
