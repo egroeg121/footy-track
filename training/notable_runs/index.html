@@ -475,6 +475,15 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#nsrl1x1g-2026-04-26" class="md-nav__link">
+    <span class="md-ellipsis">
+      nsrl1x1g — 2026-04-26
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#regression-analysis-aakevy06-vs-n5fh28pv-0981-0433" class="md-nav__link">
     <span class="md-ellipsis">
       Regression Analysis: aakevy06 vs n5fh28pv (0.981 → 0.433)
@@ -663,6 +672,15 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#nsrl1x1g-2026-04-26" class="md-nav__link">
+    <span class="md-ellipsis">
+      nsrl1x1g — 2026-04-26
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#regression-analysis-aakevy06-vs-n5fh28pv-0981-0433" class="md-nav__link">
     <span class="md-ellipsis">
       Regression Analysis: aakevy06 vs n5fh28pv (0.981 → 0.433)
@@ -811,7 +829,7 @@ was notable and how to reproduce it.</p>
 </tbody>
 </table>
 <p><strong>W&amp;B:</strong> <code>george-barnett-121/footy_scan_classifier/aakevy06</code></p>
-<p><strong>Observations:</strong> Best known result. Trained from the <code>football-scan</code> project path against a snapshot of dataset v10 where val/test splits likely contained <code>Unlabeled</code> samples (or the dataset was binary at the time), making train/val class counts consistent. Not reproducible against the current dataset v10 — see <code>n5fh28pv</code> for the reproduction attempt and root-cause analysis.</p>
+<p><strong>Observations:</strong> Best previously-known result. Trained from the <code>football-scan</code> project path against the binary (No/Yes) snapshot of dataset v10. Not directly reproducible via Roboflow download because the current v10 dataset has a 3-class train split (adds <code>Unlabeled</code>) with only 2 classes in val/test. See <code>nsrl1x1g</code> for the confirmed reproduction using the local binary dataset.</p>
 <hr />
 <h3 id="ds9q9dr6-2026-04-26">ds9q9dr6 — 2026-04-26<a class="headerlink" href="#ds9q9dr6-2026-04-26" title="Permanent link">&para;</a></h3>
 <table>
@@ -836,7 +854,7 @@ was notable and how to reproduce it.</p>
 </tr>
 <tr>
 <td>Dataset version</td>
-<td>10</td>
+<td>10 (Roboflow download)</td>
 </tr>
 <tr>
 <td>Optimizer</td>
@@ -888,7 +906,7 @@ was notable and how to reproduce it.</p>
 </tbody>
 </table>
 <p><strong>W&amp;B:</strong> <code>george-barnett-121/footy_scan_classifier/ds9q9dr6</code></p>
-<p><strong>Observations:</strong> Minimal 5-epoch baseline run to verify end-to-end pipeline with <code>DATA_ROOT</code> env var. Accuracy stalls at 41.3% due to train/val class mismatch (3-class train, 2-class val). Established as the baseline for further runs.</p>
+<p><strong>Observations:</strong> Minimal 5-epoch baseline run to verify end-to-end pipeline with <code>DATA_ROOT</code> env var. Accuracy stalls at 41.3% due to train/val class mismatch in the current Roboflow v10 download (3-class train, 2-class val/test).</p>
 <hr />
 <h3 id="n5fh28pv-2026-04-26">n5fh28pv — 2026-04-26<a class="headerlink" href="#n5fh28pv-2026-04-26" title="Permanent link">&para;</a></h3>
 <table>
@@ -913,7 +931,7 @@ was notable and how to reproduce it.</p>
 </tr>
 <tr>
 <td>Dataset version</td>
-<td>10</td>
+<td>10 (Roboflow download)</td>
 </tr>
 <tr>
 <td>Optimizer</td>
@@ -965,7 +983,92 @@ was notable and how to reproduce it.</p>
 </tbody>
 </table>
 <p><strong>W&amp;B:</strong> <code>george-barnett-121/footy_scan_classifier/n5fh28pv</code></p>
-<p><strong>Observations:</strong> Attempted reproduction of <code>aakevy06</code> using identical hyperparameters. Top1_acc reached only 0.442 vs reference 0.981. Root cause: current dataset v10 has <code>Unlabeled</code> class in train (5 samples) but not in val/test, creating a 3-class model evaluated against a 2-class val set. Accuracy actually falls below the 55.8% majority-class baseline, indicating the model is confused by the extra class. Fix: remove or merge <code>Unlabeled</code> into <code>No</code> in the Roboflow dataset, then re-export.</p>
+<p><strong>Observations:</strong> Attempted reproduction of <code>aakevy06</code> using identical hyperparameters but via Roboflow download. Reached only 0.442 — below the 55.8% majority-class baseline — due to the train/val class mismatch (<code>Unlabeled</code> present in train only). Confirmed that the Roboflow v10 dataset is not suitable for training without first fixing the class split.</p>
+<hr />
+<h3 id="nsrl1x1g-2026-04-26">nsrl1x1g — 2026-04-26<a class="headerlink" href="#nsrl1x1g-2026-04-26" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Model</td>
+<td>yolo11n-cls</td>
+</tr>
+<tr>
+<td>Epochs</td>
+<td>50</td>
+</tr>
+<tr>
+<td>Frozen layers</td>
+<td>9</td>
+</tr>
+<tr>
+<td>Dataset</td>
+<td>Local binary: <code>~/code/footy/footy_data/classifier_dataset/roboflow_dataset_10</code></td>
+</tr>
+<tr>
+<td>Optimizer</td>
+<td>AdamW (lr=0.001429, momentum=0.9)</td>
+</tr>
+<tr>
+<td>Image size</td>
+<td>224</td>
+</tr>
+<tr>
+<td>Device</td>
+<td>MPS (Apple M4)</td>
+</tr>
+<tr>
+<td>Training time</td>
+<td>~360 s (0.100 hours)</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Metrics (best.pt on val set):</strong></p>
+<table>
+<thead>
+<tr>
+<th>Metric</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>top1_acc</td>
+<td><strong>0.981</strong></td>
+</tr>
+<tr>
+<td>top5_acc</td>
+<td>1.0</td>
+</tr>
+<tr>
+<td>train_loss</td>
+<td>0.024</td>
+</tr>
+<tr>
+<td>val_loss</td>
+<td>0.023</td>
+</tr>
+<tr>
+<td>Inference speed</td>
+<td>1.6 ms/image</td>
+</tr>
+</tbody>
+</table>
+<p><strong>W&amp;B:</strong> <code>george-barnett-121/footy_scan_classifier/nsrl1x1g</code></p>
+<p><strong>Command:</strong>
+<div class="highlight"><pre><span></span><code>uv<span class="w"> </span>run<span class="w"> </span>python<span class="w"> </span>src/footy_track/scripts/train_classifier.py<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--model<span class="w"> </span>yolo11n-cls<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--dataset-version<span class="w"> </span><span class="m">10</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--freeze<span class="w"> </span><span class="m">9</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--epochs<span class="w"> </span><span class="m">50</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--local-dataset<span class="w"> </span>~/code/footy/footy_data/classifier_dataset/roboflow_dataset_10
+</code></pre></div></p>
+<p><strong>Observations:</strong> Confirmed reproduction of reference run <code>aakevy06</code>. Using the local binary (No/Yes only) dataset achieves identical accuracy (0.981) with the same hyperparameters. The <code>--local-dataset</code> flag added to <code>train_classifier.py</code> bypasses the Roboflow download. Accuracy reached 0.913 by epoch 1, 0.981 by epoch 4, and peaked at 1.0 around epoch 23 before settling at 0.981. The binary dataset is the correct training target — the current Roboflow v10 export should be fixed to remove or merge the <code>Unlabeled</code> class before use.</p>
 <hr />
 <h2 id="regression-analysis-aakevy06-vs-n5fh28pv-0981-0433">Regression Analysis: <code>aakevy06</code> vs <code>n5fh28pv</code> (0.981 → 0.433)<a class="headerlink" href="#regression-analysis-aakevy06-vs-n5fh28pv-0981-0433" title="Permanent link">&para;</a></h2>
 <table>
