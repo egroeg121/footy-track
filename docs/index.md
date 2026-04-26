@@ -12,6 +12,7 @@ Footy Scan is an application that:
 
 ## Getting Started
 
+→ [System Design](system_design.md): Guiding reference for all pipeline stages
 → [Development Guide](development.md): Complete setup and development instructions
 → [Pipeline Architecture](pipeline_architecture.md): Understanding the system design
 → [Time Formats](timings.md): How we handle match timing data
@@ -31,6 +32,11 @@ uv run footy-track
 ```
 
 ## Key Documentation Sections
+
+- **[System Design](system_design.md)**
+  - End-to-end pipeline stages (Input → Broadcast Classifier → Calibration → Detection → Tracking → 2D Projection → Output)
+  - Per-stage inputs, outputs, and implemented vs planned status
+  - Cross-stage invariants and where new component designs fit
 
 - **[Development Guide](development.md)**
   - Environment setup

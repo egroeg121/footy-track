@@ -80,6 +80,7 @@ See `docs/pipeline_architecture.md` for design and extension notes.
 
 ## Documentation
 
+- 🧭 [System Design](docs/system_design.md) — guiding reference for all pipeline stages
 - 📖 [Getting Started Guide](docs/development.md)
 - 🏗️ [Pipeline Architecture](docs/pipeline_architecture.md)
 - ⏱️ [Time Formats and Conversion](docs/timings.md)

@@ -8,6 +8,7 @@ plugins:
 nav:
   - Home: index.md
   - Development:
+      - System Design: system_design.md
       - System Overview: system_overview.md
       - Getting Started: development.md
       - Pipeline Architecture: pipeline_architecture.md
