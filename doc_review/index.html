@@ -1,0 +1,966 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Tracking players, actions, and events in football matches.">
+      
+      
+      
+        <link rel="canonical" href="https://egroeg121.github.io/footy-track/doc_review/">
+      
+      
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.6.20">
+    
+    
+      
+        <title>Documentation Review — docs/ - Footy Scan</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.e53b48f4.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+    
+  </head>
+  
+  
+    <body dir="ltr">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#documentation-review-docs" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="Footy Scan" class="md-header__button md-logo" aria-label="Footy Scan" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Footy Scan
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Documentation Review — docs/
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="Footy Scan" class="md-nav__button md-logo" aria-label="Footy Scan" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Footy Scan
+  </label>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Home
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    Development
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            Development
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../system_design/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    System Design
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../system_overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    System Overview
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../development/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Getting Started
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../pipeline_architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Pipeline Architecture
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../timings/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Time Formats
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../data_formats/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Data Formats
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../training/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Training
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../training/notable_runs/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Notable Training Runs
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    Contributing
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            Contributing
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../agent_guidelines/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Agent Guidelines
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#summary-table" class="md-nav__link">
+    <span class="md-ellipsis">
+      Summary table
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#critical-findings-action-recommended" class="md-nav__link">
+    <span class="md-ellipsis">
+      Critical findings (action recommended)
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Critical findings (action recommended)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-pipelinesmd-describes-a-system-that-doesnt-exist" class="md-nav__link">
+    <span class="md-ellipsis">
+      1. pipelines.md describes a system that doesn't exist
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-detection-class-lists-disagree-across-three-docs-and-the-code" class="md-nav__link">
+    <span class="md-ellipsis">
+      2. Detection-class lists disagree across three docs and the code
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-non-existent-cli-entry-points-referenced" class="md-nav__link">
+    <span class="md-ellipsis">
+      3. Non-existent CLI entry points referenced
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4-agent_guidelinesmd-has-a-typo-on-line-1" class="md-nav__link">
+    <span class="md-ellipsis">
+      4. agent_guidelines.md has a typo on line 1
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#other-gaps-and-inconsistencies" class="md-nav__link">
+    <span class="md-ellipsis">
+      Other gaps and inconsistencies
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Other gaps and inconsistencies">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#5-tracking-status-is-unclear" class="md-nav__link">
+    <span class="md-ellipsis">
+      5. Tracking status is unclear
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#6-broadcast-classifier-role-is-mis-described" class="md-nav__link">
+    <span class="md-ellipsis">
+      6. Broadcast classifier role is mis-described
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#7-metaflow-is-acknowledged-but-not-documented" class="md-nav__link">
+    <span class="md-ellipsis">
+      7. Metaflow is acknowledged but not documented
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#8-naming-drift-footy-scan-vs-footy-track-vs-football-scan" class="md-nav__link">
+    <span class="md-ellipsis">
+      8. Naming drift: Footy Scan vs footy-track vs football-scan
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#9-sam3-detector-undocumented-config-surface" class="md-nav__link">
+    <span class="md-ellipsis">
+      9. SAM3 detector — undocumented config surface
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#10-trainingmd-reference-run-note-is-missing" class="md-nav__link">
+    <span class="md-ellipsis">
+      10. training.md reference run note is missing
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#recommended-priority-order-for-follow-up-beads" class="md-nav__link">
+    <span class="md-ellipsis">
+      Recommended priority order for follow-up beads
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+
+<h1 id="documentation-review-docs">Documentation Review — <code>docs/</code><a class="headerlink" href="#documentation-review-docs" title="Permanent link">&para;</a></h1>
+<p>A holistic alignment audit of every Markdown file under <code>docs/</code> against the
+canonical system description.</p>
+<p><strong>Note on the reference doc.</strong> The originating issue (<code>footy_track-5h0</code>)
+asks for alignment against <code>system_design.md</code>, but no such file exists in
+the repo. The closest match — and the file explicitly self-identifying as
+"the single authoritative reference for contributors and agents"
+(<code>docs/system_overview.md:3</code>) — is <strong><code>system_overview.md</code></strong>, which is what
+this review uses as the canonical baseline. <strong>Recommend either renaming
+<code>system_overview.md</code> → <code>system_design.md</code> or updating downstream docs/beads
+to use the existing name.</strong></p>
+<p>This is a flag-only report; fixes are out of scope.</p>
+<hr />
+<h2 id="summary-table">Summary table<a class="headerlink" href="#summary-table" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Doc</th>
+<th>Aligned with system_overview.md?</th>
+<th>Code drift?</th>
+<th>Internal contradictions</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>index.md</code></td>
+<td>Partial</td>
+<td>Naming inconsistency</td>
+<td>Footy Scan vs footy-track vs football-scan</td>
+</tr>
+<tr>
+<td><code>development.md</code></td>
+<td>Partial</td>
+<td><code>cd football-scan</code> ≠ package name</td>
+<td>Same naming issue</td>
+</tr>
+<tr>
+<td><code>pipeline_architecture.md</code></td>
+<td>Good</td>
+<td>None</td>
+<td>Tracking status unclear</td>
+</tr>
+<tr>
+<td><code>pipelines.md</code></td>
+<td><strong>Poor — describes a 6-stage design that does not exist in code</strong></td>
+<td>Massive</td>
+<td>Contradicts system_overview.md outright</td>
+</tr>
+<tr>
+<td><code>timings.md</code></td>
+<td>Good</td>
+<td>None</td>
+<td>None</td>
+</tr>
+<tr>
+<td><code>data_formats.md</code></td>
+<td>Poor</td>
+<td>Entry points + class list wrong</td>
+<td>Class list differs from training.md</td>
+</tr>
+<tr>
+<td><code>training.md</code></td>
+<td>Partial</td>
+<td>"keeper" class doesn't exist in code</td>
+<td>Class list differs from data_formats.md</td>
+</tr>
+<tr>
+<td><code>training/notable_runs.md</code></td>
+<td>Good</td>
+<td>None</td>
+<td>Reference run only reproducible with the (unversioned) local binary dataset</td>
+</tr>
+<tr>
+<td><code>design/player_tracking_format.md</code></td>
+<td>Good (explicitly DRAFT)</td>
+<td>None — Parquet schema not yet implemented</td>
+<td>None</td>
+</tr>
+<tr>
+<td><code>agent_guidelines.md</code></td>
+<td>Good</td>
+<td>None</td>
+<td>Has a typo on line 1</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="critical-findings-action-recommended">Critical findings (action recommended)<a class="headerlink" href="#critical-findings-action-recommended" title="Permanent link">&para;</a></h2>
+<h3 id="1-pipelinesmd-describes-a-system-that-doesnt-exist">1. <code>pipelines.md</code> describes a system that doesn't exist<a class="headerlink" href="#1-pipelinesmd-describes-a-system-that-doesnt-exist" title="Permanent link">&para;</a></h3>
+<p><code>docs/pipelines.md:13–175</code> describes a six-stage video pipeline (frame
+embeddings, overhead-shot classification via clustering, OCR for the in-game
+clock, field-line matching, homography estimation, camera-geometry
+synchronisation). None of this exists in <code>src/</code>:</p>
+<ul>
+<li>no embeddings module</li>
+<li>no OCR</li>
+<li>no field-line / homography code</li>
+<li>no overhead-shot classifier in the live pipeline (<code>classifier.py</code> is used
+  for Roboflow dataset <em>labelling</em>, not live filtering — <code>labelling.py</code>)</li>
+</ul>
+<p><code>system_overview.md:7–31</code> describes a three-stage pipeline
+(InputConsumer → Processor (Detection/Tracking/Event) → OutputProducer)
+which matches the actual code.</p>
+<p>Neither doc labels its status. A reader cannot tell which is current and
+which is aspirational. <strong>Either delete <code>pipelines.md</code>, mark it
+<code>DRAFT / future-state</code> at the top, or fold its concrete bits into
+<code>pipeline_architecture.md</code>.</strong></p>
+<h3 id="2-detection-class-lists-disagree-across-three-docs-and-the-code">2. Detection-class lists disagree across three docs and the code<a class="headerlink" href="#2-detection-class-lists-disagree-across-three-docs-and-the-code" title="Permanent link">&para;</a></h3>
+<p>The detection class taxonomy is given inconsistently in three places:</p>
+<table>
+<thead>
+<tr>
+<th>Source</th>
+<th>Classes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>system_overview.md:121–135</code></td>
+<td><code>person</code>, <code>ball</code>, <code>in_play_ball</code>, <code>out_of_play_ball</code>, <code>player</code>, <code>player_sub</code>, <code>referee</code>, <code>coach</code> (<strong>8</strong>)</td>
+</tr>
+<tr>
+<td><code>training.md:90</code></td>
+<td><code>coach</code>, <code>in_play_ball</code>, <code>person</code>, <code>player</code>, <code>player_sub</code>, <code>referee</code>, <code>+ keeper</code> (<strong>7+keeper</strong>)</td>
+</tr>
+<tr>
+<td><code>data_formats.md:83–84</code></td>
+<td><code>player</code>, <code>player_sub</code>, <code>coach</code>, <code>referee</code>, <code>keeper</code>, <code>in_play_ball</code>, <code>person</code> (<strong>7+keeper</strong>)</td>
+</tr>
+<tr>
+<td><code>src/footy_track/constants.py:9–16</code> (truth)</td>
+<td><code>ball</code>, <code>person</code>, <code>out_of_play_ball</code>, <code>in_play_ball</code>, <code>player</code>, <code>player_sub</code>, <code>referee</code>, <code>coach</code> (<strong>8</strong>)</td>
+</tr>
+</tbody>
+</table>
+<p><code>keeper</code>/<code>goalkeeper</code> is <strong>not</strong> a constant. <code>detectors/ultralytics.py</code>
+collapses goalkeeper detections to <code>PLAYER_TAG</code>. <strong>Two docs invent a
+<code>keeper</code> class that the code doesn't have.</strong> Pick one canonical taxonomy
+(probably <code>constants.py</code>) and align the other docs.</p>
+<h3 id="3-non-existent-cli-entry-points-referenced">3. Non-existent CLI entry points referenced<a class="headerlink" href="#3-non-existent-cli-entry-points-referenced" title="Permanent link">&para;</a></h3>
+<p><code>docs/data_formats.md:35</code> tells the reader to run:</p>
+<div class="highlight"><pre><span></span><code>uv<span class="w"> </span>run<span class="w"> </span>footy-track-extract-frames<span class="w"> </span>data/arsenal_mancity/original_video/match.mp4<span class="w"> </span>...
+</code></pre></div>
+<p>The only entry point defined in <code>pyproject.toml</code> is
+<code>scripts.footy-track = "footy_track:main"</code>. There is no
+<code>footy-track-extract-frames</code>, no <code>footy-track-classify-frames</code>, and no
+training-script entry point. Anyone copy-pasting this fails immediately.
+The actual scripts live at <code>src/footy_track/scripts/*.py</code> and must be
+invoked as <code>uv run python src/footy_track/scripts/extract_frames.py …</code>.</p>
+<h3 id="4-agent_guidelinesmd-has-a-typo-on-line-1">4. <code>agent_guidelines.md</code> has a typo on line 1<a class="headerlink" href="#4-agent_guidelinesmd-has-a-typo-on-line-1" title="Permanent link">&para;</a></h3>
+<p><code>docs/agent_guidelines.md:1</code> reads <code>Rea# Agent and Tooling Guidelines</code> —
+the leading <code>Rea</code> is garbage and breaks the H1. Should be
+<code># Agent and Tooling Guidelines</code>.</p>
+<hr />
+<h2 id="other-gaps-and-inconsistencies">Other gaps and inconsistencies<a class="headerlink" href="#other-gaps-and-inconsistencies" title="Permanent link">&para;</a></h2>
+<h3 id="5-tracking-status-is-unclear">5. Tracking status is unclear<a class="headerlink" href="#5-tracking-status-is-unclear" title="Permanent link">&para;</a></h3>
+<p><code>system_overview.md:49–54</code> calls Stage 2 (Tracking) "planned" — not yet
+implemented. <code>pipeline_architecture.md:13–14</code> describes tracking as one of
+three optionally-decomposable stages without saying whether it currently
+exists. There's no single doc stating the current status, the roadmap, or
+how a contributor would enable it. The repo <em>does</em> have a <code>tracking/</code>
+concept referenced (e.g. <code>lap</code> for Hungarian assignment per
+<code>/Users/georgebarnett/code/CLAUDE.md</code>) but no doc describes the actual
+implementation surface.</p>
+<h3 id="6-broadcast-classifier-role-is-mis-described">6. Broadcast classifier role is mis-described<a class="headerlink" href="#6-broadcast-classifier-role-is-mis-described" title="Permanent link">&para;</a></h3>
+<p><code>system_overview.md:60–64</code> and the design notes around line 214 imply the
+broadcast-frame classifier is an optional pre-filter for live detection.
+In code, <code>classifier.py</code> + <code>labelling.py</code> is a <em>dataset-curation</em> tool that
+labels Roboflow uploads as <code>Yes</code> / <code>No</code>. There is no live filtering happening
+in the detection pipeline.</p>
+<h3 id="7-metaflow-is-acknowledged-but-not-documented">7. Metaflow is acknowledged but not documented<a class="headerlink" href="#7-metaflow-is-acknowledged-but-not-documented" title="Permanent link">&para;</a></h3>
+<p><code>system_overview.md:204–206</code> mentions <code>metaflow/</code> exists for "batch
+processing pipelines" but says nothing more. No doc describes which flows
+exist, how to run them, or whether they're production / experimental. The
+<code>metaflow/</code> directory in the repo has flow definitions but no README and no
+mkdocs nav entry.</p>
+<h3 id="8-naming-drift-footy-scan-vs-footy-track-vs-football-scan">8. Naming drift: <code>Footy Scan</code> vs <code>footy-track</code> vs <code>football-scan</code><a class="headerlink" href="#8-naming-drift-footy-scan-vs-footy-track-vs-football-scan" title="Permanent link">&para;</a></h3>
+<ul>
+<li><code>index.md:3</code> and <code>index.md:7</code>: "Footy Scan" (marketing).</li>
+<li><code>pyproject.toml:9</code>: package name <code>footy-track</code>.</li>
+<li><code>development.md:10</code>: tells you to <code>cd football-scan</code> (a path that
+  doesn't match the package). The aakevy06 W&amp;B run was historically also
+  produced from a <code>football-scan</code> directory.</li>
+</ul>
+<p>This is mostly cosmetic but onboarding contributors will be briefly
+confused. Pick one external name and one repo/dir name and flatten the
+others.</p>
+<h3 id="9-sam3-detector-undocumented-config-surface">9. SAM3 detector — undocumented config surface<a class="headerlink" href="#9-sam3-detector-undocumented-config-surface" title="Permanent link">&para;</a></h3>
+<p><code>system_overview.md:45–46</code> describes the SAM3 detector capabilities
+(text prompts, per-prompt confidence thresholds, centre-distance NMS) but
+not that prompts and thresholds are hard-coded in <code>_prompt_specs</code>
+(<code>detectors/ultralytics.py:113–131</code>) or that there is a <code>bbox_padding_percent</code>
+parameter (line 102). For anyone trying to retune it, this matters.</p>
+<h3 id="10-trainingmd-reference-run-note-is-missing">10. <code>training.md</code> reference run note is missing<a class="headerlink" href="#10-trainingmd-reference-run-note-is-missing" title="Permanent link">&para;</a></h3>
+<p><code>training/notable_runs.md</code> is internally consistent and the reference-run
+analysis is solid. One small gap: it doesn't note that <code>aakevy06</code>'s
+reproducer (<code>nsrl1x1g</code>) only succeeded against a <em>local</em> binary dataset
+that is not under DVC or version control. There is no path to reproduce
+<code>aakevy06</code> from a clean checkout. <strong>Recommend filing a bead to put the
+binary v10 dataset under DVC or to cut a Roboflow <code>version=11</code> with the
+<code>Unlabeled</code> class removed (already discussed in <code>notable_runs.md</code>).</strong></p>
+<hr />
+<h2 id="recommended-priority-order-for-follow-up-beads">Recommended priority order for follow-up beads<a class="headerlink" href="#recommended-priority-order-for-follow-up-beads" title="Permanent link">&para;</a></h2>
+<ol>
+<li><strong>(high)</strong> Resolve <code>pipelines.md</code> vs <code>system_overview.md</code>: either mark
+   <code>pipelines.md</code> as future-state or delete it.</li>
+<li><strong>(high)</strong> Single-source the detection class taxonomy from
+   <code>constants.py</code> and update <code>system_overview.md</code>, <code>training.md</code>,
+   <code>data_formats.md</code> to match.</li>
+<li><strong>(high)</strong> Fix the broken <code>footy-track-extract-frames</code> invocation in
+   <code>data_formats.md:35</code> (and audit other docs for similarly-stale
+   entry-point examples).</li>
+<li><strong>(low)</strong> Fix the <code>Rea# …</code> typo in <code>agent_guidelines.md:1</code>.</li>
+<li><strong>(med)</strong> Decide whether <code>system_overview.md</code> should be renamed to
+   <code>system_design.md</code> so the bead language matches reality, or update the
+   bead/process language to match the existing filename.</li>
+<li><strong>(med)</strong> Document <code>metaflow/</code> flows; either give them their own page
+   or expand <code>system_overview.md:204–206</code>.</li>
+<li><strong>(med)</strong> Clarify tracking status in one canonical place.</li>
+<li><strong>(low)</strong> Flatten the <code>Footy Scan</code> / <code>footy-track</code> / <code>football-scan</code>
+   naming.</li>
+</ol>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      <script id="__config" type="application/json">{"base": "..", "features": [], "search": "../assets/javascripts/workers/search.973d3a69.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.f55a23d4.min.js"></script>
+      
+    
+  </body>
+</html>
