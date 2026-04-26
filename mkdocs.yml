@@ -1,4 +1,5 @@
 site_name: Footy Scan
+site_url: https://egroeg121.github.io/footy-track/
 site_description: Tracking players, actions, and events in football matches.
 theme:
   name: material
