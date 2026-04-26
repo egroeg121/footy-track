@@ -10,6 +10,17 @@ Downloads a labelled dataset from Roboflow, fine-tunes a YOLO model on it, and s
 
 ### Prerequisites
 
+**Environment variables — `.envrc`**
+
+A `.envrc` file (managed by [direnv](https://direnv.net/)) is provided at the repo root to set local environment variables. It is listed in `.gitignore` and is not committed.
+
+```bash
+# .envrc (already present in the repo root)
+export DATA_ROOT="$PWD/data"
+```
+
+`DATA_ROOT` points to the `data/` directory at the project root, which is where downloaded datasets and other local data files are stored. Run `direnv allow` once after cloning to activate it.
+
 Set the Roboflow API key:
 
 ```bash
