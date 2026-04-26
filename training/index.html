@@ -1029,12 +1029,236 @@ footy_scan_classifier/&lt;run-name&gt;/weights/last.pt
 <li><strong>For a production checkpoint</strong>, unfreeze more layers (e.g. <code>--freeze 0</code>), train for more epochs (≥50), and consider a larger model (<code>yolo11s-cls</code>, <code>yolo11m-cls</code>). Data augmentation and a larger dataset would also help.</li>
 </ul>
 <hr />
-<h2 id="wb-run_1">W&amp;B Run<a class="headerlink" href="#wb-run_1" title="Permanent link">&para;</a></h2>
+<h2 id="wb-runs">W&amp;B Runs<a class="headerlink" href="#wb-runs" title="Permanent link">&para;</a></h2>
 <p>Metrics, curves and model artifacts are synced to Weights &amp; Biases:</p>
 <ul>
 <li><strong>Project:</strong> <code>footy_scan_classifier</code></li>
-<li><strong>Baseline run:</strong> <code>ds9q9dr6</code></li>
+<li><strong>Baseline run (5 epochs):</strong> <code>ds9q9dr6</code></li>
+<li><strong>50-epoch reproduction run:</strong> <code>n5fh28pv</code></li>
 </ul>
+<hr />
+<h2 id="reference-run-wb-aakevy06-january-2026">Reference Run: W&amp;B <code>aakevy06</code> (January 2026)<a class="headerlink" href="#reference-run-wb-aakevy06-january-2026" title="Permanent link">&para;</a></h2>
+<p>The best previously-known classifier result is W&amp;B run <code>aakevy06</code>, trained in January 2026 from the <code>football-scan</code> project path.</p>
+<h3 id="configuration-from-wb">Configuration (from W&amp;B)<a class="headerlink" href="#configuration-from-wb" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Model</td>
+<td>yolo11n-cls</td>
+</tr>
+<tr>
+<td>Epochs</td>
+<td>50</td>
+</tr>
+<tr>
+<td>Frozen layers</td>
+<td>9</td>
+</tr>
+<tr>
+<td>Dataset version</td>
+<td>10</td>
+</tr>
+<tr>
+<td>Image size</td>
+<td>224</td>
+</tr>
+<tr>
+<td>Optimizer</td>
+<td>auto (AdamW)</td>
+</tr>
+<tr>
+<td>Device</td>
+<td>MPS</td>
+</tr>
+<tr>
+<td>Runtime</td>
+<td>~316 s (0.088 hours)</td>
+</tr>
+</tbody>
+</table>
+<h3 id="results">Results<a class="headerlink" href="#results" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Metric</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>top1_acc</td>
+<td><strong>0.981</strong></td>
+</tr>
+<tr>
+<td>top5_acc</td>
+<td>1.0</td>
+</tr>
+<tr>
+<td>train/loss</td>
+<td>0.024</td>
+</tr>
+<tr>
+<td>val/loss</td>
+<td>0.023</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="50-epoch-reproduction-run">50-Epoch Reproduction Run<a class="headerlink" href="#50-epoch-reproduction-run" title="Permanent link">&para;</a></h2>
+<p>Attempted to reproduce <code>aakevy06</code> using identical hyperparameters against the current dataset version 10.</p>
+<p><strong>Run:</strong> <code>2026-04-26_09-56_model_name=yolo11n-cls_dataset_version=10_epochs=50_freeze_layers=9</code></p>
+<h3 id="configuration_2">Configuration<a class="headerlink" href="#configuration_2" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Model</td>
+<td>yolo11n-cls</td>
+</tr>
+<tr>
+<td>Parameters</td>
+<td>1,534,947 (1.5M)</td>
+</tr>
+<tr>
+<td>GFLOPs</td>
+<td>3.3</td>
+</tr>
+<tr>
+<td>Dataset version</td>
+<td>10</td>
+</tr>
+<tr>
+<td>Epochs</td>
+<td>50</td>
+</tr>
+<tr>
+<td>Frozen layers</td>
+<td>9</td>
+</tr>
+<tr>
+<td>Image size</td>
+<td>224</td>
+</tr>
+<tr>
+<td>Device</td>
+<td>MPS (Apple M4)</td>
+</tr>
+<tr>
+<td>Optimizer</td>
+<td>AdamW (lr=0.001429, momentum=0.9)</td>
+</tr>
+<tr>
+<td>Training time</td>
+<td>~0.095 hours (~5.7 min)</td>
+</tr>
+</tbody>
+</table>
+<h3 id="epoch-by-epoch-metrics-validation-top1_acc-selected-epochs">Epoch-by-Epoch Metrics (validation top1_acc, selected epochs)<a class="headerlink" href="#epoch-by-epoch-metrics-validation-top1_acc-selected-epochs" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Epoch</th>
+<th>top1_acc</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>0.356</td>
+</tr>
+<tr>
+<td>2</td>
+<td>0.404</td>
+</tr>
+<tr>
+<td>5</td>
+<td>0.413</td>
+</tr>
+<tr>
+<td>7</td>
+<td><strong>0.442</strong> ← best</td>
+</tr>
+<tr>
+<td>10–49</td>
+<td>0.433 (flat)</td>
+</tr>
+<tr>
+<td>50</td>
+<td>0.433</td>
+</tr>
+</tbody>
+</table>
+<h3 id="final-validation-bestpt_2">Final Validation (best.pt)<a class="headerlink" href="#final-validation-bestpt_2" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Metric</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>top1_acc</td>
+<td>0.442</td>
+</tr>
+<tr>
+<td>top5_acc</td>
+<td>1.0</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Inference speed:</strong> 0.1 ms preprocess, 1.8 ms inference, 0.0 ms postprocess per image</p>
+<h3 id="results-vs-reference">Results vs Reference<a class="headerlink" href="#results-vs-reference" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>Reference <code>aakevy06</code></th>
+<th>This run</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>top1_acc</td>
+<td><strong>0.981</strong></td>
+<td>0.442</td>
+</tr>
+<tr>
+<td>train/loss</td>
+<td>0.024</td>
+<td>0.030</td>
+</tr>
+<tr>
+<td>val/loss</td>
+<td>0.023</td>
+<td>8.018</td>
+</tr>
+</tbody>
+</table>
+<h3 id="why-the-results-differ">Why the Results Differ<a class="headerlink" href="#why-the-results-differ" title="Permanent link">&para;</a></h3>
+<p>The reproduction run achieved <strong>0.442 top1_acc</strong>, far below the reference run's <strong>0.981</strong>. The cause is a dataset class mismatch:</p>
+<ul>
+<li><strong>Training set (current):</strong> 3 classes — <code>No</code> (165), <code>Unlabeled</code> (5), <code>Yes</code> (222)</li>
+<li><strong>Val/test set (current):</strong> 2 classes — <code>No</code> and <code>Yes</code> only; <code>Unlabeled</code> is absent</li>
+</ul>
+<p>Ultralytics warns about this at startup (<code>found 2 classes, requires 3</code>) but proceeds. The 3-class model is evaluated against a 2-class val set, so any image predicted as <code>Unlabeled</code> is counted wrong. Additionally, 0.442 is below the majority-class baseline of 0.558 (58/104 val images are <code>Yes</code>), suggesting the frozen backbone's learned representations do not transfer well to this task with only 5 <code>Unlabeled</code> training samples distorting the class boundaries.</p>
+<p>The January 2026 reference run (<code>aakevy06</code>) likely used a snapshot of dataset version 10 where the val/test splits also contained <code>Unlabeled</code> samples (making evaluation consistent), or an earlier version where the dataset was binary. The dataset has since diverged.</p>
+<h3 id="recommended-fix">Recommended Fix<a class="headerlink" href="#recommended-fix" title="Permanent link">&para;</a></h3>
+<p>To reproduce reference-level accuracy:
+1. <strong>Remove or merge <code>Unlabeled</code></strong> — relabel <code>Unlabeled</code> images as <code>No</code> or drop them. This makes training and validation consistent (binary <code>No</code>/<code>Yes</code>).
+2. <strong>Re-download a corrected dataset version</strong> from Roboflow once the split is fixed.
+3. Consider using <code>--freeze 0</code> to allow full fine-tuning for better adaptation to this domain.</p>
 
 
 
