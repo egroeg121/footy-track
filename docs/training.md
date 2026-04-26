@@ -1,3 +1,9 @@
+# Training
+
+This document covers how to run the training scripts and documents baseline results.
+
+---
+
 # Object Detector Training
 
 This document covers how to run the object detector training script and documents baseline training results.
@@ -145,3 +151,136 @@ Metrics, curves and model artifacts are synced to Weights & Biases:
 
 - **Project:** `footy_scan_detection`
 - **Baseline run:** `ze990tv6`
+
+---
+
+# Classifier Training
+
+This section covers the broadcast-frame classifier: a model that determines whether a video frame shows the game in play.
+
+## Script: `train_classifier.py`
+
+**Location:** `src/footy_track/scripts/train_classifier.py`
+
+Downloads a labelled dataset from Roboflow, fine-tunes a YOLO classification model on it, and saves the best weights.
+
+### Prerequisites
+
+Same `.envrc` and `ROBOFLOW_API_KEY` setup as the object detector (see above).
+
+### Usage
+
+```bash
+uv run python src/footy_track/scripts/train_classifier.py \
+  --model yolo11n-cls \
+  --dataset-version 10 \
+  --freeze 9 \
+  --epochs 5
+```
+
+To run without direnv active, pass `DATA_ROOT` inline:
+
+```bash
+DATA_ROOT="$PWD/data" uv run python src/footy_track/scripts/train_classifier.py \
+  --model yolo11n-cls \
+  --dataset-version 10 \
+  --freeze 9 \
+  --epochs 5
+```
+
+### Arguments
+
+| Argument | Default | Description |
+|---|---|---|
+| `--model` | `yolo11n-cls` | YOLO classification model variant. `.pt` is appended automatically. |
+| `--dataset-version` | `10` | Roboflow dataset version to download. |
+| `--freeze` | `9` | Number of backbone layers to freeze. |
+| `--epochs` | `50` | Number of training epochs. |
+
+### Outputs
+
+Weights and plots are saved to:
+```
+footy_scan_classifier/<run-name>/weights/best.pt
+footy_scan_classifier/<run-name>/weights/last.pt
+```
+
+`<run-name>` encodes the timestamp and hyperparameters, for example:
+```
+2026-04-26_09-16_model_name=yolo11n-cls_dataset_version=10_epochs=5_freeze_layers=9
+```
+
+---
+
+## Dataset
+
+- **Source:** Roboflow workspace `egroeg121`, project `footy-track-broadcast-frame`
+- **Version 10 split:**
+
+| Split | Images | Classes present |
+|---|---|---|
+| train | 392 | No (165), Unlabeled (5), Yes (222) |
+| valid | 104 | No (46), Yes (58) |
+| test | 100 | No (47), Yes (53) |
+
+- **Classes:** `No` (frame not in play), `Yes` (frame in play), `Unlabeled` (ambiguous — train only)
+- **Note:** `Unlabeled` is absent from val and test splits. Accuracy metrics during training are reported on the two-class (`No` / `Yes`) val set.
+- **Downloaded to:** `$DATA_ROOT/classifier_dataset/roboflow_dataset_<version>/`
+
+---
+
+## Baseline Run Results
+
+**Run:** `2026-04-26_09-16_model_name=yolo11n-cls_dataset_version=10_epochs=5_freeze_layers=9`
+
+### Configuration
+
+| Parameter | Value |
+|---|---|
+| Model | yolo11n-cls (YOLO11 nano classifier) |
+| Parameters | 1,534,947 (1.5M) |
+| GFLOPs | 3.3 |
+| Dataset version | 10 |
+| Epochs | 5 |
+| Frozen layers | 9 |
+| Image size | 224 |
+| Device | MPS (Apple M4) |
+| Optimizer | AdamW (lr=0.001429, momentum=0.9) |
+| Augmentation | RandAugment |
+| Training time | ~36 s (0.010 hours) |
+
+### Epoch-by-Epoch Metrics (validation)
+
+| Epoch | train_loss | top1_acc | top5_acc |
+|---|---|---|---|
+| 1 | 0.734 | 0.356 | 1.0 |
+| 2 | 0.288 | 0.404 | 1.0 |
+| 3 | 0.185 | 0.404 | 1.0 |
+| 4 | 0.190 | 0.413 | 1.0 |
+| 5 | 0.149 | 0.413 | 1.0 |
+
+### Final Validation (best.pt)
+
+| Metric | Value |
+|---|---|
+| top1_acc | 0.413 |
+| top5_acc | 1.0 |
+
+**Inference speed:** 0.1 ms preprocess, 2.9 ms inference, 0.0 ms postprocess per image
+
+### Observations
+
+- **top1_acc plateaus at 41.3%** after epoch 2 — well below a useful threshold for production use. With only the classifier head unfrozen (9 of 10 backbone layers frozen), the model has limited capacity to adapt to this task.
+- **top5_acc is trivially 1.0** — there are only 3 classes, so a top-5 prediction always includes the correct label. This metric is not meaningful here.
+- **Val loss diverges** while train loss falls (train: 0.149 vs W&B final val: ~5.97), indicating overfitting even at 5 epochs. The training set is small (392 images) and the val set is missing the `Unlabeled` class.
+- **`Unlabeled` class** has only 5 training samples — the model cannot learn this class reliably. Consider merging it into `No` or removing it from the dataset for future runs.
+- **For a production checkpoint**, unfreeze more layers (e.g. `--freeze 0`), train for more epochs (≥50), and consider a larger model (`yolo11s-cls`, `yolo11m-cls`). Data augmentation and a larger dataset would also help.
+
+---
+
+## W&B Run
+
+Metrics, curves and model artifacts are synced to Weights & Biases:
+
+- **Project:** `footy_scan_classifier`
+- **Baseline run:** `ds9q9dr6`
