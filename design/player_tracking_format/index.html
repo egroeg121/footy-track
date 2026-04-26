@@ -1,0 +1,1248 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Tracking players, actions, and events in football matches.">
+      
+      
+      
+        <link rel="canonical" href="https://egroeg121.github.io/footy-track/design/player_tracking_format/">
+      
+      
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.6.20">
+    
+    
+      
+        <title>Player Tracking Data Format — Design - Footy Scan</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.e53b48f4.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+    
+  </head>
+  
+  
+    <body dir="ltr">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#player-tracking-data-format-design" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="Footy Scan" class="md-header__button md-logo" aria-label="Footy Scan" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Footy Scan
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Player Tracking Data Format — Design
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="Footy Scan" class="md-nav__button md-logo" aria-label="Footy Scan" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Footy Scan
+  </label>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Home
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    Development
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            Development
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../system_overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    System Overview
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Getting Started
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../pipeline_architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Pipeline Architecture
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../timings/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Time Formats
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../data_formats/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Data Formats
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../training/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Training
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    Contributing
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            Contributing
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../agent_guidelines/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Agent Guidelines
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-goals-and-non-goals" class="md-nav__link">
+    <span class="md-ellipsis">
+      1. Goals and non-goals
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-background-existing-tracking-output-formats" class="md-nav__link">
+    <span class="md-ellipsis">
+      2. Background — existing tracking output formats
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="2. Background — existing tracking output formats">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#21-ultralytics-resultsboxes-bot-sort-bytetrack" class="md-nav__link">
+    <span class="md-ellipsis">
+      2.1 Ultralytics results.boxes (BoT-SORT / ByteTrack)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#22-mot-challenge-csv" class="md-nav__link">
+    <span class="md-ellipsis">
+      2.2 MOT Challenge CSV
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#23-bytetrack-bot-sort-internals" class="md-nav__link">
+    <span class="md-ellipsis">
+      2.3 ByteTrack / BoT-SORT internals
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-proposed-schema" class="md-nav__link">
+    <span class="md-ellipsis">
+      3. Proposed schema
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="3. Proposed schema">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#31-boundingbox" class="md-nav__link">
+    <span class="md-ellipsis">
+      3.1 BoundingBox
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#32-detection" class="md-nav__link">
+    <span class="md-ellipsis">
+      3.2 Detection
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#33-track" class="md-nav__link">
+    <span class="md-ellipsis">
+      3.3 Track
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-file-format-recommendation" class="md-nav__link">
+    <span class="md-ellipsis">
+      4. File format recommendation
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="4. File format recommendation">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#41-recommendation-parquet-one-file-per-match-row-detection" class="md-nav__link">
+    <span class="md-ellipsis">
+      4.1 Recommendation: Parquet, one file per match, row = Detection
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#42-alternatives-considered" class="md-nav__link">
+    <span class="md-ellipsis">
+      4.2 Alternatives considered
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-track-id-lifecycle" class="md-nav__link">
+    <span class="md-ellipsis">
+      5. Track ID lifecycle
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="5. Track ID lifecycle">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#51-states-pipeline-level" class="md-nav__link">
+    <span class="md-ellipsis">
+      5.1 States (pipeline-level)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#52-id-allocation-rules" class="md-nav__link">
+    <span class="md-ellipsis">
+      5.2 ID allocation rules
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#53-skeleton-consumer-rule" class="md-nav__link">
+    <span class="md-ellipsis">
+      5.3 Skeleton consumer rule
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-open-questions-todo" class="md-nav__link">
+    <span class="md-ellipsis">
+      6. Open questions (TODO)
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-summary" class="md-nav__link">
+    <span class="md-ellipsis">
+      7. Summary
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+
+<h1 id="player-tracking-data-format-design">Player Tracking Data Format — Design<a class="headerlink" href="#player-tracking-data-format-design" title="Permanent link">&para;</a></h1>
+<p>Status: <strong>DRAFT</strong> · Issue: footy_track-dg6</p>
+<p>This document proposes the on-disk and in-memory data format for player
+tracking output produced by the footy-track pipeline. It is the contract
+between the <strong>Tracking</strong> stage (see <code>docs/pipeline_architecture.md</code>) and any
+downstream consumer (footy-stats, evaluation, visualisation, FiftyOne).</p>
+<p>It does <strong>not</strong> prescribe a specific tracker implementation. ByteTrack /
+BoT-SORT / SORT / a custom Hungarian assigner can all produce the format
+described here.</p>
+<hr />
+<h2 id="1-goals-and-non-goals">1. Goals and non-goals<a class="headerlink" href="#1-goals-and-non-goals" title="Permanent link">&para;</a></h2>
+<p><strong>Goals</strong></p>
+<ul>
+<li>Define a stable, versioned schema for <code>Track</code>, <code>Detection</code>, and
+  <code>BoundingBox</code> records produced by the tracker.</li>
+<li>Pick a primary file format suited to per-frame, per-object time-series
+  data that is easy to append to during processing and easy to query
+  downstream.</li>
+<li>Specify the lifecycle of a track ID (creation, update, lost, deleted,
+  re-identified) so producers and consumers agree on semantics.</li>
+<li>Stay aligned with existing conventions in the repo:</li>
+<li>Pydantic schemas (<code>src/footy_track/schema.py</code>).</li>
+<li>ContinuousTime as canonical timestamp (<code>docs/timings.md</code>).</li>
+<li>Normalised xywh bounding boxes (<code>ObjectDetection</code> in <code>schema.py</code>).</li>
+<li>Detection class labels from <code>src/footy_track/constants.py</code>.</li>
+</ul>
+<p><strong>Non-goals</strong></p>
+<ul>
+<li>Defining the action/event schema (covered separately by <code>labelling.py</code>
+  and the footy-stats action tag model).</li>
+<li>Defining the team-roster / player-identity schema (jersey number → player
+  ID resolution is flagged as an open question below).</li>
+<li>Specifying the tracker algorithm itself.</li>
+</ul>
+<hr />
+<h2 id="2-background-existing-tracking-output-formats">2. Background — existing tracking output formats<a class="headerlink" href="#2-background-existing-tracking-output-formats" title="Permanent link">&para;</a></h2>
+<p>A short survey of formats we considered. None is adopted verbatim; the
+proposed schema in §3 is a superset of the useful fields from each.</p>
+<h3 id="21-ultralytics-resultsboxes-bot-sort-bytetrack">2.1 Ultralytics <code>results.boxes</code> (BoT-SORT / ByteTrack)<a class="headerlink" href="#21-ultralytics-resultsboxes-bot-sort-bytetrack" title="Permanent link">&para;</a></h3>
+<p>When <code>model.track(...)</code> is called, Ultralytics returns a <code>Results</code> object
+per frame whose <code>boxes</code> attribute exposes:</p>
+<table>
+<thead>
+<tr>
+<th>Attribute</th>
+<th>Shape</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>boxes.xyxy</code></td>
+<td><code>(N, 4)</code></td>
+<td>absolute pixel xyxy</td>
+</tr>
+<tr>
+<td><code>boxes.xywh</code></td>
+<td><code>(N, 4)</code></td>
+<td>absolute pixel centre xywh</td>
+</tr>
+<tr>
+<td><code>boxes.xywhn</code></td>
+<td><code>(N, 4)</code></td>
+<td>normalised centre xywh</td>
+</tr>
+<tr>
+<td><code>boxes.conf</code></td>
+<td><code>(N,)</code></td>
+<td>detection confidence</td>
+</tr>
+<tr>
+<td><code>boxes.cls</code></td>
+<td><code>(N,)</code></td>
+<td>class index into <code>model.names</code></td>
+</tr>
+<tr>
+<td><code>boxes.id</code></td>
+<td><code>(N,)</code> or <code>None</code></td>
+<td>tracker-assigned integer track ID</td>
+</tr>
+</tbody>
+</table>
+<p>Notes:
+- <code>boxes.id</code> is <code>None</code> for any detection the tracker did <strong>not</strong> associate
+  with a confirmed track this frame. Producers must handle the <code>None</code> case.
+- The tracker config (<code>bytetrack.yaml</code>, <code>botsort.yaml</code>) controls
+  <code>track_buffer</code> (frames a lost track is kept alive) and
+  <code>track_high_thresh</code> / <code>track_low_thresh</code>.
+- Ultralytics emits per-frame results; there is no native multi-frame file
+  format. We must serialise.
+- Ultralytics uses <strong>centre xywh</strong>; our <code>ObjectDetection</code> schema uses
+  <strong>top-left xywh</strong>. The conversion happens at the detector boundary.</p>
+<h3 id="22-mot-challenge-csv">2.2 MOT Challenge CSV<a class="headerlink" href="#22-mot-challenge-csv" title="Permanent link">&para;</a></h3>
+<p>The MOTChallenge benchmark (<code>MOT16</code>, <code>MOT17</code>, <code>MOT20</code>) standard output is
+one row per detection per frame:</p>
+<div class="highlight"><pre><span></span><code>&lt;frame&gt;, &lt;id&gt;, &lt;bb_left&gt;, &lt;bb_top&gt;, &lt;bb_width&gt;, &lt;bb_height&gt;, &lt;conf&gt;, &lt;x&gt;, &lt;y&gt;, &lt;z&gt;
+</code></pre></div>
+<ul>
+<li><code>frame</code>: 1-indexed frame number.</li>
+<li><code>id</code>: integer track ID; <code>-1</code> for un-tracked detections in some variants.</li>
+<li><code>bb_*</code>: absolute pixel bounding box (top-left + width/height).</li>
+<li><code>conf</code>: detection confidence (also used as a "ignore" flag in ground
+  truth via <code>0</code> / <code>1</code>).</li>
+<li><code>x, y, z</code>: 3D world coordinates; usually <code>-1, -1, -1</code> for 2D MOT.</li>
+</ul>
+<p>Strengths: extremely simple, supported by every MOT evaluator
+(<code>py-motmetrics</code>, <code>TrackEval</code>).</p>
+<p>Weaknesses: no class label column (MOT assumes a single class), no time
+column (only frame index), no schema version, no per-track metadata, no
+team / jersey columns.</p>
+<h3 id="23-bytetrack-bot-sort-internals">2.3 ByteTrack / BoT-SORT internals<a class="headerlink" href="#23-bytetrack-bot-sort-internals" title="Permanent link">&para;</a></h3>
+<p>Both algorithms model a track as an <code>STrack</code> with state in
+<code>{New, Tracked, Lost, Removed}</code> and Kalman-filter predictions. The
+relevant lifecycle observations:</p>
+<ul>
+<li><strong>New</strong>: detected this frame, not yet confirmed (high-conf detection on
+  first appearance).</li>
+<li><strong>Tracked</strong>: associated with a detection in the current frame.</li>
+<li><strong>Lost</strong>: not associated this frame, but inside <code>track_buffer</code>. Eligible
+  for re-association.</li>
+<li><strong>Removed</strong>: outside <code>track_buffer</code>; ID will not be reused.</li>
+</ul>
+<p>Importantly, <strong>track IDs are not reused once removed</strong>. A player who
+leaves and re-enters the frame after <code>track_buffer</code> will get a new ID
+unless an explicit re-ID step links them. This is a known limitation that
+our open questions section addresses.</p>
+<hr />
+<h2 id="3-proposed-schema">3. Proposed schema<a class="headerlink" href="#3-proposed-schema" title="Permanent link">&para;</a></h2>
+<p>The schema is split into three concentric records: <code>BoundingBox</code> (geometry
+only), <code>Detection</code> (per-frame observation), <code>Track</code> (the time-series of
+detections sharing an ID).</p>
+<p>All schemas are Pydantic <code>BaseModel</code> to align with <code>src/footy_track/schema.py</code>.</p>
+<h3 id="31-boundingbox">3.1 <code>BoundingBox</code><a class="headerlink" href="#31-boundingbox" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="nc">BoundingBox</span><span class="p">(</span><span class="n">BaseSchema</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Top-left normalised xywh, matching ObjectDetection in schema.py.&quot;&quot;&quot;</span>
+    <span class="n">x</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="o">...</span><span class="p">,</span> <span class="n">ge</span><span class="o">=</span><span class="mf">0.0</span><span class="p">,</span> <span class="n">le</span><span class="o">=</span><span class="mf">1.0</span><span class="p">)</span>  <span class="c1"># top-left x, normalised</span>
+    <span class="n">y</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="o">...</span><span class="p">,</span> <span class="n">ge</span><span class="o">=</span><span class="mf">0.0</span><span class="p">,</span> <span class="n">le</span><span class="o">=</span><span class="mf">1.0</span><span class="p">)</span>  <span class="c1"># top-left y, normalised</span>
+    <span class="n">w</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="o">...</span><span class="p">,</span> <span class="n">ge</span><span class="o">=</span><span class="mf">0.0</span><span class="p">,</span> <span class="n">le</span><span class="o">=</span><span class="mf">1.0</span><span class="p">)</span>
+    <span class="n">h</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="o">...</span><span class="p">,</span> <span class="n">ge</span><span class="o">=</span><span class="mf">0.0</span><span class="p">,</span> <span class="n">le</span><span class="o">=</span><span class="mf">1.0</span><span class="p">)</span>
+</code></pre></div>
+<p>Rationale: matches the existing <code>ObjectDetection</code> field layout exactly so
+no conversion is needed inside the pipeline. Absolute-pixel coordinates
+can be recovered when frame <code>width</code> / <code>height</code> are known (carried on
+<code>FrameDetections</code>).</p>
+<h3 id="32-detection">3.2 <code>Detection</code><a class="headerlink" href="#32-detection" title="Permanent link">&para;</a></h3>
+<p>A single per-frame observation belonging to a track.</p>
+<div class="highlight"><pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="nc">Detection</span><span class="p">(</span><span class="n">BaseSchema</span><span class="p">):</span>
+    <span class="n">frame_index</span><span class="p">:</span> <span class="nb">int</span>                      <span class="c1"># zero-based frame number</span>
+    <span class="n">continuous_time_s</span><span class="p">:</span> <span class="nb">float</span>              <span class="c1"># ContinuousTime, seconds (canonical)</span>
+    <span class="n">track_id</span><span class="p">:</span> <span class="nb">int</span>                         <span class="c1"># see §4 lifecycle</span>
+    <span class="n">label</span><span class="p">:</span> <span class="nb">str</span>                            <span class="c1"># class label, see constants.py</span>
+    <span class="n">confidence</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="o">...</span><span class="p">,</span> <span class="n">ge</span><span class="o">=</span><span class="mf">0.0</span><span class="p">,</span> <span class="n">le</span><span class="o">=</span><span class="mf">1.0</span><span class="p">)</span>
+    <span class="n">bbox</span><span class="p">:</span> <span class="n">BoundingBox</span>
+    <span class="n">detector_model</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>     <span class="c1"># e.g. &quot;yolo11n.pt@v3&quot;</span>
+    <span class="n">tracker</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>            <span class="c1"># e.g. &quot;bytetrack&quot;, &quot;botsort&quot;</span>
+    <span class="n">is_interpolated</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span>         <span class="c1"># true if filled from Kalman, no raw det</span>
+</code></pre></div>
+<p>Notes:
+- <code>continuous_time_s</code> is the canonical timestamp. <code>frame_index</code> is kept
+  for convenience and round-tripping with frame-indexed sources but
+  consumers MUST treat <code>continuous_time_s</code> as the source of truth (see
+  <code>docs/timings.md</code>).
+- <code>is_interpolated = True</code> lets us preserve the difference between a real
+  raw detection and a Kalman-predicted box for a <code>Lost</code>-state track.
+  Default <code>False</code> — most rows will be real observations.
+- <code>label</code> is a free string today (matches <code>ObjectDetection</code>). It is
+  expected to be one of <code>DETECTION_CLASSES</code> from <code>constants.py</code>.</p>
+<h3 id="33-track">3.3 <code>Track</code><a class="headerlink" href="#33-track" title="Permanent link">&para;</a></h3>
+<p>The time-series of detections sharing an ID, plus track-level metadata.</p>
+<div class="highlight"><pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="nc">Track</span><span class="p">(</span><span class="n">BaseSchema</span><span class="p">):</span>
+    <span class="n">track_id</span><span class="p">:</span> <span class="nb">int</span>
+    <span class="n">label</span><span class="p">:</span> <span class="nb">str</span>                            <span class="c1"># majority/representative class</span>
+    <span class="n">start_frame</span><span class="p">:</span> <span class="nb">int</span>
+    <span class="n">end_frame</span><span class="p">:</span> <span class="nb">int</span>                        <span class="c1"># inclusive</span>
+    <span class="n">start_continuous_time_s</span><span class="p">:</span> <span class="nb">float</span>
+    <span class="n">end_continuous_time_s</span><span class="p">:</span> <span class="nb">float</span>
+    <span class="n">detections</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">Detection</span><span class="p">]</span>           <span class="c1"># sorted by frame_index</span>
+    <span class="c1"># --- TODO fields, see §6 ---</span>
+    <span class="n">team_id</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">jersey_number</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">player_id</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">reid_parent_track_id</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+</code></pre></div>
+<p>Invariants (enforced by validator):
+- <code>len(detections) &gt;= 1</code>.
+- <code>detections</code> is sorted by <code>frame_index</code>, strictly increasing.
+- <code>start_frame == detections[0].frame_index</code>,
+  <code>end_frame == detections[-1].frame_index</code>.
+- All <code>detections[i].track_id == track_id</code>.</p>
+<p>The materialised <code>Track</code> is the <em>summary</em> form; the on-disk format (§4)
+stores raw <code>Detection</code> rows and reconstructs <code>Track</code> on read.</p>
+<hr />
+<h2 id="4-file-format-recommendation">4. File format recommendation<a class="headerlink" href="#4-file-format-recommendation" title="Permanent link">&para;</a></h2>
+<h3 id="41-recommendation-parquet-one-file-per-match-row-detection">4.1 Recommendation: <strong>Parquet, one file per match, row = Detection</strong><a class="headerlink" href="#41-recommendation-parquet-one-file-per-match-row-detection" title="Permanent link">&para;</a></h3>
+<p>Primary on-disk format: a single Parquet file per match, e.g.</p>
+<div class="highlight"><pre><span></span><code>data/&lt;match_name&gt;/tracks/tracks.parquet
+</code></pre></div>
+<p>Schema (Arrow types):</p>
+<table>
+<thead>
+<tr>
+<th>Column</th>
+<th>Arrow type</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>match_id</code></td>
+<td><code>string</code></td>
+<td>redundant per-row but cheap with dict encoding</td>
+</tr>
+<tr>
+<td><code>frame_index</code></td>
+<td><code>int32</code></td>
+<td>zero-based</td>
+</tr>
+<tr>
+<td><code>continuous_time_s</code></td>
+<td><code>float64</code></td>
+<td>canonical</td>
+</tr>
+<tr>
+<td><code>track_id</code></td>
+<td><code>int32</code></td>
+<td>see §5</td>
+</tr>
+<tr>
+<td><code>label</code></td>
+<td><code>dictionary&lt;string&gt;</code></td>
+<td>class label</td>
+</tr>
+<tr>
+<td><code>confidence</code></td>
+<td><code>float32</code></td>
+<td></td>
+</tr>
+<tr>
+<td><code>bbox_x</code></td>
+<td><code>float32</code></td>
+<td>normalised top-left x</td>
+</tr>
+<tr>
+<td><code>bbox_y</code></td>
+<td><code>float32</code></td>
+<td></td>
+</tr>
+<tr>
+<td><code>bbox_w</code></td>
+<td><code>float32</code></td>
+<td></td>
+</tr>
+<tr>
+<td><code>bbox_h</code></td>
+<td><code>float32</code></td>
+<td></td>
+</tr>
+<tr>
+<td><code>detector_model</code></td>
+<td><code>dictionary&lt;string&gt;</code></td>
+<td>nullable</td>
+</tr>
+<tr>
+<td><code>tracker</code></td>
+<td><code>dictionary&lt;string&gt;</code></td>
+<td>nullable</td>
+</tr>
+<tr>
+<td><code>is_interpolated</code></td>
+<td><code>bool</code></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<p>Rationale:
+- <strong>Columnar + compressed.</strong> A 90-minute match at 25 fps with ~25 tracked
+  objects per frame is ~3.4M rows. Parquet handles this in ~tens of MB
+  with dictionary encoding on <code>label</code>/<code>match_id</code>.
+- <strong>Append-friendly enough.</strong> We write per-match, end-to-end; no need for
+  mid-row updates. Streaming producers can buffer a chunk (e.g. one
+  half) and write atomically.
+- <strong>Native Pandas/Polars/DuckDB support.</strong> footy-stats can ingest with
+  <code>read_parquet</code> directly; analysts can <code>SELECT … FROM tracks.parquet</code> via
+  DuckDB.
+- <strong>Schema evolution.</strong> Parquet supports adding nullable columns
+  (e.g. <code>team_id</code>, <code>player_id</code> once those questions are resolved) without
+  rewriting old files.</p>
+<p>Sidecar JSON for track-level metadata:</p>
+<div class="highlight"><pre><span></span><code>data/&lt;match_name&gt;/tracks/tracks_meta.json
+</code></pre></div>
+<div class="highlight"><pre><span></span><code>{
+  &quot;schema_version&quot;: &quot;1.0.0&quot;,
+  &quot;match_id&quot;: &quot;arsenal_mancity&quot;,
+  &quot;produced_by&quot;: {
+    &quot;detector&quot;: &quot;yolo11n.pt@v3&quot;,
+    &quot;tracker&quot;: &quot;bytetrack&quot;,
+    &quot;tracker_config&quot;: &quot;bytetrack.yaml@&lt;sha&gt;&quot;
+  },
+  &quot;video&quot;: {
+    &quot;width&quot;: 1920,
+    &quot;height&quot;: 1080,
+    &quot;fps&quot;: 25.0
+  },
+  &quot;game_metadata&quot;: {
+    &quot;half_start_continuous_s&quot;: 2910.0
+  },
+  &quot;tracks&quot;: {
+    &quot;&lt;track_id&gt;&quot;: {
+      &quot;label&quot;: &quot;player&quot;,
+      &quot;start_frame&quot;: 12,
+      &quot;end_frame&quot;: 1873,
+      &quot;start_continuous_time_s&quot;: 0.48,
+      &quot;end_continuous_time_s&quot;: 74.92,
+      &quot;team_id&quot;: null,        // TODO
+      &quot;jersey_number&quot;: null,  // TODO
+      &quot;player_id&quot;: null,      // TODO
+      &quot;reid_parent_track_id&quot;: null
+    }
+  }
+}
+</code></pre></div>
+<p>Rationale: the per-row Parquet stays small and class-label-only;
+expensive-to-recompute summary fields and per-track identity attributes
+live in the sidecar where they can be edited or backfilled without
+rewriting the row store.</p>
+<h3 id="42-alternatives-considered">4.2 Alternatives considered<a class="headerlink" href="#42-alternatives-considered" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Format</th>
+<th>Verdict</th>
+<th>Why not</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>MOT-style CSV</td>
+<td>Useful for <strong>eval only</strong> (<code>py-motmetrics</code>)</td>
+<td>No class label, no time, no schema versioning, poor compression at match scale</td>
+</tr>
+<tr>
+<td>JSONL (one Detection per line)</td>
+<td>Reasonable fallback</td>
+<td>~10× larger on disk, slower to query, no column projection</td>
+</tr>
+<tr>
+<td>Single big JSON</td>
+<td>No</td>
+<td>Loads fully into RAM; bad for streaming</td>
+</tr>
+<tr>
+<td>FiftyOne dataset only</td>
+<td>Not as canonical</td>
+<td>FiftyOne is a <em>consumer</em> — we should be able to ingest the canonical Parquet <strong>into</strong> FiftyOne, not require FiftyOne to read the canonical format</td>
+</tr>
+<tr>
+<td>SQLite</td>
+<td>Considered</td>
+<td>Acceptable but Parquet wins on column scans, file portability, and DVC-friendliness</td>
+</tr>
+</tbody>
+</table>
+<p>We will provide a small <strong>MOT-CSV exporter</strong> for evaluator compatibility
+(see §6 TODO).</p>
+<hr />
+<h2 id="5-track-id-lifecycle">5. Track ID lifecycle<a class="headerlink" href="#5-track-id-lifecycle" title="Permanent link">&para;</a></h2>
+<p>The pipeline-level lifecycle a producer MUST honour. This is independent
+of the Kalman / state-machine internals of the underlying tracker.</p>
+<h3 id="51-states-pipeline-level">5.1 States (pipeline-level)<a class="headerlink" href="#51-states-pipeline-level" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>State</th>
+<th>Producer responsibility</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Tentative</strong></td>
+<td>Track has been seen for fewer than <code>min_hits</code> frames. <strong>Not emitted</strong> to the Parquet output.</td>
+</tr>
+<tr>
+<td><strong>Confirmed</strong></td>
+<td>Track has been associated for ≥ <code>min_hits</code> frames. From here on, every frame the track exists in (whether tracked or interpolated) emits a <code>Detection</code> row.</td>
+</tr>
+<tr>
+<td><strong>Lost</strong></td>
+<td>Not matched this frame, inside <code>track_buffer</code>. The producer MAY emit an interpolated <code>Detection</code> (<code>is_interpolated = True</code>) using the Kalman prediction, OR emit nothing this frame. The choice is consistent within a single match and recorded in <code>tracks_meta.json</code> (TODO key: <code>lost_state_policy</code>).</td>
+</tr>
+<tr>
+<td><strong>Removed</strong></td>
+<td>Outside <code>track_buffer</code>. The track is finalised. <code>end_frame</code> and <code>end_continuous_time_s</code> in the sidecar reflect the last <em>real</em> detection (not interpolated).</td>
+</tr>
+</tbody>
+</table>
+<h3 id="52-id-allocation-rules">5.2 ID allocation rules<a class="headerlink" href="#52-id-allocation-rules" title="Permanent link">&para;</a></h3>
+<ol>
+<li><strong>Monotonically increasing within a match.</strong> <code>track_id</code> starts at 1 and
+   only ever increases. The producer reserves an <code>int64</code>-safe counter.</li>
+<li><strong>No reuse within a match.</strong> Once a track is <code>Removed</code>, its ID is
+   never reassigned. This matches ByteTrack/BoT-SORT default behaviour.</li>
+<li><strong>Not stable across matches.</strong> <code>track_id</code> is local to one match. A
+   match-id + track-id tuple is the cross-match key.</li>
+<li><strong>Re-identification</strong> of a player across <code>Removed</code> boundaries is
+   represented by emitting a <strong>new track</strong> and setting
+   <code>reid_parent_track_id</code> on the new track to the previous track's ID.
+   The original track is <strong>not</strong> modified. This keeps the row store
+   append-only and lets re-ID be a separate, post-hoc pass.</li>
+</ol>
+<h3 id="53-skeleton-consumer-rule">5.3 Skeleton consumer rule<a class="headerlink" href="#53-skeleton-consumer-rule" title="Permanent link">&para;</a></h3>
+<p>A consumer reconstructing tracks from the Parquet file:</p>
+<div class="highlight"><pre><span></span><code><span class="n">df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">read_parquet</span><span class="p">(</span><span class="s2">&quot;tracks.parquet&quot;</span><span class="p">)</span>
+<span class="k">for</span> <span class="n">track_id</span><span class="p">,</span> <span class="n">group</span> <span class="ow">in</span> <span class="n">df</span><span class="o">.</span><span class="n">sort_values</span><span class="p">(</span><span class="s2">&quot;frame_index&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">groupby</span><span class="p">(</span><span class="s2">&quot;track_id&quot;</span><span class="p">):</span>
+    <span class="k">yield</span> <span class="n">Track</span><span class="p">(</span>
+        <span class="n">track_id</span><span class="o">=</span><span class="n">track_id</span><span class="p">,</span>
+        <span class="n">label</span><span class="o">=</span><span class="n">group</span><span class="p">[</span><span class="s2">&quot;label&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">mode</span><span class="p">()</span><span class="o">.</span><span class="n">iat</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span>
+        <span class="n">start_frame</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">group</span><span class="p">[</span><span class="s2">&quot;frame_index&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">iloc</span><span class="p">[</span><span class="mi">0</span><span class="p">]),</span>
+        <span class="n">end_frame</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">group</span><span class="p">[</span><span class="s2">&quot;frame_index&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">iloc</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]),</span>
+        <span class="n">start_continuous_time_s</span><span class="o">=</span><span class="nb">float</span><span class="p">(</span><span class="n">group</span><span class="p">[</span><span class="s2">&quot;continuous_time_s&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">iloc</span><span class="p">[</span><span class="mi">0</span><span class="p">]),</span>
+        <span class="n">end_continuous_time_s</span><span class="o">=</span><span class="nb">float</span><span class="p">(</span><span class="n">group</span><span class="p">[</span><span class="s2">&quot;continuous_time_s&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">iloc</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]),</span>
+        <span class="n">detections</span><span class="o">=</span><span class="p">[</span><span class="n">Detection</span><span class="p">(</span><span class="o">...</span><span class="p">)</span> <span class="k">for</span> <span class="n">_</span><span class="p">,</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">group</span><span class="o">.</span><span class="n">iterrows</span><span class="p">()],</span>
+    <span class="p">)</span>
+</code></pre></div>
+<p>Track-level identity fields (<code>team_id</code>, <code>jersey_number</code>, <code>player_id</code>,
+<code>reid_parent_track_id</code>) come from the sidecar.</p>
+<hr />
+<h2 id="6-open-questions-todo">6. Open questions (TODO)<a class="headerlink" href="#6-open-questions-todo" title="Permanent link">&para;</a></h2>
+<p>These are deliberately <strong>not</strong> resolved in this doc. They should each
+become their own bead before implementation.</p>
+<ul>
+<li>
+<p><strong>TODO: re-identification across <code>Removed</code> boundaries.</strong> When a player
+  leaves the frame for longer than <code>track_buffer</code>, ByteTrack/BoT-SORT
+  will issue a new ID. We need a re-ID strategy: appearance embeddings
+  (OSNet / TorchReID), team+jersey heuristics, or post-hoc spatial
+  proximity. The doc reserves the <code>reid_parent_track_id</code> field but does
+  not specify how it is populated.</p>
+</li>
+<li>
+<p><strong>TODO: team assignment.</strong> How <code>team_id</code> is assigned (kit-colour
+  clustering on the bbox crop, manual labelling, classifier head). Needs
+  a separate design. Until then <code>team_id</code> stays <code>None</code> in the sidecar.</p>
+</li>
+<li>
+<p><strong>TODO: jersey number recognition.</strong> OCR on the back/chest crop is the
+  obvious approach but accuracy on broadcast video is unproven. Reserve
+  the <code>jersey_number</code> field; populate it lazily.</p>
+</li>
+<li>
+<p><strong>TODO: streaming vs batch producers.</strong> The current proposal assumes
+  a batch producer that writes <code>tracks.parquet</code> once at end-of-match.
+  For a live-feed producer we likely want either:</p>
+</li>
+<li>Append-friendly Parquet (one file per N-second chunk under
+    <code>tracks/chunks/&lt;chunk_id&gt;.parquet</code>, compacted at end of match), or</li>
+<li>
+<p>A row-oriented JSONL tail file that gets converted to Parquet in a
+    finalisation step.
+  Pick one before building a streaming producer.</p>
+</li>
+<li>
+<p><strong>TODO: schema version negotiation.</strong> <code>schema_version</code> is in
+  <code>tracks_meta.json</code> but there is no read-side enforcement. Define the
+  policy (reject? best-effort upgrade?) before we have multiple producer
+  versions in the wild.</p>
+</li>
+<li>
+<p><strong>TODO: ground truth / eval format.</strong> Decide whether evaluation uses
+  the canonical Parquet directly via a footy-track-shaped metric, or
+  exports to MOT-CSV and runs <code>py-motmetrics</code> / <code>TrackEval</code>. The
+  recommendation is "both: canonical for storage, MOT-CSV for the
+  evaluator", but the exporter is not yet written.</p>
+</li>
+<li>
+<p><strong>TODO: ball as a track.</strong> The schema does not distinguish person-
+  tracks from ball-tracks beyond the <code>label</code> column. Confirm that ball
+  trajectories want the same <code>Track</code> shape, or whether they need their
+  own (e.g. with possession / out-of-play state).</p>
+</li>
+<li>
+<p><strong>TODO: how <code>Track</code> integrates with <code>FrameDetections</code>.</strong> Today
+  <code>FrameDetections</code> (in <code>schema.py</code>) holds untracked per-frame
+  detections. We need to decide whether <code>Track</code>-aware code reads the
+  Parquet directly or whether <code>FrameDetections</code> gains a <code>track_id</code> field
+  on <code>ObjectDetection</code>.</p>
+</li>
+</ul>
+<hr />
+<h2 id="7-summary">7. Summary<a class="headerlink" href="#7-summary" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>Schema</strong>: <code>BoundingBox</code> (normalised top-left xywh, matches existing
+  <code>ObjectDetection</code>) → <code>Detection</code> (per-frame, carries ContinuousTime and
+  <code>track_id</code>) → <code>Track</code> (summary, sidecar-stored).</li>
+<li><strong>File format</strong>: per-match Parquet of <code>Detection</code> rows + JSON sidecar
+  for track-level metadata. MOT-CSV is an exporter, not the canonical
+  format.</li>
+<li><strong>Lifecycle</strong>: confirmed-only emission, monotonic non-reused IDs, re-ID
+  via a new track linking back to the parent — all post-hoc and
+  append-only friendly.</li>
+<li><strong>Open questions</strong> around re-ID, team / jersey identity, and streaming
+  producers are deliberately deferred and tagged as TODOs above.</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      <script id="__config" type="application/json">{"base": "../..", "features": [], "search": "../../assets/javascripts/workers/search.973d3a69.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.f55a23d4.min.js"></script>
+      
+    
+  </body>
+</html>
