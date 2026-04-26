@@ -14,7 +14,7 @@
       
       
       
-        <link rel="next" href="system_overview/">
+        <link rel="next" href="system_design/">
       
       
       <link rel="icon" href="assets/images/favicon.png">
@@ -326,6 +326,29 @@
             Development
           </label>
           <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="system_design/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    System Design
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
             
               
                 
@@ -650,7 +673,8 @@
 - Produces time-accurate structured data for analytics
 - Supports both file-based and live stream inputs</p>
 <h2 id="getting-started">Getting Started<a class="headerlink" href="#getting-started" title="Permanent link">&para;</a></h2>
-<p>→ <a href="development/">Development Guide</a>: Complete setup and development instructions
+<p>→ <a href="system_design/">System Design</a>: Guiding reference for all pipeline stages
+→ <a href="development/">Development Guide</a>: Complete setup and development instructions
 → <a href="pipeline_architecture/">Pipeline Architecture</a>: Understanding the system design
 → <a href="timings/">Time Formats</a>: How we handle match timing data
 → <a href="data_formats/">Data Formats</a>: Raw match layout, Roboflow dataset structure, and env vars</p>
@@ -666,7 +690,15 @@ uv<span class="w"> </span>run<span class="w"> </span>footy-track
 </code></pre></div>
 <h2 id="key-documentation-sections">Key Documentation Sections<a class="headerlink" href="#key-documentation-sections" title="Permanent link">&para;</a></h2>
 <ul>
-<li><strong><a href="development/">Development Guide</a></strong></li>
+<li><strong><a href="system_design/">System Design</a></strong></li>
+<li>End-to-end pipeline stages (Input → Broadcast Classifier → Calibration → Detection → Tracking → 2D Projection → Output)</li>
+<li>Per-stage inputs, outputs, and implemented vs planned status</li>
+<li>
+<p>Cross-stage invariants and where new component designs fit</p>
+</li>
+<li>
+<p><strong><a href="development/">Development Guide</a></strong></p>
+</li>
 <li>Environment setup</li>
 <li>Development workflow</li>
 <li>Project organization</li>
