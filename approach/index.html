@@ -1,0 +1,781 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Tracking players, actions, and events in football matches.">
+      
+      
+      
+        <link rel="canonical" href="https://egroeg121.github.io/footy-track/approach/">
+      
+      
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.6.20">
+    
+    
+      
+        <title>Technical Approach - Footy Scan</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.e53b48f4.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+    
+  </head>
+  
+  
+    <body dir="ltr">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#technical-approach" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="Footy Scan" class="md-header__button md-logo" aria-label="Footy Scan" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Footy Scan
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Technical Approach
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="Footy Scan" class="md-nav__button md-logo" aria-label="Footy Scan" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Footy Scan
+  </label>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Home
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    Development
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            Development
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../system_design/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    System Design
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../system_overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    System Overview
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../development/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Getting Started
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../pipeline_architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Pipeline Architecture
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../timings/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Time Formats
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../data_formats/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Data Formats
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../training/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Training
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../training/notable_runs/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Notable Training Runs
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    Contributing
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            Contributing
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../agent_guidelines/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Agent Guidelines
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#overview" class="md-nav__link">
+    <span class="md-ellipsis">
+      Overview
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#stage-0-broadcast-classification-gate" class="md-nav__link">
+    <span class="md-ellipsis">
+      Stage 0 — Broadcast Classification (gate)
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#stage-1-object-detection" class="md-nav__link">
+    <span class="md-ellipsis">
+      Stage 1 — Object Detection
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#stage-2-tracking" class="md-nav__link">
+    <span class="md-ellipsis">
+      Stage 2 — Tracking
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#stage-3-event-extraction-planned" class="md-nav__link">
+    <span class="md-ellipsis">
+      Stage 3 — Event Extraction (planned)
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#time-handling" class="md-nav__link">
+    <span class="md-ellipsis">
+      Time handling
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dataset-and-training" class="md-nav__link">
+    <span class="md-ellipsis">
+      Dataset and training
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#key-design-decisions" class="md-nav__link">
+    <span class="md-ellipsis">
+      Key design decisions
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+
+<h1 id="technical-approach">Technical Approach<a class="headerlink" href="#technical-approach" title="Permanent link">&para;</a></h1>
+<h2 id="overview">Overview<a class="headerlink" href="#overview" title="Permanent link">&para;</a></h2>
+<p>footy-track is a three-stage video analysis pipeline: <strong>detect → track → extract</strong>. Each stage is independent and replaceable. Data flows forward through the stages as Pydantic models, all carrying a canonical <strong>ContinuousTime</strong> timestamp.</p>
+<div class="highlight"><pre><span></span><code>Video
+  │
+  ▼
+InputConsumer          ← decodes frames, stamps with GameTime + metadata
+  │
+  ▼
+BroadcastClassifier    ← gates: is this frame worth processing?
+  │ (Yes frames only)
+  ▼
+ObjectDetector         ← finds players, ball, referee, coach, substitutes
+  │
+  ▼
+Tracker                ← links detections across frames → persistent IDs
+  │
+  ▼
+EventExtractor         ← infers passes, shots, tackles from trajectories
+  │
+  ▼
+OutputProducer         ← writes JSON / CSV / API
+</code></pre></div>
+<hr />
+<h2 id="stage-0-broadcast-classification-gate">Stage 0 — Broadcast Classification (gate)<a class="headerlink" href="#stage-0-broadcast-classification-gate" title="Permanent link">&para;</a></h2>
+<p>Before running object detection (which is expensive), each frame is classified as pitch view (<code>Yes</code>) or non-pitch (<code>No</code>). Replays, crowd shots, and graphics overlays are filtered out.</p>
+<p><strong>Why</strong>: Object detection on a replay or close-up face shot wastes compute and produces garbage detections. Filtering first keeps the output clean and speeds up batch processing significantly.</p>
+<p><strong>How</strong>: A fine-tuned YOLO classification model (<code>yolo11n-cls</code>) returns <code>BroadcastClassification(label, confidence)</code>. The model is trained on a binary <code>No</code>/<code>Yes</code> dataset and achieves ~98% top-1 accuracy on a binary val set.</p>
+<p><strong>Key decision</strong>: The classifier runs on every frame and is cheap. Only <code>Yes</code> frames advance to detection.</p>
+<hr />
+<h2 id="stage-1-object-detection">Stage 1 — Object Detection<a class="headerlink" href="#stage-1-object-detection" title="Permanent link">&para;</a></h2>
+<p>Locates objects in each frame and returns normalized bounding boxes.</p>
+<p><strong>Why YOLO</strong>: Fast enough for real-time use, fine-tunable on domain data, well-supported via Ultralytics. YOLO11 (the current generation) offers strong accuracy/speed tradeoffs at multiple model sizes.</p>
+<p><strong>Why domain fine-tuning</strong>: A COCO-trained model knows "person" and "sports ball" but cannot distinguish player from coach from referee from substitute. Fine-tuning on Roboflow-labelled match footage produces a 7-class model covering the roles that matter for football analytics.</p>
+<p><strong>Two implementations</strong>:
+- <code>UltralyticsObjectDetector</code> — YOLO-based, fast, good for player/ball detection.
+- <code>UltralyticsSam3Detector</code> — SAM 3 segmentation, text-prompted per category. Slower but handles ambiguous cases (in-play vs. out-of-play ball) by specifying natural-language prompts with per-prompt confidence thresholds. Derives bounding boxes from masks with optional padding; uses centre-distance NMS to suppress duplicates.</p>
+<p><strong>Coordinate convention</strong>: All boxes are stored as normalized <code>[x, y, w, h]</code> (top-left origin, values in <code>[0, 1]</code>). This keeps the schema resolution-independent and simplifies downstream use.</p>
+<hr />
+<h2 id="stage-2-tracking">Stage 2 — Tracking<a class="headerlink" href="#stage-2-tracking" title="Permanent link">&para;</a></h2>
+<p>Associates detections across frames to assign persistent object IDs.</p>
+<p><strong>Why</strong>: A sequence of per-frame bounding boxes with no identity is not useful for event inference. Tracking turns "there is a player at (0.3, 0.5)" into "player #7 moved from (0.3, 0.5) to (0.35, 0.52) over the last 10 frames."</p>
+<p><strong>How (planned)</strong>: Hungarian algorithm assignment using the <code>lap</code> library, matching detections between frames by IoU overlap. This is a well-understood, fast approach for single-camera tracking.</p>
+<p><strong>Current state</strong>: Not yet implemented as a standalone module. Detection output is consumed frame-by-frame. Tracking is the next major pipeline stage to build.</p>
+<hr />
+<h2 id="stage-3-event-extraction-planned">Stage 3 — Event Extraction (planned)<a class="headerlink" href="#stage-3-event-extraction-planned" title="Permanent link">&para;</a></h2>
+<p>Infers higher-level match events from tracked trajectories: passes, shots, tackles, set-pieces, substitutions.</p>
+<p><strong>Why separate from tracking</strong>: Events are emergent — a pass is not visible in any single frame but in the trajectory of the ball and proximate players over time. Keeping event extraction downstream of tracking lets the tracker stay simple.</p>
+<p><strong>Approach</strong>: Rule-based or learned classifiers over tracked trajectory windows. Not yet implemented.</p>
+<hr />
+<h2 id="time-handling">Time handling<a class="headerlink" href="#time-handling" title="Permanent link">&para;</a></h2>
+<p>Two time systems exist in football video:</p>
+<ul>
+<li><strong>GameTime</strong> — the referee/broadcast clock. Resets at each half. Available from video metadata.</li>
+<li><strong>ContinuousTime</strong> — seconds from first-half kickoff, never resets. This is the canonical format for all stored records.</li>
+</ul>
+<p>Conversion requires <code>GameMetadata</code> (specifically <code>half_start_continuous</code>: the ContinuousTime at which the second half kicked off, which accounts for first-half stoppage time).</p>
+<p><strong>Key decision</strong>: All output records carry ContinuousTime, not GameTime. This means downstream consumers never need to know match structure to align or merge observations.</p>
+<hr />
+<h2 id="dataset-and-training">Dataset and training<a class="headerlink" href="#dataset-and-training" title="Permanent link">&para;</a></h2>
+<p><strong>Roboflow</strong> manages labelled datasets for both the detection model and the classifier. Labels are created via Roboflow's annotation tools and versioned as datasets. The pipeline includes upload scripts (<code>labelling.py</code>, <code>scripts/upload_*.py</code>) to push frames from inference runs back into Roboflow for active learning.</p>
+<p><strong>Weights &amp; Biases</strong> tracks all training runs (hyperparameters, metrics, model artifacts). Run history is documented in <code>docs/training/notable_runs.md</code>.</p>
+<p><strong>Training scripts</strong> (<code>scripts/train_object_detector.py</code>, <code>scripts/train_classifier.py</code>) handle Roboflow download, model fine-tuning, and W&amp;B logging. They accept a <code>DATA_ROOT</code> env var and an optional <code>--local-dataset</code> flag to bypass the download.</p>
+<hr />
+<h2 id="key-design-decisions">Key design decisions<a class="headerlink" href="#key-design-decisions" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Decision</th>
+<th>Rationale</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Broadcast classifier first</td>
+<td>Cheap gate eliminates non-pitch frames before expensive detection</td>
+</tr>
+<tr>
+<td>Normalized bounding boxes</td>
+<td>Resolution-independent; no pixel math in the schema layer</td>
+</tr>
+<tr>
+<td>ContinuousTime is canonical</td>
+<td>Downstream consumers don't need to know match structure</td>
+</tr>
+<tr>
+<td>Pluggable detector interface</td>
+<td>Swap YOLO for SAM3 (or anything else) without touching the rest of the pipeline</td>
+</tr>
+<tr>
+<td>Pydantic data models</td>
+<td>Validated, serializable, IDE-friendly — the schema is self-documenting</td>
+</tr>
+<tr>
+<td><code>lap</code> for tracking</td>
+<td>Fast, well-tested Hungarian assignment library; no ML overhead for tracking</td>
+</tr>
+<tr>
+<td>Metaflow for batch jobs</td>
+<td>Orchestrates large-scale processing (e.g., a full season) with retry and parallelism</td>
+</tr>
+</tbody>
+</table>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      <script id="__config" type="application/json">{"base": "..", "features": [], "search": "../assets/javascripts/workers/search.973d3a69.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.f55a23d4.min.js"></script>
+      
+    
+  </body>
+</html>
