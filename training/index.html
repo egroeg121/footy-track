@@ -773,6 +773,12 @@
 <p><strong>Location:</strong> <code>src/footy_track/scripts/train_object_detector.py</code></p>
 <p>Downloads a labelled dataset from Roboflow, fine-tunes a YOLO model on it, and saves the best weights.</p>
 <h3 id="prerequisites">Prerequisites<a class="headerlink" href="#prerequisites" title="Permanent link">&para;</a></h3>
+<p><strong>Environment variables — <code>.envrc</code></strong></p>
+<p>A <code>.envrc</code> file (managed by <a href="https://direnv.net/">direnv</a>) is provided at the repo root to set local environment variables. It is listed in <code>.gitignore</code> and is not committed.</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># .envrc (already present in the repo root)</span>
+<span class="nb">export</span><span class="w"> </span><span class="nv">DATA_ROOT</span><span class="o">=</span><span class="s2">&quot;</span><span class="nv">$PWD</span><span class="s2">/data&quot;</span>
+</code></pre></div>
+<p><code>DATA_ROOT</code> points to the <code>data/</code> directory at the project root, which is where downloaded datasets and other local data files are stored. Run <code>direnv allow</code> once after cloning to activate it.</p>
 <p>Set the Roboflow API key:</p>
 <div class="highlight"><pre><span></span><code><span class="nb">export</span><span class="w"> </span><span class="nv">ROBOFLOW_API_KEY</span><span class="o">=</span>&lt;your-api-key&gt;
 </code></pre></div>
