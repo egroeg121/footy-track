@@ -31,12 +31,24 @@ The key can be found in your Roboflow workspace settings. Alternatively the SDK 
 
 ### Usage
 
+The script reads `DATA_ROOT` from the environment (set by `.envrc`) and downloads the dataset to `$DATA_ROOT/detection_dataset/roboflow_dataset_<version>/`.
+
 ```bash
 uv run python src/footy_track/scripts/train_object_detector.py \
   --model yolo11n \
   --dataset-version 3 \
   --freeze 9 \
   --epochs 5
+```
+
+To run without direnv active, pass `DATA_ROOT` inline:
+
+```bash
+DATA_ROOT="$PWD/data" uv run python src/footy_track/scripts/train_object_detector.py \
+  --model yolo11n \
+  --dataset-version 3 \
+  --freeze 9 \
+  --epochs 1
 ```
 
 ### Arguments
@@ -70,7 +82,7 @@ Training metrics are also logged to Weights & Biases under the `footy_scan_detec
 - **Source:** Roboflow workspace `egroeg121`, project `footy-track-detection`
 - **Version 3 split:** 162 train / 49 val images
 - **Classes (7):** `coach`, `in_play_ball`, `person`, `player`, `player_sub`, `referee`, `+ keeper`
-- **Downloaded to:** `data/detection_dataset/roboflow_dataset_<version>/`
+- **Downloaded to:** `$DATA_ROOT/detection_dataset/roboflow_dataset_<version>/` (defaults to `data/detection_dataset/...` if `DATA_ROOT` is unset)
 
 ---
 
