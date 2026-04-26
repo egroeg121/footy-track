@@ -13,7 +13,7 @@
         <link rel="canonical" href="https://egroeg121.github.io/footy-track/training/">
       
       
-        <link rel="prev" href="../timings/">
+        <link rel="prev" href="../data_formats/">
       
       
         <link rel="next" href="../agent_guidelines/">
@@ -335,6 +335,29 @@
   
   <span class="md-ellipsis">
     Time Formats
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../data_formats/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Data Formats
     
   </span>
   
@@ -784,11 +807,19 @@
 </code></pre></div>
 <p>The key can be found in your Roboflow workspace settings. Alternatively the SDK reads it from <code>~/.config/roboflow/config.json</code> if you have previously run <code>roboflow login</code>.</p>
 <h3 id="usage">Usage<a class="headerlink" href="#usage" title="Permanent link">&para;</a></h3>
+<p>The script reads <code>DATA_ROOT</code> from the environment (set by <code>.envrc</code>) and downloads the dataset to <code>$DATA_ROOT/detection_dataset/roboflow_dataset_&lt;version&gt;/</code>.</p>
 <div class="highlight"><pre><span></span><code>uv<span class="w"> </span>run<span class="w"> </span>python<span class="w"> </span>src/footy_track/scripts/train_object_detector.py<span class="w"> </span><span class="se">\</span>
 <span class="w">  </span>--model<span class="w"> </span>yolo11n<span class="w"> </span><span class="se">\</span>
 <span class="w">  </span>--dataset-version<span class="w"> </span><span class="m">3</span><span class="w"> </span><span class="se">\</span>
 <span class="w">  </span>--freeze<span class="w"> </span><span class="m">9</span><span class="w"> </span><span class="se">\</span>
 <span class="w">  </span>--epochs<span class="w"> </span><span class="m">5</span>
+</code></pre></div>
+<p>To run without direnv active, pass <code>DATA_ROOT</code> inline:</p>
+<div class="highlight"><pre><span></span><code><span class="nv">DATA_ROOT</span><span class="o">=</span><span class="s2">&quot;</span><span class="nv">$PWD</span><span class="s2">/data&quot;</span><span class="w"> </span>uv<span class="w"> </span>run<span class="w"> </span>python<span class="w"> </span>src/footy_track/scripts/train_object_detector.py<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--model<span class="w"> </span>yolo11n<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--dataset-version<span class="w"> </span><span class="m">3</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--freeze<span class="w"> </span><span class="m">9</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--epochs<span class="w"> </span><span class="m">1</span>
 </code></pre></div>
 <h3 id="arguments">Arguments<a class="headerlink" href="#arguments" title="Permanent link">&para;</a></h3>
 <table>
@@ -837,7 +868,7 @@ footy_scan_detection/&lt;run-name&gt;/weights/last.pt
 <li><strong>Source:</strong> Roboflow workspace <code>egroeg121</code>, project <code>footy-track-detection</code></li>
 <li><strong>Version 3 split:</strong> 162 train / 49 val images</li>
 <li><strong>Classes (7):</strong> <code>coach</code>, <code>in_play_ball</code>, <code>person</code>, <code>player</code>, <code>player_sub</code>, <code>referee</code>, <code>+ keeper</code></li>
-<li><strong>Downloaded to:</strong> <code>data/detection_dataset/roboflow_dataset_&lt;version&gt;/</code></li>
+<li><strong>Downloaded to:</strong> <code>$DATA_ROOT/detection_dataset/roboflow_dataset_&lt;version&gt;/</code> (defaults to <code>data/detection_dataset/...</code> if <code>DATA_ROOT</code> is unset)</li>
 </ul>
 <hr />
 <h2 id="baseline-run-results">Baseline Run Results<a class="headerlink" href="#baseline-run-results" title="Permanent link">&para;</a></h2>

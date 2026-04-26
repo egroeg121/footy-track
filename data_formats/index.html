@@ -10,13 +10,13 @@
       
       
       
-        <link rel="canonical" href="https://egroeg121.github.io/footy-track/pipeline_architecture/">
+        <link rel="canonical" href="https://egroeg121.github.io/footy-track/data_formats/">
       
       
-        <link rel="prev" href="../development/">
+        <link rel="prev" href="../timings/">
       
       
-        <link rel="next" href="../timings/">
+        <link rel="next" href="../training/">
       
       
       <link rel="icon" href="../assets/images/favicon.png">
@@ -24,7 +24,7 @@
     
     
       
-        <title>Pipeline Architecture - Footy Scan</title>
+        <title>Data Formats - Footy Scan</title>
       
     
     
@@ -66,7 +66,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#pipeline-architecture" class="md-skip">
+        <a href="#data-formats" class="md-skip">
           Skip to content
         </a>
       
@@ -102,7 +102,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Pipeline Architecture
+              Data Formats
             
           </span>
         </div>
@@ -303,32 +303,10 @@
                 
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    Pipeline Architecture
-    
-  </span>
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../pipeline_architecture/" class="md-nav__link">
         
   
   
@@ -339,71 +317,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#components" class="md-nav__link">
-    <span class="md-ellipsis">
-      Components
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#dataflow" class="md-nav__link">
-    <span class="md-ellipsis">
-      Dataflow
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#timestamps-and-time-handling" class="md-nav__link">
-    <span class="md-ellipsis">
-      Timestamps and time handling
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#implementation-guidance" class="md-nav__link">
-    <span class="md-ellipsis">
-      Implementation guidance
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#extensibility" class="md-nav__link">
-    <span class="md-ellipsis">
-      Extensibility
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -436,10 +349,32 @@
                 
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../data_formats/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    Data Formats
+    
+  </span>
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -450,6 +385,116 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#raw-match-layout" class="md-nav__link">
+    <span class="md-ellipsis">
+      Raw match layout
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Raw match layout">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#original_video" class="md-nav__link">
+    <span class="md-ellipsis">
+      original_video/
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#full_video_frames" class="md-nav__link">
+    <span class="md-ellipsis">
+      full_video_frames/
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#roboflow-dataset-layout" class="md-nav__link">
+    <span class="md-ellipsis">
+      Roboflow dataset layout
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Roboflow dataset layout">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#detection-dataset" class="md-nav__link">
+    <span class="md-ellipsis">
+      Detection dataset
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#classifier-dataset" class="md-nav__link">
+    <span class="md-ellipsis">
+      Classifier dataset
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#environment-variables" class="md-nav__link">
+    <span class="md-ellipsis">
+      Environment variables
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Environment variables">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#wb-projects" class="md-nav__link">
+    <span class="md-ellipsis">
+      W&amp;B projects
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -580,47 +625,92 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#components" class="md-nav__link">
+  <a href="#raw-match-layout" class="md-nav__link">
     <span class="md-ellipsis">
-      Components
+      Raw match layout
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Raw match layout">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#original_video" class="md-nav__link">
+    <span class="md-ellipsis">
+      original_video/
     </span>
   </a>
   
 </li>
-      
-        <li class="md-nav__item">
-  <a href="#dataflow" class="md-nav__link">
+        
+          <li class="md-nav__item">
+  <a href="#full_video_frames" class="md-nav__link">
     <span class="md-ellipsis">
-      Dataflow
+      full_video_frames/
     </span>
   </a>
   
 </li>
-      
-        <li class="md-nav__item">
-  <a href="#timestamps-and-time-handling" class="md-nav__link">
-    <span class="md-ellipsis">
-      Timestamps and time handling
-    </span>
-  </a>
+        
+      </ul>
+    </nav>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#implementation-guidance" class="md-nav__link">
+  <a href="#roboflow-dataset-layout" class="md-nav__link">
     <span class="md-ellipsis">
-      Implementation guidance
+      Roboflow dataset layout
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Roboflow dataset layout">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#detection-dataset" class="md-nav__link">
+    <span class="md-ellipsis">
+      Detection dataset
     </span>
   </a>
   
 </li>
-      
-        <li class="md-nav__item">
-  <a href="#extensibility" class="md-nav__link">
+        
+          <li class="md-nav__item">
+  <a href="#classifier-dataset" class="md-nav__link">
     <span class="md-ellipsis">
-      Extensibility
+      Classifier dataset
     </span>
   </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#environment-variables" class="md-nav__link">
+    <span class="md-ellipsis">
+      Environment variables
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Environment variables">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#wb-projects" class="md-nav__link">
+    <span class="md-ellipsis">
+      W&amp;B projects
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -640,57 +730,171 @@
 
 
 
-<h1 id="pipeline-architecture">Pipeline Architecture<a class="headerlink" href="#pipeline-architecture" title="Permanent link">&para;</a></h1>
-<p>This document describes the high-level pipeline for Footy Scan.</p>
-<h2 id="components">Components<a class="headerlink" href="#components" title="Permanent link">&para;</a></h2>
+<h1 id="data-formats">Data Formats<a class="headerlink" href="#data-formats" title="Permanent link">&para;</a></h1>
+<p>This document describes the expected directory layouts for raw match data and
+Roboflow training datasets, and the environment variables required by the
+training scripts.</p>
+<hr />
+<h2 id="raw-match-layout">Raw match layout<a class="headerlink" href="#raw-match-layout" title="Permanent link">&para;</a></h2>
+<p>Match data lives under <code>data/</code> and is organised by match name:</p>
+<div class="highlight"><pre><span></span><code>data/
+└── &lt;match_name&gt;/               # e.g. arsenal_mancity
+    ├── original_video/         # source video file(s) for the match
+    │   └── *.mp4               # one file per half / recording chunk
+    └── full_video_frames/      # frames extracted from the source video
+        └── *.jpg               # one image per extracted frame (default JPEG)
+</code></pre></div>
+<h3 id="original_video"><code>original_video/</code><a class="headerlink" href="#original_video" title="Permanent link">&para;</a></h3>
+<p>Contains the raw <code>.mp4</code> recording(s) for a single match.
+Long recordings should be split into chunks first using <code>split_video.py</code> (see
+<code>src/footy_track/scripts/README.md</code>); the resulting parts are stored here.</p>
+<h3 id="full_video_frames"><code>full_video_frames/</code><a class="headerlink" href="#full_video_frames" title="Permanent link">&para;</a></h3>
+<p>Contains the per-frame images produced by <code>extract_frames.py</code>.
+Default format is JPEG at 1 FPS; PNG and WEBP are also supported.</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># Extract frames from a source video into the expected directory</span>
+uv<span class="w"> </span>run<span class="w"> </span>footy-track-extract-frames<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>data/arsenal_mancity/original_video/match.mp4<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--outdir<span class="w"> </span>data/arsenal_mancity/full_video_frames
+</code></pre></div>
+<p>Frames can optionally carry EXIF metadata (<code>--embed-metadata</code>):</p>
+<table>
+<thead>
+<tr>
+<th>EXIF tag</th>
+<th>Content</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>video_id</code></td>
+<td>Match identifier string</td>
+</tr>
+<tr>
+<td><code>frame_index</code></td>
+<td>Zero-based frame number</td>
+</tr>
+<tr>
+<td><code>timestamp_seconds</code></td>
+<td>Wall-clock position in the source video</td>
+</tr>
+</tbody>
+</table>
+<p>Matches used in practice (referenced in notebooks):</p>
+<table>
+<thead>
+<tr>
+<th>Match</th>
+<th>Directory name</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Arsenal vs Manchester City</td>
+<td><code>arsenal_mancity</code></td>
+</tr>
+<tr>
+<td>Arsenal vs Norwich</td>
+<td><code>arsenal_norwich</code></td>
+</tr>
+<tr>
+<td>Arsenal vs Aston Villa</td>
+<td><code>arsenal_astonvilla</code></td>
+</tr>
+<tr>
+<td>Arsenal vs Bournemouth (1st half)</td>
+<td><code>arsenal_bournmouth_1st_half</code></td>
+</tr>
+<tr>
+<td>Arsenal vs Bournemouth (2nd half)</td>
+<td><code>arsenal_bournmouth_2nd_half</code></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="roboflow-dataset-layout">Roboflow dataset layout<a class="headerlink" href="#roboflow-dataset-layout" title="Permanent link">&para;</a></h2>
+<p>Training datasets are downloaded from Roboflow into <code>data/</code> when the training
+scripts run. The layout differs between the two model types.</p>
+<h3 id="detection-dataset">Detection dataset<a class="headerlink" href="#detection-dataset" title="Permanent link">&para;</a></h3>
 <ul>
-<li>InputConsumer</li>
-<li>
-<p>Reads video (file or live feed), decodes frames, and yields frames with timestamps.</p>
-</li>
-<li>
-<p>Processor</p>
-</li>
-<li>Responsible for transforming frame-level detections into tracked, time-accurate observations and events.</li>
-<li>
-<p>May be implemented as a single component or decomposed into three logical stages:</p>
-<ol>
-<li>Detection — run object detection to locate players, ball, referees, etc.</li>
-<li>Tracking — associate detections across frames to produce persistent IDs.</li>
-<li>Event extraction — infer higher-level events (passes, shots, tackles, set-pieces, substitutions) from trajectories and detection history.</li>
-</ol>
-</li>
-<li>
-<p>OutputProducer</p>
-</li>
-<li>Serializes processor outputs and writes to disk, a message bus, or an API. Supports JSON and CSV outputs; CSV is a flattened table view of the same objects.</li>
+<li><strong>Roboflow workspace:</strong> <code>egroeg121</code></li>
+<li><strong>Project:</strong> <code>footy-track-detection</code></li>
+<li><strong>Download path:</strong> <code>data/detection_dataset/roboflow_dataset_&lt;version&gt;/</code></li>
 </ul>
-<h2 id="dataflow">Dataflow<a class="headerlink" href="#dataflow" title="Permanent link">&para;</a></h2>
-<ol>
-<li>InputConsumer decodes and timestamps frames (GameTime + optional video metadata).</li>
-<li>Processor runs detection and tracking, producing per-frame and per-event records with timestamps.</li>
-<li>OutputProducer writes time-accurate, continuous-time records to the selected output format.</li>
-</ol>
-<h2 id="timestamps-and-time-handling">Timestamps and time handling<a class="headerlink" href="#timestamps-and-time-handling" title="Permanent link">&para;</a></h2>
-<p>All timestamps used across the pipeline are stored and exchanged in ContinuousTime (seconds from game start). Video sources commonly expose GameTime (the referee/broadcast clock) which resets at half-time. To produce canonical, continuous outputs the pipeline must convert GameTime to ContinuousTime using GameMetadata supplied by the video source.</p>
+<div class="highlight"><pre><span></span><code>data/detection_dataset/
+└── roboflow_dataset_&lt;version&gt;/     # e.g. roboflow_dataset_3
+    ├── data.yaml                   # YOLO dataset config (paths + class names)
+    ├── train/
+    │   ├── images/                 # training images
+    │   └── labels/                 # YOLO .txt annotations (normalised xywh)
+    └── val/
+        ├── images/                 # validation images
+        └── labels/
+</code></pre></div>
+<p><strong>Classes (7):</strong> <code>player</code>, <code>player_sub</code>, <code>coach</code>, <code>referee</code>, <code>keeper</code>,
+<code>in_play_ball</code>, <code>person</code></p>
+<p>Current default version: <strong>3</strong> (162 train / 49 val images).</p>
+<h3 id="classifier-dataset">Classifier dataset<a class="headerlink" href="#classifier-dataset" title="Permanent link">&para;</a></h3>
 <ul>
-<li>ContinuousTime is canonical for storage and downstream consumers.</li>
-<li>Processor outputs MUST include precise ContinuousTime timestamps so downstream systems can reliably align and resample observations.</li>
+<li><strong>Roboflow workspace:</strong> <code>egroeg121</code></li>
+<li><strong>Project:</strong> <code>footy-track-broadcast-frame</code></li>
+<li><strong>Download path:</strong> <code>data/classifier_dataset/roboflow_dataset_&lt;version&gt;/</code></li>
 </ul>
-<h2 id="implementation-guidance">Implementation guidance<a class="headerlink" href="#implementation-guidance" title="Permanent link">&para;</a></h2>
-<ul>
-<li>Keep the processing stages small and testable. The Processor can be composed of separate detector, tracker and event extractor classes, or implemented as a single pipeline class that calls the three stages in sequence.</li>
-<li>Ensure every output record includes a precise timestamp in ContinuousTime so downstream systems can reliably align and resample observations.</li>
-<li>Document any assumptions about GameMetadata fields required to convert GameTime to ContinuousTime.</li>
-<li>When consuming video streams:</li>
-<li>For first-half frames ContinuousTime == GameTime (if half_start_continuous == 0).</li>
-<li>For second-half frames ContinuousTime = GameTime + half_start_continuous, where half_start_continuous is the ContinuousTime when the second half kicked off (this accounts for stoppage time in the first half).</li>
-</ul>
-<h2 id="extensibility">Extensibility<a class="headerlink" href="#extensibility" title="Permanent link">&para;</a></h2>
-<ul>
-<li>Each component is intentionally small and replaceable.</li>
-<li>Implement custom detectors, trackers, or event extractors by adhering to the input/output timestamp conventions.</li>
-</ul>
+<div class="highlight"><pre><span></span><code>data/classifier_dataset/
+└── roboflow_dataset_&lt;version&gt;/     # e.g. roboflow_dataset_10
+    ├── train/
+    │   ├── yes/                    # broadcast / in-play frames
+    │   └── no/                     # non-broadcast frames
+    ├── val/
+    │   ├── yes/
+    │   └── no/
+    └── test/
+        ├── yes/
+        └── no/
+</code></pre></div>
+<p><strong>Classes (2):</strong> <code>yes</code> (broadcast frame), <code>no</code> (non-broadcast frame)</p>
+<p>Current default version: <strong>10</strong>.</p>
+<hr />
+<h2 id="environment-variables">Environment variables<a class="headerlink" href="#environment-variables" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Required</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ROBOFLOW_API_KEY</code></td>
+<td><strong>Yes</strong></td>
+<td>Roboflow API key. Used by all training scripts and upload utilities to authenticate against the Roboflow API. Obtain it from your Roboflow workspace settings.</td>
+</tr>
+</tbody>
+</table>
+<p>The Roboflow SDK also reads the key from <code>~/.config/roboflow/config.json</code> if
+you have previously run <code>roboflow login</code>.</p>
+<p>Training metrics are logged to <a href="https://wandb.ai">Weights &amp; Biases</a> if the
+<code>wandb</code> CLI is authenticated (<code>wandb login</code>). No explicit env var is required
+beyond the standard <code>WANDB_API_KEY</code> that the W&amp;B SDK reads automatically.</p>
+<h3 id="wb-projects">W&amp;B projects<a class="headerlink" href="#wb-projects" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Script</th>
+<th>W&amp;B project</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>train_object_detector.py</code></td>
+<td><code>footy_scan_detection</code></td>
+</tr>
+<tr>
+<td><code>train_classifier.py</code></td>
+<td><code>footy_scan_classifier</code></td>
+</tr>
+</tbody>
+</table>
 
 
 
