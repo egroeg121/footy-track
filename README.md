@@ -2,7 +2,7 @@
 
 Footy Scan is an application for tracking players, actions, and events in a football match. It consumes video, applies ML-based object detection and tracking, and emits structured, time-accurate match data suitable for analytics or downstream pipelines.
 
-📚 [**Read the full documentation**](https://yourorg.github.io/football-scan)
+📚 [**Read the full documentation**](https://egroeg121.github.io/footy-track/)
 
 ## Overview
 
