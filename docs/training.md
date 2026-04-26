@@ -278,9 +278,107 @@ footy_scan_classifier/<run-name>/weights/last.pt
 
 ---
 
-## W&B Run
+## W&B Runs
 
 Metrics, curves and model artifacts are synced to Weights & Biases:
 
 - **Project:** `footy_scan_classifier`
-- **Baseline run:** `ds9q9dr6`
+- **Baseline run (5 epochs):** `ds9q9dr6`
+- **50-epoch reproduction run:** `n5fh28pv`
+
+---
+
+## Reference Run: W&B `aakevy06` (January 2026)
+
+The best previously-known classifier result is W&B run `aakevy06`, trained in January 2026 from the `football-scan` project path.
+
+### Configuration (from W&B)
+
+| Parameter | Value |
+|---|---|
+| Model | yolo11n-cls |
+| Epochs | 50 |
+| Frozen layers | 9 |
+| Dataset version | 10 |
+| Image size | 224 |
+| Optimizer | auto (AdamW) |
+| Device | MPS |
+| Runtime | ~316 s (0.088 hours) |
+
+### Results
+
+| Metric | Value |
+|---|---|
+| top1_acc | **0.981** |
+| top5_acc | 1.0 |
+| train/loss | 0.024 |
+| val/loss | 0.023 |
+
+---
+
+## 50-Epoch Reproduction Run
+
+Attempted to reproduce `aakevy06` using identical hyperparameters against the current dataset version 10.
+
+**Run:** `2026-04-26_09-56_model_name=yolo11n-cls_dataset_version=10_epochs=50_freeze_layers=9`
+
+### Configuration
+
+| Parameter | Value |
+|---|---|
+| Model | yolo11n-cls |
+| Parameters | 1,534,947 (1.5M) |
+| GFLOPs | 3.3 |
+| Dataset version | 10 |
+| Epochs | 50 |
+| Frozen layers | 9 |
+| Image size | 224 |
+| Device | MPS (Apple M4) |
+| Optimizer | AdamW (lr=0.001429, momentum=0.9) |
+| Training time | ~0.095 hours (~5.7 min) |
+
+### Epoch-by-Epoch Metrics (validation top1_acc, selected epochs)
+
+| Epoch | top1_acc |
+|---|---|
+| 1 | 0.356 |
+| 2 | 0.404 |
+| 5 | 0.413 |
+| 7 | **0.442** ← best |
+| 10–49 | 0.433 (flat) |
+| 50 | 0.433 |
+
+### Final Validation (best.pt)
+
+| Metric | Value |
+|---|---|
+| top1_acc | 0.442 |
+| top5_acc | 1.0 |
+
+**Inference speed:** 0.1 ms preprocess, 1.8 ms inference, 0.0 ms postprocess per image
+
+### Results vs Reference
+
+| | Reference `aakevy06` | This run |
+|---|---|---|
+| top1_acc | **0.981** | 0.442 |
+| train/loss | 0.024 | 0.030 |
+| val/loss | 0.023 | 8.018 |
+
+### Why the Results Differ
+
+The reproduction run achieved **0.442 top1_acc**, far below the reference run's **0.981**. The cause is a dataset class mismatch:
+
+- **Training set (current):** 3 classes — `No` (165), `Unlabeled` (5), `Yes` (222)
+- **Val/test set (current):** 2 classes — `No` and `Yes` only; `Unlabeled` is absent
+
+Ultralytics warns about this at startup (`found 2 classes, requires 3`) but proceeds. The 3-class model is evaluated against a 2-class val set, so any image predicted as `Unlabeled` is counted wrong. Additionally, 0.442 is below the majority-class baseline of 0.558 (58/104 val images are `Yes`), suggesting the frozen backbone's learned representations do not transfer well to this task with only 5 `Unlabeled` training samples distorting the class boundaries.
+
+The January 2026 reference run (`aakevy06`) likely used a snapshot of dataset version 10 where the val/test splits also contained `Unlabeled` samples (making evaluation consistent), or an earlier version where the dataset was binary. The dataset has since diverged.
+
+### Recommended Fix
+
+To reproduce reference-level accuracy:
+1. **Remove or merge `Unlabeled`** — relabel `Unlabeled` images as `No` or drop them. This makes training and validation consistent (binary `No`/`Yes`).
+2. **Re-download a corrected dataset version** from Roboflow once the split is fixed.
+3. Consider using `--freeze 0` to allow full fine-tuning for better adaptation to this domain.
