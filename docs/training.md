@@ -290,7 +290,7 @@ Metrics, curves and model artifacts are synced to Weights & Biases:
 
 ## Reference Run: W&B `aakevy06` (January 2026)
 
-The best previously-known classifier result is W&B run `aakevy06`, trained in January 2026 from the `football-scan` project path.
+The best previously-known classifier result is W&B run `aakevy06`, trained in January 2026 from the `football-scan` project path. A side-by-side W&B-API hyperparameter diff against the April reproduction (`n5fh28pv`) and root-cause analysis of the 0.981 → 0.433 regression are recorded in [training/notable_runs.md](training/notable_runs.md).
 
 ### Configuration (from W&B)
 
