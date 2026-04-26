@@ -35,8 +35,10 @@ def train_detector(
     project = rf.workspace("egroeg121").project("footy-track-detection")
     version = project.version(dataset_version)
 
-    # Assuming the script is run from the root of the project directory
-    dataset_location = f"data/detection_dataset/roboflow_dataset_{dataset_version}"
+    data_root = os.environ.get("DATA_ROOT", "data")
+    dataset_location = os.path.join(
+        data_root, f"detection_dataset/roboflow_dataset_{dataset_version}"
+    )
     dataset = version.download(model_format="yolov8", location=dataset_location)
 
     print(f"Dataset downloaded to: {dataset.location}")
