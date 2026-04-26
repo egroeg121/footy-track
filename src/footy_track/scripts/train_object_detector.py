@@ -20,28 +20,38 @@ def train_detector(
     freeze_layers: int,
     epochs: int,
     name_prepend: str = "",
+    local_dataset: str | None = None,
 ):
     """
-    Downloads a dataset from Roboflow and trains a YOLO object detection model.
+    Downloads a dataset from Roboflow (or uses a local path) and trains a YOLO detector.
 
     Args:
         model_name (str): The name of the YOLO model to use (e.g., 'yolo11n').
         dataset_version (int): The version of the dataset on Roboflow.
         freeze_layers (int): The number of layers to freeze during training.
+        epochs (int): The number of epochs to train for.
+        name_prepend (str): A string to prepend to the run name.
+        local_dataset (str | None): If set, use this local YOLOv8-format dataset
+            directory (containing ``data.yaml``) instead of downloading from Roboflow.
     """
-    # Roboflow and dataset setup
-    print("Downloading dataset from Roboflow...")
-    rf = Roboflow(api_key=os.environ.get("ROBOFLOW_API_KEY"))
-    project = rf.workspace("egroeg121").project("footy-track-detection")
-    version = project.version(dataset_version)
+    if local_dataset:
+        dataset_location = local_dataset
+        print(f"Using local dataset: {dataset_location}")
+    else:
+        # Roboflow and dataset setup
+        print("Downloading dataset from Roboflow...")
+        rf = Roboflow(api_key=os.environ.get("ROBOFLOW_API_KEY"))
+        project = rf.workspace("egroeg121").project("footy-track-detection")
+        version = project.version(dataset_version)
 
-    data_root = os.environ.get("DATA_ROOT", "data")
-    dataset_location = os.path.join(
-        data_root, f"detection_dataset/roboflow_dataset_{dataset_version}"
-    )
-    dataset = version.download(model_format="yolov8", location=dataset_location)
+        data_root = os.environ.get("DATA_ROOT", "data")
+        dataset_location = os.path.join(
+            data_root, f"detection_dataset/roboflow_dataset_{dataset_version}"
+        )
+        dataset = version.download(model_format="yolov8", location=dataset_location)
+        dataset_location = dataset.location
 
-    print(f"Dataset downloaded to: {dataset.location}")
+    print(f"Dataset location: {dataset_location}")
 
     # Check for GPU availability
     print(
@@ -59,7 +69,7 @@ def train_detector(
 
     # Train the model
     results = model.train(
-        data=f"{dataset.location}/data.yaml",
+        data=os.path.join(dataset_location, "data.yaml"),
         epochs=epochs,
         imgsz=640,
         freeze=freeze_layers,
@@ -105,6 +115,14 @@ if __name__ == "__main__":
         help="Number of epochs to train for.",
     )
 
+    parser.add_argument(
+        "--local-dataset",
+        type=str,
+        default=None,
+        help="Path to a local YOLOv8-format dataset directory (containing data.yaml). "
+        "If set, skips the Roboflow download.",
+    )
+
     args = parser.parse_args()
 
     train_detector(
@@ -112,4 +130,5 @@ if __name__ == "__main__":
         dataset_version=args.dataset_version,
         freeze_layers=args.freeze,
         epochs=args.epochs,
+        local_dataset=args.local_dataset,
     )
