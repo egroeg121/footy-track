@@ -50,6 +50,7 @@ dev = [
   "labelbox>=7.2",
   "metaflow>=2.18.9",
   "prek",
+  "pyarrow>=24.0.0",
   "pylint>=3.3.8",
   "pyrefly>=0.34",
   "pytest>=8.3",
