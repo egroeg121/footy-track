@@ -87,8 +87,21 @@ def _default_model_uri() -> str:
     """Find sam3.pt — checks project-local path then shared footy_data store."""
     candidates = [
         get_project_root() / "model_saves" / "sam3" / "sam3.pt",
-        Path.home() / "code" / "footy" / "footy_data" / "model_saves" / "sam3" / "sam3.pt",
-        Path.home() / "Library" / "Mobile Documents" / "com~apple~CloudDocs" / "footy_data" / "model_saves" / "sam3" / "sam3.1_multiplex.pt",
+        Path.home()
+        / "code"
+        / "footy"
+        / "footy_data"
+        / "model_saves"
+        / "sam3"
+        / "sam3.pt",
+        Path.home()
+        / "Library"
+        / "Mobile Documents"
+        / "com~apple~CloudDocs"
+        / "footy_data"
+        / "model_saves"
+        / "sam3"
+        / "sam3.1_multiplex.pt",
     ]
     for p in candidates:
         if p.exists():
@@ -150,7 +163,9 @@ def warmup_model(model_uri: str | None = None, imgsz: int = 512) -> None:
             _warmup_done.set()
 
 
-def start_warmup_thread(model_uri: str | None = None, imgsz: int = 512) -> threading.Thread:
+def start_warmup_thread(
+    model_uri: str | None = None, imgsz: int = 512
+) -> threading.Thread:
     """Spawn a daemon thread to warm up SAM3 in the background."""
     t = threading.Thread(
         target=warmup_model, args=(model_uri, imgsz), daemon=True, name="sam3-warmup"
@@ -177,7 +192,9 @@ class Sam3VideoLabeller:
         if not self.video_path.exists():
             raise FileNotFoundError(self.video_path)
         self.objects = objects
-        self.model_uri = str(Path(model_uri).expanduser()) if model_uri else _default_model_uri()
+        self.model_uri = (
+            str(Path(model_uri).expanduser()) if model_uri else _default_model_uri()
+        )
         self.min_confidence = min_confidence
         self.imgsz = imgsz
         self.verbose = verbose
@@ -244,7 +261,9 @@ class Sam3VideoLabeller:
         }
         sem_predictor = SAM3SemanticPredictor(overrides=overrides)
 
-        first_frame_path = self.video_path.parent / f"_tmp_frame0_{self.video_path.stem}.jpg"
+        first_frame_path = (
+            self.video_path.parent / f"_tmp_frame0_{self.video_path.stem}.jpg"
+        )
         frame0 = extract_first_frame(self.video_path)
         cv2.imwrite(str(first_frame_path), frame0)
         h0, w0 = frame0.shape[:2]
@@ -274,14 +293,44 @@ class Sam3VideoLabeller:
                             best_bbox = (x1, y1, x2, y2)
 
                 if best_bbox is not None:
-                    resolved.append(LabelledObject(label=obj.label, bbox_xyxy_abs=best_bbox))
+                    resolved.append(
+                        LabelledObject(label=obj.label, bbox_xyxy_abs=best_bbox)
+                    )
                 else:
                     # Fall back to point if text detection found nothing
-                    resolved.append(LabelledObject(label=obj.label, point_xy_abs=obj.point_xy_abs))
+                    resolved.append(
+                        LabelledObject(label=obj.label, point_xy_abs=obj.point_xy_abs)
+                    )
         finally:
             first_frame_path.unlink(missing_ok=True)
 
         return resolved
+
+    def _build_bboxes(self) -> list[list[float]]:
+        """Resolve text hints and convert all objects to seed bboxes in pixels.
+
+        SAM3VideoPredictor handles bboxes and points in separate calls internally,
+        so we convert any remaining point-only objects to small bboxes sized
+        relative to the video frame (1.5% of width/height).
+        """
+        objects = self._resolve_text_hints()
+        pad_x = self.width * 0.015
+        pad_y = self.height * 0.015
+        all_bboxes: list[list[float]] = []
+        for o in objects:
+            if o.bbox_xyxy_abs is not None:
+                all_bboxes.append(list(o.bbox_xyxy_abs))
+            elif o.point_xy_abs is not None:
+                px, py = o.point_xy_abs
+                all_bboxes.append([px - pad_x, py - pad_y, px + pad_x, py + pad_y])
+        return all_bboxes
+
+    def _total_frames(self) -> int:
+        cap = cv2.VideoCapture(str(self.video_path))
+        try:
+            return int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        finally:
+            cap.release()
 
     def iter_frames(
         self,
@@ -289,34 +338,81 @@ class Sam3VideoLabeller:
     ) -> Iterator[FrameDetections]:
         """Lazily yield :class:`FrameDetections` per frame as they are produced."""
         predictor = self._build_predictor()
+        predictor.set_prompts({"bboxes": self._build_bboxes()})
 
-        # Resolve text+point hints into bboxes before seeding the video predictor.
-        objects = self._resolve_text_hints()
-
-        # SAM3VideoPredictor handles bboxes and points in separate calls internally.
-        # Convert any remaining point-only objects to small bboxes sized relative to
-        # the video frame (1.5% of width/height) so they work alongside bbox objects.
-        pad_x = self.width * 0.015
-        pad_y = self.height * 0.015
-        all_bboxes = []
-        for o in objects:
-            if o.bbox_xyxy_abs is not None:
-                all_bboxes.append(list(o.bbox_xyxy_abs))
-            elif o.point_xy_abs is not None:
-                px, py = o.point_xy_abs
-                all_bboxes.append([px - pad_x, py - pad_y, px + pad_x, py + pad_y])
-
-        predictor.set_prompts({"bboxes": all_bboxes})
-
-        total = int(
-            cv2.VideoCapture(str(self.video_path)).get(cv2.CAP_PROP_FRAME_COUNT)
-        )
-
+        total = self._total_frames()
         results = predictor(source=str(self.video_path), stream=True)
         for frame_idx, result in enumerate(results):
             yield self._result_to_frame(frame_idx, result)
             if progress_callback is not None:
                 progress_callback(frame_idx + 1, total)
+
+    @torch.no_grad()
+    def iter_frames_from(
+        self,
+        start_frame: int = 0,
+        stop_event: threading.Event | None = None,
+        progress_callback: Callable[[int, int], None] | None = None,
+    ) -> Iterator[FrameDetections]:
+        """Propagate from ``start_frame`` onward, yielding one frame at a time.
+
+        SAM3VideoPredictor is stateful and seeds its tracks from the first frame
+        it sees, so to restart mid-clip we write frames ``start_frame..end`` to a
+        temporary video and stream that with the (corrected) seed bboxes. Yielded
+        ``FrameDetections`` carry their absolute ``frame_idx`` so the caller can
+        slot them back into the full timeline.
+
+        Args:
+            start_frame: Absolute frame index to begin propagation from.
+            stop_event: If set during iteration, stops cleanly after the current
+                frame (used by :class:`BackgroundLabeller` for pause/restart).
+            progress_callback: ``fn(done, total)`` over the *remaining* frames.
+        """
+        total = self._total_frames()
+        if start_frame <= 0:
+            # Whole-clip path: reuse the efficient direct-stream iterator.
+            for frame_idx, fd in enumerate(self.iter_frames()):
+                yield fd
+                if progress_callback is not None:
+                    progress_callback(frame_idx + 1, total)
+                if stop_event is not None and stop_event.is_set():
+                    return
+            return
+
+        # Write frames [start_frame, total) to a temp clip to re-seed propagation.
+        with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as f:
+            tmp_path = f.name
+        cap = cv2.VideoCapture(str(self.video_path))
+        fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
+        cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
+        writer = cv2.VideoWriter(
+            tmp_path, cv2.VideoWriter_fourcc(*"mp4v"), fps, (self.width, self.height)
+        )
+        try:
+            n_written = 0
+            while True:
+                ok, frame = cap.read()
+                if not ok:
+                    break
+                writer.write(frame)
+                n_written += 1
+            writer.release()
+            cap.release()
+
+            predictor = self._build_predictor()
+            predictor.set_prompts({"bboxes": self._build_bboxes()})
+            results = predictor(source=tmp_path, stream=True)
+            for offset, result in enumerate(results):
+                abs_idx = start_frame + offset
+                yield self._result_to_frame(abs_idx, result)
+                if progress_callback is not None:
+                    progress_callback(offset + 1, n_written)
+                if stop_event is not None and stop_event.is_set():
+                    return
+        finally:
+            writer.release()
+            cap.release()
+            Path(tmp_path).unlink(missing_ok=True)
 
     def _result_to_frame(self, frame_idx: int, result) -> FrameDetections:
         """Convert one Ultralytics ``Results`` to our ``FrameDetections`` schema."""
@@ -354,6 +450,116 @@ class Sam3VideoLabeller:
             height=self.height,
             detections=detections,
         )
+
+
+class BackgroundLabeller:
+    """Run :class:`Sam3VideoLabeller` propagation in a daemon thread.
+
+    Designed for the Streamlit UI: the worker thread fills ``frames`` (indexed by
+    absolute frame number) while the UI polls ``progress`` / ``running`` on each
+    rerun. Calling :meth:`submit` again — typically after the user corrects boxes
+    on a paused frame — cleanly stops the current thread and restarts propagation
+    from ``start_frame`` onward, preserving earlier frames.
+    """
+
+    def __init__(self) -> None:
+        self._thread: threading.Thread | None = None
+        self._stop_event = threading.Event()
+        self._lock = threading.Lock()
+        self.frames: list[FrameDetections | None] = []
+        self.progress: tuple[int, int] = (0, 0)  # (done, total) for current job
+        self.running: bool = False
+        self.error: Exception | None = None
+        self.last_completed_frame: int = -1
+
+    def submit(
+        self,
+        video_path: str | Path,
+        objects: list[LabelledObject],
+        model_uri: str | None,
+        min_confidence: float,
+        start_frame: int = 0,
+    ) -> None:
+        """Stop any running job, then start propagation from ``start_frame``."""
+        self.pause()
+        labeller = Sam3VideoLabeller(
+            video_path=video_path,
+            objects=objects,
+            model_uri=model_uri,
+            min_confidence=min_confidence,
+        )
+        total = labeller._total_frames()
+        with self._lock:
+            if len(self.frames) != total:
+                # First run (or video changed): allocate the full timeline.
+                self.frames = [None] * total
+            self.error = None
+            self.progress = (0, max(0, total - start_frame))
+            self.running = True
+
+        self._stop_event.clear()
+        self._thread = threading.Thread(
+            target=self._worker,
+            args=(labeller, start_frame),
+            daemon=True,
+            name="sam3-bg-labeller",
+        )
+        self._thread.start()
+
+    def pause(self) -> None:
+        """Signal the running thread to stop and wait for it to exit."""
+        self._stop_event.set()
+        if self._thread is not None and self._thread.is_alive():
+            self._thread.join(timeout=10.0)
+        self.running = False
+
+    def is_done(self) -> bool:
+        """True when no job is running and at least one frame has completed."""
+        return not self.running and self.last_completed_frame >= 0
+
+    def completed_frames(self) -> list[FrameDetections]:
+        """Return the contiguous run of completed frames from index 0."""
+        with self._lock:
+            out: list[FrameDetections] = []
+            for fd in self.frames:
+                if fd is None:
+                    break
+                out.append(fd)
+            return out
+
+    def _worker(self, labeller: Sam3VideoLabeller, start_frame: int) -> None:
+        try:
+            for fd in labeller.iter_frames_from(
+                start_frame=start_frame,
+                stop_event=self._stop_event,
+                progress_callback=self._on_progress,
+            ):
+                idx = _frame_index_from_uri(fd, default=start_frame)
+                with self._lock:
+                    if 0 <= idx < len(self.frames):
+                        self.frames[idx] = fd
+                    self.last_completed_frame = max(self.last_completed_frame, idx)
+        except Exception as exc:  # noqa: BLE001
+            with self._lock:
+                self.error = exc
+        finally:
+            self.running = False
+
+    def _on_progress(self, done: int, total: int) -> None:
+        with self._lock:
+            self.progress = (done, total)
+
+
+def _frame_index_from_uri(fd: FrameDetections, default: int = 0) -> int:
+    """Recover the absolute frame index encoded in a FrameDetections uri stem."""
+    stem = Path(fd.uri).name
+    marker = "_frame_"
+    if marker in stem:
+        try:
+            return int(stem.rsplit(marker, 1)[1])
+        except ValueError:
+            return default
+    return default
 
 
 def export_frames_json(frames: list[FrameDetections], out_path: Path) -> Path:

@@ -25,6 +25,35 @@ from .utils import (
     ultralytics_result_to_detections,
 )
 
+# Path to the current best-performing object-detection checkpoint, relative to
+# the project root. Update this when a better model is trained. Mirrors the
+# classifier's get_current_best_guess_classifier() convention.
+CURRENT_BEST_DETECTOR_CHECKPOINT = (
+    "model_saves/detector/"
+    "optuna_trial_1_2026-01-18_17-51_model_name=yolo11s_dataset_version=3_epochs=2226_freeze_layers=3/"
+    "best.pt"
+)
+
+
+def get_current_best_detector(
+    min_confidence: float = 0.3,
+    iou_threshold: float = 0.90,
+    verbose: bool = False,
+) -> "UltralyticsObjectDetector":
+    """Return the current best-guess object detector.
+
+    Resolves CURRENT_BEST_DETECTOR_CHECKPOINT against the project root so the
+    same constant works regardless of the caller's working directory.
+    """
+    model_uri = str(get_project_root() / CURRENT_BEST_DETECTOR_CHECKPOINT)
+    return UltralyticsObjectDetector(
+        model_uri=model_uri,
+        min_confidence=min_confidence,
+        iou_threshold=iou_threshold,
+        verbose=verbose,
+        use_model_names=True,
+    )
+
 
 class UltralyticsObjectDetector(ObjectDetector):
     """YOLO-based object detector returning Pydantic outputs.
@@ -42,12 +71,16 @@ class UltralyticsObjectDetector(ObjectDetector):
         compile: bool = False,
         min_confidence: float = 0.3,
         iou_threshold: float = 0.90,
+        use_model_names: bool = False,
     ):
         # Use shared device selection util (prefers MPS on Apple, then CUDA, then CPU)
         dev = _available_device()
         self.device = dev.type if isinstance(dev, torch.device) else str(dev)
         self.model = YOLO(model_uri)
         self.model_uri = model_uri
+        # When True, `classes` reflects the checkpoint's own label set rather than
+        # the COCO person/ball subset used for stock weights.
+        self.use_model_names = use_model_names
         self.predict_kwargs = {
             "verbose": verbose,
             "compile": compile,
@@ -56,9 +89,17 @@ class UltralyticsObjectDetector(ObjectDetector):
         }
 
     @property
-    def classes(self) -> list[str]:
-        """Get the list of class names the model can detect."""
-        # return self.model.names
+    def classes(self) -> dict[int, str]:
+        """Class-index → name mapping the model can detect.
+
+        Defaults to the COCO person/ball subset that stock YOLO weights are used
+        for here. Custom-trained checkpoints (e.g. the footy detector) should pass
+        ``use_model_names=True`` so their own ``model.names`` labels flow through.
+        """
+        if self.use_model_names:
+            names = getattr(self.model, "names", None)
+            if names:
+                return dict(names)
         return {
             0: PERSON_TAG,
             32: BALL_TAG,

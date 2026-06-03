@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SAM3 Video Labeller — Functionality & Expected Behaviour</title>
+<style>
+  :root {
+    --bg: #0f1419;
+    --panel: #1a2129;
+    --panel2: #222c36;
+    --ink: #e6edf3;
+    --muted: #9bb0c0;
+    --accent: #1e90ff;
+    --accent2: #ffc800;
+    --green: #3fb950;
+    --red: #f85149;
+    --border: #2d3742;
+    --player: #1e90ff;
+    --referee: #4169e1;
+    --ball: #ffc800;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font: 15px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  header {
+    padding: 32px 40px 24px;
+    border-bottom: 1px solid var(--border);
+    background: linear-gradient(180deg, #16202b, var(--bg));
+  }
+  header h1 { margin: 0 0 6px; font-size: 28px; }
+  header p { margin: 0; color: var(--muted); }
+  main { max-width: 1100px; margin: 0 auto; padding: 32px 40px 80px; }
+  h2 {
+    margin: 44px 0 16px;
+    font-size: 22px;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 8px;
+  }
+  h3 { margin: 28px 0 10px; font-size: 17px; color: #cfe2f3; }
+  code {
+    background: var(--panel2);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 13px;
+    color: #ffd479;
+  }
+  .lead { color: var(--muted); font-size: 16px; }
+  .pill {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+    vertical-align: middle;
+  }
+  .pill.run { background: rgba(63,185,80,.15); color: var(--green); border: 1px solid var(--green); }
+  .pill.pause { background: rgba(255,200,0,.12); color: var(--accent2); border: 1px solid var(--accent2); }
+  .pill.seed { background: rgba(30,144,255,.12); color: var(--accent); border: 1px solid var(--accent); }
+
+  /* ---- mock layout ---- */
+  .mock {
+    display: grid;
+    grid-template-columns: 200px 1fr 220px;
+    gap: 14px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px;
+    margin: 18px 0;
+  }
+  .mock .col { background: var(--panel2); border-radius: 8px; padding: 12px; }
+  .mock h4 { margin: 0 0 10px; font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+  .field { margin-bottom: 12px; }
+  .field label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 3px; }
+  .field .ctl {
+    background: #0d1620; border: 1px solid var(--border); border-radius: 6px;
+    padding: 6px 8px; font-size: 12px; color: var(--ink);
+  }
+  .videoframe {
+    position: relative;
+    aspect-ratio: 16/9;
+    background: repeating-linear-gradient(45deg,#13202c,#13202c 12px,#15242f 12px,#15242f 24px);
+    border-radius: 6px; overflow: hidden; border: 1px solid var(--border);
+  }
+  .bbox { position: absolute; border: 2px solid; border-radius: 2px; }
+  .bbox span {
+    position: absolute; top: -16px; left: -2px; font-size: 9px; padding: 0 3px;
+    border-radius: 2px; color: #000; white-space: nowrap;
+  }
+  .b-player { border-color: var(--player); }
+  .b-player span { background: var(--player); color:#fff; }
+  .b-ref { border-color: var(--referee); }
+  .b-ref span { background: var(--referee); color:#fff; }
+  .b-ball { border-color: var(--ball); }
+  .b-ball span { background: var(--ball); }
+  .toolbar { display: flex; gap: 6px; margin: 10px 0 8px; }
+  .btn {
+    flex: 1; text-align: center; padding: 7px; border-radius: 6px; font-size: 12px;
+    font-weight: 600; border: 1px solid var(--border); background: #0d1620; color: var(--ink);
+  }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btn.disabled { opacity: .4; }
+  .btn.danger { color: var(--red); }
+  .progress { height: 8px; background: #0d1620; border-radius: 999px; overflow: hidden; margin: 8px 0; }
+  .progress > i { display: block; height: 100%; background: var(--green); }
+  .scrub { display: flex; align-items: center; gap: 8px; margin: 8px 0; }
+  .scrub .bar { flex: 1; height: 6px; background: #0d1620; border-radius: 999px; position: relative; }
+  .scrub .bar::after { content:""; position:absolute; left:60%; top:50%; transform:translate(-50%,-50%); width:12px;height:12px;border-radius:50%;background:var(--accent); }
+  .objrow {
+    display: flex; align-items: center; gap: 6px; padding: 5px 0;
+    border-bottom: 1px solid var(--border); font-size: 12px;
+  }
+  .objrow .sel { flex:1; background:#0d1620; border:1px solid var(--border); border-radius:5px; padding:3px 6px; }
+  .objrow .x { color: var(--red); cursor: pointer; }
+  .swatch { display:inline-block; width:10px; height:10px; border-radius:2px; margin-right:5px; vertical-align:middle; }
+
+  table { width: 100%; border-collapse: collapse; margin: 14px 0; font-size: 14px; }
+  th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .05em; }
+  tr td:first-child { white-space: nowrap; font-weight: 600; }
+
+  .callout {
+    border-left: 3px solid var(--accent); background: var(--panel);
+    padding: 12px 16px; border-radius: 0 8px 8px 0; margin: 16px 0;
+  }
+  .callout.warn { border-color: var(--accent2); }
+  .callout.warn strong { color: var(--accent2); }
+  .steps { counter-reset: step; list-style: none; padding: 0; }
+  .steps li {
+    counter-increment: step; position: relative; padding: 10px 0 10px 44px;
+    border-bottom: 1px solid var(--border);
+  }
+  .steps li::before {
+    content: counter(step); position: absolute; left: 0; top: 10px;
+    width: 28px; height: 28px; border-radius: 50%; background: var(--accent);
+    color: #fff; font-weight: 700; display: grid; place-items: center; font-size: 13px;
+  }
+  .modes { display: grid; grid-template-columns: repeat(3,1fr); gap: 14px; margin: 16px 0; }
+  .modecard { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 16px; }
+  .modecard h4 { margin: 0 0 8px; display:flex; align-items:center; gap:8px; }
+  .modecard p { margin: 0; color: var(--muted); font-size: 13px; }
+  footer { color: var(--muted); font-size: 12px; padding: 24px 40px; border-top: 1px solid var(--border); }
+  .kbd { background:#0d1620; border:1px solid var(--border); border-bottom-width:2px; border-radius:4px; padding:1px 6px; font-size:12px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>⚽ SAM3 Video Labeller</h1>
+  <p class="lead">Functionality &amp; expected behaviour — <code>src/footy_track/labeller/app.py</code></p>
+</header>
+
+<main>
+
+<h2>Overview</h2>
+<p>
+  The labeller is a <strong>Streamlit</strong> app for producing per-frame bounding-box
+  labels across a video clip. A YOLO detector seeds the first frame automatically;
+  you correct those seeds, then <strong>SAM3</strong> propagates them through the whole clip
+  in a background thread. You can pause at any time, scrub to a frame, fix the boxes,
+  and restart propagation from that frame forward.
+</p>
+<p class="lead">Launch with:</p>
+<p><code>uv run streamlit run src/footy_track/labeller/app.py</code></p>
+
+<h2>Screen layout</h2>
+<div class="mock">
+  <!-- sidebar -->
+  <div class="col">
+    <h4>Sidebar</h4>
+    <div class="field"><label>1. Video path</label><div class="ctl">data/clip.mp4</div></div>
+    <div class="field"><label>2. Auto-detect (YOLO)</label><div class="ctl">☑ Auto-seed on load</div></div>
+    <div class="field"><label>YOLO conf / NMS IoU</label><div class="ctl">0.35 · 0.50</div></div>
+    <div class="field"><label>3. Class to draw</label><div class="ctl">player ▾</div></div>
+    <div class="field"><label>4. Model (SAM3)</label><div class="ctl">blank = default</div></div>
+  </div>
+  <!-- main -->
+  <div class="col">
+    <h4>Main window</h4>
+    <div class="toolbar">
+      <span class="btn">✋ Edit</span><span class="btn">✏️ Draw new</span>
+    </div>
+    <div class="videoframe">
+      <div class="bbox b-player" style="left:18%;top:30%;width:10%;height:34%"><span>player</span></div>
+      <div class="bbox b-player" style="left:55%;top:42%;width:11%;height:30%"><span>player</span></div>
+      <div class="bbox b-ref" style="left:74%;top:22%;width:8%;height:26%"><span>referee</span></div>
+      <div class="bbox b-ball" style="left:44%;top:64%;width:5%;height:8%"><span>ball</span></div>
+    </div>
+    <div class="toolbar">
+      <span class="btn primary">▶️ Run</span><span class="btn disabled">⏸️ Pause</span>
+    </div>
+    <div class="progress"><i style="width:0%"></i></div>
+    <div class="toolbar"><span class="btn danger">🗑️ Clear all</span><span class="btn">🤖 Re-detect</span></div>
+  </div>
+  <!-- side panel -->
+  <div class="col">
+    <h4>Detected objects (4)</h4>
+    <div class="objrow"><span class="sel"><span class="swatch" style="background:var(--player)"></span>player ▾</span><span class="x">✕</span></div>
+    <div class="objrow"><span class="sel"><span class="swatch" style="background:var(--player)"></span>player ▾</span><span class="x">✕</span></div>
+    <div class="objrow"><span class="sel"><span class="swatch" style="background:var(--referee)"></span>referee ▾</span><span class="x">✕</span></div>
+    <div class="objrow"><span class="sel"><span class="swatch" style="background:var(--ball)"></span>ball ▾</span><span class="x">✕</span></div>
+  </div>
+</div>
+
+<h2>Typical workflow</h2>
+<ol class="steps">
+  <li><strong>Enter a video path</strong> in the sidebar. Surrounding quotes are stripped automatically (e.g. a shell-copied <code>'…/clip.mp4'</code> works).</li>
+  <li><strong>Auto-seed runs once on load</strong> (when “Auto-seed on load” is ticked): YOLO detects objects on frame&nbsp;0, applies NMS, and prefills the canvas with editable boxes. A spinner shows while it runs.</li>
+  <li><strong>Correct the seeds</strong>: drag/resize/delete boxes in <em>Edit</em> mode, draw missing ones in <em>Draw new</em> mode, change a box’s class from the right-hand panel, or remove it with ✕. <em>There is no “submit” step — the canvas is read live.</em></li>
+  <li><strong>Press ▶️ Run</strong>. The boxes currently on the canvas are used as-is; SAM3 propagates them through the clip in a background thread and the main window shows each completed frame live.</li>
+  <li><strong>Pause &amp; correct</strong> whenever a track drifts: scrub to a frame, fix the boxes, then <strong>Restart from frame N</strong> — earlier frames are kept, propagation resumes from N.</li>
+  <li><strong>Preview &amp; export</strong>: scrub completed frames and save the labels as JSON.</li>
+</ol>
+
+<h2>The three main-window modes</h2>
+<div class="modes">
+  <div class="modecard">
+    <h4><span class="pill seed">SEEDING</span></h4>
+    <p>No run in progress. Editable canvas on <strong>frame 0</strong>, prefilled with the YOLO seeds (or whatever you’ve drawn). This is where you prepare the boxes before running.</p>
+  </div>
+  <div class="modecard">
+    <h4><span class="pill run">RUNNING</span></h4>
+    <p>SAM3 is propagating. The window shows the <strong>latest completed frame with boxes</strong> (read-only), auto-refreshing roughly once per second as new frames finish.</p>
+  </div>
+  <div class="modecard">
+    <h4><span class="pill pause">PAUSED</span></h4>
+    <p>Editable canvas on the <strong>selected completed frame</strong>. A slider + Prev/Next let you scrub; edits feed <strong>Restart from frame N</strong>.</p>
+  </div>
+</div>
+
+<h2>Controls reference</h2>
+<table>
+  <tr><th>Control</th><th>Where</th><th>Expected behaviour</th></tr>
+  <tr><td>Video path</td><td>Sidebar</td><td>Loads the clip and frame 0. Wrapping quotes are removed; internal quotes are preserved.</td></tr>
+  <tr><td>Auto-seed on load</td><td>Sidebar</td><td>When ticked, YOLO seeds frame 0 automatically the first time a given video is loaded.</td></tr>
+  <tr><td>YOLO confidence / NMS IoU</td><td>Sidebar</td><td>Thresholds for the seed detector. Re-detect to apply.</td></tr>
+  <tr><td>Class to draw</td><td>Sidebar</td><td>Class assigned to <em>newly drawn</em> boxes. Existing boxes keep their own class.</td></tr>
+  <tr><td>SAM3 checkpoint</td><td>Sidebar</td><td>Blank = default (project-local <code>sam3.pt</code>, then shared store, else auto-download).</td></tr>
+  <tr><td>✋ Edit / ✏️ Draw new</td><td>Main</td><td>Edit = select, move, resize, <span class="kbd">Delete</span> existing boxes. Draw new = drag to add a box in the sidebar class.</td></tr>
+  <tr><td>▶️ Run</td><td>Main</td><td>Starts background propagation from frame 0 using the current boxes. Disabled with no boxes or while running.</td></tr>
+  <tr><td>⏸️ Pause</td><td>Main</td><td>Stops propagation cleanly after the current frame; switches the window to PAUSED/correction mode. Disabled when not running.</td></tr>
+  <tr><td>Progress bar</td><td>Main</td><td>Shows <code>done / total frames</code> for the current segment, directly under Run/Pause.</td></tr>
+  <tr><td>Frame slider + ⬅️ Prev / Next ➡️</td><td>Main (paused)</td><td>Scrub to any completed frame; the canvas + boxes update to that frame.</td></tr>
+  <tr><td>▶️ Restart from frame N</td><td>Main (paused)</td><td>Resumes propagation from the scrubbed frame using the corrected boxes; frames before N are preserved.</td></tr>
+  <tr><td>Class dropdown (per object)</td><td>Side panel</td><td>Reassigns a box’s class (e.g. player → referee); the box recolours to match.</td></tr>
+  <tr><td>✕ (per object)</td><td>Side panel</td><td>Removes that object.</td></tr>
+  <tr><td>🗑️ Clear all objects</td><td>Main</td><td>Drops all current boxes and any completed frames.</td></tr>
+  <tr><td>🤖 Re-detect seeds with YOLO</td><td>Main</td><td>Re-runs YOLO on frame 0 on demand (uses current sidebar thresholds).</td></tr>
+  <tr><td>💾 Save JSON</td><td>Step 3</td><td>Exports the completed frames’ detections to a JSON file.</td></tr>
+</table>
+
+<h2>Box editing &amp; class colours</h2>
+<p>
+  Each box’s class is carried by its stroke colour, so the label survives moving and
+  resizing. Newly drawn boxes take the sidebar’s <em>Class to draw</em>. Reassigning a
+  class from the side panel recolours the box.
+</p>
+<p>
+  <span class="swatch" style="background:var(--player)"></span> player &nbsp;
+  <span class="swatch" style="background:var(--referee)"></span> referee &nbsp;
+  <span class="swatch" style="background:var(--ball)"></span> ball
+  &nbsp;— and the rest of the detection ontology (coach, in/out-of-play ball, sub).
+</p>
+
+<h2>Pause → correct → restart</h2>
+<div class="mock" style="grid-template-columns:1fr;">
+  <div class="col">
+    <h4>Paused editor</h4>
+    <div class="scrub"><span style="font-size:12px;color:var(--muted)">Frame</span><div class="bar"></div><span style="font-size:12px">9 / 14</span></div>
+    <div class="toolbar"><span class="btn">⬅️ Prev</span><span class="btn">Next ➡️</span></div>
+    <div class="videoframe" style="max-width:520px">
+      <div class="bbox b-player" style="left:30%;top:35%;width:11%;height:32%"><span>player</span></div>
+      <div class="bbox b-ref" style="left:60%;top:28%;width:9%;height:28%"><span>referee</span></div>
+    </div>
+    <div class="toolbar" style="max-width:520px"><span class="btn primary">▶️ Restart from frame 9</span></div>
+  </div>
+</div>
+<p>
+  Restarting re-seeds SAM3 with the corrected boxes and propagates from the chosen
+  frame onward. The frames before it stay exactly as they were, so corrections never
+  cost you earlier work.
+</p>
+
+<h2>Outputs</h2>
+<table>
+  <tr><th>Artifact</th><th>Contents</th></tr>
+  <tr><td>Labels JSON</td><td>One <code>FrameDetections</code> per completed frame (normalized <code>x,y,w,h</code> boxes + class + confidence).</td></tr>
+</table>
+
+<div class="callout warn">
+  <strong>Known limitation.</strong> While seeding, the per-object <em>class dropdown</em> and ✕
+  edit the committed object set, whereas drag/resize lives in the canvas until you Run.
+  If you reposition a box and <em>then</em> change its class in the side panel, the canvas
+  re-prefills from the committed set and that un-run drag is reverted. Do canvas geometry
+  edits and side-panel class edits, then Run (which reads the canvas).
+</div>
+
+<div class="callout">
+  <strong>Performance note.</strong> The first SAM3 run JIT-compiles its kernels
+  (cached under <code>~/.cache/torch_inductor_sam3</code>), so the very first frame is slow;
+  subsequent runs are fast. Pause only after at least one frame has completed, otherwise
+  there is nothing to correct yet.
+</div>
+
+</main>
+
+<footer>
+  Generated documentation for the SAM3 Video Labeller · footy-track ·
+  reflects <code>labeller/app.py</code> + <code>labeller/video_utils.py</code> on the
+  <code>sam3_labeller_ui</code> branch.
+</footer>
+</body>
+</html>

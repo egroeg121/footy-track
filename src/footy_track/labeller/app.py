@@ -25,17 +25,21 @@ from PIL import Image
 import footy_track.labeller._canvas_compat  # noqa: F401  # isort: skip
 from streamlit_drawable_canvas import st_canvas  # isort: skip
 
-from footy_track.detectors.utils import color_map
+from footy_track.detectors.ultralytics import (
+    CURRENT_BEST_DETECTOR_CHECKPOINT,
+    get_current_best_detector,
+)
+from footy_track.detectors.utils import calculate_iou, color_map
 from footy_track.labeller.video_utils import (
+    BackgroundLabeller,
     LabelledObject,
-    Sam3VideoLabeller,
     _warmup_done,  # noqa: F401 — imported for future sidebar status use
     export_frames_json,
     extract_first_frame,
 )
 from footy_track.schema import DETECTION_CLASSES, ObjectDetection
 
-CANVAS_DISPLAY_WIDTH = 960
+CANVAS_DISPLAY_WIDTH = 720
 
 
 def _rgb_hex(label: str) -> str:
@@ -54,26 +58,79 @@ def _init_state() -> None:
     st.session_state.setdefault("objects", [])  # list[LabelledObject]
     st.session_state.setdefault("canvas_key", 0)
     st.session_state.setdefault("frames", None)  # list[FrameDetections] | None
+    # Background SAM3 inference (persists across Streamlit reruns).
+    st.session_state.setdefault("bg", BackgroundLabeller())
+    st.session_state.setdefault("paused_at_frame", None)  # int | None
+    st.session_state.setdefault("correcting", False)
+    # Frame currently shown in the paused editor (prev/next navigation).
+    st.session_state.setdefault("correction_frame", None)  # int | None
+    # Edited boxes captured from the editable canvas this run.
+    st.session_state.setdefault("edited_objects", [])
+    # Previous canvas box centers + the index of the most-recently-moved box,
+    # used to highlight the matching row in the side panel (selection heuristic).
+    st.session_state.setdefault("prev_centers", [])
+    st.session_state.setdefault("active_obj", None)  # int | None
+    # canvas_key the list-sync last reconciled against (avoids clobbering a fresh
+    # re-detect / class-change before the canvas has re-rendered with it).
+    st.session_state.setdefault("_synced_key", None)
+    # Path of the video we've already auto-seeded, so it only runs once per video.
+    st.session_state.setdefault("autoseeded_video", None)
 
 
-def _canvas_rects_to_objects(
-    json_data: dict | None, label: str, scale: float
+def _nms_filter(
+    detections: list[ObjectDetection], iou_threshold: float = 0.5
+) -> list[ObjectDetection]:
+    """Greedy IoU NMS — keep highest-confidence box, drop overlaps above threshold."""
+    kept: list[ObjectDetection] = []
+    for det in sorted(detections, key=lambda d: d.confidence, reverse=True):
+        if all(calculate_iou(det, k) <= iou_threshold for k in kept):
+            kept.append(det)
+    return kept
+
+
+def _yolo_seed_objects(
+    video_path: Path,
+    model_path: str,
+    min_confidence: float,
+    orig_w: int,
+    orig_h: int,
+    iou_threshold: float = 0.5,
 ) -> list[LabelledObject]:
-    """Convert drawable-canvas rect objects (display coords) to LabelledObjects."""
+    """Run the YOLO detector on frame 0 and return NMS-filtered seed objects.
+
+    Detections come back normalized; we convert to absolute xyxy pixel coords for
+    :class:`LabelledObject`, the seed format SAM3 expects.
+    """
+    import tempfile  # noqa: PLC0415
+
+    frame_bgr = extract_first_frame(video_path)
+    with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as f:
+        tmp_path = Path(f.name)
+    cv2.imwrite(str(tmp_path), frame_bgr)
+    try:
+        detector = get_current_best_detector(min_confidence=min_confidence)
+        if model_path:
+            from footy_track.detectors.ultralytics import (  # noqa: PLC0415
+                UltralyticsObjectDetector,
+            )
+
+            detector = UltralyticsObjectDetector(
+                model_uri=model_path,
+                min_confidence=min_confidence,
+                use_model_names=True,
+            )
+        fd = detector.predict_from_path(tmp_path)
+    finally:
+        tmp_path.unlink(missing_ok=True)
+
+    filtered = _nms_filter(fd.detections, iou_threshold=iou_threshold)
     objects: list[LabelledObject] = []
-    if not json_data:
-        return objects
-    for obj in json_data.get("objects", []):
-        if obj.get("type") != "rect":
-            continue
-        left = float(obj["left"]) * obj.get("scaleX", 1.0)
-        top = float(obj["top"]) * obj.get("scaleY", 1.0)
-        width = float(obj["width"]) * obj.get("scaleX", 1.0)
-        height = float(obj["height"]) * obj.get("scaleY", 1.0)
-        # Map from display coords back to original-frame pixels.
-        x1, y1 = left / scale, top / scale
-        x2, y2 = (left + width) / scale, (top + height) / scale
-        objects.append(LabelledObject(label=label, bbox_xyxy_abs=(x1, y1, x2, y2)))
+    for det in filtered:
+        x1 = det.x * orig_w
+        y1 = det.y * orig_h
+        x2 = (det.x + det.w) * orig_w
+        y2 = (det.y + det.h) * orig_h
+        objects.append(LabelledObject(label=det.label, bbox_xyxy_abs=(x1, y1, x2, y2)))
     return objects
 
 
@@ -87,26 +144,53 @@ def main() -> None:  # noqa: PLR0912, PLR0915
         "them through the clip."
     )
 
-    # --- Sidebar: video + class selection ---
+    # --- Sidebar: all settings ---
     with st.sidebar:
         st.header("1. Video")
         video_path_str = st.text_input("Video path", value="")
-        st.header("2. Class")
+
+        st.header("2. Auto-detect seeds (YOLO)")
+        auto_seed = st.checkbox(
+            "Auto-seed on load",
+            value=True,
+            help="Run YOLO on frame 0 automatically when a video is loaded.",
+        )
+        yolo_model = st.text_input(
+            "YOLO checkpoint (blank = current best)",
+            value="",
+            help=f"Default: {CURRENT_BEST_DETECTOR_CHECKPOINT}",
+        )
+        yolo_conf = st.slider("YOLO confidence", 0.0, 1.0, 0.35, 0.05)
+        yolo_iou = st.slider("YOLO NMS IoU", 0.1, 0.9, 0.5, 0.05)
+
+        st.header("3. Class")
         label = st.selectbox("Class to draw", DETECTION_CLASSES, index=0)
         st.markdown(
             f"<div style='width:100%;height:18px;background:{_rgb_hex(label)};"
             "border-radius:4px'></div>",
             unsafe_allow_html=True,
         )
-        st.header("3. Model")
+
+        st.header("4. Model")
         model_uri = st.text_input("SAM3 checkpoint (blank = default)", value="")
         min_conf = st.slider("Min confidence", 0.0, 1.0, 0.25, 0.05)
         st.divider()
-        st.caption("JIT kernels cached in ~/.cache/torch_inductor_sam3 — fast after first run.")
+        st.caption(
+            "JIT kernels cached in ~/.cache/torch_inductor_sam3 — fast after first run."
+        )
 
     if not video_path_str:
         st.info("Enter a video path in the sidebar to begin.")
         return
+
+    # Drop surrounding quotes (e.g. from drag-and-drop or shell copy-paste) but
+    # keep any quotes that are genuinely inside the path.
+    video_path_str = video_path_str.strip()
+    if len(video_path_str) >= 2 and video_path_str[0] == video_path_str[-1] in (
+        "'",
+        '"',
+    ):
+        video_path_str = video_path_str[1:-1]
 
     video_path = Path(video_path_str).expanduser()
     if not video_path.exists():
@@ -114,130 +198,353 @@ def main() -> None:  # noqa: PLR0912, PLR0915
         return
 
     try:
-        frame_pil, orig_w, orig_h = _load_first_frame_pil(video_path)
+        _frame0, orig_w, orig_h = _load_first_frame_pil(video_path)
     except Exception as exc:  # noqa: BLE001
         st.error(f"Could not read first frame: {exc}")
         return
 
     scale = CANVAS_DISPLAY_WIDTH / orig_w
-    disp_h = int(orig_h * scale)
-    disp_frame = frame_pil.resize((CANVAS_DISPLAY_WIDTH, disp_h))
 
-    # If objects are already committed, annotate the background so the canvas
-    # shows them while the user draws more. Built here so it's available before
-    # the canvas widget is rendered.
-    objects_so_far: list[LabelledObject] = st.session_state.objects
-    if objects_so_far:
-        annotated_bgr = _draw_committed_on_frame(
-            cv2.cvtColor(np.array(disp_frame), cv2.COLOR_RGB2BGR),
-            objects_so_far, orig_w, orig_h,
+    bg: BackgroundLabeller = st.session_state.bg
+
+    # Auto-seed once per video on load (before the canvas renders, so the seeds
+    # prefill it on the same pass). Runs only when enabled and not yet seeded.
+    if (
+        auto_seed
+        and not bg.running
+        and st.session_state.autoseeded_video != str(video_path)
+    ):
+        st.session_state.autoseeded_video = str(video_path)
+        with st.spinner("🤖 Auto-detecting objects with YOLO…"):
+            try:
+                seeds = _yolo_seed_objects(
+                    video_path=video_path,
+                    model_path=yolo_model,
+                    min_confidence=yolo_conf,
+                    orig_w=orig_w,
+                    orig_h=orig_h,
+                    iou_threshold=yolo_iou,
+                )
+            except Exception as exc:  # noqa: BLE001
+                st.exception(exc)
+                seeds = []
+        if seeds:
+            st.session_state.objects = list(seeds)
+            st.session_state.canvas_key += 1
+
+    objects: list[LabelledObject] = st.session_state.objects
+
+    # Two-pane layout: video + controls on the left, detected-object list on the
+    # right. side_panel is a container we fill in further down.
+    main_col, side_col = st.columns([3, 1])
+    side_panel = side_col.container()
+    main = main_col.container()
+
+    completed = bg.completed_frames()
+    paused_frame = st.session_state.paused_at_frame
+    correcting = (
+        st.session_state.correcting
+        and paused_frame is not None
+        and 0 <= paused_frame < len(completed)
+    )
+
+    # The main window has three modes:
+    #   • running    -> latest completed frame with boxes (live, read-only)
+    #   • correcting -> editable canvas on the selected paused frame (prev/next)
+    #   • seeding    -> editable canvas on frame 0, prefilled with the YOLO seeds
+    # edited_objects holds whatever the canvas currently contains, in both
+    # editable modes, so Run / Restart read straight from it.
+    st.session_state.edited_objects = []
+
+    if bg.running and completed:
+        latest_idx = len(completed) - 1
+        latest = completed[latest_idx]
+        cap = cv2.VideoCapture(str(video_path))
+        cap.set(cv2.CAP_PROP_POS_FRAMES, latest_idx)
+        ok, frame_bgr = cap.read()
+        cap.release()
+        if ok:
+            live = _draw_boxes_on_array(frame_bgr, latest)
+            main.image(live, channels="RGB", width="stretch")
+        main.caption(f"🔴 Live — frame {latest_idx} ({len(latest.detections)} objects)")
+    elif correcting:
+        # Frame being edited (defaults to where we paused); prev/next move it.
+        cf = st.session_state.correction_frame
+        if cf is None or not (0 <= cf < len(completed)):
+            cf = paused_frame
+            st.session_state.correction_frame = cf
+        tool = main.radio(
+            "Tool",
+            ["✋ Edit (move/resize/delete)", "✏️ Draw new"],
+            horizontal=True,
+            key="tool_correct",
         )
-        canvas_bg = Image.fromarray(cv2.cvtColor(annotated_bgr, cv2.COLOR_BGR2RGB))
+        draw_mode = "transform" if tool.startswith("✋") else "rect"
+        cap = cv2.VideoCapture(str(video_path))
+        cap.set(cv2.CAP_PROP_POS_FRAMES, cf)
+        ok, frame_bgr = cap.read()
+        cap.release()
+        if ok:
+            seeds = _detections_to_seeds(completed[cf], orig_w, orig_h)
+            with main:
+                st.session_state.edited_objects = _render_editable_canvas(
+                    frame_bgr,
+                    seeds,
+                    label,
+                    scale,
+                    orig_h,
+                    key=f"edit_{cf}",
+                    drawing_mode=draw_mode,
+                )
     else:
-        canvas_bg = disp_frame
+        # Seeding: editable canvas on frame 0 prefilled with the current objects
+        # (e.g. YOLO auto-seeds). Drag/resize/delete then Run.
+        tool = main.radio(
+            "Tool",
+            ["✋ Edit (move/resize/delete)", "✏️ Draw new"],
+            horizontal=True,
+            key="tool_seed",
+        )
+        draw_mode = "transform" if tool.startswith("✋") else "rect"
+        frame0_bgr = extract_first_frame(video_path)
+        # Key reflects object count + classes + tool so the canvas re-reads its
+        # background (with baked-in numbers) whenever the object set changes.
+        sig = "-".join(o.label for o in objects)
+        with main:
+            st.session_state.edited_objects = _render_editable_canvas(
+                frame0_bgr,
+                _objects_to_seeds(objects),
+                label,
+                scale,
+                orig_h,
+                key=f"seed_{st.session_state.canvas_key}_{len(objects)}_{draw_mode}_{hash(sig) & 0xFFFF}",
+                drawing_mode=draw_mode,
+            )
+        main.caption(
+            f"**Edit**: click a box to move/resize (Delete key removes). "
+            f"**Draw new**: drag a **{label}** box (class from sidebar)."
+        )
 
-    st.subheader("Step 1 — Annotate frame 0")
-    prompt_mode = st.radio(
-        "Prompt mode",
-        ["Box", "Point"],
-        horizontal=True,
-        help="Box: drag a rectangle. Point: click the centre of the object.",
-    )
-    if prompt_mode == "Box":
-        st.write(f"Draw **{label}** rectangles, then click **Add**.")
-        text_hint = None
-    else:
-        text_hint = st.text_input(
-            "Text hint (optional)",
-            placeholder='e.g. "soccer ball" — helps SAM3 find the right object',
-            help="If set, SAM3Semantic uses this text on frame 0 to find the object nearest your click.",
-        ) or None
-        st.write(f"Click the centre of each **{label}**, then click **Add**.")
+        # Keep the right-hand list in sync with the canvas WITHOUT rerunning:
+        # mirror the canvas's current boxes into `objects` so the list + numbers
+        # reflect new/removed boxes on the next natural interaction. No st.rerun()
+        # here — that caused a flashing rerun loop.
+        edited = st.session_state.edited_objects
+        if edited and len(edited) != len(objects):
+            st.session_state.objects = list(edited)
 
-    canvas_mode = "rect" if prompt_mode == "Box" else "point"
-    canvas_result = st_canvas(
-        fill_color=_rgb_hex(label) + "40",  # translucent fill for points
-        stroke_width=3 if prompt_mode == "Box" else 4,
-        stroke_color=_rgb_hex(label),
-        background_image=canvas_bg,
-        update_streamlit=True,
-        height=disp_h,
-        width=CANVAS_DISPLAY_WIDTH,
-        drawing_mode=canvas_mode,
-        key=f"canvas_{st.session_state.canvas_key}",
-    )
+    # --- Selection heuristic: highlight the row whose box just moved most ---
+    # The canvas can't tell Python which box is selected, so we infer it: the box
+    # whose centre shifted most since the last rerun is treated as "active".
+    if not bg.running:
+        cur_centers = [
+            (
+                (o.bbox_xyxy_abs[0] + o.bbox_xyxy_abs[2]) / 2,
+                (o.bbox_xyxy_abs[1] + o.bbox_xyxy_abs[3]) / 2,
+            )
+            for o in st.session_state.edited_objects
+            if o.bbox_xyxy_abs is not None
+        ]
+        prev = st.session_state.prev_centers
+        if cur_centers and len(cur_centers) == len(prev):
+            deltas = [
+                (cx - px) ** 2 + (cy - py) ** 2
+                for (cx, cy), (px, py) in zip(cur_centers, prev, strict=False)
+            ]
+            mx = max(range(len(deltas)), key=lambda i: deltas[i])
+            # Only treat as a selection if it actually moved a noticeable amount.
+            if deltas[mx] > 4.0:
+                st.session_state.active_obj = mx
+        st.session_state.prev_centers = cur_centers
 
-    col_add, col_clear = st.columns(2)
-    with col_add:
-        btn_label = f"➕ Add {'boxes' if prompt_mode == 'Box' else 'points'} as '{label}'"
-        if st.button(btn_label, use_container_width=True):
-            if prompt_mode == "Box":
-                new_objs = _canvas_rects_to_objects(canvas_result.json_data, label, scale)
-            else:
-                new_objs = _canvas_points_to_objects(canvas_result.json_data, label, scale, text_hint)
-            if new_objs:
-                st.session_state.objects.extend(new_objs)
-                st.session_state.canvas_key += 1
+    # --- Frame navigation (only while paused): slider + prev/next ---
+    if correcting:
+        cf = st.session_state.correction_frame
+        last = len(completed) - 1
+        if last > 0:
+            slid = main.slider("Frame", 0, last, cf, key=f"scrub_{paused_frame}")
+            if slid != cf:
+                st.session_state.correction_frame = slid
                 st.rerun()
-            else:
-                st.warning(f"No {'rectangles' if prompt_mode == 'Box' else 'points'} drawn.")
-    with col_clear:
-        if st.button("🗑️ Clear all objects", use_container_width=True):
+        nav_prev, nav_lbl, nav_next = main.columns([1, 2, 1])
+        with nav_prev:
+            if st.button("⬅️ Prev", disabled=cf <= 0, use_container_width=True):
+                st.session_state.correction_frame = cf - 1
+                st.rerun()
+        with nav_lbl:
+            st.markdown(
+                f"<div style='text-align:center'>Frame <b>{cf}</b> / {last}</div>",
+                unsafe_allow_html=True,
+            )
+        with nav_next:
+            if st.button("Next ➡️", disabled=cf >= last, use_container_width=True):
+                st.session_state.correction_frame = cf + 1
+                st.rerun()
+
+    # --- Playback control bar directly under the video window ---
+    ctrl_run, ctrl_pause = main.columns(2)
+    with ctrl_run:
+        if correcting:
+            cf = st.session_state.correction_frame
+            if st.button(
+                f"▶️ Restart from frame {cf}",
+                type="primary",
+                use_container_width=True,
+            ):
+                corrected = st.session_state.edited_objects
+                if not corrected:
+                    main.warning("Draw at least one box before restarting.")
+                else:
+                    st.session_state.objects = corrected
+                    bg.submit(
+                        video_path=video_path,
+                        objects=corrected,
+                        model_uri=model_uri or None,
+                        min_confidence=min_conf,
+                        start_frame=cf,
+                    )
+                    st.session_state.correcting = False
+                    st.session_state.paused_at_frame = None
+                    st.session_state.correction_frame = None
+                    st.rerun()
+        else:
+            run_objs = st.session_state.edited_objects or objects
+            if st.button(
+                "▶️ Run",
+                type="primary",
+                disabled=not run_objs or bg.running,
+                use_container_width=True,
+            ):
+                st.session_state.objects = run_objs
+                st.session_state.correcting = False
+                st.session_state.paused_at_frame = None
+                bg.submit(
+                    video_path=video_path,
+                    objects=run_objs,
+                    model_uri=model_uri or None,
+                    min_confidence=min_conf,
+                    start_frame=0,
+                )
+                st.rerun()
+    with ctrl_pause:
+        if st.button("⏸️ Pause", disabled=not bg.running, use_container_width=True):
+            bg.pause()
+            st.session_state.paused_at_frame = bg.last_completed_frame
+            st.session_state.correction_frame = bg.last_completed_frame
+            st.session_state.correcting = True
+            st.rerun()
+
+    # --- Inference progress bar directly under Run / Pause ---
+    if bg.error is not None:
+        main.exception(bg.error)
+
+    done, total = bg.progress
+    if bg.running:
+        frac = min(1.0, done / total) if total else 0.0
+        main.progress(frac, text=f"Running… {done}/{total} frames this segment")
+        main.caption("Inference runs in the background — Pause to correct boxes.")
+    elif bg.last_completed_frame >= 0:
+        main.info(f"Completed up to frame {bg.last_completed_frame}.")
+
+    def _run_autoseed() -> None:
+        """Run YOLO on frame 0 and append the seeds, with a spinner."""
+        with st.spinner("🤖 Auto-detecting objects with YOLO…"):
+            try:
+                seeds = _yolo_seed_objects(
+                    video_path=video_path,
+                    model_path=yolo_model,
+                    min_confidence=yolo_conf,
+                    orig_w=orig_w,
+                    orig_h=orig_h,
+                    iou_threshold=yolo_iou,
+                )
+            except Exception as exc:  # noqa: BLE001
+                st.exception(exc)
+                seeds = []
+        if seeds:
+            # Replace (not append) so re-detecting doesn't stack duplicate boxes.
+            st.session_state.objects = list(seeds)
+            st.session_state.canvas_key += 1
+            st.success(f"Detected {len(seeds)} YOLO seeds — review and prune.")
+        else:
+            st.warning("YOLO found no objects on frame 0.")
+
+    if main.button("🤖 Re-detect seeds with YOLO", use_container_width=True):
+        _run_autoseed()
+        st.rerun()
+
+    # --- Detected-object list in the right-hand side panel ---
+    # Class reassignment edits the committed `objects`; in seeding mode the canvas
+    # re-prefills from it (showing the new colour). Disabled while correcting,
+    # where edits live in the canvas itself.
+    with side_panel:
+        hdr, clr = st.columns([3, 1])
+        hdr.markdown(f"### Detected objects ({len(objects)})")
+        if clr.button("🗑️ Clear", use_container_width=True, help="Remove all objects"):
             st.session_state.objects = []
             st.session_state.frames = None
             st.session_state.canvas_key += 1
             st.rerun()
-
-    # --- Object list + confirmation overlay ---
-    objects: list[LabelledObject] = st.session_state.objects
-    if objects:
-        st.markdown("**Marked objects:**")
+        if not objects:
+            st.caption("No objects yet — auto-detect or draw on the frame.")
+        active = st.session_state.active_obj
         for i, obj in enumerate(objects):
-            c1, c2 = st.columns([5, 1])
-            if obj.bbox_xyxy_abs is not None:
-                x1, y1, x2, y2 = (round(v) for v in obj.bbox_xyxy_abs)
-                c1.write(f"`{i}` **{obj.label}** box — ({x1}, {y1}) → ({x2}, {y2})")
-            else:
-                px, py = (round(v) for v in obj.point_xy_abs)  # type: ignore[misc]
-                hint = f" + text: *{obj.text_hint}*" if obj.text_hint else ""
-                c1.write(f"`{i}` **{obj.label}** point — ({px}, {py}){hint}")
-            if c2.button("remove", key=f"rm_{i}"):
+            is_active = i == active
+            swatch, c1, c2 = st.columns([0.6, 3.4, 1])
+            # Colour swatch matching the box's class; a ▶ marks the active row.
+            marker = "▶" if is_active else ""
+            swatch.markdown(
+                f"<div style='margin-top:6px;white-space:nowrap'>{marker}"
+                f"<span style='display:inline-block;width:14px;height:14px;"
+                f"border-radius:3px;background:{_rgb_hex(obj.label)};"
+                f"color:#000;font-size:10px;font-weight:700;text-align:center;"
+                f"line-height:14px;"
+                f"outline:{'2px solid #fff' if is_active else 'none'}'>{i}</span>"
+                f"</div>",
+                unsafe_allow_html=True,
+            )
+            with c1:
+                new_label = st.selectbox(
+                    f"obj {i}",
+                    DETECTION_CLASSES,
+                    index=DETECTION_CLASSES.index(obj.label)
+                    if obj.label in DETECTION_CLASSES
+                    else 0,
+                    key=f"cls_{i}",
+                    label_visibility="collapsed",
+                )
+                if new_label != obj.label and obj.bbox_xyxy_abs is not None:
+                    st.session_state.objects[i] = LabelledObject(
+                        label=new_label, bbox_xyxy_abs=obj.bbox_xyxy_abs
+                    )
+                    st.session_state.canvas_key += 1
+                    st.rerun()
+            if c2.button("✕", key=f"rm_{i}", help="Remove"):
                 st.session_state.objects.pop(i)
+                st.session_state.canvas_key += 1
                 st.rerun()
 
-        # (Committed objects are drawn directly onto the canvas background above.)
+    # Paused before any frame finished — nothing to correct yet.
+    if st.session_state.correcting and paused_frame is not None and not correcting:
+        main.warning(
+            "Paused before the first frame completed — nothing to correct yet. "
+            "Adjust the seeds and hit Run again."
+        )
 
-    # --- Step 2: run propagation ---
-    st.subheader("Step 2 — Propagate through clip")
+    # Poll for progress while inference is running (keeps the live frame + bar
+    # advancing). Skipped when paused so corrections are stable.
+    if bg.running:
+        import time  # noqa: PLC0415
 
-    if st.button("▶️ Label video", type="primary", disabled=not objects):
-        progress = st.progress(0.0, text="⏳ Loading model & running SAM3…")
-
-        def _on_progress(done: int, total: int) -> None:
-            frac = min(1.0, done / total) if total else 0.0
-            progress.progress(frac, text=f"Frame {done}/{total}")
-
-        try:
-            labeller = Sam3VideoLabeller(
-                video_path=video_path,
-                objects=objects,
-                model_uri=model_uri or None,
-                min_confidence=min_conf,
-            )
-            st.session_state.frames = labeller.run(progress_callback=_on_progress)
-            progress.progress(1.0, text="Done")
-            st.success(f"Labelled {len(st.session_state.frames)} frames.")
-        except Exception as exc:  # noqa: BLE001
-            st.exception(exc)
+        time.sleep(1.0)
+        st.rerun()
 
     # --- Step 3: preview + export ---
-    frames = st.session_state.frames
-    if frames:
+    if completed:
         st.subheader("Step 3 — Preview & export")
-        idx = st.slider("Frame", 0, len(frames) - 1, 0)
-        frame_det = frames[idx]
+        idx = st.slider("Frame", 0, len(completed) - 1, 0)
+        frame_det = completed[idx]
 
-        # Re-render the chosen frame from the video and draw boxes on it.
         cap = cv2.VideoCapture(str(video_path))
         cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
         ok, frame_bgr = cap.read()
@@ -250,101 +557,145 @@ def main() -> None:  # noqa: PLR0912, PLR0915
         default_out = video_path.with_name(f"{video_path.stem}_labels.json")
         out_str = st.text_input("Output JSON path", value=str(default_out))
         if st.button("💾 Save JSON"):
-            out_path = export_frames_json(frames, Path(out_str))
+            out_path = export_frames_json(completed, Path(out_str))
             st.success(f"Saved → {out_path}")
 
 
-def _draw_committed_on_frame(
-    frame_bgr: np.ndarray,
+def _objects_to_seeds(
     objects: list[LabelledObject],
-    orig_w: int,
+) -> list[tuple[str, float, float, float, float]]:
+    """Convert LabelledObjects (bbox) to (label, x1,y1,x2,y2) abs-pixel tuples."""
+    seeds: list[tuple[str, float, float, float, float]] = []
+    for o in objects:
+        if o.bbox_xyxy_abs is not None:
+            x1, y1, x2, y2 = o.bbox_xyxy_abs
+            seeds.append((o.label, x1, y1, x2, y2))
+    return seeds
+
+
+def _detections_to_seeds(
+    fd, orig_w: int, orig_h: int
+) -> list[tuple[str, float, float, float, float]]:
+    """Convert a FrameDetections' normalized boxes to abs-pixel seed tuples."""
+    seeds: list[tuple[str, float, float, float, float]] = []
+    for det in fd.detections:
+        x1 = det.x * orig_w
+        y1 = det.y * orig_h
+        x2 = (det.x + det.w) * orig_w
+        y2 = (det.y + det.h) * orig_h
+        seeds.append((det.label, x1, y1, x2, y2))
+    return seeds
+
+
+def _seed_boxes_to_canvas_json(
+    seeds: list[tuple[str, float, float, float, float]],
+    scale: float,
+) -> dict:
+    """Build a Fabric.js initial_drawing from (label, x1,y1,x2,y2) abs-pixel boxes."""
+    objects = []
+    for lbl, x1, y1, x2, y2 in seeds:
+        objects.append(
+            {
+                "type": "rect",
+                "left": x1 * scale,
+                "top": y1 * scale,
+                "width": (x2 - x1) * scale,
+                "height": (y2 - y1) * scale,
+                "fill": "rgba(0,0,0,0.0)",
+                "stroke": _rgb_hex(lbl),
+                "strokeWidth": 2,
+            }
+        )
+    return {"version": "4.4.0", "objects": objects}
+
+
+def _hex_to_label() -> dict[str, str]:
+    """Reverse map of _rgb_hex(label) -> label for recovering classes from strokes."""
+    return {_rgb_hex(lbl): lbl for lbl in DETECTION_CLASSES}
+
+
+def _render_editable_canvas(
+    frame_bgr: np.ndarray,
+    seeds: list[tuple[str, float, float, float, float]],
+    label: str,
+    scale: float,
     orig_h: int,
-) -> np.ndarray:
-    """Draw committed objects onto a display-sized BGR frame in-place (copy returned)."""
-    img = frame_bgr.copy()
-    h, w = img.shape[:2]
-    scale_x, scale_y = w / orig_w, h / orig_h
-    overlay = img.copy()
-
-    for obj in objects:
-        color = color_map.get(obj.label.lower(), (255, 0, 0))
-        if obj.bbox_xyxy_abs is not None:
-            x1, y1, x2, y2 = obj.bbox_xyxy_abs
-            cv2.rectangle(
-                img,
-                (int(x1 * scale_x), int(y1 * scale_y)),
-                (int(x2 * scale_x), int(y2 * scale_y)),
-                color, 2,
-            )
-            cv2.putText(img, obj.label, (int(x1 * scale_x), max(0, int(y1 * scale_y) - 4)),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
-        elif obj.point_xy_abs is not None:
-            px, py = int(obj.point_xy_abs[0] * scale_x), int(obj.point_xy_abs[1] * scale_y)
-            # Semi-transparent filled circle on overlay, then blend
-            cv2.circle(overlay, (px, py), 6, color, -1)
-            cv2.circle(img, (px, py), 6, color, 2)  # solid outline on original
-            cv2.putText(img, obj.label, (px + 8, py + 4),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
-
-    # Blend overlay (filled circles) at 40% opacity
-    cv2.addWeighted(overlay, 0.4, img, 0.6, 0, img)
-    return img
-
-
-def _canvas_points_to_objects(
-    json_data: dict | None, label: str, scale: float, text_hint: str | None = None
+    key: str,
+    drawing_mode: str = "transform",
 ) -> list[LabelledObject]:
-    """Convert drawable-canvas circle/point objects (display coords) to LabelledObjects."""
-    objects: list[LabelledObject] = []
+    """Drawable canvas prefilled with *seeds*; returns the edited box objects.
+
+    Each box carries its class as the Fabric stroke colour, so on read we recover
+    the original label even after move/resize. New boxes (drawn in "rect" mode)
+    take the active sidebar *label*. ``drawing_mode`` is "transform" (select /
+    move / resize / delete existing) or "rect" (draw new). Used for both initial
+    seeding and paused-frame correction so editing behaves identically.
+    """
+    disp_h = int(orig_h * scale)
+    frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
+    disp = cv2.resize(frame_rgb, (CANVAS_DISPLAY_WIDTH, disp_h))
+
+    # Bake each seed's index number near its top-left corner so the numbers line
+    # up with the boxes and match the right-hand list, without being editable
+    # canvas objects themselves.
+    for i, (lbl, x1, y1, _x2, _y2) in enumerate(seeds):
+        px, py = int(x1 * scale), int(y1 * scale)
+        r, g, b = (int(c) for c in bytes.fromhex(_rgb_hex(lbl)[1:]))
+        cv2.putText(
+            disp,
+            str(i),
+            (px + 2, max(14, py - 4)),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.55,
+            (0, 0, 0),
+            3,
+            cv2.LINE_AA,
+        )
+        cv2.putText(
+            disp,
+            str(i),
+            (px + 2, max(14, py - 4)),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.55,
+            (r, g, b),
+            1,
+            cv2.LINE_AA,
+        )
+    bg_img = Image.fromarray(disp)
+
+    result = st_canvas(
+        fill_color="rgba(0,0,0,0.0)",
+        stroke_width=3,
+        stroke_color=_rgb_hex(label),
+        background_image=bg_img,
+        update_streamlit=True,
+        height=disp_h,
+        width=CANVAS_DISPLAY_WIDTH,
+        drawing_mode=drawing_mode,
+        initial_drawing=_seed_boxes_to_canvas_json(seeds, scale),
+        key=key,
+    )
+
+    json_data = result.json_data if result is not None else None
+    objs: list[LabelledObject] = []
     if not json_data:
-        return objects
+        return objs
+    hex_to_label = _hex_to_label()
     for obj in json_data.get("objects", []):
-        if obj.get("type") not in ("circle", "point"):
+        if obj.get("type") != "rect":
             continue
-        # Fabric.js circle uses originX/originY="center" so left/top IS the centre.
-        cx = float(obj.get("left", 0))
-        cy = float(obj.get("top", 0))
-        objects.append(LabelledObject(
-            label=label,
-            point_xy_abs=(cx / scale, cy / scale),
-            text_hint=text_hint,
-        ))
-    return objects
-
-
-def _fake_frame_det(objects: list[LabelledObject], orig_w: int, orig_h: int, scale: float):
-    """Build a SimpleNamespace with detections for the confirmation overlay."""
-    from types import SimpleNamespace  # noqa: PLC0415
-
-    detections = []
-    for obj in objects:
-        if obj.bbox_xyxy_abs is not None:
-            x1, y1, x2, y2 = obj.bbox_xyxy_abs
-            detections.append(
-                ObjectDetection(
-                    label=obj.label,
-                    confidence=1.0,
-                    x=max(0.0, x1 / orig_w),
-                    y=max(0.0, y1 / orig_h),
-                    w=max(0.0, (x2 - x1) / orig_w),
-                    h=max(0.0, (y2 - y1) / orig_h),
-                )
-            )
-        elif obj.point_xy_abs is not None:
-            px, py = obj.point_xy_abs
-            # Show point as a small box (2% of image) for visibility
-            size_x, size_y = 0.02, 0.035
-            detections.append(
-                ObjectDetection(
-                    label=obj.label,
-                    confidence=1.0,
-                    x=max(0.0, px / orig_w - size_x / 2),
-                    y=max(0.0, py / orig_h - size_y / 2),
-                    w=size_x,
-                    h=size_y,
-                )
-            )
-    return SimpleNamespace(detections=detections)
+        left = float(obj["left"]) * obj.get("scaleX", 1.0)
+        top = float(obj["top"]) * obj.get("scaleY", 1.0)
+        width = float(obj["width"]) * obj.get("scaleX", 1.0)
+        height = float(obj["height"]) * obj.get("scaleY", 1.0)
+        x1, y1 = left / scale, top / scale
+        x2, y2 = (left + width) / scale, (top + height) / scale
+        # Recover the class from the stroke colour; fall back to the active label
+        # for freshly drawn boxes whose stroke matches the current selection.
+        stroke = (obj.get("stroke") or "").lower()
+        box_label = hex_to_label.get(stroke, label)
+        objs.append(LabelledObject(label=box_label, bbox_xyxy_abs=(x1, y1, x2, y2)))
+    return objs
 
 
 def _draw_boxes_on_array(frame_bgr: np.ndarray, frame_det) -> np.ndarray:
