@@ -399,7 +399,10 @@ def main() -> None:  # noqa: PLR0912, PLR0915
             st.rerun()
 
         if last > 0:
-            slid = main.slider("Frame", 0, last, cf, key=f"scrub_{paused_frame}")
+            # Key includes cf so the slider re-initialises to the current frame
+            # whenever Prev/Next change it — otherwise the slider's retained value
+            # would fight (and revert) the button navigation.
+            slid = main.slider("Frame", 0, last, cf, key=f"scrub_{cf}")
             if slid != cf:
                 _goto_frame(slid)
         nav_prev, nav_lbl, nav_next = main.columns([1, 2, 1])
