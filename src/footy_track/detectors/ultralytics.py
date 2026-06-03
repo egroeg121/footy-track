@@ -19,7 +19,11 @@ from footy_track.schema import FrameDetections, ObjectDetection
 from footy_track.utils import get_project_root
 
 from .base import ObjectDetector
-from .utils import _available_device, ultralytics_result_to_detections
+from .utils import (
+    _available_device,
+    mask_poly_to_norm_xywh,
+    ultralytics_result_to_detections,
+)
 
 
 class UltralyticsObjectDetector(ObjectDetector):
@@ -299,29 +303,16 @@ class UltralyticsSam3Detector(ObjectDetector):
         height: int,
     ) -> None:
         for j, poly in enumerate(mask_polys):
-            if poly is None or len(poly) == 0:
+            # Pad horizontally by the full percent and vertically by half (players
+            # are taller than wide, so a tight vertical fit looks better).
+            box = mask_poly_to_norm_xywh(
+                poly,
+                x_padding_percent=self.bbox_padding_percent,
+                y_padding_percent=self.bbox_padding_percent / 2,
+            )
+            if box is None:
                 continue
-            xs = [float(p[0]) for p in poly]
-            ys = [float(p[1]) for p in poly]
-            x1n, y1n = min(xs), min(ys)
-            x2n, y2n = max(xs), max(ys)
-
-            # Add a small padding to the bounding box
-            w_n_unpadded = x2n - x1n
-            h_n_unpadded = y2n - y1n
-            x_padding = w_n_unpadded * self.bbox_padding_percent
-            y_padding = h_n_unpadded * (self.bbox_padding_percent / 2)
-
-            x1n -= x_padding
-            y1n -= y_padding
-            x2n += x_padding
-            y2n += y_padding
-
-            # Convert to top-left + width/height with clamping
-            x = max(0.0, min(1.0, x1n))
-            y = max(0.0, min(1.0, y1n))
-            w_n = max(0.0, min(1.0, x2n - x1n))
-            h_n = max(0.0, min(1.0, y2n - y1n))
+            x, y, w_n, h_n = box
 
             conf = float(scores[j]) if j < len(scores) else 1.0
             cls_id = int(cls_indices[j]) if j < len(cls_indices) else 0

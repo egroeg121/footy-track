@@ -39,3 +39,13 @@ wandb/
 footy_scan_detection/
 footy_scan_classifier/
 /yolo11n-cls.pt
+
+# Gas Town (added by gt)
+.logs/
+state.json
+CLAUDE.local.md
+
+# Playwright debug screenshots
+labeller_*.png
+.playwright-mcp/
+.mcp.json

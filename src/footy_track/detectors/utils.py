@@ -38,6 +38,46 @@ def _clamp01(v: float) -> float:
     return float(max(0.0, min(1.0, v)))
 
 
+def mask_poly_to_norm_xywh(
+    poly,
+    x_padding_percent: float = 0.0,
+    y_padding_percent: float = 0.0,
+) -> tuple[float, float, float, float] | None:
+    """Convert a normalized segmentation polygon to a tight ``[x, y, w, h]`` box.
+
+    Takes the polygon's min/max extent, optionally pads it by a fraction of the
+    box's own width/height, and clamps everything to the ``[0, 1]`` range.
+
+    Args:
+        poly: Iterable of ``(x, y)`` points, normalized to ``[0, 1]``.
+        x_padding_percent: Fraction of the box width to pad on each horizontal side.
+        y_padding_percent: Fraction of the box height to pad on each vertical side.
+
+    Returns:
+        ``(x, y, w, h)`` top-left + size (normalized), or ``None`` for an empty poly.
+    """
+    if poly is None or len(poly) == 0:
+        return None
+
+    xs = [float(p[0]) for p in poly]
+    ys = [float(p[1]) for p in poly]
+    x1n, y1n = min(xs), min(ys)
+    x2n, y2n = max(xs), max(ys)
+
+    w_unpadded = x2n - x1n
+    h_unpadded = y2n - y1n
+    x1n -= w_unpadded * x_padding_percent
+    y1n -= h_unpadded * y_padding_percent
+    x2n += w_unpadded * x_padding_percent
+    y2n += h_unpadded * y_padding_percent
+
+    x = _clamp01(x1n)
+    y = _clamp01(y1n)
+    w_n = _clamp01(x2n - x1n)
+    h_n = _clamp01(y2n - y1n)
+    return x, y, w_n, h_n
+
+
 def top_left_wh_to_yolo_xywh(
     x: float, y: float, w: float, h: float
 ) -> tuple[float, float, float, float]:
