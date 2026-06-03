@@ -551,20 +551,18 @@ def main() -> None:  # noqa: PLR0912, PLR0915
             )
             st.markdown(f"### Detected objects ({len(live_objs)})")
             st.caption("🔴 Live — read-only while running. Pause to edit.")
-            for i, obj in sorted(enumerate(live_objs), key=_ball_first):
-                swatch, txt = st.columns([0.6, 4.4])
-                swatch.markdown(
-                    f"<div style='margin-top:2px;white-space:nowrap'>"
-                    f"<span style='display:inline-block;width:14px;height:14px;"
-                    f"border-radius:3px;background:{_rgb_hex(obj.label)};"
-                    f"color:#000;font-size:10px;font-weight:700;text-align:center;"
-                    f"line-height:14px'>{i}</span></div>",
-                    unsafe_allow_html=True,
-                )
-                txt.markdown(
-                    f"<div style='margin-top:2px'>{obj.label}</div>",
-                    unsafe_allow_html=True,
-                )
+            # Render as one compact HTML list (no per-row widgets) to avoid the
+            # tall gaps that st.columns rows introduce.
+            rows = "".join(
+                f"<div style='display:flex;align-items:center;gap:8px;"
+                f"padding:2px 0'>"
+                f"<span style='flex:none;width:16px;height:16px;border-radius:3px;"
+                f"background:{_rgb_hex(obj.label)};color:#000;font-size:10px;"
+                f"font-weight:700;text-align:center;line-height:16px'>{i}</span>"
+                f"<span>{obj.label}</span></div>"
+                for i, obj in sorted(enumerate(live_objs), key=_ball_first)
+            )
+            st.markdown(rows, unsafe_allow_html=True)
         else:
             hdr, clr = st.columns([3, 1])
             hdr.markdown(f"### Detected objects ({len(objects)})")
