@@ -71,6 +71,11 @@ def _init_state() -> None:
     st.session_state.setdefault("active_obj", None)  # int | None
     # Path of the video we've already auto-seeded, so it only runs once per video.
     st.session_state.setdefault("autoseeded_video", None)
+    # Path of the currently loaded video; changing it wipes prior results.
+    st.session_state.setdefault("loaded_video", None)
+    # (frame_idx, objects) submitted to a run, shown during compile before the
+    # first new frame arrives.
+    st.session_state.setdefault("compile_preview", None)
 
 
 def _nms_filter(
@@ -159,21 +164,17 @@ def main() -> None:  # noqa: PLR0912, PLR0915
         yolo_conf = st.slider("YOLO confidence", 0.0, 1.0, 0.35, 0.05)
         yolo_iou = st.slider("YOLO NMS IoU", 0.1, 0.9, 0.5, 0.05)
 
-        st.header("3. Class")
-        label = st.selectbox("Class to draw", DETECTION_CLASSES, index=0)
-        st.markdown(
-            f"<div style='width:100%;height:18px;background:{_rgb_hex(label)};"
-            "border-radius:4px'></div>",
-            unsafe_allow_html=True,
-        )
-
-        st.header("4. Model")
+        st.header("3. Model")
         model_uri = st.text_input("SAM3 checkpoint (blank = default)", value="")
         min_conf = st.slider("Min confidence", 0.0, 1.0, 0.25, 0.05)
         st.divider()
         st.caption(
             "JIT kernels cached in ~/.cache/torch_inductor_sam3 — fast after first run."
         )
+
+    # Active drawing class — the widget lives next to the Tool selector in the
+    # main window; default it here so earlier code (auto-seed, canvas) can read it.
+    label = st.session_state.get("draw_class", DETECTION_CLASSES[0])
 
     if not video_path_str:
         st.info("Enter a video path in the sidebar to begin.")
@@ -202,6 +203,24 @@ def main() -> None:  # noqa: PLR0912, PLR0915
     scale = CANVAS_DISPLAY_WIDTH / orig_w
 
     bg: BackgroundLabeller = st.session_state.bg
+
+    # Loading a different video wipes the previous run's results and edit state
+    # so stale frames/boxes from the old clip don't bleed through.
+    if st.session_state.get("loaded_video") != str(video_path):
+        bg.pause()
+        st.session_state.bg = BackgroundLabeller()
+        bg = st.session_state.bg
+        st.session_state.objects = []
+        st.session_state.edited_objects = []
+        st.session_state.frames = None
+        st.session_state.correcting = False
+        st.session_state.correction_frame = None
+        st.session_state.active_obj = None
+        st.session_state.prev_centers = []
+        st.session_state.compile_preview = None
+        st.session_state.autoseeded_video = None
+        st.session_state.canvas_key += 1
+        st.session_state.loaded_video = str(video_path)
 
     # Auto-seed once per video on load (before the canvas renders, so the seeds
     # prefill it on the same pass). Runs only when enabled and not yet seeded.
@@ -251,7 +270,9 @@ def main() -> None:  # noqa: PLR0912, PLR0915
     objects: list[LabelledObject] = st.session_state.objects
     cf = st.session_state.correction_frame  # current paused frame (paused mode)
     main_col, side_col = st.columns([3, 1])
-    side_panel = side_col.container()
+    # Fresh placeholder each run so the previous render's widgets are fully
+    # cleared — prevents ghost/doubled rows when switching running<->editable.
+    side_panel = side_col.empty().container()
     main = main_col.container()
     st.session_state.edited_objects = []
 
@@ -267,7 +288,13 @@ def main() -> None:  # noqa: PLR0912, PLR0915
     # Main window
     # ------------------------------------------------------------------
     if view_mode == "running":
-        latest_idx = len(completed) - 1 if completed else -1
+        # Show the compile preview (the just-submitted frame + edits) until the
+        # new run actually advances past its start frame. progress = (done, total)
+        # where done == start_frame right after submit.
+        preview = st.session_state.get("compile_preview")
+        done_now = bg.progress[0]
+        show_preview = preview is not None and done_now <= preview[0]
+        latest_idx = -1 if show_preview else (len(completed) - 1 if completed else -1)
         if latest_idx >= 0:
             cap = cv2.VideoCapture(str(video_path))
             cap.set(cv2.CAP_PROP_POS_FRAMES, latest_idx)
@@ -283,13 +310,23 @@ def main() -> None:  # noqa: PLR0912, PLR0915
                 f"🔴 Live — frame {latest_idx} "
                 f"({len(completed[latest_idx].detections)} objects)"
             )
+            # New run has advanced — drop the compile preview.
+            st.session_state.compile_preview = None
         else:
-            # Compiling: no completed frame yet. Keep the window populated by
-            # showing frame 0 with the seed boxes instead of going blank.
-            frame0_bgr = extract_first_frame(video_path)
+            # Compiling: no NEW frame yet. Show the frame we just submitted from
+            # (frame 0 on Run, the edited frame on Restart) with the edits, so
+            # the window stays populated and reflects the just-made corrections.
+            preview = st.session_state.get("compile_preview")
+            pv_idx, pv_objs = preview if preview else (0, objects)
+            cap = cv2.VideoCapture(str(video_path))
+            cap.set(cv2.CAP_PROP_POS_FRAMES, pv_idx)
+            ok, pv_bgr = cap.read()
+            cap.release()
+            if not ok:
+                pv_bgr = extract_first_frame(video_path)
             from types import SimpleNamespace  # noqa: PLC0415
 
-            seed_fd = SimpleNamespace(
+            pv_fd = SimpleNamespace(
                 detections=[
                     ObjectDetection(
                         label=o.label,
@@ -299,16 +336,16 @@ def main() -> None:  # noqa: PLR0912, PLR0915
                         w=(o.bbox_xyxy_abs[2] - o.bbox_xyxy_abs[0]) / orig_w,
                         h=(o.bbox_xyxy_abs[3] - o.bbox_xyxy_abs[1]) / orig_h,
                     )
-                    for o in objects
+                    for o in pv_objs
                     if o.bbox_xyxy_abs is not None
                 ]
             )
             main.image(
-                _draw_boxes_on_array(frame0_bgr, seed_fd),
+                _draw_boxes_on_array(pv_bgr, pv_fd),
                 channels="RGB",
                 width="stretch",
             )
-            main.caption("⏳ Compiling model… (showing seed frame)")
+            main.caption(f"⏳ Compiling model… (showing frame {pv_idx} with edits)")
     else:
         # Both editable modes share one canvas + tool selector.
         is_paused = view_mode == "paused"
@@ -316,7 +353,7 @@ def main() -> None:  # noqa: PLR0912, PLR0915
             cf = max(0, len(completed) - 1)
             st.session_state.correction_frame = cf
 
-        tlabel, tool_col = main.columns([1, 4])
+        tlabel, tool_col, cls_col = main.columns([0.7, 2.3, 2])
         tlabel.markdown(
             "<div style='margin-top:6px'><b>Tool</b></div>", unsafe_allow_html=True
         )
@@ -328,6 +365,14 @@ def main() -> None:  # noqa: PLR0912, PLR0915
             label_visibility="collapsed",
         )
         draw_mode = "transform" if tool.startswith("✋") else "rect"
+        # Class for newly drawn boxes — sits next to the Draw tool.
+        label = cls_col.selectbox(
+            "Class to draw",
+            DETECTION_CLASSES,
+            index=DETECTION_CLASSES.index(label) if label in DETECTION_CLASSES else 0,
+            key="draw_class",
+            label_visibility="collapsed",
+        )
 
         if is_paused:
             cap = cv2.VideoCapture(str(video_path))
@@ -426,6 +471,9 @@ def main() -> None:  # noqa: PLR0912, PLR0915
                     main.warning("Draw at least one box before restarting.")
                 else:
                     st.session_state.objects = list(corrected)
+                    # Remember the just-edited frame so we can show it (with the
+                    # edits) while the model recompiles.
+                    st.session_state.compile_preview = (cf, list(corrected))
                     bg.submit(
                         video_path=video_path,
                         objects=corrected,
@@ -442,6 +490,7 @@ def main() -> None:  # noqa: PLR0912, PLR0915
                 "▶️ Run", type="primary", disabled=not run_objs, use_container_width=True
             ):
                 st.session_state.objects = list(run_objs)
+                st.session_state.compile_preview = (0, list(run_objs))
                 bg.submit(
                     video_path=video_path,
                     objects=run_objs,

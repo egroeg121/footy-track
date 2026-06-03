@@ -112,6 +112,58 @@ def _default_model_uri() -> str:
 _warmup_done = threading.Event()
 _warmup_lock = threading.Lock()
 
+# Module-level cache of a single SAM3VideoPredictor, reused across runs so the
+# model stays hot (loaded + JIT-warm) through pause/restart instead of being
+# rebuilt — and recompiled — every time. Keyed by the config that affects the
+# built predictor. Guarded by a lock since the worker runs in a daemon thread.
+_predictor_cache: dict = {"key": None, "predictor": None}
+_predictor_lock = threading.Lock()
+
+
+def get_cached_predictor(model_uri: str, imgsz: int, device: str, conf: float):
+    """Return a hot SAM3VideoPredictor, rebuilding only if the config changed.
+
+    SAM3VideoPredictor is stateful across frames, so callers MUST re-seed it
+    with ``set_prompts(...)`` before each streaming pass (which the labeller
+    already does). Reusing the instance keeps the weights + compiled kernels
+    resident, eliminating the "Compiling model…" wait on every restart.
+    """
+    from ultralytics.models.sam import SAM3VideoPredictor  # noqa: PLC0415
+
+    key = (str(model_uri), int(imgsz), str(device), round(float(conf), 4))
+    with _predictor_lock:
+        if _predictor_cache["key"] == key and _predictor_cache["predictor"] is not None:
+            predictor = _predictor_cache["predictor"]
+            # Reset video-tracking state so the previous run's tracks don't bleed
+            # into this one (the predictor is stateful across stream() calls).
+            import contextlib  # noqa: PLC0415
+
+            for reset_attr in (
+                "clear_all_points_in_video",
+                "_reset_tracking_results",
+                "reset_image",
+            ):
+                fn = getattr(predictor, reset_attr, None)
+                if callable(fn):
+                    # Best-effort reset; set_prompts re-seeds regardless.
+                    with contextlib.suppress(Exception):
+                        fn()
+            return predictor
+        overrides = {
+            "conf": conf,
+            "task": "segment",
+            "mode": "predict",
+            "model": model_uri,
+            "imgsz": imgsz,
+            "verbose": False,
+            "device": device,
+            "save": False,
+        }
+        predictor = SAM3VideoPredictor(overrides=overrides)
+        _predictor_cache["key"] = key
+        _predictor_cache["predictor"] = predictor
+        return predictor
+
 
 def warmup_model(model_uri: str | None = None, imgsz: int = 512) -> None:
     """Load SAM3VideoPredictor and run one dummy frame to trigger JIT compilation.
@@ -204,20 +256,11 @@ class Sam3VideoLabeller:
         self.width, self.height = video_dimensions(self.video_path)
 
     def _build_predictor(self):
-        # Imported lazily so importing this module doesn't pull in heavy ML deps.
-        from ultralytics.models.sam import SAM3VideoPredictor  # noqa: PLC0415
-
-        overrides = {
-            "conf": self.min_confidence,
-            "task": "segment",
-            "mode": "predict",
-            "model": self.model_uri,
-            "imgsz": self.imgsz,
-            "verbose": self.verbose,
-            "device": self.device,
-            "save": False,
-        }
-        return SAM3VideoPredictor(overrides=overrides)
+        # Reuse a cached predictor so the model stays hot across pause/restart;
+        # rebuilt only when the config changes. Callers re-seed via set_prompts.
+        return get_cached_predictor(
+            self.model_uri, self.imgsz, self.device, self.min_confidence
+        )
 
     @torch.no_grad()
     def run(
