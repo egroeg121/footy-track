@@ -70,9 +70,6 @@ def _init_state() -> None:
     # used to highlight the matching row in the side panel (selection heuristic).
     st.session_state.setdefault("prev_centers", [])
     st.session_state.setdefault("active_obj", None)  # int | None
-    # canvas_key the list-sync last reconciled against (avoids clobbering a fresh
-    # re-detect / class-change before the canvas has re-rendered with it).
-    st.session_state.setdefault("_synced_key", None)
     # Path of the video we've already auto-seeded, so it only runs once per video.
     st.session_state.setdefault("autoseeded_video", None)
 
@@ -336,17 +333,12 @@ def main() -> None:  # noqa: PLR0912, PLR0915
             f"**Draw new**: drag a **{label}** box (class from sidebar)."
         )
 
-        # Sync the canvas into `objects` so a newly drawn box appears in the list.
-        # Guard: only sync once the canvas has rendered against the CURRENT key.
-        # After a class-change / remove we bump canvas_key; on that first pass the
-        # canvas may still report its PREVIOUS contents, and syncing then would
-        # clobber the change (reordering / reclassing remaining boxes). We wait
-        # one pass (record the key) before trusting the canvas readback.
-        ck = st.session_state.canvas_key
+        # Sync newly DRAWN boxes into `objects` so they appear in the list. We
+        # only ever ADD (canvas has more boxes than objects) — never let a stale
+        # or initial empty canvas readback REDUCE objects, which would make the
+        # seeds flash up then vanish. Deletions go through the ✕ button instead.
         edited = st.session_state.edited_objects
-        if st.session_state.get("_synced_key") != ck:
-            st.session_state["_synced_key"] = ck
-        elif len(edited) != len(objects):
+        if len(edited) > len(objects):
             st.session_state.objects = list(edited)
             st.session_state.canvas_key += 1
             st.rerun()
