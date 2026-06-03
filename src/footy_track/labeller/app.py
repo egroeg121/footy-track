@@ -488,7 +488,14 @@ def main() -> None:  # noqa: PLR0912, PLR0915
         if not objects:
             st.caption("No objects yet — auto-detect or draw on the frame.")
         active = st.session_state.active_obj
-        for i, obj in enumerate(objects):
+
+        # Show ball-type detections first; keep each row's original index for
+        # the displayed number, edit dropdown and remove button.
+        def _ball_first(item: tuple[int, LabelledObject]) -> tuple[int, int]:
+            _idx, o = item
+            return (0 if "ball" in o.label.lower() else 1, _idx)
+
+        for i, obj in sorted(enumerate(objects), key=_ball_first):
             is_active = i == active
             swatch, c1, c2 = st.columns([0.6, 3.4, 1])
             # Colour swatch matching the box's class; a ▶ marks the active row.
