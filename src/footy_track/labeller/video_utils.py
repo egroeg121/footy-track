@@ -406,7 +406,9 @@ class Sam3VideoLabeller:
                 abs_idx = start_frame + offset
                 yield self._result_to_frame(abs_idx, result)
                 if progress_callback is not None:
-                    progress_callback(offset + 1, n_written)
+                    # Report ABSOLUTE position out of the full clip so a restart
+                    # at frame N shows N/total, not 0/(total-N).
+                    progress_callback(abs_idx + 1, total)
                 if stop_event is not None and stop_event.is_set():
                     return
         finally:
@@ -494,7 +496,8 @@ class BackgroundLabeller:
                 # First run (or video changed): allocate the full timeline.
                 self.frames = [None] * total
             self.error = None
-            self.progress = (0, max(0, total - start_frame))
+            # Absolute progress: a restart at frame N shows N/total.
+            self.progress = (start_frame, total)
             self.running = True
 
         self._stop_event.clear()

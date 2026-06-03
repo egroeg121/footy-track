@@ -273,11 +273,16 @@ def main() -> None:  # noqa: PLR0912, PLR0915
         if cf is None or not (0 <= cf < len(completed)):
             cf = paused_frame
             st.session_state.correction_frame = cf
-        tool = main.radio(
+        tlabel, tool_col = main.columns([1, 4])
+        tlabel.markdown(
+            "<div style='margin-top:6px'><b>Tool</b></div>", unsafe_allow_html=True
+        )
+        tool = tool_col.radio(
             "Tool",
-            ["✋ Edit (move/resize/delete)", "✏️ Draw new"],
+            ["✋ Edit", "✏️ Draw"],
             horizontal=True,
             key="tool_correct",
+            label_visibility="collapsed",
         )
         draw_mode = "transform" if tool.startswith("✋") else "rect"
         cap = cv2.VideoCapture(str(video_path))
@@ -299,17 +304,21 @@ def main() -> None:  # noqa: PLR0912, PLR0915
     else:
         # Seeding: editable canvas on frame 0 prefilled with the current objects
         # (e.g. YOLO auto-seeds). Drag/resize/delete then Run.
-        tool = main.radio(
+        tlabel, tool_col = main.columns([1, 4])
+        tlabel.markdown(
+            "<div style='margin-top:6px'><b>Tool</b></div>", unsafe_allow_html=True
+        )
+        tool = tool_col.radio(
             "Tool",
-            ["✋ Edit (move/resize/delete)", "✏️ Draw new"],
+            ["✋ Edit", "✏️ Draw"],
             horizontal=True,
             key="tool_seed",
+            label_visibility="collapsed",
         )
         draw_mode = "transform" if tool.startswith("✋") else "rect"
         frame0_bgr = extract_first_frame(video_path)
-        # Key reflects object count + classes + tool so the canvas re-reads its
-        # background (with baked-in numbers) whenever the object set changes.
-        sig = "-".join(o.label for o in objects)
+        # Stable key (bumped explicitly via canvas_key) so the canvas only remounts
+        # when we intend it to — avoids the count/hash-driven remount loop.
         with main:
             st.session_state.edited_objects = _render_editable_canvas(
                 frame0_bgr,
@@ -317,7 +326,7 @@ def main() -> None:  # noqa: PLR0912, PLR0915
                 label,
                 scale,
                 orig_h,
-                key=f"seed_{st.session_state.canvas_key}_{len(objects)}_{draw_mode}_{hash(sig) & 0xFFFF}",
+                key=f"seed_{st.session_state.canvas_key}_{draw_mode}",
                 drawing_mode=draw_mode,
             )
         main.caption(
@@ -325,13 +334,16 @@ def main() -> None:  # noqa: PLR0912, PLR0915
             f"**Draw new**: drag a **{label}** box (class from sidebar)."
         )
 
-        # Keep the right-hand list in sync with the canvas WITHOUT rerunning:
-        # mirror the canvas's current boxes into `objects` so the list + numbers
-        # reflect new/removed boxes on the next natural interaction. No st.rerun()
-        # here — that caused a flashing rerun loop.
+        # Sync the canvas into `objects` so a newly drawn / deleted box appears in
+        # the right-hand list immediately. Rerun once (bumping canvas_key so the
+        # canvas remounts with the baked-in numbers) only when the COUNT changes.
+        # The key is otherwise stable, so the post-rerun mount reports the same
+        # count and settles without looping. Pure moves don't trigger a rerun.
         edited = st.session_state.edited_objects
-        if edited and len(edited) != len(objects):
+        if len(edited) != len(objects):
             st.session_state.objects = list(edited)
+            st.session_state.canvas_key += 1
+            st.rerun()
 
     # --- Selection heuristic: highlight the row whose box just moved most ---
     # The canvas can't tell Python which box is selected, so we infer it: the box
@@ -440,8 +452,12 @@ def main() -> None:  # noqa: PLR0912, PLR0915
 
     done, total = bg.progress
     if bg.running:
-        frac = min(1.0, done / total) if total else 0.0
-        main.progress(frac, text=f"Running… {done}/{total} frames this segment")
+        if not completed:
+            # Model is JIT-compiling on the first run; no frame finished yet.
+            main.progress(0.0, text="⏳ Compiling model…")
+        else:
+            frac = min(1.0, done / total) if total else 0.0
+            main.progress(frac, text=f"Running… {done}/{total} frames")
         main.caption("Inference runs in the background — Pause to correct boxes.")
     elif bg.last_completed_frame >= 0:
         main.info(f"Completed up to frame {bg.last_completed_frame}.")
@@ -546,8 +562,9 @@ def main() -> None:  # noqa: PLR0912, PLR0915
         time.sleep(1.0)
         st.rerun()
 
-    # --- Step 3: preview + export ---
-    if completed:
+    # --- Step 3: preview + export (hidden while paused/correcting or running;
+    # in those modes the main window already shows the relevant frame) ---
+    if completed and not correcting and not bg.running:
         st.subheader("Step 3 — Preview & export")
         idx = st.slider("Frame", 0, len(completed) - 1, 0)
         frame_det = completed[idx]
