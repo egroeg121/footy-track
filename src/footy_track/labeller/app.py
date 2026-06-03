@@ -60,7 +60,6 @@ def _init_state() -> None:
     st.session_state.setdefault("frames", None)  # list[FrameDetections] | None
     # Background SAM3 inference (persists across Streamlit reruns).
     st.session_state.setdefault("bg", BackgroundLabeller())
-    st.session_state.setdefault("paused_at_frame", None)  # int | None
     st.session_state.setdefault("correcting", False)
     # Frame currently shown in the paused editor (prev/next navigation).
     st.session_state.setdefault("correction_frame", None)  # int | None
@@ -229,87 +228,70 @@ def main() -> None:  # noqa: PLR0912, PLR0915
             st.session_state.objects = list(seeds)
             st.session_state.canvas_key += 1
 
-    objects: list[LabelledObject] = st.session_state.objects
+    # ------------------------------------------------------------------
+    # Unified state model
+    # ------------------------------------------------------------------
+    # view_mode is derived ONCE and drives every section below:
+    #   "running"  – SAM3 is propagating; the window + list are read-only.
+    #   "paused"   – propagation stopped; edit the scrubbed frame, then Restart.
+    #   "seeding"  – no run yet; edit frame-0 seeds, then Run.
+    #
+    # `objects` is the single editable working set. It means frame-0 seeds in
+    # seeding mode and the scrubbed frame's boxes in paused mode; both are loaded
+    # into the SAME list so the canvas, side-panel list and class edits stay in
+    # sync. `edited_objects` is the live canvas readback for the current pass.
+    completed = bg.completed_frames()
+    if bg.running:
+        view_mode = "running"
+    elif st.session_state.correcting and st.session_state.correction_frame is not None:
+        view_mode = "paused"
+    else:
+        view_mode = "seeding"
 
-    # Two-pane layout: video + controls on the left, detected-object list on the
-    # right. side_panel is a container we fill in further down.
+    objects: list[LabelledObject] = st.session_state.objects
+    cf = st.session_state.correction_frame  # current paused frame (paused mode)
     main_col, side_col = st.columns([3, 1])
     side_panel = side_col.container()
     main = main_col.container()
-
-    completed = bg.completed_frames()
-    paused_frame = st.session_state.paused_at_frame
-    correcting = (
-        st.session_state.correcting
-        and paused_frame is not None
-        and 0 <= paused_frame < len(completed)
-    )
-
-    # The main window has three modes:
-    #   • running    -> latest completed frame with boxes (live, read-only)
-    #   • correcting -> editable canvas on the selected paused frame (prev/next)
-    #   • seeding    -> editable canvas on frame 0, prefilled with the YOLO seeds
-    # edited_objects holds whatever the canvas currently contains, in both
-    # editable modes, so Run / Restart read straight from it.
     st.session_state.edited_objects = []
 
-    if bg.running and completed:
-        latest_idx = len(completed) - 1
-        latest = completed[latest_idx]
-        cap = cv2.VideoCapture(str(video_path))
-        cap.set(cv2.CAP_PROP_POS_FRAMES, latest_idx)
-        ok, frame_bgr = cap.read()
-        cap.release()
-        if ok:
-            live = _draw_boxes_on_array(frame_bgr, latest)
-            main.image(live, channels="RGB", width="stretch")
-        main.caption(f"🔴 Live — frame {latest_idx} ({len(latest.detections)} objects)")
-    elif correcting:
-        # Frame being edited (defaults to where we paused); prev/next move it.
-        cf = st.session_state.correction_frame
-        if cf is None or not (0 <= cf < len(completed)):
-            cf = paused_frame
-            st.session_state.correction_frame = cf
-        tlabel, tool_col = main.columns([1, 4])
-        tlabel.markdown(
-            "<div style='margin-top:6px'><b>Tool</b></div>", unsafe_allow_html=True
-        )
-        tool = tool_col.radio(
-            "Tool",
-            ["✋ Edit", "✏️ Draw"],
-            horizontal=True,
-            key="tool_correct",
-            label_visibility="collapsed",
-        )
-        draw_mode = "transform" if tool.startswith("✋") else "rect"
-        cap = cv2.VideoCapture(str(video_path))
-        cap.set(cv2.CAP_PROP_POS_FRAMES, cf)
-        ok, frame_bgr = cap.read()
-        cap.release()
-        if ok:
-            # Seed from `objects` (the shared working set) so class reassignments
-            # and added boxes from the side panel show up here. canvas_key in the
-            # widget key forces a remount when objects change (class/add/remove).
-            with main:
-                st.session_state.edited_objects = _render_editable_canvas(
-                    frame_bgr,
-                    _objects_to_seeds(objects),
-                    label,
-                    scale,
-                    orig_h,
-                    key=f"edit_{cf}_{st.session_state.canvas_key}_{draw_mode}",
-                    drawing_mode=draw_mode,
+    def _load_frame_objects(frame_idx: int) -> None:
+        """Load a completed frame's detections into the editable working set."""
+        if 0 <= frame_idx < len(completed):
+            st.session_state.objects = _frame_dets_to_objects(
+                completed[frame_idx], orig_w, orig_h
+            )
+        st.session_state.canvas_key += 1
+
+    # ------------------------------------------------------------------
+    # Main window
+    # ------------------------------------------------------------------
+    if view_mode == "running":
+        latest_idx = len(completed) - 1 if completed else -1
+        if latest_idx >= 0:
+            cap = cv2.VideoCapture(str(video_path))
+            cap.set(cv2.CAP_PROP_POS_FRAMES, latest_idx)
+            ok, frame_bgr = cap.read()
+            cap.release()
+            if ok:
+                main.image(
+                    _draw_boxes_on_array(frame_bgr, completed[latest_idx]),
+                    channels="RGB",
+                    width="stretch",
                 )
-            # Sync newly DRAWN boxes into `objects` so they appear in the list
-            # (only ever ADD; never let a stale empty readback drop boxes).
-            edited = st.session_state.edited_objects
-            if len(edited) > len(objects):
-                st.session_state.objects = list(edited)
-                st.session_state.canvas_key += 1
-                st.rerun()
+            main.caption(
+                f"🔴 Live — frame {latest_idx} "
+                f"({len(completed[latest_idx].detections)} objects)"
+            )
+        else:
+            main.info("⏳ Compiling model…")
     else:
-        # Seeding: editable canvas on frame 0 prefilled with the current objects
-        # (e.g. YOLO auto-seeds). Drag/resize/delete then Run.
+        # Both editable modes share one canvas + tool selector.
+        is_paused = view_mode == "paused"
+        if is_paused and not (0 <= cf < len(completed)):
+            cf = max(0, len(completed) - 1)
+            st.session_state.correction_frame = cf
+
         tlabel, tool_col = main.columns([1, 4])
         tlabel.markdown(
             "<div style='margin-top:6px'><b>Tool</b></div>", unsafe_allow_html=True
@@ -318,48 +300,53 @@ def main() -> None:  # noqa: PLR0912, PLR0915
             "Tool",
             ["✋ Edit", "✏️ Draw"],
             horizontal=True,
-            key="tool_seed",
+            key="tool_mode",
             label_visibility="collapsed",
         )
         draw_mode = "transform" if tool.startswith("✋") else "rect"
-        frame0_bgr = extract_first_frame(video_path)
-        # Stable key (bumped explicitly via canvas_key) so the canvas only remounts
-        # when we intend it to — avoids the count/hash-driven remount loop.
+
+        if is_paused:
+            cap = cv2.VideoCapture(str(video_path))
+            cap.set(cv2.CAP_PROP_POS_FRAMES, cf)
+            ok, frame_bgr = cap.read()
+            cap.release()
+            if not ok:
+                frame_bgr = extract_first_frame(video_path)
+            canvas_key = f"edit_{cf}_{st.session_state.canvas_key}_{draw_mode}"
+        else:
+            frame_bgr = extract_first_frame(video_path)
+            canvas_key = f"seed_{st.session_state.canvas_key}_{draw_mode}"
+
         with main:
             st.session_state.edited_objects = _render_editable_canvas(
-                frame0_bgr,
+                frame_bgr,
                 _objects_to_seeds(objects),
                 label,
                 scale,
                 orig_h,
-                key=f"seed_{st.session_state.canvas_key}_{draw_mode}",
+                key=canvas_key,
                 drawing_mode=draw_mode,
             )
         main.caption(
-            f"**Edit**: click a box to move/resize (Delete key removes). "
-            f"**Draw new**: drag a **{label}** box (class from sidebar)."
+            f"**✋ Edit**: select to move/resize (Delete removes). "
+            f"**✏️ Draw**: drag a **{label}** box."
         )
 
-        # Sync newly DRAWN boxes into `objects` so they appear in the list. We
-        # only ever ADD (canvas has more boxes than objects) — never let a stale
-        # or initial empty canvas readback REDUCE objects, which would make the
-        # seeds flash up then vanish. Deletions go through the ✕ button instead.
+        # Add-only sync: a newly drawn box appears in the list immediately.
+        # Never let a stale/empty readback REDUCE objects (would wipe seeds).
         edited = st.session_state.edited_objects
         if len(edited) > len(objects):
             st.session_state.objects = list(edited)
             st.session_state.canvas_key += 1
             st.rerun()
 
-    # --- Selection heuristic: highlight the row whose box just moved most ---
-    # The canvas can't tell Python which box is selected, so we infer it: the box
-    # whose centre shifted most since the last rerun is treated as "active".
-    if not bg.running:
+        # Selection heuristic: highlight the row whose box just moved most.
         cur_centers = [
             (
                 (o.bbox_xyxy_abs[0] + o.bbox_xyxy_abs[2]) / 2,
                 (o.bbox_xyxy_abs[1] + o.bbox_xyxy_abs[3]) / 2,
             )
-            for o in st.session_state.edited_objects
+            for o in edited
             if o.bbox_xyxy_abs is not None
         ]
         prev = st.session_state.prev_centers
@@ -369,46 +356,27 @@ def main() -> None:  # noqa: PLR0912, PLR0915
                 for (cx, cy), (px, py) in zip(cur_centers, prev, strict=False)
             ]
             mx = max(range(len(deltas)), key=lambda i: deltas[i])
-            # Only treat as a selection if it actually moved a noticeable amount.
             if deltas[mx] > 4.0:
                 st.session_state.active_obj = mx
         st.session_state.prev_centers = cur_centers
 
-    # --- Frame navigation (only while paused): slider + prev/next ---
-    if correcting:
-        cf = st.session_state.correction_frame
+    # ------------------------------------------------------------------
+    # Frame navigation (paused only): slider + prev/next
+    # ------------------------------------------------------------------
+    if view_mode == "paused":
         last = len(completed) - 1
-
-        def _goto_frame(new_cf: int) -> None:
-            """Scrub to new_cf, loading its detections into the shared objects."""
-            st.session_state.correction_frame = new_cf
-            if 0 <= new_cf < len(completed):
-                st.session_state.objects = [
-                    LabelledObject(
-                        label=d.label,
-                        bbox_xyxy_abs=(
-                            d.x * orig_w,
-                            d.y * orig_h,
-                            (d.x + d.w) * orig_w,
-                            (d.y + d.h) * orig_h,
-                        ),
-                    )
-                    for d in completed[new_cf].detections
-                ]
-            st.session_state.canvas_key += 1
-            st.rerun()
-
         if last > 0:
-            # Key includes cf so the slider re-initialises to the current frame
-            # whenever Prev/Next change it — otherwise the slider's retained value
-            # would fight (and revert) the button navigation.
             slid = main.slider("Frame", 0, last, cf, key=f"scrub_{cf}")
             if slid != cf:
-                _goto_frame(slid)
+                st.session_state.correction_frame = slid
+                _load_frame_objects(slid)
+                st.rerun()
         nav_prev, nav_lbl, nav_next = main.columns([1, 2, 1])
         with nav_prev:
             if st.button("⬅️ Prev", disabled=cf <= 0, use_container_width=True):
-                _goto_frame(cf - 1)
+                st.session_state.correction_frame = cf - 1
+                _load_frame_objects(cf - 1)
+                st.rerun()
         with nav_lbl:
             st.markdown(
                 f"<div style='text-align:center'>Frame <b>{cf}</b> / {last}</div>",
@@ -416,23 +384,24 @@ def main() -> None:  # noqa: PLR0912, PLR0915
             )
         with nav_next:
             if st.button("Next ➡️", disabled=cf >= last, use_container_width=True):
-                _goto_frame(cf + 1)
+                st.session_state.correction_frame = cf + 1
+                _load_frame_objects(cf + 1)
+                st.rerun()
 
-    # --- Playback control bar directly under the video window ---
+    # ------------------------------------------------------------------
+    # Playback controls (Run / Restart / Pause)
+    # ------------------------------------------------------------------
     ctrl_run, ctrl_pause = main.columns(2)
     with ctrl_run:
-        if correcting:
-            cf = st.session_state.correction_frame
+        if view_mode == "paused":
             if st.button(
-                f"▶️ Restart from frame {cf}",
-                type="primary",
-                use_container_width=True,
+                f"▶️ Restart from frame {cf}", type="primary", use_container_width=True
             ):
-                corrected = st.session_state.edited_objects
+                corrected = st.session_state.edited_objects or objects
                 if not corrected:
                     main.warning("Draw at least one box before restarting.")
                 else:
-                    st.session_state.objects = corrected
+                    st.session_state.objects = list(corrected)
                     bg.submit(
                         video_path=video_path,
                         objects=corrected,
@@ -441,20 +410,14 @@ def main() -> None:  # noqa: PLR0912, PLR0915
                         start_frame=cf,
                     )
                     st.session_state.correcting = False
-                    st.session_state.paused_at_frame = None
                     st.session_state.correction_frame = None
                     st.rerun()
-        else:
+        elif view_mode == "seeding":
             run_objs = st.session_state.edited_objects or objects
             if st.button(
-                "▶️ Run",
-                type="primary",
-                disabled=not run_objs or bg.running,
-                use_container_width=True,
+                "▶️ Run", type="primary", disabled=not run_objs, use_container_width=True
             ):
-                st.session_state.objects = run_objs
-                st.session_state.correcting = False
-                st.session_state.paused_at_frame = None
+                st.session_state.objects = list(run_objs)
                 bg.submit(
                     video_path=video_path,
                     objects=run_objs,
@@ -463,40 +426,25 @@ def main() -> None:  # noqa: PLR0912, PLR0915
                     start_frame=0,
                 )
                 st.rerun()
+        else:  # running
+            st.button("▶️ Run", type="primary", disabled=True, use_container_width=True)
     with ctrl_pause:
-        if st.button("⏸️ Pause", disabled=not bg.running, use_container_width=True):
+        if st.button(
+            "⏸️ Pause", disabled=view_mode != "running", use_container_width=True
+        ):
             bg.pause()
             n = bg.last_completed_frame
-            st.session_state.paused_at_frame = n
             st.session_state.correction_frame = n
             st.session_state.correcting = True
-            # Load the paused frame's detections into `objects` so the canvas,
-            # side-panel list and class edits all share one source of truth.
-            done_frames = bg.completed_frames()
-            if 0 <= n < len(done_frames):
-                st.session_state.objects = [
-                    LabelledObject(
-                        label=d.label,
-                        bbox_xyxy_abs=(
-                            d.x * orig_w,
-                            d.y * orig_h,
-                            (d.x + d.w) * orig_w,
-                            (d.y + d.h) * orig_h,
-                        ),
-                    )
-                    for d in done_frames[n].detections
-                ]
-            st.session_state.canvas_key += 1
+            _load_frame_objects(n)
             st.rerun()
 
     # --- Inference progress bar directly under Run / Pause ---
     if bg.error is not None:
         main.exception(bg.error)
-
     done, total = bg.progress
-    if bg.running:
+    if view_mode == "running":
         if not completed:
-            # Model is JIT-compiling on the first run; no frame finished yet.
             main.progress(0.0, text="⏳ Compiling model…")
         else:
             frac = min(1.0, done / total) if total else 0.0
@@ -505,8 +453,8 @@ def main() -> None:  # noqa: PLR0912, PLR0915
     elif bg.last_completed_frame >= 0:
         main.info(f"Completed up to frame {bg.last_completed_frame}.")
 
+    # --- Re-detect (seeding only) ---
     def _run_autoseed() -> None:
-        """Run YOLO on frame 0 and append the seeds, with a spinner."""
         with st.spinner("🤖 Auto-detecting objects with YOLO…"):
             try:
                 seeds = _yolo_seed_objects(
@@ -521,51 +469,33 @@ def main() -> None:  # noqa: PLR0912, PLR0915
                 st.exception(exc)
                 seeds = []
         if seeds:
-            # Replace (not append) so re-detecting doesn't stack duplicate boxes.
             st.session_state.objects = list(seeds)
             st.session_state.canvas_key += 1
             st.success(f"Detected {len(seeds)} YOLO seeds — review and prune.")
         else:
             st.warning("YOLO found no objects on frame 0.")
 
-    if main.button("🤖 Re-detect seeds with YOLO", use_container_width=True):
+    if view_mode == "seeding" and main.button(
+        "🤖 Re-detect seeds with YOLO", use_container_width=True
+    ):
         _run_autoseed()
         st.rerun()
 
-    # --- Detected-object list in the right-hand side panel ---
-    # While running, mirror the live frame's propagated detections (read-only).
-    # Otherwise show the editable working set (`objects`): class dropdowns + ✕.
-
+    # ------------------------------------------------------------------
+    # Side panel: one list, chosen by view_mode
+    # ------------------------------------------------------------------
     def _ball_first(item: tuple[int, LabelledObject]) -> tuple[int, int]:
         _idx, o = item
         return (0 if "ball" in o.label.lower() else 1, _idx)
 
     with side_panel:
-        if bg.running:
+        if view_mode == "running":
             live = completed[-1] if completed else None
-            live_objs = (
-                [
-                    LabelledObject(
-                        label=d.label,
-                        bbox_xyxy_abs=(
-                            d.x * orig_w,
-                            d.y * orig_h,
-                            (d.x + d.w) * orig_w,
-                            (d.y + d.h) * orig_h,
-                        ),
-                    )
-                    for d in live.detections
-                ]
-                if live is not None
-                else []
-            )
+            live_objs = _frame_dets_to_objects(live, orig_w, orig_h) if live else []
             st.markdown(f"### Detected objects ({len(live_objs)})")
             st.caption("🔴 Live — read-only while running. Pause to edit.")
-            # Render as one compact HTML list (no per-row widgets) to avoid the
-            # tall gaps that st.columns rows introduce.
             rows = "".join(
-                f"<div style='display:flex;align-items:center;gap:8px;"
-                f"padding:2px 0'>"
+                f"<div style='display:flex;align-items:center;gap:8px;padding:2px 0'>"
                 f"<span style='flex:none;width:16px;height:16px;border-radius:3px;"
                 f"background:{_rgb_hex(obj.label)};color:#000;font-size:10px;"
                 f"font-weight:700;text-align:center;line-height:16px'>{i}</span>"
@@ -576,19 +506,16 @@ def main() -> None:  # noqa: PLR0912, PLR0915
         else:
             hdr, clr = st.columns([3, 1])
             hdr.markdown(f"### Detected objects ({len(objects)})")
-            if clr.button(
-                "🗑️ Clear", use_container_width=True, help="Remove all objects"
-            ):
+            if clr.button("🗑️ Clear", use_container_width=True, help="Remove all"):
                 st.session_state.objects = []
-                st.session_state.frames = None
                 st.session_state.canvas_key += 1
                 st.rerun()
             if not objects:
                 st.caption("No objects yet — auto-detect or draw on the frame.")
             active = st.session_state.active_obj
-
-            # Show ball-type detections first; keep each row's original index for
-            # the displayed number, edit dropdown and remove button.
+            # Widget keys namespaced by canvas_key so rows from a previous mount
+            # can't linger as ghost widgets when the object set changes.
+            ck = st.session_state.canvas_key
             for i, obj in sorted(enumerate(objects), key=_ball_first):
                 is_active = i == active
                 swatch, c1, c2 = st.columns([0.6, 3.4, 1])
@@ -610,7 +537,7 @@ def main() -> None:  # noqa: PLR0912, PLR0915
                         index=DETECTION_CLASSES.index(obj.label)
                         if obj.label in DETECTION_CLASSES
                         else 0,
-                        key=f"cls_{i}",
+                        key=f"cls_{ck}_{i}",
                         label_visibility="collapsed",
                     )
                     if new_label != obj.label and obj.bbox_xyxy_abs is not None:
@@ -619,47 +546,55 @@ def main() -> None:  # noqa: PLR0912, PLR0915
                         )
                         st.session_state.canvas_key += 1
                         st.rerun()
-                if c2.button("✕", key=f"rm_{i}", help="Remove"):
+                if c2.button("✕", key=f"rm_{ck}_{i}", help="Remove"):
                     st.session_state.objects.pop(i)
                     st.session_state.canvas_key += 1
                     st.rerun()
 
-    # Paused before any frame finished — nothing to correct yet.
-    if st.session_state.correcting and paused_frame is not None and not correcting:
-        main.warning(
-            "Paused before the first frame completed — nothing to correct yet. "
-            "Adjust the seeds and hit Run again."
-        )
-
-    # Poll for progress while inference is running (keeps the live frame + bar
-    # advancing). Skipped when paused so corrections are stable.
-    if bg.running:
+    # Poll for progress while running (advances the live frame + bar).
+    if view_mode == "running":
         import time  # noqa: PLC0415
 
         time.sleep(1.0)
         st.rerun()
 
-    # --- Step 3: preview + export (hidden while paused/correcting or running;
-    # in those modes the main window already shows the relevant frame) ---
-    if completed and not correcting and not bg.running:
+    # --- Step 3: preview + export (seeding mode only, once frames exist) ---
+    if completed and view_mode == "seeding":
         st.subheader("Step 3 — Preview & export")
-        idx = st.slider("Frame", 0, len(completed) - 1, 0)
+        idx = st.slider("Preview frame", 0, len(completed) - 1, 0)
         frame_det = completed[idx]
-
         cap = cv2.VideoCapture(str(video_path))
         cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
         ok, frame_bgr = cap.read()
         cap.release()
         if ok:
-            preview = _draw_boxes_on_array(frame_bgr, frame_det)
-            st.image(preview, channels="RGB", width="stretch")
+            st.image(
+                _draw_boxes_on_array(frame_bgr, frame_det),
+                channels="RGB",
+                width="stretch",
+            )
         st.caption(f"{len(frame_det.detections)} detections on frame {idx}")
-
         default_out = video_path.with_name(f"{video_path.stem}_labels.json")
         out_str = st.text_input("Output JSON path", value=str(default_out))
         if st.button("💾 Save JSON"):
             out_path = export_frames_json(completed, Path(out_str))
             st.success(f"Saved → {out_path}")
+
+
+def _frame_dets_to_objects(fd, orig_w: int, orig_h: int) -> list[LabelledObject]:
+    """Convert a FrameDetections' normalized boxes to editable LabelledObjects."""
+    return [
+        LabelledObject(
+            label=d.label,
+            bbox_xyxy_abs=(
+                d.x * orig_w,
+                d.y * orig_h,
+                (d.x + d.w) * orig_w,
+                (d.y + d.h) * orig_h,
+            ),
+        )
+        for d in fd.detections
+    ]
 
 
 def _objects_to_seeds(
@@ -671,20 +606,6 @@ def _objects_to_seeds(
         if o.bbox_xyxy_abs is not None:
             x1, y1, x2, y2 = o.bbox_xyxy_abs
             seeds.append((o.label, x1, y1, x2, y2))
-    return seeds
-
-
-def _detections_to_seeds(
-    fd, orig_w: int, orig_h: int
-) -> list[tuple[str, float, float, float, float]]:
-    """Convert a FrameDetections' normalized boxes to abs-pixel seed tuples."""
-    seeds: list[tuple[str, float, float, float, float]] = []
-    for det in fd.detections:
-        x1 = det.x * orig_w
-        y1 = det.y * orig_h
-        x2 = (det.x + det.w) * orig_w
-        y2 = (det.y + det.h) * orig_h
-        seeds.append((det.label, x1, y1, x2, y2))
     return seeds
 
 
