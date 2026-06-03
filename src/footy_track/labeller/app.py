@@ -284,7 +284,31 @@ def main() -> None:  # noqa: PLR0912, PLR0915
                 f"({len(completed[latest_idx].detections)} objects)"
             )
         else:
-            main.info("⏳ Compiling model…")
+            # Compiling: no completed frame yet. Keep the window populated by
+            # showing frame 0 with the seed boxes instead of going blank.
+            frame0_bgr = extract_first_frame(video_path)
+            from types import SimpleNamespace  # noqa: PLC0415
+
+            seed_fd = SimpleNamespace(
+                detections=[
+                    ObjectDetection(
+                        label=o.label,
+                        confidence=1.0,
+                        x=o.bbox_xyxy_abs[0] / orig_w,
+                        y=o.bbox_xyxy_abs[1] / orig_h,
+                        w=(o.bbox_xyxy_abs[2] - o.bbox_xyxy_abs[0]) / orig_w,
+                        h=(o.bbox_xyxy_abs[3] - o.bbox_xyxy_abs[1]) / orig_h,
+                    )
+                    for o in objects
+                    if o.bbox_xyxy_abs is not None
+                ]
+            )
+            main.image(
+                _draw_boxes_on_array(frame0_bgr, seed_fd),
+                channels="RGB",
+                width="stretch",
+            )
+            main.caption("⏳ Compiling model… (showing seed frame)")
     else:
         # Both editable modes share one canvas + tool selector.
         is_paused = view_mode == "paused"
