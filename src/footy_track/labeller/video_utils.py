@@ -30,10 +30,6 @@ from footy_track.utils import get_project_root
 
 MODEL_TAG = "sam3_video"
 
-# Module-level predictor cache — survives Streamlit reruns within the same process.
-# Key: (model_uri, imgsz, device) → SAM3VideoPredictor instance
-_predictor_cache: dict[tuple, object] = {}
-
 
 @dataclass
 class LabelledObject:
@@ -194,10 +190,6 @@ class Sam3VideoLabeller:
         # Imported lazily so importing this module doesn't pull in heavy ML deps.
         from ultralytics.models.sam import SAM3VideoPredictor  # noqa: PLC0415
 
-        cache_key = (self.model_uri, self.imgsz, self.device)
-        if cache_key in _predictor_cache:
-            return _predictor_cache[cache_key]
-
         overrides = {
             "conf": self.min_confidence,
             "task": "segment",
@@ -208,9 +200,7 @@ class Sam3VideoLabeller:
             "device": self.device,
             "save": False,
         }
-        predictor = SAM3VideoPredictor(overrides=overrides)
-        _predictor_cache[cache_key] = predictor
-        return predictor
+        return SAM3VideoPredictor(overrides=overrides)
 
     @torch.no_grad()
     def run(

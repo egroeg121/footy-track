@@ -13,7 +13,6 @@ Launch with::
 
 from __future__ import annotations
 
-import threading
 from pathlib import Path
 
 import cv2
@@ -55,12 +54,6 @@ def _init_state() -> None:
     st.session_state.setdefault("objects", [])  # list[LabelledObject]
     st.session_state.setdefault("canvas_key", 0)
     st.session_state.setdefault("frames", None)  # list[FrameDetections] | None
-    st.session_state.setdefault("run_frames", [])  # frames collected so far in current run
-    st.session_state.setdefault("run_total", 0)    # total frames expected
-    st.session_state.setdefault("run_error", None) # exception if run failed
-    st.session_state.setdefault("running", False)  # True while thread is active
-    st.session_state.setdefault("stop_flag", False)  # set True to request stop
-    # JIT cache (~/.cache/torch_inductor_sam3) persists across restarts instead of warmup.
 
 
 def _canvas_rects_to_objects(
@@ -217,77 +210,25 @@ def main() -> None:  # noqa: PLR0912, PLR0915
     # --- Step 2: run propagation ---
     st.subheader("Step 2 — Propagate through clip")
 
-    running = st.session_state.running
-    col_run, col_stop = st.columns([3, 1])
-    with col_run:
-        clicked = st.button("▶️ Label video", type="primary", disabled=not objects or running)
-        if clicked and not st.session_state.running:  # guard double-click
-            st.session_state.run_frames = []
-            st.session_state.run_total = 0
-            st.session_state.run_error = None
-            st.session_state.running = True
-            st.session_state.stop_flag = False
-            st.session_state.frames = None
-            running = True  # update local var so spinner shows immediately
+    if st.button("▶️ Label video", type="primary", disabled=not objects):
+        progress = st.progress(0.0, text="⏳ Loading model & running SAM3…")
 
+        def _on_progress(done: int, total: int) -> None:
+            frac = min(1.0, done / total) if total else 0.0
+            progress.progress(frac, text=f"Frame {done}/{total}")
+
+        try:
             labeller = Sam3VideoLabeller(
                 video_path=video_path,
                 objects=objects,
                 model_uri=model_uri or None,
                 min_confidence=min_conf,
             )
-            cap_count = cv2.VideoCapture(str(video_path))
-            st.session_state.run_total = int(cap_count.get(cv2.CAP_PROP_FRAME_COUNT))
-            cap_count.release()
-
-            def _run_thread(lab: Sam3VideoLabeller) -> None:
-                try:
-                    for frame_det in lab.iter_frames():
-                        if st.session_state.stop_flag:
-                            break
-                        st.session_state.run_frames.append(frame_det)
-                    if not st.session_state.stop_flag:
-                        st.session_state.frames = list(st.session_state.run_frames)
-                except Exception as exc:  # noqa: BLE001
-                    st.session_state.run_error = exc
-                finally:
-                    st.session_state.running = False
-
-            threading.Thread(target=_run_thread, args=(labeller,), daemon=True).start()
-            st.rerun()
-
-    with col_stop:
-        if st.button("⏹ Stop", disabled=not running):
-            st.session_state.stop_flag = True
-            st.session_state.frames = list(st.session_state.run_frames)
-
-    if running or st.session_state.run_frames:
-        done = len(st.session_state.run_frames)
-        total = st.session_state.run_total or 0
-        if running and total == 0:
-            st.progress(0.0, text="⏳ Loading model…")
-        else:
-            frac = min(1.0, done / total) if total else 1.0
-            label = f"Frame {done}/{total}" if running else f"Done — {done} frames"
-            st.progress(frac, text=label)
-
-        if st.session_state.run_error:
-            st.exception(st.session_state.run_error)
-        elif done > 0:
-            # Live preview — show the latest processed frame
-            latest = st.session_state.run_frames[-1]
-            cap = cv2.VideoCapture(str(video_path))
-            cap.set(cv2.CAP_PROP_POS_FRAMES, done - 1)
-            ok, frame_bgr = cap.read()
-            cap.release()
-            if ok:
-                st.image(_draw_boxes_on_array(frame_bgr, latest), channels="RGB", width="stretch")
-            st.caption(f"Latest: frame {done - 1} — {len(latest.detections)} detections")
-
-        if running:
-            st.rerun()
-        elif not st.session_state.run_error and done > 0:
-            st.success(f"Labelled {done} frames.")
+            st.session_state.frames = labeller.run(progress_callback=_on_progress)
+            progress.progress(1.0, text="Done")
+            st.success(f"Labelled {len(st.session_state.frames)} frames.")
+        except Exception as exc:  # noqa: BLE001
+            st.exception(exc)
 
     # --- Step 3: preview + export ---
     frames = st.session_state.frames
