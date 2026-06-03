@@ -336,13 +336,17 @@ def main() -> None:  # noqa: PLR0912, PLR0915
             f"**Draw new**: drag a **{label}** box (class from sidebar)."
         )
 
-        # Sync the canvas into `objects` so a newly drawn / deleted box appears in
-        # the right-hand list immediately. Rerun once (bumping canvas_key so the
-        # canvas remounts with the baked-in numbers) only when the COUNT changes.
-        # The key is otherwise stable, so the post-rerun mount reports the same
-        # count and settles without looping. Pure moves don't trigger a rerun.
+        # Sync the canvas into `objects` so a newly drawn box appears in the list.
+        # Guard: only sync once the canvas has rendered against the CURRENT key.
+        # After a class-change / remove we bump canvas_key; on that first pass the
+        # canvas may still report its PREVIOUS contents, and syncing then would
+        # clobber the change (reordering / reclassing remaining boxes). We wait
+        # one pass (record the key) before trusting the canvas readback.
+        ck = st.session_state.canvas_key
         edited = st.session_state.edited_objects
-        if len(edited) != len(objects):
+        if st.session_state.get("_synced_key") != ck:
+            st.session_state["_synced_key"] = ck
+        elif len(edited) != len(objects):
             st.session_state.objects = list(edited)
             st.session_state.canvas_key += 1
             st.rerun()
@@ -527,62 +531,98 @@ def main() -> None:  # noqa: PLR0912, PLR0915
         st.rerun()
 
     # --- Detected-object list in the right-hand side panel ---
-    # Class reassignment edits the committed `objects`; in seeding mode the canvas
-    # re-prefills from it (showing the new colour). Disabled while correcting,
-    # where edits live in the canvas itself.
+    # While running, mirror the live frame's propagated detections (read-only).
+    # Otherwise show the editable working set (`objects`): class dropdowns + ✕.
+
+    def _ball_first(item: tuple[int, LabelledObject]) -> tuple[int, int]:
+        _idx, o = item
+        return (0 if "ball" in o.label.lower() else 1, _idx)
+
     with side_panel:
-        hdr, clr = st.columns([3, 1])
-        hdr.markdown(f"### Detected objects ({len(objects)})")
-        if clr.button("🗑️ Clear", use_container_width=True, help="Remove all objects"):
-            st.session_state.objects = []
-            st.session_state.frames = None
-            st.session_state.canvas_key += 1
-            st.rerun()
-        if not objects:
-            st.caption("No objects yet — auto-detect or draw on the frame.")
-        active = st.session_state.active_obj
-
-        # Show ball-type detections first; keep each row's original index for
-        # the displayed number, edit dropdown and remove button.
-        def _ball_first(item: tuple[int, LabelledObject]) -> tuple[int, int]:
-            _idx, o = item
-            return (0 if "ball" in o.label.lower() else 1, _idx)
-
-        for i, obj in sorted(enumerate(objects), key=_ball_first):
-            is_active = i == active
-            swatch, c1, c2 = st.columns([0.6, 3.4, 1])
-            # Colour swatch matching the box's class; a ▶ marks the active row.
-            marker = "▶" if is_active else ""
-            swatch.markdown(
-                f"<div style='margin-top:6px;white-space:nowrap'>{marker}"
-                f"<span style='display:inline-block;width:14px;height:14px;"
-                f"border-radius:3px;background:{_rgb_hex(obj.label)};"
-                f"color:#000;font-size:10px;font-weight:700;text-align:center;"
-                f"line-height:14px;"
-                f"outline:{'2px solid #fff' if is_active else 'none'}'>{i}</span>"
-                f"</div>",
-                unsafe_allow_html=True,
-            )
-            with c1:
-                new_label = st.selectbox(
-                    f"obj {i}",
-                    DETECTION_CLASSES,
-                    index=DETECTION_CLASSES.index(obj.label)
-                    if obj.label in DETECTION_CLASSES
-                    else 0,
-                    key=f"cls_{i}",
-                    label_visibility="collapsed",
-                )
-                if new_label != obj.label and obj.bbox_xyxy_abs is not None:
-                    st.session_state.objects[i] = LabelledObject(
-                        label=new_label, bbox_xyxy_abs=obj.bbox_xyxy_abs
+        if bg.running:
+            live = completed[-1] if completed else None
+            live_objs = (
+                [
+                    LabelledObject(
+                        label=d.label,
+                        bbox_xyxy_abs=(
+                            d.x * orig_w,
+                            d.y * orig_h,
+                            (d.x + d.w) * orig_w,
+                            (d.y + d.h) * orig_h,
+                        ),
                     )
-                    st.session_state.canvas_key += 1
-                    st.rerun()
-            if c2.button("✕", key=f"rm_{i}", help="Remove"):
-                st.session_state.objects.pop(i)
+                    for d in live.detections
+                ]
+                if live is not None
+                else []
+            )
+            st.markdown(f"### Detected objects ({len(live_objs)})")
+            st.caption("🔴 Live — read-only while running. Pause to edit.")
+            for i, obj in sorted(enumerate(live_objs), key=_ball_first):
+                swatch, txt = st.columns([0.6, 4.4])
+                swatch.markdown(
+                    f"<div style='margin-top:2px;white-space:nowrap'>"
+                    f"<span style='display:inline-block;width:14px;height:14px;"
+                    f"border-radius:3px;background:{_rgb_hex(obj.label)};"
+                    f"color:#000;font-size:10px;font-weight:700;text-align:center;"
+                    f"line-height:14px'>{i}</span></div>",
+                    unsafe_allow_html=True,
+                )
+                txt.markdown(
+                    f"<div style='margin-top:2px'>{obj.label}</div>",
+                    unsafe_allow_html=True,
+                )
+        else:
+            hdr, clr = st.columns([3, 1])
+            hdr.markdown(f"### Detected objects ({len(objects)})")
+            if clr.button(
+                "🗑️ Clear", use_container_width=True, help="Remove all objects"
+            ):
+                st.session_state.objects = []
+                st.session_state.frames = None
                 st.session_state.canvas_key += 1
                 st.rerun()
+            if not objects:
+                st.caption("No objects yet — auto-detect or draw on the frame.")
+            active = st.session_state.active_obj
+
+            # Show ball-type detections first; keep each row's original index for
+            # the displayed number, edit dropdown and remove button.
+            for i, obj in sorted(enumerate(objects), key=_ball_first):
+                is_active = i == active
+                swatch, c1, c2 = st.columns([0.6, 3.4, 1])
+                marker = "▶" if is_active else ""
+                swatch.markdown(
+                    f"<div style='margin-top:6px;white-space:nowrap'>{marker}"
+                    f"<span style='display:inline-block;width:14px;height:14px;"
+                    f"border-radius:3px;background:{_rgb_hex(obj.label)};"
+                    f"color:#000;font-size:10px;font-weight:700;text-align:center;"
+                    f"line-height:14px;"
+                    f"outline:{'2px solid #fff' if is_active else 'none'}'>{i}</span>"
+                    f"</div>",
+                    unsafe_allow_html=True,
+                )
+                with c1:
+                    new_label = st.selectbox(
+                        f"obj {i}",
+                        DETECTION_CLASSES,
+                        index=DETECTION_CLASSES.index(obj.label)
+                        if obj.label in DETECTION_CLASSES
+                        else 0,
+                        key=f"cls_{i}",
+                        label_visibility="collapsed",
+                    )
+                    if new_label != obj.label and obj.bbox_xyxy_abs is not None:
+                        st.session_state.objects[i] = LabelledObject(
+                            label=new_label, bbox_xyxy_abs=obj.bbox_xyxy_abs
+                        )
+                        st.session_state.canvas_key += 1
+                        st.rerun()
+                if c2.button("✕", key=f"rm_{i}", help="Remove"):
+                    st.session_state.objects.pop(i)
+                    st.session_state.canvas_key += 1
+                    st.rerun()
 
     # Paused before any frame finished — nothing to correct yet.
     if st.session_state.correcting and paused_frame is not None and not correcting:
