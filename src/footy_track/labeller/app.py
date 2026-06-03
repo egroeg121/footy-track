@@ -290,15 +290,17 @@ def main() -> None:  # noqa: PLR0912, PLR0915
         ok, frame_bgr = cap.read()
         cap.release()
         if ok:
-            seeds = _detections_to_seeds(completed[cf], orig_w, orig_h)
+            # Seed from `objects` (the shared working set) so class reassignments
+            # and added boxes from the side panel show up here. canvas_key in the
+            # widget key forces a remount when objects change (class/add/remove).
             with main:
                 st.session_state.edited_objects = _render_editable_canvas(
                     frame_bgr,
-                    seeds,
+                    _objects_to_seeds(objects),
                     label,
                     scale,
                     orig_h,
-                    key=f"edit_{cf}",
+                    key=f"edit_{cf}_{st.session_state.canvas_key}_{draw_mode}",
                     drawing_mode=draw_mode,
                 )
     else:
@@ -373,16 +375,34 @@ def main() -> None:  # noqa: PLR0912, PLR0915
     if correcting:
         cf = st.session_state.correction_frame
         last = len(completed) - 1
+
+        def _goto_frame(new_cf: int) -> None:
+            """Scrub to new_cf, loading its detections into the shared objects."""
+            st.session_state.correction_frame = new_cf
+            if 0 <= new_cf < len(completed):
+                st.session_state.objects = [
+                    LabelledObject(
+                        label=d.label,
+                        bbox_xyxy_abs=(
+                            d.x * orig_w,
+                            d.y * orig_h,
+                            (d.x + d.w) * orig_w,
+                            (d.y + d.h) * orig_h,
+                        ),
+                    )
+                    for d in completed[new_cf].detections
+                ]
+            st.session_state.canvas_key += 1
+            st.rerun()
+
         if last > 0:
             slid = main.slider("Frame", 0, last, cf, key=f"scrub_{paused_frame}")
             if slid != cf:
-                st.session_state.correction_frame = slid
-                st.rerun()
+                _goto_frame(slid)
         nav_prev, nav_lbl, nav_next = main.columns([1, 2, 1])
         with nav_prev:
             if st.button("⬅️ Prev", disabled=cf <= 0, use_container_width=True):
-                st.session_state.correction_frame = cf - 1
-                st.rerun()
+                _goto_frame(cf - 1)
         with nav_lbl:
             st.markdown(
                 f"<div style='text-align:center'>Frame <b>{cf}</b> / {last}</div>",
@@ -390,8 +410,7 @@ def main() -> None:  # noqa: PLR0912, PLR0915
             )
         with nav_next:
             if st.button("Next ➡️", disabled=cf >= last, use_container_width=True):
-                st.session_state.correction_frame = cf + 1
-                st.rerun()
+                _goto_frame(cf + 1)
 
     # --- Playback control bar directly under the video window ---
     ctrl_run, ctrl_pause = main.columns(2)
@@ -441,9 +460,27 @@ def main() -> None:  # noqa: PLR0912, PLR0915
     with ctrl_pause:
         if st.button("⏸️ Pause", disabled=not bg.running, use_container_width=True):
             bg.pause()
-            st.session_state.paused_at_frame = bg.last_completed_frame
-            st.session_state.correction_frame = bg.last_completed_frame
+            n = bg.last_completed_frame
+            st.session_state.paused_at_frame = n
+            st.session_state.correction_frame = n
             st.session_state.correcting = True
+            # Load the paused frame's detections into `objects` so the canvas,
+            # side-panel list and class edits all share one source of truth.
+            done_frames = bg.completed_frames()
+            if 0 <= n < len(done_frames):
+                st.session_state.objects = [
+                    LabelledObject(
+                        label=d.label,
+                        bbox_xyxy_abs=(
+                            d.x * orig_w,
+                            d.y * orig_h,
+                            (d.x + d.w) * orig_w,
+                            (d.y + d.h) * orig_h,
+                        ),
+                    )
+                    for d in done_frames[n].detections
+                ]
+            st.session_state.canvas_key += 1
             st.rerun()
 
     # --- Inference progress bar directly under Run / Pause ---
