@@ -300,6 +300,13 @@ def main() -> None:  # noqa: PLR0912, PLR0915
                     key=f"edit_{cf}_{st.session_state.canvas_key}_{draw_mode}",
                     drawing_mode=draw_mode,
                 )
+            # Sync newly DRAWN boxes into `objects` so they appear in the list
+            # (only ever ADD; never let a stale empty readback drop boxes).
+            edited = st.session_state.edited_objects
+            if len(edited) > len(objects):
+                st.session_state.objects = list(edited)
+                st.session_state.canvas_key += 1
+                st.rerun()
     else:
         # Seeding: editable canvas on frame 0 prefilled with the current objects
         # (e.g. YOLO auto-seeds). Drag/resize/delete then Run.
