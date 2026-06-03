@@ -38,6 +38,7 @@ dependencies = [
 ]
 
 scripts.footy-track = "footy_track:main"
+scripts.footy-labeller = "footy_track.scripts.launch_labeller:main"
 
 [dependency-groups]
 dev = [
