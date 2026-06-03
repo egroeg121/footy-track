@@ -88,6 +88,7 @@ def _default_model_uri() -> str:
     candidates = [
         get_project_root() / "model_saves" / "sam3" / "sam3.pt",
         Path.home() / "code" / "footy" / "footy_data" / "model_saves" / "sam3" / "sam3.pt",
+        Path.home() / "Library" / "Mobile Documents" / "com~apple~CloudDocs" / "footy_data" / "model_saves" / "sam3" / "sam3.1_multiplex.pt",
     ]
     for p in candidates:
         if p.exists():
@@ -187,7 +188,15 @@ class Sam3VideoLabeller:
 
     def _build_predictor(self):
         # Imported lazily so importing this module doesn't pull in heavy ML deps.
+        import os  # noqa: PLC0415
+
         from ultralytics.models.sam import SAM3VideoPredictor  # noqa: PLC0415
+
+        # Key the inductor cache by model stem so sam3 and sam3.1 don't overwrite each other.
+        model_stem = Path(self.model_uri).stem
+        cache_dir = Path.home() / ".cache" / f"torch_inductor_{model_stem}"
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        os.environ["TORCHINDUCTOR_CACHE_DIR"] = str(cache_dir)
 
         overrides = {
             "conf": self.min_confidence,
@@ -220,11 +229,12 @@ class Sam3VideoLabeller:
     def _resolve_text_hints(self) -> list[LabelledObject]:
         """For any object with a text_hint + point, use SAM3Semantic on frame 0
         to find the mask closest to the point and return it as a bbox object.
-        Objects without text_hint are returned unchanged."""
-        resolved = []
+        Objects without text_hint are returned unchanged.
+        Returns immediately if no objects have a text_hint set."""
         needs_text = [o for o in self.objects if o.text_hint and o.point_xy_abs]
         if not needs_text:
             return list(self.objects)
+        resolved = []
 
         from ultralytics.models.sam import SAM3SemanticPredictor  # noqa: PLC0415
 
@@ -291,23 +301,20 @@ class Sam3VideoLabeller:
         # Resolve text+point hints into bboxes before seeding the video predictor.
         objects = self._resolve_text_hints()
 
-        bboxes = [list(o.bbox_xyxy_abs) for o in objects if o.bbox_xyxy_abs is not None]
-        points = [[list(o.point_xy_abs)] for o in objects if o.point_xy_abs is not None]
-        # SAM3 accepts either bboxes or points but not mixed in the same call.
-        # If we have both, convert points to tiny bboxes (±8px) so they can be batched.
-        if bboxes and points:
-            for o in objects:
-                if o.point_xy_abs is not None:
-                    px, py = o.point_xy_abs
-                    bboxes.append([px - 8, py - 8, px + 8, py + 8])
-            points = []
+        # SAM3VideoPredictor handles bboxes and points in separate calls internally.
+        # Convert any remaining point-only objects to small bboxes sized relative to
+        # the video frame (1.5% of width/height) so they work alongside bbox objects.
+        pad_x = self.width * 0.015
+        pad_y = self.height * 0.015
+        all_bboxes = []
+        for o in objects:
+            if o.bbox_xyxy_abs is not None:
+                all_bboxes.append(list(o.bbox_xyxy_abs))
+            elif o.point_xy_abs is not None:
+                px, py = o.point_xy_abs
+                all_bboxes.append([px - pad_x, py - pad_y, px + pad_x, py + pad_y])
 
-        if bboxes:
-            predictor.set_prompts({"bboxes": bboxes})
-        else:
-            flat_points = [p[0] for p in points]
-            labels = [1] * len(flat_points)
-            predictor.set_prompts({"points": flat_points, "labels": labels})
+        predictor.set_prompts({"bboxes": all_bboxes})
 
         total = int(
             cv2.VideoCapture(str(self.video_path)).get(cv2.CAP_PROP_FRAME_COUNT)
