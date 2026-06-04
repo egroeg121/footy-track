@@ -33,6 +33,7 @@ from footy_track.detectors.utils import calculate_iou, color_map
 from footy_track.labeller.video_utils import (
     BackgroundLabeller,
     LabelledObject,
+    _default_model_uri,
     _warmup_done,  # noqa: F401 — imported for future sidebar status use
     export_frames_json,
     extract_first_frame,
@@ -535,7 +536,10 @@ def main() -> None:  # noqa: PLR0912, PLR0915
         else:
             frac = min(1.0, done / total) if total else 0.0
             main.progress(frac, text=f"Running… {done}/{total} frames")
-        main.caption("Inference runs in the background — Pause to correct boxes.")
+        model_name = Path(model_uri or _default_model_uri()).name
+        main.caption(
+            f"Inference runs in the background ({model_name}) — Pause to correct boxes."
+        )
     elif bg.last_completed_frame >= 0:
         main.info(f"Completed up to frame {bg.last_completed_frame}.")
 
