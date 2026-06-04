@@ -43,6 +43,17 @@ from footy_track.schema import DETECTION_CLASSES, ObjectDetection
 CANVAS_DISPLAY_WIDTH = 720
 
 
+def _strip_wrapping_quotes(s: str) -> str:
+    """Drop a single pair of surrounding quotes (drag-and-drop / shell paste).
+
+    Keeps quotes that are genuinely inside the path.
+    """
+    s = s.strip()
+    if len(s) >= 2 and s[0] == s[-1] in ("'", '"'):
+        return s[1:-1]
+    return s
+
+
 def _rgb_hex(label: str) -> str:
     r, g, b = color_map.get(label.lower(), (255, 0, 0))
     return f"#{r:02x}{g:02x}{b:02x}"
@@ -97,15 +108,25 @@ def _yolo_seed_objects(
     orig_w: int,
     orig_h: int,
     iou_threshold: float = 0.5,
+    frame_idx: int = 0,
 ) -> list[LabelledObject]:
-    """Run the YOLO detector on frame 0 and return NMS-filtered seed objects.
+    """Run the YOLO detector on a frame and return NMS-filtered seed objects.
 
     Detections come back normalized; we convert to absolute xyxy pixel coords for
-    :class:`LabelledObject`, the seed format SAM3 expects.
+    :class:`LabelledObject`, the seed format SAM3 expects. ``frame_idx`` selects
+    which frame to detect on (0 = first frame).
     """
     import tempfile  # noqa: PLC0415
 
-    frame_bgr = extract_first_frame(video_path)
+    if frame_idx <= 0:
+        frame_bgr = extract_first_frame(video_path)
+    else:
+        cap = cv2.VideoCapture(str(video_path))
+        cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
+        ok, frame_bgr = cap.read()
+        cap.release()
+        if not ok:
+            frame_bgr = extract_first_frame(video_path)
     with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as f:
         tmp_path = Path(f.name)
     cv2.imwrite(str(tmp_path), frame_bgr)
@@ -157,16 +178,20 @@ def main() -> None:  # noqa: PLR0912, PLR0915
             value=True,
             help="Run YOLO on frame 0 automatically when a video is loaded.",
         )
-        yolo_model = st.text_input(
-            "YOLO checkpoint (blank = current best)",
-            value="",
-            help=f"Default: {CURRENT_BEST_DETECTOR_CHECKPOINT}",
+        yolo_model = _strip_wrapping_quotes(
+            st.text_input(
+                "YOLO checkpoint (blank = current best)",
+                value="",
+                help=f"Default: {CURRENT_BEST_DETECTOR_CHECKPOINT}",
+            )
         )
         yolo_conf = st.slider("YOLO confidence", 0.0, 1.0, 0.35, 0.05)
         yolo_iou = st.slider("YOLO NMS IoU", 0.1, 0.9, 0.5, 0.05)
 
         st.header("3. Model")
-        model_uri = st.text_input("SAM3 checkpoint (blank = default)", value="")
+        model_uri = _strip_wrapping_quotes(
+            st.text_input("SAM3 checkpoint (blank = default)", value="")
+        )
         min_conf = st.slider("Min confidence", 0.0, 1.0, 0.25, 0.05)
 
         st.header("4. Display")
@@ -188,15 +213,7 @@ def main() -> None:  # noqa: PLR0912, PLR0915
         st.info("Enter a video path in the sidebar to begin.")
         return
 
-    # Drop surrounding quotes (e.g. from drag-and-drop or shell copy-paste) but
-    # keep any quotes that are genuinely inside the path.
-    video_path_str = video_path_str.strip()
-    if len(video_path_str) >= 2 and video_path_str[0] == video_path_str[-1] in (
-        "'",
-        '"',
-    ):
-        video_path_str = video_path_str[1:-1]
-
+    video_path_str = _strip_wrapping_quotes(video_path_str)
     video_path = Path(video_path_str).expanduser()
     if not video_path.exists():
         st.error(f"Video not found: {video_path}")
@@ -298,6 +315,36 @@ def main() -> None:  # noqa: PLR0912, PLR0915
             )
         st.session_state.canvas_key += 1
 
+    def _run_autoseed() -> None:
+        """Run YOLO on the current editable frame and replace the working set."""
+        # Detect on the paused frame when correcting, else frame 0 when seeding.
+        det_frame = (
+            st.session_state.correction_frame
+            if st.session_state.correcting
+            and st.session_state.correction_frame is not None
+            else 0
+        )
+        with st.spinner("🤖 Auto-detecting objects with YOLO…"):
+            try:
+                seeds = _yolo_seed_objects(
+                    video_path=video_path,
+                    model_path=yolo_model,
+                    min_confidence=yolo_conf,
+                    orig_w=orig_w,
+                    orig_h=orig_h,
+                    iou_threshold=yolo_iou,
+                    frame_idx=det_frame,
+                )
+            except Exception as exc:  # noqa: BLE001
+                st.exception(exc)
+                seeds = []
+        if seeds:
+            st.session_state.objects = list(seeds)
+            st.session_state.canvas_key += 1
+            st.success(f"Detected {len(seeds)} YOLO seeds — review and prune.")
+        else:
+            st.warning("YOLO found no objects on frame 0.")
+
     # ------------------------------------------------------------------
     # Main window
     # ------------------------------------------------------------------
@@ -367,10 +414,7 @@ def main() -> None:  # noqa: PLR0912, PLR0915
             cf = max(0, len(completed) - 1)
             st.session_state.correction_frame = cf
 
-        tlabel, tool_col, cls_col = main.columns([0.7, 2.3, 2])
-        tlabel.markdown(
-            "<div style='margin-top:6px'><b>Tool</b></div>", unsafe_allow_html=True
-        )
+        tool_col, cls_col, auto_col = main.columns([2.4, 2, 1.2])
         tool = tool_col.radio(
             "Tool",
             ["✋ Edit", "✏️ Draw"],
@@ -387,6 +431,10 @@ def main() -> None:  # noqa: PLR0912, PLR0915
             key="draw_class",
             label_visibility="collapsed",
         )
+        # Small auto-detect button — available in both seeding and paused modes.
+        if auto_col.button("🤖 Auto-detect", help="Re-run YOLO on this frame"):
+            _run_autoseed()
+            st.rerun()
 
         if is_paused:
             cap = cv2.VideoCapture(str(video_path))
@@ -542,34 +590,6 @@ def main() -> None:  # noqa: PLR0912, PLR0915
         )
     elif bg.last_completed_frame >= 0:
         main.info(f"Completed up to frame {bg.last_completed_frame}.")
-
-    # --- Re-detect (seeding only) ---
-    def _run_autoseed() -> None:
-        with st.spinner("🤖 Auto-detecting objects with YOLO…"):
-            try:
-                seeds = _yolo_seed_objects(
-                    video_path=video_path,
-                    model_path=yolo_model,
-                    min_confidence=yolo_conf,
-                    orig_w=orig_w,
-                    orig_h=orig_h,
-                    iou_threshold=yolo_iou,
-                )
-            except Exception as exc:  # noqa: BLE001
-                st.exception(exc)
-                seeds = []
-        if seeds:
-            st.session_state.objects = list(seeds)
-            st.session_state.canvas_key += 1
-            st.success(f"Detected {len(seeds)} YOLO seeds — review and prune.")
-        else:
-            st.warning("YOLO found no objects on frame 0.")
-
-    if view_mode == "seeding" and main.button(
-        "🤖 Re-detect seeds with YOLO", use_container_width=True
-    ):
-        _run_autoseed()
-        st.rerun()
 
     # ------------------------------------------------------------------
     # Side panel: one list, chosen by view_mode

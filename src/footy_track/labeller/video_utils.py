@@ -84,8 +84,23 @@ def video_dimensions(video_path: Path) -> tuple[int, int]:
 
 
 def _default_model_uri() -> str:
-    """Find sam3.pt — checks project-local path then shared footy_data store."""
+    """Resolve the default SAM3 checkpoint.
+
+    Prefers the iCloud sam3.1_multiplex.pt, then falls back to a project-local or
+    shared-store sam3.pt, and finally to Ultralytics auto-download.
+    """
+    icloud = (
+        Path.home()
+        / "Library"
+        / "Mobile Documents"
+        / "com~apple~CloudDocs"
+        / "footy_data"
+        / "model_saves"
+        / "sam3"
+        / "sam3.1_multiplex.pt"
+    )
     candidates = [
+        icloud,
         get_project_root() / "model_saves" / "sam3" / "sam3.pt",
         Path.home()
         / "code"
@@ -94,14 +109,6 @@ def _default_model_uri() -> str:
         / "model_saves"
         / "sam3"
         / "sam3.pt",
-        Path.home()
-        / "Library"
-        / "Mobile Documents"
-        / "com~apple~CloudDocs"
-        / "footy_data"
-        / "model_saves"
-        / "sam3"
-        / "sam3.1_multiplex.pt",
     ]
     for p in candidates:
         if p.exists():
