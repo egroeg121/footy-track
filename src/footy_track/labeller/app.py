@@ -167,6 +167,13 @@ def main() -> None:  # noqa: PLR0912, PLR0915
         st.header("3. Model")
         model_uri = st.text_input("SAM3 checkpoint (blank = default)", value="")
         min_conf = st.slider("Min confidence", 0.0, 1.0, 0.25, 0.05)
+
+        st.header("4. Display")
+        show_boxes = st.checkbox(
+            "Show boxes",
+            value=True,
+            help="Toggle the detection boxes on the live / preview frames.",
+        )
         st.divider()
         st.caption(
             "JIT kernels cached in ~/.cache/torch_inductor_sam3 — fast after first run."
@@ -276,6 +283,12 @@ def main() -> None:  # noqa: PLR0912, PLR0915
     main = main_col.container()
     st.session_state.edited_objects = []
 
+    def _frame_rgb(frame_bgr: np.ndarray, frame_det) -> np.ndarray:
+        """Frame as RGB with boxes drawn, or plain RGB when boxes are hidden."""
+        if show_boxes:
+            return _draw_boxes_on_array(frame_bgr, frame_det)
+        return cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
+
     def _load_frame_objects(frame_idx: int) -> None:
         """Load a completed frame's detections into the editable working set."""
         if 0 <= frame_idx < len(completed):
@@ -302,7 +315,7 @@ def main() -> None:  # noqa: PLR0912, PLR0915
             cap.release()
             if ok:
                 main.image(
-                    _draw_boxes_on_array(frame_bgr, completed[latest_idx]),
+                    _frame_rgb(frame_bgr, completed[latest_idx]),
                     channels="RGB",
                     width="stretch",
                 )
@@ -341,7 +354,7 @@ def main() -> None:  # noqa: PLR0912, PLR0915
                 ]
             )
             main.image(
-                _draw_boxes_on_array(pv_bgr, pv_fd),
+                _frame_rgb(pv_bgr, pv_fd),
                 channels="RGB",
                 width="stretch",
             )
@@ -642,7 +655,7 @@ def main() -> None:  # noqa: PLR0912, PLR0915
         cap.release()
         if ok:
             st.image(
-                _draw_boxes_on_array(frame_bgr, frame_det),
+                _frame_rgb(frame_bgr, frame_det),
                 channels="RGB",
                 width="stretch",
             )
