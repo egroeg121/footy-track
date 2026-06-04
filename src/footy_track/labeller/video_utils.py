@@ -679,6 +679,74 @@ def _frame_index_from_uri(fd: FrameDetections, default: int = 0) -> int:
     return default
 
 
+def _nms_filter(
+    detections: list[ObjectDetection], iou_threshold: float = 0.5
+) -> list[ObjectDetection]:
+    """Greedy IoU NMS — keep highest-confidence box, drop overlaps above threshold."""
+    from footy_track.detectors.utils import calculate_iou  # noqa: PLC0415
+
+    kept: list[ObjectDetection] = []
+    for det in sorted(detections, key=lambda d: d.confidence, reverse=True):
+        if all(calculate_iou(det, k) <= iou_threshold for k in kept):
+            kept.append(det)
+    return kept
+
+
+def yolo_seed_objects(
+    video_path: Path,
+    model_path: str,
+    min_confidence: float,
+    orig_w: int,
+    orig_h: int,
+    iou_threshold: float = 0.5,
+    frame_idx: int = 0,
+) -> list[LabelledObject]:
+    """Run the YOLO detector on a frame and return NMS-filtered seed objects.
+
+    Detections come back normalized; we convert to absolute xyxy pixel coords for
+    :class:`LabelledObject`, the seed format SAM3 expects. ``frame_idx`` selects
+    which frame to detect on (0 = first frame).
+    """
+    from footy_track.detectors.ultralytics import (  # noqa: PLC0415
+        UltralyticsObjectDetector,
+        get_current_best_detector,
+    )
+
+    if frame_idx <= 0:
+        frame_bgr = extract_first_frame(video_path)
+    else:
+        cap = cv2.VideoCapture(str(video_path))
+        cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
+        ok, frame_bgr = cap.read()
+        cap.release()
+        if not ok:
+            frame_bgr = extract_first_frame(video_path)
+    with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as f:
+        tmp_path = Path(f.name)
+    cv2.imwrite(str(tmp_path), frame_bgr)
+    try:
+        detector = get_current_best_detector(min_confidence=min_confidence)
+        if model_path:
+            detector = UltralyticsObjectDetector(
+                model_uri=model_path,
+                min_confidence=min_confidence,
+                use_model_names=True,
+            )
+        fd = detector.predict_from_path(tmp_path)
+    finally:
+        tmp_path.unlink(missing_ok=True)
+
+    filtered = _nms_filter(fd.detections, iou_threshold=iou_threshold)
+    objects: list[LabelledObject] = []
+    for det in filtered:
+        x1 = det.x * orig_w
+        y1 = det.y * orig_h
+        x2 = (det.x + det.w) * orig_w
+        y2 = (det.y + det.h) * orig_h
+        objects.append(LabelledObject(label=det.label, bbox_xyxy_abs=(x1, y1, x2, y2)))
+    return objects
+
+
 def export_frames_json(frames: list[FrameDetections], out_path: Path) -> Path:
     """Serialise ``frames`` to a single JSON array file via Pydantic."""
     out_path = Path(out_path)

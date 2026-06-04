@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>SAM3 Video Labeller</title>
+<script src="https://unpkg.com/konva@9/konva.min.js"></script>
+<style>
+  :root { --bg:#0f1419; --panel:#1a2129; --ink:#e6edf3; --muted:#9bb0c0;
+          --accent:#1e90ff; --green:#3fb950; --red:#f85149; --border:#2d3742; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink);
+         font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+  header { padding:10px 16px; border-bottom:1px solid var(--border); }
+  header h1 { margin:0; font-size:18px; }
+  .wrap { display:grid; grid-template-columns:1fr 280px; gap:14px; padding:14px 16px; }
+  .toolbar { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:8px; }
+  button, select, input[type=text] {
+    background:#0d1620; color:var(--ink); border:1px solid var(--border);
+    border-radius:6px; padding:6px 10px; font-size:13px; cursor:pointer; }
+  button.primary { background:var(--accent); border-color:var(--accent); color:#fff; }
+  button:disabled { opacity:.4; cursor:not-allowed; }
+  input[type=text] { cursor:text; min-width:380px; }
+  #stageWrap { border:1px solid var(--border); border-radius:8px; overflow:hidden;
+               background:#000; width:100%; }
+  .row { display:flex; gap:8px; align-items:center; margin-bottom:8px; }
+  .grow { flex:1; }
+  .side { background:var(--panel); border:1px solid var(--border); border-radius:8px;
+          padding:10px; max-height:80vh; overflow:auto; }
+  .side h3 { margin:0 0 8px; font-size:14px; }
+  .objrow { display:flex; align-items:center; gap:6px; padding:3px 0;
+            border-bottom:1px solid var(--border); font-size:12px; }
+  .objrow.active { background:rgba(30,144,255,.15); }
+  .swatch { width:14px; height:14px; border-radius:3px; flex:none;
+            color:#000; font-size:9px; font-weight:700; text-align:center; line-height:14px; }
+  .objrow select { padding:2px 4px; font-size:11px; flex:1; }
+  .x { color:var(--red); cursor:pointer; padding:0 4px; }
+  #status { font-size:12px; color:var(--muted); }
+  #scrub { width:100%; }
+  .muted { color:var(--muted); font-size:12px; }
+  .seg { display:inline-flex; border:1px solid var(--border); border-radius:6px; overflow:hidden; }
+  .seg button { border:none; border-radius:0; }
+  .seg button.on { background:var(--accent); color:#fff; }
+</style>
+</head>
+<body>
+<header><h1>⚽ SAM3 Video Labeller</h1></header>
+
+<div class="row" style="padding:0 16px;">
+  <input type="text" id="videoPath" placeholder="/path/to/video.mp4" />
+  <button id="loadBtn" class="primary">Load</button>
+  <span id="status">no video</span>
+</div>
+
+<div class="wrap">
+  <div>
+    <div class="toolbar">
+      <span class="seg">
+        <button id="toolEdit" class="on">✋ Edit</button>
+        <button id="toolDraw">✏️ Draw</button>
+      </span>
+      <select id="classSel"></select>
+      <button id="autoBtn">🤖 Auto-detect</button>
+      <span class="grow"></span>
+      <button id="runBtn" class="primary" disabled>▶️ Run</button>
+      <button id="restartBtn" class="primary" style="display:none">▶️ Restart from frame 0</button>
+      <button id="pauseBtn" disabled>⏸️ Pause</button>
+      <span id="runMsg" class="muted"></span>
+    </div>
+
+    <div id="stageWrap"></div>
+
+    <div class="row" style="margin-top:8px;">
+      <button id="prevBtn" disabled>⬅️ Prev</button>
+      <input type="range" id="scrub" class="grow" min="0" max="0" value="0" disabled />
+      <button id="nextBtn" disabled>Next ➡️</button>
+      <span id="frameLbl" class="muted">—</span>
+    </div>
+    <div class="muted" id="hint">Load a video to begin. Edit: drag/resize, Delete removes. Draw: drag a box.</div>
+  </div>
+
+  <div class="side">
+    <h3 id="objHdr">Detected objects (0)</h3>
+    <div id="objList"></div>
+  </div>
+</div>
+
+<script>
+const CLASSES = ["person","ball","out_of_play_ball","in_play_ball","player","player_sub","referee","coach"];
+const COLORS = {player:"#1e90ff",person:"#b48246",referee:"#4169e1",coach:"#6495ed",
+  ball:"#ffc800",in_play_ball:"#ffd700",out_of_play_ball:"#ff8c00",player_sub:"#b48246"};
+const colorOf = l => COLORS[l] || "#ff0000";
+
+let meta = null;            // {fps,total_frames,width,height}
+let scale = 1;              // display px / video px
+let dispW = 0, dispH = 0;
+let tool = "edit";          // edit | draw
+let viewFrame = 0;          // currently shown frame index
+let mode = "idle";          // idle | running | paused
+let lastCompleted = -1;
+let ws = null;
+
+// --- Konva setup ---
+const stage = new Konva.Stage({ container: "stageWrap", width: 100, height: 100 });
+const bgLayer = new Konva.Layer();
+const boxLayer = new Konva.Layer();
+stage.add(bgLayer); stage.add(boxLayer);
+const tr = new Konva.Transformer({ rotateEnabled:false, borderStroke:"#fff" });
+boxLayer.add(tr);
+let bgImage = null;
+
+// class dropdown
+const classSel = document.getElementById("classSel");
+CLASSES.forEach(c => { const o=document.createElement("option"); o.value=c; o.textContent=c; classSel.appendChild(o); });
+classSel.value = "ball";
+
+// ---------- helpers ----------
+function $(id){ return document.getElementById(id); }
+function setStatus(s){ $("status").textContent = s; }
+
+function boxesNorm() {
+  // current canvas rects -> normalized xywh + label
+  return boxLayer.find("Rect").map(r => ({
+    label: r.getAttr("label"),
+    x: r.x()/dispW, y: r.y()/dispH,
+    w: (r.width()*r.scaleX())/dispW, h: (r.height()*r.scaleY())/dispH,
+  }));
+}
+
+function addRect(label, x, y, w, h, editable) {
+  const r = new Konva.Rect({
+    x, y, width:w, height:h, stroke:colorOf(label), strokeWidth:2,
+    draggable: editable, name:"box",
+  });
+  r.setAttr("label", label);
+  if (editable) {
+    r.on("click", () => selectRect(r));
+    r.on("transformend dragend", () => { normalizeScale(r); renderList(); });
+  }
+  boxLayer.add(r);
+  // number label
+  const t = new Konva.Text({ x:x+2, y:Math.max(0,y-16), text:"", fontSize:13,
+    fontStyle:"bold", fill:colorOf(label), name:"num" });
+  r.setAttr("numText", t);
+  boxLayer.add(t);
+  return r;
+}
+
+function normalizeScale(r){ // fold scale into width/height so reads are simple
+  r.width(Math.max(4, r.width()*r.scaleX())); r.height(Math.max(4, r.height()*r.scaleY()));
+  r.scaleX(1); r.scaleY(1);
+}
+
+function selectRect(r){ if(tool!=="edit") return; tr.nodes([r]); boxLayer.draw(); renderList(); }
+function clearSelection(){ tr.nodes([]); }
+
+function clearBoxes(){ boxLayer.find(".box").forEach(n=>n.destroy()); boxLayer.find(".num").forEach(n=>n.destroy()); tr.nodes([]); }
+
+function drawBoxes(objs, editable){
+  clearBoxes();
+  objs.forEach(o => addRect(o.label, o.x*dispW, o.y*dispH, o.w*dispW, o.h*dispH, editable));
+  refreshNumbers(); boxLayer.draw(); renderList();
+}
+
+function refreshNumbers(){
+  const rects = boxLayer.find(".box");
+  rects.forEach((r,i)=>{ const t=r.getAttr("numText"); if(t){ t.text(String(i)); t.x(r.x()+2); t.y(Math.max(0,r.y()-16)); t.fill(colorOf(r.getAttr("label"))); }});
+}
+
+function renderList(){
+  refreshNumbers();
+  const rects = boxLayer.find(".box");
+  $("objHdr").textContent = `Detected objects (${rects.length})`;
+  const list = $("objList"); list.innerHTML = "";
+  const selected = tr.nodes()[0];
+  rects.forEach((r,i)=>{
+    const row = document.createElement("div");
+    row.className = "objrow" + (r===selected?" active":"");
+    const sw = document.createElement("div"); sw.className="swatch";
+    sw.style.background=colorOf(r.getAttr("label")); sw.textContent=i;
+    row.appendChild(sw);
+    if (mode==="running") {
+      const lbl=document.createElement("span"); lbl.textContent=r.getAttr("label"); lbl.style.flex="1";
+      row.appendChild(lbl);
+    } else {
+      const sel=document.createElement("select");
+      CLASSES.forEach(c=>{const o=document.createElement("option");o.value=c;o.textContent=c;if(c===r.getAttr("label"))o.selected=true;sel.appendChild(o);});
+      sel.onchange=()=>{ r.setAttr("label",sel.value); r.stroke(colorOf(sel.value)); refreshNumbers(); boxLayer.draw(); renderList(); };
+      row.appendChild(sel);
+      const x=document.createElement("span"); x.className="x"; x.textContent="✕";
+      x.onclick=()=>{ const t=r.getAttr("numText"); if(t)t.destroy(); r.destroy(); tr.nodes([]); boxLayer.draw(); renderList(); };
+      row.appendChild(x);
+      row.onclick=(e)=>{ if(e.target===x||e.target===sel)return; selectRect(r); };
+    }
+    list.appendChild(row);
+  });
+}
+
+// ---------- background frame ----------
+async function showFrame(idx){
+  viewFrame = idx;
+  $("frameLbl").textContent = `Frame ${idx}` + (meta?` / ${meta.total_frames-1}`:"");
+  $("scrub").value = idx;
+  const img = new Image();
+  img.onload = () => {
+    if (bgImage) bgImage.destroy();
+    bgImage = new Konva.Image({ image: img, width: dispW, height: dispH });
+    bgLayer.add(bgImage); bgImage.moveToBottom(); bgLayer.draw();
+  };
+  img.src = `/frame/${idx}.jpg?ts=${Date.now()}`;
+}
+
+function fitStage(){
+  const cw = $("stageWrap").clientWidth || 900;
+  scale = cw / meta.width;
+  dispW = Math.round(meta.width*scale); dispH = Math.round(meta.height*scale);
+  stage.width(dispW); stage.height(dispH);
+}
+
+// ---------- tools ----------
+function setTool(t){
+  tool = t;
+  $("toolEdit").classList.toggle("on", t==="edit");
+  $("toolDraw").classList.toggle("on", t==="draw");
+  boxLayer.find(".box").forEach(r=>r.draggable(t==="edit"));
+  if (t!=="edit") clearSelection();
+  boxLayer.draw();
+}
+$("toolEdit").onclick=()=>setTool("edit");
+$("toolDraw").onclick=()=>setTool("draw");
+
+// draw-by-drag
+let drawing=null, drawStart=null;
+stage.on("mousedown", (e)=>{
+  if (tool!=="draw" || mode==="running") return;
+  if (e.target!==stage && e.target!==bgImage) return;
+  const p=stage.getPointerPosition(); drawStart=p;
+  drawing=addRect(classSel.value, p.x, p.y, 1, 1, true);
+});
+stage.on("mousemove", ()=>{
+  if(!drawing) return; const p=stage.getPointerPosition();
+  drawing.width(Math.abs(p.x-drawStart.x)); drawing.height(Math.abs(p.y-drawStart.y));
+  drawing.x(Math.min(p.x,drawStart.x)); drawing.y(Math.min(p.y,drawStart.y));
+  refreshNumbers(); boxLayer.draw();
+});
+stage.on("mouseup", ()=>{ if(drawing){ if(drawing.width()<4||drawing.height()<4){const t=drawing.getAttr("numText");if(t)t.destroy();drawing.destroy();} drawing=null; renderList(); }});
+
+// delete key
+window.addEventListener("keydown",(e)=>{
+  if((e.key==="Delete"||e.key==="Backspace") && tool==="edit"){
+    const n=tr.nodes()[0]; if(n){ const t=n.getAttr("numText"); if(t)t.destroy(); n.destroy(); tr.nodes([]); boxLayer.draw(); renderList(); }
+  }
+});
+
+// ---------- load ----------
+// Restore the last-used video path so it's pre-filled next time.
+$("videoPath").value = localStorage.getItem("lastVideoPath") || "";
+
+$("loadBtn").onclick = async ()=>{
+  let path = $("videoPath").value.trim();
+  if ((path.startsWith("'")&&path.endsWith("'"))||(path.startsWith('"')&&path.endsWith('"'))) path=path.slice(1,-1);
+  localStorage.setItem("lastVideoPath", path);
+  setStatus("loading…");
+  const res = await fetch("/session/load",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({video_path:path})});
+  if(!res.ok){ setStatus("load failed"); return; }
+  meta = await res.json();
+  fitStage(); await showFrame(0);
+  mode="idle"; lastCompleted=-1;
+  $("scrub").max = meta.total_frames-1; $("scrub").disabled=false;
+  $("runBtn").disabled=false; $("prevBtn").disabled=false; $("nextBtn").disabled=false;
+  setStatus(`loaded · ${meta.total_frames} frames @ ${meta.fps.toFixed(1)}fps`);
+  await autodetect(0);
+  connectWS();
+};
+
+async function autodetect(frameIdx){
+  setStatus("auto-detecting…");
+  const res = await fetch("/autodetect",{method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({frame_idx:frameIdx, conf:0.35, iou:0.5})});
+  const data = await res.json();
+  drawBoxes(data.objects, true);
+  setStatus(`auto-detected ${data.objects.length} objects`);
+}
+$("autoBtn").onclick = ()=>autodetect(viewFrame);
+
+// ---------- scrubbing ----------
+$("scrub").oninput = (e)=>gotoFrame(parseInt(e.target.value));
+$("prevBtn").onclick = ()=>gotoFrame(Math.max(0, viewFrame-1));
+$("nextBtn").onclick = ()=>gotoFrame(Math.min(meta.total_frames-1, viewFrame+1));
+
+async function gotoFrame(idx){
+  await showFrame(idx);
+  if (mode==="paused" || mode==="idle_results") {
+    // editable: load that frame's propagated detections
+    const res = await fetch(`/detections/${idx}`); const data = await res.json();
+    drawBoxes(data.detections, true);
+    if (mode==="paused") $("restartBtn").textContent = `▶️ Restart from frame ${idx}`;
+  } else if (mode==="running") {
+    // read-only live frames handled by WS; just show image
+  }
+}
+
+// ---------- run / pause / restart ----------
+$("runBtn").onclick = ()=>{
+  ws.send(JSON.stringify({type:"run", objects:boxesNorm(), start_frame:0, conf:0.25, imgsz:512}));
+  mode="running"; uiRunning();
+};
+$("restartBtn").onclick = ()=>{
+  ws.send(JSON.stringify({type:"restart", objects:boxesNorm(), start_frame:viewFrame, conf:0.25, imgsz:512}));
+  mode="running"; uiRunning();
+};
+$("pauseBtn").onclick = ()=>{ ws.send(JSON.stringify({type:"pause"})); };
+
+function uiRunning(){
+  $("runBtn").style.display="none"; $("restartBtn").style.display="none";
+  $("pauseBtn").disabled=false; $("autoBtn").disabled=true; setTool("edit");
+  $("runMsg").textContent="⏳ Compiling model…";
+  $("hint").textContent="Running… Pause to correct boxes.";
+}
+function uiPaused(idx){
+  mode="paused";
+  $("pauseBtn").disabled=true; $("autoBtn").disabled=false;
+  $("runBtn").style.display="none";
+  $("restartBtn").style.display=""; $("restartBtn").textContent=`▶️ Restart from frame ${idx}`;
+  $("runMsg").textContent="";
+  $("hint").textContent="Paused. Edit boxes, scrub to a frame, then Restart.";
+}
+function uiIdle(){
+  mode="idle_results";
+  $("runBtn").style.display=""; $("runBtn").disabled=false; $("restartBtn").style.display="none";
+  $("pauseBtn").disabled=true; $("autoBtn").disabled=false;
+  $("runMsg").textContent="";
+  $("hint").textContent="Done. Scrub to review; edit + Run to re-seed.";
+}
+
+// ---------- WebSocket ----------
+function connectWS(){
+  if (ws) ws.close();
+  ws = new WebSocket(`ws://${location.host}/ws`);
+  ws.onmessage = async (ev)=>{
+    const m = JSON.parse(ev.data);
+    if (m.type==="status"){
+      setStatus(`● ${m.state}`);
+      if (m.state==="paused" && mode!=="paused"){
+        // user-initiated pause: switch to editable on the last live frame
+        const idx = lastCompleted>=0?lastCompleted:viewFrame;
+        await gotoFrame(idx); uiPaused(idx);
+      }
+    }
+    else if (m.type==="frame"){
+      lastCompleted = m.idx;
+      // live read-only render of the propagated frame
+      await showFrame(m.idx);
+      drawBoxes(m.detections, false);
+      $("frameLbl").textContent = `🔴 frame ${m.idx} / ${meta.total_frames-1}`;
+      $("runMsg").textContent = `Running… ${m.idx+1}/${meta.total_frames} frames`;
+    }
+    else if (m.type==="anomaly"){
+      setStatus(`⚠️ anomaly at frame ${m.idx} — auto-paused`);
+      await gotoFrame(m.idx); uiPaused(m.idx);
+    }
+    else if (m.type==="done"){ await gotoFrame(lastCompleted>=0?lastCompleted:0); uiIdle(); }
+    else if (m.type==="error"){ setStatus("⚠️ "+m.message); }
+  };
+  ws.onclose = ()=>setStatus("disconnected");
+}
+
+// when paused, clicking pause arrives via status; switch to editable on current frame
+// (the server sends status:paused after pause)
+const _origStatus = setStatus;
+</script>
+</body>
+</html>
