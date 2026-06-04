@@ -536,6 +536,7 @@ class BackgroundLabeller:
         model_uri: str | None,
         min_confidence: float,
         start_frame: int = 0,
+        imgsz: int = 512,
     ) -> None:
         """Stop any running job, then start propagation from ``start_frame``."""
         self.pause()
@@ -544,6 +545,7 @@ class BackgroundLabeller:
             objects=objects,
             model_uri=model_uri,
             min_confidence=min_confidence,
+            imgsz=imgsz,
         )
         total = labeller._total_frames()
         with self._lock:

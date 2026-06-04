@@ -77,6 +77,10 @@ def _init_state() -> None:
     st.session_state.setdefault("correction_frame", None)  # int | None
     # Edited boxes captured from the editable canvas this run.
     st.session_state.setdefault("edited_objects", [])
+    # Per-frame edit cache {frame_idx: [LabelledObject]} so corrections made on a
+    # frame survive scrubbing away and back (instead of reverting to the
+    # propagated detections).
+    st.session_state.setdefault("frame_edits", {})
     # Previous canvas box centers + the index of the most-recently-moved box,
     # used to highlight the matching row in the side panel (selection heuristic).
     st.session_state.setdefault("prev_centers", [])
@@ -192,7 +196,20 @@ def main() -> None:  # noqa: PLR0912, PLR0915
         model_uri = _strip_wrapping_quotes(
             st.text_input("SAM3 checkpoint (blank = default)", value="")
         )
-        min_conf = st.slider("Min confidence", 0.0, 1.0, 0.25, 0.05)
+        min_conf = st.slider(
+            "Min confidence",
+            0.0,
+            1.0,
+            0.25,
+            0.05,
+            help="SAM3 detection threshold; raise it to drop weak/snapped boxes.",
+        )
+        imgsz = st.select_slider(
+            "Inference resolution (imgsz)",
+            options=[512, 640, 768, 1024],
+            value=512,
+            help="Higher detects the small ball more reliably (slower/more memory).",
+        )
 
         st.header("4. Display")
         show_boxes = st.checkbox(
@@ -250,6 +267,7 @@ def main() -> None:  # noqa: PLR0912, PLR0915
         st.session_state.active_obj = None
         st.session_state.prev_centers = []
         st.session_state.compile_preview = None
+        st.session_state.frame_edits = {}
         st.session_state.autoseeded_video = None
         st.session_state.canvas_key += 1
         st.session_state.loaded_video = str(video_path)
@@ -304,6 +322,7 @@ def main() -> None:  # noqa: PLR0912, PLR0915
         bg.anomaly_frame = None
         st.session_state.correcting = True
         st.session_state.correction_frame = n
+        st.session_state.frame_edits = {}  # fresh correction session
         if 0 <= n < len(completed):
             st.session_state.objects = _frame_dets_to_objects(
                 completed[n], orig_w, orig_h
@@ -334,9 +353,22 @@ def main() -> None:  # noqa: PLR0912, PLR0915
             return _draw_boxes_on_array(frame_bgr, frame_det)
         return cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
 
+    def _save_frame_edits(frame_idx: int) -> None:
+        """Stash the current canvas edits for *frame_idx* so they survive scrubbing."""
+        if frame_idx is None:
+            return
+        edited = st.session_state.edited_objects
+        # Persist whatever is on the canvas now (edited boxes take priority over
+        # the propagated detections when we return to this frame).
+        st.session_state.frame_edits[frame_idx] = list(
+            edited or st.session_state.objects
+        )
+
     def _load_frame_objects(frame_idx: int) -> None:
-        """Load a completed frame's detections into the editable working set."""
-        if 0 <= frame_idx < len(completed):
+        """Load a frame's editable boxes — prior edits if any, else propagated."""
+        if frame_idx in st.session_state.frame_edits:
+            st.session_state.objects = list(st.session_state.frame_edits[frame_idx])
+        elif 0 <= frame_idx < len(completed):
             st.session_state.objects = _frame_dets_to_objects(
                 completed[frame_idx], orig_w, orig_h
             )
@@ -533,12 +565,14 @@ def main() -> None:  # noqa: PLR0912, PLR0915
         if last > 0:
             slid = main.slider("Frame", 0, last, cf, key=f"scrub_{cf}")
             if slid != cf:
+                _save_frame_edits(cf)  # keep this frame's edits before moving
                 st.session_state.correction_frame = slid
                 _load_frame_objects(slid)
                 st.rerun()
         nav_prev, nav_lbl, nav_next = main.columns([1, 2, 1])
         with nav_prev:
             if st.button("⬅️ Prev", disabled=cf <= 0, use_container_width=True):
+                _save_frame_edits(cf)
                 st.session_state.correction_frame = cf - 1
                 _load_frame_objects(cf - 1)
                 st.rerun()
@@ -549,6 +583,7 @@ def main() -> None:  # noqa: PLR0912, PLR0915
             )
         with nav_next:
             if st.button("Next ➡️", disabled=cf >= last, use_container_width=True):
+                _save_frame_edits(cf)
                 st.session_state.correction_frame = cf + 1
                 _load_frame_objects(cf + 1)
                 st.rerun()
@@ -576,9 +611,11 @@ def main() -> None:  # noqa: PLR0912, PLR0915
                         model_uri=model_uri or None,
                         min_confidence=min_conf,
                         start_frame=cf,
+                        imgsz=imgsz,
                     )
                     st.session_state.correcting = False
                     st.session_state.correction_frame = None
+                    st.session_state.frame_edits = {}  # consumed by this restart
                     st.rerun()
         elif view_mode == "seeding":
             run_objs = st.session_state.edited_objects or objects
@@ -593,6 +630,7 @@ def main() -> None:  # noqa: PLR0912, PLR0915
                     model_uri=model_uri or None,
                     min_confidence=min_conf,
                     start_frame=0,
+                    imgsz=imgsz,
                 )
                 st.rerun()
         else:  # running
@@ -605,6 +643,7 @@ def main() -> None:  # noqa: PLR0912, PLR0915
             n = bg.last_completed_frame
             st.session_state.correction_frame = n
             st.session_state.correcting = True
+            st.session_state.frame_edits = {}  # fresh correction session
             _load_frame_objects(n)
             st.rerun()
 
