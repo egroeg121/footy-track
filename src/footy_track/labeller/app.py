@@ -40,7 +40,7 @@ from footy_track.labeller.video_utils import (
 )
 from footy_track.schema import DETECTION_CLASSES, ObjectDetection
 
-CANVAS_DISPLAY_WIDTH = 720
+CANVAS_DISPLAY_WIDTH = 800
 
 
 def _strip_wrapping_quotes(s: str) -> str:
@@ -80,7 +80,6 @@ def _init_state() -> None:
     # Per-frame edit cache {frame_idx: [LabelledObject]} so corrections made on a
     # frame survive scrubbing away and back (instead of reverting to the
     # propagated detections).
-    st.session_state.setdefault("frame_edits", {})
     # Previous canvas box centers + the index of the most-recently-moved box,
     # used to highlight the matching row in the side panel (selection heuristic).
     st.session_state.setdefault("prev_centers", [])
@@ -267,7 +266,6 @@ def main() -> None:  # noqa: PLR0912, PLR0915
         st.session_state.active_obj = None
         st.session_state.prev_centers = []
         st.session_state.compile_preview = None
-        st.session_state.frame_edits = {}
         st.session_state.autoseeded_video = None
         st.session_state.canvas_key += 1
         st.session_state.loaded_video = str(video_path)
@@ -322,7 +320,6 @@ def main() -> None:  # noqa: PLR0912, PLR0915
         bg.anomaly_frame = None
         st.session_state.correcting = True
         st.session_state.correction_frame = n
-        st.session_state.frame_edits = {}  # fresh correction session
         if 0 <= n < len(completed):
             st.session_state.objects = _frame_dets_to_objects(
                 completed[n], orig_w, orig_h
@@ -353,25 +350,14 @@ def main() -> None:  # noqa: PLR0912, PLR0915
             return _draw_boxes_on_array(frame_bgr, frame_det)
         return cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
 
-    def _save_frame_edits(frame_idx: int) -> None:
-        """Stash the current canvas edits for *frame_idx* so they survive scrubbing."""
-        if frame_idx is None:
-            return
-        edited = st.session_state.edited_objects
-        # Persist whatever is on the canvas now (edited boxes take priority over
-        # the propagated detections when we return to this frame).
-        st.session_state.frame_edits[frame_idx] = list(
-            edited or st.session_state.objects
-        )
-
     def _load_frame_objects(frame_idx: int) -> None:
-        """Load a frame's editable boxes — prior edits if any, else propagated."""
-        if frame_idx in st.session_state.frame_edits:
-            st.session_state.objects = list(st.session_state.frame_edits[frame_idx])
-        elif 0 <= frame_idx < len(completed):
+        """Load a frame's propagated detections into the editable working set."""
+        if 0 <= frame_idx < len(completed):
             st.session_state.objects = _frame_dets_to_objects(
                 completed[frame_idx], orig_w, orig_h
             )
+        else:
+            st.session_state.objects = []
         st.session_state.canvas_key += 1
 
     def _run_autoseed() -> None:
@@ -424,7 +410,7 @@ def main() -> None:  # noqa: PLR0912, PLR0915
                 main.image(
                     _frame_rgb(frame_bgr, completed[latest_idx]),
                     channels="RGB",
-                    width="stretch",
+                    width=CANVAS_DISPLAY_WIDTH,
                 )
             main.caption(
                 f"🔴 Live — frame {latest_idx} "
@@ -463,7 +449,7 @@ def main() -> None:  # noqa: PLR0912, PLR0915
             main.image(
                 _frame_rgb(pv_bgr, pv_fd),
                 channels="RGB",
-                width="stretch",
+                width=CANVAS_DISPLAY_WIDTH,
             )
             main.caption(f"⏳ Compiling model… (showing frame {pv_idx} with edits)")
     else:
@@ -565,14 +551,12 @@ def main() -> None:  # noqa: PLR0912, PLR0915
         if last > 0:
             slid = main.slider("Frame", 0, last, cf, key=f"scrub_{cf}")
             if slid != cf:
-                _save_frame_edits(cf)  # keep this frame's edits before moving
                 st.session_state.correction_frame = slid
                 _load_frame_objects(slid)
                 st.rerun()
         nav_prev, nav_lbl, nav_next = main.columns([1, 2, 1])
         with nav_prev:
             if st.button("⬅️ Prev", disabled=cf <= 0, use_container_width=True):
-                _save_frame_edits(cf)
                 st.session_state.correction_frame = cf - 1
                 _load_frame_objects(cf - 1)
                 st.rerun()
@@ -583,7 +567,6 @@ def main() -> None:  # noqa: PLR0912, PLR0915
             )
         with nav_next:
             if st.button("Next ➡️", disabled=cf >= last, use_container_width=True):
-                _save_frame_edits(cf)
                 st.session_state.correction_frame = cf + 1
                 _load_frame_objects(cf + 1)
                 st.rerun()
@@ -615,7 +598,6 @@ def main() -> None:  # noqa: PLR0912, PLR0915
                     )
                     st.session_state.correcting = False
                     st.session_state.correction_frame = None
-                    st.session_state.frame_edits = {}  # consumed by this restart
                     st.rerun()
         elif view_mode == "seeding":
             run_objs = st.session_state.edited_objects or objects
@@ -643,7 +625,6 @@ def main() -> None:  # noqa: PLR0912, PLR0915
             n = bg.last_completed_frame
             st.session_state.correction_frame = n
             st.session_state.correcting = True
-            st.session_state.frame_edits = {}  # fresh correction session
             _load_frame_objects(n)
             st.rerun()
 
@@ -754,7 +735,7 @@ def main() -> None:  # noqa: PLR0912, PLR0915
             st.image(
                 _frame_rgb(frame_bgr, frame_det),
                 channels="RGB",
-                width="stretch",
+                width=CANVAS_DISPLAY_WIDTH,
             )
         st.caption(f"{len(frame_det.detections)} detections on frame {idx}")
         default_out = video_path.with_name(f"{video_path.stem}_labels.json")
