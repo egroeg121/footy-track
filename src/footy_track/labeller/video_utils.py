@@ -523,6 +523,11 @@ class BackgroundLabeller:
         self.running: bool = False
         self.error: Exception | None = None
         self.last_completed_frame: int = -1
+        # Anomaly auto-stop: when a track box jumps/changes implausibly between
+        # frames (e.g. the ball snapping to the penalty spot), stop so the user
+        # can correct. anomaly_frame is the index where it was detected, or None.
+        self.anomaly_frame: int | None = None
+        self.anomaly_detection: bool = True
 
     def submit(
         self,
@@ -546,6 +551,7 @@ class BackgroundLabeller:
                 # First run (or video changed): allocate the full timeline.
                 self.frames = [None] * total
             self.error = None
+            self.anomaly_frame = None
             # Absolute progress: a restart at frame N shows N/total.
             self.progress = (start_frame, total)
             self.running = True
@@ -582,6 +588,7 @@ class BackgroundLabeller:
 
     def _worker(self, labeller: Sam3VideoLabeller, start_frame: int) -> None:
         try:
+            prev_fd: FrameDetections | None = None
             for fd in labeller.iter_frames_from(
                 start_frame=start_frame,
                 stop_event=self._stop_event,
@@ -592,6 +599,20 @@ class BackgroundLabeller:
                     if 0 <= idx < len(self.frames):
                         self.frames[idx] = fd
                     self.last_completed_frame = max(self.last_completed_frame, idx)
+
+                # Anomaly auto-stop: if a track box did something implausible vs
+                # the previous frame, record the frame and stop so the user can
+                # correct it (don't let bad tracks propagate further).
+                if (
+                    self.anomaly_detection
+                    and prev_fd is not None
+                    and _has_track_anomaly(prev_fd, fd)
+                ):
+                    with self._lock:
+                        self.anomaly_frame = idx
+                    self._stop_event.set()
+                    break
+                prev_fd = fd
         except Exception as exc:  # noqa: BLE001
             with self._lock:
                 self.error = exc
@@ -601,6 +622,47 @@ class BackgroundLabeller:
     def _on_progress(self, done: int, total: int) -> None:
         with self._lock:
             self.progress = (done, total)
+
+
+def _has_track_anomaly(
+    prev: FrameDetections,
+    cur: FrameDetections,
+    jump_frac: float = 0.20,
+    area_ratio: float = 4.0,
+) -> bool:
+    """Heuristic: did any tracked box move/resize implausibly between frames?
+
+    For each box in ``cur`` we find the nearest same-label box in ``prev`` and
+    flag an anomaly if the centre jumped more than ``jump_frac`` of the frame
+    diagonal, or the area changed by more than ``area_ratio``x. Catches the
+    classic SAM3 failure where a lost ball track snaps onto a distant marking.
+    Coordinates are normalized [0,1], so thresholds are resolution-independent.
+    """
+
+    def _center(d) -> tuple[float, float]:
+        return (d.x + d.w / 2.0, d.y + d.h / 2.0)
+
+    diag = 2.0**0.5  # diagonal of the unit square
+    for c in cur.detections:
+        same = [p for p in prev.detections if p.label == c.label]
+        if not same:
+            continue  # a brand-new label this frame isn't an anomaly per se
+        cx, cy = _center(c)
+        # nearest previous box of the same label
+        nearest = min(
+            same,
+            key=lambda p: (_center(p)[0] - cx) ** 2 + (_center(p)[1] - cy) ** 2,
+        )
+        px, py = _center(nearest)
+        dist = ((px - cx) ** 2 + (py - cy) ** 2) ** 0.5
+        if dist > jump_frac * diag:
+            return True
+        c_area = max(c.w * c.h, 1e-9)
+        p_area = max(nearest.w * nearest.h, 1e-9)
+        ratio = max(c_area / p_area, p_area / c_area)
+        if ratio > area_ratio:
+            return True
+    return False
 
 
 def _frame_index_from_uri(fd: FrameDetections, default: int = 0) -> int:

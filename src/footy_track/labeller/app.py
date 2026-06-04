@@ -200,6 +200,13 @@ def main() -> None:  # noqa: PLR0912, PLR0915
             value=True,
             help="Toggle the detection boxes on the live / preview frames.",
         )
+        auto_pause_anomaly = st.checkbox(
+            "Auto-pause on track anomaly",
+            value=True,
+            help="Stop and pause when a track box jumps or resizes implausibly "
+            "(e.g. the ball snapping to a marking) so you can correct it.",
+        )
+        st.session_state.bg.anomaly_detection = auto_pause_anomaly
         st.divider()
         st.caption(
             "JIT kernels cached in ~/.cache/torch_inductor_sam3 — fast after first run."
@@ -285,6 +292,26 @@ def main() -> None:  # noqa: PLR0912, PLR0915
     # into the SAME list so the canvas, side-panel list and class edits stay in
     # sync. `edited_objects` is the live canvas readback for the current pass.
     completed = bg.completed_frames()
+
+    # Auto-pause on anomaly: if the run stopped because a track box jumped/snapped
+    # implausibly, drop into paused mode at that frame so the user can correct it.
+    if (
+        not bg.running
+        and bg.anomaly_frame is not None
+        and not st.session_state.correcting
+    ):
+        n = bg.anomaly_frame
+        bg.anomaly_frame = None
+        st.session_state.correcting = True
+        st.session_state.correction_frame = n
+        if 0 <= n < len(completed):
+            st.session_state.objects = _frame_dets_to_objects(
+                completed[n], orig_w, orig_h
+            )
+        st.session_state.canvas_key += 1
+        st.session_state["anomaly_notice"] = n
+        st.rerun()
+
     if bg.running:
         view_mode = "running"
     elif st.session_state.correcting and st.session_state.correction_frame is not None:
@@ -495,6 +522,13 @@ def main() -> None:  # noqa: PLR0912, PLR0915
     # Frame navigation (paused only): slider + prev/next
     # ------------------------------------------------------------------
     if view_mode == "paused":
+        notice_frame = st.session_state.pop("anomaly_notice", None)
+        if notice_frame is not None:
+            main.warning(
+                f"⚠️ Auto-paused at frame {notice_frame}: a track box jumped or "
+                "changed size implausibly (likely a lost/snapped object). Correct "
+                "the boxes — scroll back if needed — then Restart."
+            )
         last = len(completed) - 1
         if last > 0:
             slid = main.slider("Frame", 0, last, cf, key=f"scrub_{cf}")
