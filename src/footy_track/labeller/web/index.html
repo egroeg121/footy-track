@@ -378,12 +378,16 @@ function connectWS(){
       }
     }
     else if (m.type==="frame"){
-      lastCompleted = m.idx;
-      // live read-only render of the propagated frame
-      await showFrame(m.idx);
-      drawBoxes(m.detections, false);
-      $("frameLbl").textContent = `🔴 frame ${m.idx} / ${meta.total_frames-1}`;
-      $("runMsg").textContent = `Running… ${m.idx+1}/${meta.total_frames} frames`;
+      lastCompleted = Math.max(lastCompleted, m.idx);
+      // Only render live frames while actually running — ignore in-flight frame
+      // messages that arrive after a pause/scrub (they'd reset viewFrame and make
+      // Restart use the wrong frame).
+      if (mode==="running"){
+        await showFrame(m.idx);
+        drawBoxes(m.detections, false);
+        $("frameLbl").textContent = `🔴 frame ${m.idx} / ${meta.total_frames-1}`;
+        $("runMsg").textContent = `Running… ${m.idx+1}/${meta.total_frames} frames`;
+      }
     }
     else if (m.type==="anomaly"){
       setStatus(`⚠️ auto-paused (anomaly)`);
