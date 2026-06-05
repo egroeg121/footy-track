@@ -64,6 +64,14 @@
       </span>
       <select id="classSel"></select>
       <button id="autoBtn">🤖 Auto-detect</button>
+      <label class="muted" style="margin-left:8px;">res
+        <select id="imgszSel" title="SAM3 inference resolution — higher tracks small objects (ball) better but is slower">
+          <option value="512">512</option>
+          <option value="768">768</option>
+          <option value="1024" selected>1024</option>
+          <option value="1280">1280</option>
+        </select>
+      </label>
       <span class="grow"></span>
       <button id="runBtn" class="primary" disabled>▶️ Run</button>
       <button id="restartBtn" class="primary" style="display:none">▶️ Restart from frame 0</button>
@@ -91,7 +99,7 @@
 
 <script>
 const CLASSES = ["person","ball","out_of_play_ball","in_play_ball","player","player_sub","referee","coach"];
-const COLORS = {player:"#1e90ff",person:"#b48246",referee:"#4169e1",coach:"#6495ed",
+const COLORS = {player:"#1e90ff",person:"#b48246",referee:"#9b30ff",coach:"#00c2a8",
   ball:"#ffc800",in_play_ball:"#ffd700",out_of_play_ball:"#ff8c00",player_sub:"#b48246"};
 const colorOf = l => COLORS[l] || "#ff0000";
 
@@ -281,9 +289,9 @@ async function autodetect(frameIdx){
   setStatus("auto-detecting…");
   const res = await fetch("/autodetect",{method:"POST",headers:{"Content-Type":"application/json"},
     body:JSON.stringify({frame_idx:frameIdx, conf:0.35, iou:0.5})});
-  const data = await res.json();
-  drawBoxes(data.objects, true);
-  setStatus(`auto-detected ${data.objects.length} objects`);
+  const data = await res.json();   // writes to timeline server-side
+  drawBoxes(data.boxes, true);
+  setStatus(`auto-detected ${data.boxes.length} objects`);
 }
 $("autoBtn").onclick = ()=>autodetect(viewFrame);
 
@@ -292,25 +300,26 @@ $("scrub").oninput = (e)=>gotoFrame(parseInt(e.target.value));
 $("prevBtn").onclick = ()=>gotoFrame(Math.max(0, viewFrame-1));
 $("nextBtn").onclick = ()=>gotoFrame(Math.min(meta.total_frames-1, viewFrame+1));
 
-// Client-side per-frame edit cache so scrubbing away from an edited frame and
-// back keeps your edits (key = frame index -> normalized boxes).
-let frameEdits = {};
-function saveCurrentEdits(){
+// The server timeline is the single source of truth. When leaving an editable
+// frame we POST the current boxes to /edit (labeller ground truth); when
+// entering a frame we GET /timeline/{idx} and render it.
+async function saveCurrentEdits(){
   if ((mode==="paused"||mode==="idle_results") && viewFrame!=null){
-    frameEdits[viewFrame] = boxesNorm();
+    await fetch("/edit",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({idx:viewFrame, objects:boxesNorm()})});
   }
 }
 
+async function loadTimelineFrame(idx, editable){
+  const res = await fetch(`/timeline/${idx}`); const data = await res.json();
+  drawBoxes(data.boxes, editable);
+}
+
 async function gotoFrame(idx){
-  saveCurrentEdits();          // persist edits on the frame we're leaving
+  await saveCurrentEdits();     // persist edits on the frame we're leaving
   await showFrame(idx);
   if (mode==="paused" || mode==="idle_results") {
-    if (frameEdits[idx]) {
-      drawBoxes(frameEdits[idx], true);   // restore prior edits
-    } else {
-      const res = await fetch(`/detections/${idx}`); const data = await res.json();
-      drawBoxes(data.detections, true);   // else the propagated detections
-    }
+    await loadTimelineFrame(idx, true);
     if (mode==="paused") $("restartBtn").textContent = `▶️ Restart from frame ${idx}`;
   } else if (mode==="running") {
     // read-only live frames handled by WS; just show image
@@ -325,14 +334,20 @@ function modelUri(){
   localStorage.setItem("lastModelPath", p);
   return p || null;
 }
-$("runBtn").onclick = ()=>{
-  frameEdits = {};  // fresh propagation supersedes any cached frame edits
-  ws.send(JSON.stringify({type:"run", objects:boxesNorm(), start_frame:0, conf:0.25, imgsz:512, model_uri:modelUri()}));
+async function commitCanvasTo(idx){
+  // Persist the current canvas boxes as ground truth at idx so the server seeds
+  // the run from exactly what's on screen.
+  await fetch("/edit",{method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({idx, objects:boxesNorm()})});
+}
+$("runBtn").onclick = async ()=>{
+  await commitCanvasTo(viewFrame);
+  ws.send(JSON.stringify({type:"run", start_frame:viewFrame, conf:0.25, imgsz:+$("imgszSel").value, model_uri:modelUri()}));
   mode="running"; uiRunning();
 };
-$("restartBtn").onclick = ()=>{
-  ws.send(JSON.stringify({type:"restart", objects:boxesNorm(), start_frame:viewFrame, conf:0.25, imgsz:512, model_uri:modelUri()}));
-  frameEdits = {};  // the new propagation overwrites frames >= start_frame
+$("restartBtn").onclick = async ()=>{
+  await commitCanvasTo(viewFrame);
+  ws.send(JSON.stringify({type:"restart", start_frame:viewFrame, conf:0.25, imgsz:+$("imgszSel").value, model_uri:modelUri()}));
   mode="running"; uiRunning();
 };
 $("pauseBtn").onclick = ()=>{ ws.send(JSON.stringify({type:"pause"})); };
@@ -384,7 +399,7 @@ function connectWS(){
       // Restart use the wrong frame).
       if (mode==="running"){
         await showFrame(m.idx);
-        drawBoxes(m.detections, false);
+        drawBoxes(m.boxes, false);
         $("frameLbl").textContent = `🔴 frame ${m.idx} / ${meta.total_frames-1}`;
         $("runMsg").textContent = `Running… ${m.idx+1}/${meta.total_frames} frames`;
       }

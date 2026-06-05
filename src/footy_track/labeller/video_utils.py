@@ -470,7 +470,14 @@ class Sam3VideoLabeller:
             results = predictor(source=tmp_path, stream=True)
             for offset, result in enumerate(results):
                 abs_idx = start_frame + offset
-                yield self._result_to_frame(abs_idx, result)
+                # The seed frame is GROUND TRUTH: emit the user's marked boxes
+                # verbatim instead of SAM3's re-segmentation (which can drop a
+                # tiny ball or mangle a corrected box). SAM3's output is only
+                # trusted for the propagated frames (offset >= 1).
+                if offset == 0:
+                    yield self._seed_frame_detections(abs_idx)
+                else:
+                    yield self._result_to_frame(abs_idx, result)
                 if progress_callback is not None:
                     # Report ABSOLUTE position out of the full clip so a restart
                     # at frame N shows N/total, not 0/(total-N).
@@ -481,6 +488,33 @@ class Sam3VideoLabeller:
             writer.release()
             cap.release()
             Path(tmp_path).unlink(missing_ok=True)
+
+    def _seed_frame_detections(self, frame_idx: int) -> FrameDetections:
+        """Emit the user's marked objects verbatim as the seed frame's output.
+
+        The frame the user seeded/corrected is ground truth — we keep their exact
+        boxes rather than SAM3's re-segmentation of them.
+        """
+        uri = self.video_path.parent / f"{self.video_path.stem}_frame_{frame_idx:06d}"
+        detections: list[ObjectDetection] = []
+        for o in self.objects:
+            if o.bbox_xyxy_abs is None:
+                continue
+            x1, y1, x2, y2 = o.bbox_xyxy_abs
+            detections.append(
+                ObjectDetection(
+                    label=o.label,
+                    confidence=1.0,
+                    x=max(0.0, x1 / self.width),
+                    y=max(0.0, y1 / self.height),
+                    w=max(0.0, (x2 - x1) / self.width),
+                    h=max(0.0, (y2 - y1) / self.height),
+                    model=MODEL_TAG,
+                )
+            )
+        return FrameDetections(
+            uri=uri, width=self.width, height=self.height, detections=detections
+        )
 
     def _result_to_frame(self, frame_idx: int, result) -> FrameDetections:
         """Convert one Ultralytics ``Results`` to our ``FrameDetections`` schema."""

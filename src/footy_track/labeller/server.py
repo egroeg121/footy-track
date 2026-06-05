@@ -15,6 +15,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import os
+import threading
 from pathlib import Path
 
 # Persist torch.compile (Inductor) cache before torch loads — see video_utils.
@@ -33,14 +34,27 @@ from footy_track.labeller.video_utils import (  # noqa: E402
     LabelledObject,
     yolo_seed_objects,
 )
+from footy_track.schema import ObjectDetection  # noqa: E402
 
 app = FastAPI(title="SAM3 Video Labeller")
 
 _STATIC_DIR = Path(__file__).parent / "web"
 
 
+# Provenance tags stored in each box's ObjectDetection.model field.
+PROV_LABELLER = "labeller"  # manual edit — ground truth, never auto-overwritten
+PROV_YOLO = "yolo"
+PROV_SAM3 = "sam3"
+
+
 class Session:
-    """Single-session server state (local, one user/one video at a time)."""
+    """Single-session server state with one authoritative per-frame timeline.
+
+    ``timeline[i]`` is the list of boxes (ObjectDetection, normalized) for frame
+    i, or None if that frame has never been populated. Every actor — YOLO,
+    SAM3, the user — writes here. Box provenance lives in ObjectDetection.model
+    (PROV_*). Labeller boxes are ground truth and survive auto re-propagation.
+    """
 
     def __init__(self) -> None:
         self.bg = BackgroundLabeller()
@@ -49,6 +63,8 @@ class Session:
         self.total_frames: int = 0
         self.width: int = 0
         self.height: int = 0
+        self.timeline: list[list[ObjectDetection] | None] = []
+        self._tl_lock = threading.Lock()
 
     def load(self, video_path: str) -> dict:
         self.bg.pause()
@@ -64,12 +80,54 @@ class Session:
             self.height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         finally:
             cap.release()
+        with self._tl_lock:
+            self.timeline = [None] * self.total_frames
         return {
             "fps": self.fps,
             "total_frames": self.total_frames,
             "width": self.width,
             "height": self.height,
         }
+
+    # --- timeline access -------------------------------------------------
+
+    def get_frame(self, idx: int) -> list[ObjectDetection]:
+        with self._tl_lock:
+            if 0 <= idx < len(self.timeline) and self.timeline[idx] is not None:
+                return list(self.timeline[idx])
+            return []
+
+    def set_frame(self, idx: int, boxes: list[ObjectDetection]) -> None:
+        """Overwrite a frame entirely (used by user edits / autodetect)."""
+        with self._tl_lock:
+            if 0 <= idx < len(self.timeline):
+                self.timeline[idx] = list(boxes)
+
+    def merge_propagated(self, idx: int, boxes: list[ObjectDetection]) -> None:
+        """Write propagated (sam3/yolo) boxes, KEEPING any labeller ground truth."""
+        with self._tl_lock:
+            if not (0 <= idx < len(self.timeline)):
+                return
+            existing = self.timeline[idx] or []
+            kept = [b for b in existing if b.model == PROV_LABELLER]
+            self.timeline[idx] = kept + list(boxes)
+
+    def seed_objects(self, idx: int) -> list[LabelledObject]:
+        """Frame idx's boxes as LabelledObjects (abs xyxy) to seed propagation."""
+        objs: list[LabelledObject] = []
+        for b in self.get_frame(idx):
+            objs.append(
+                LabelledObject(
+                    label=b.label,
+                    bbox_xyxy_abs=(
+                        b.x * self.width,
+                        b.y * self.height,
+                        (b.x + b.w) * self.width,
+                        (b.y + b.h) * self.height,
+                    ),
+                )
+            )
+        return objs
 
     def frame_jpeg(self, idx: int) -> bytes | None:
         if self.video_path is None:
@@ -94,24 +152,37 @@ SESSION = Session()
 # ----------------------------------------------------------------------------
 
 
-def _objects_from_payload(items: list[dict]) -> list[LabelledObject]:
-    """Convert client boxes (normalized xywh + label) to LabelledObject (abs xyxy)."""
-    objs: list[LabelledObject] = []
-    w, h = SESSION.width, SESSION.height
+def _boxes_from_payload(items: list[dict], provenance: str) -> list[ObjectDetection]:
+    """Client boxes (normalized xywh + label) -> ObjectDetection with provenance."""
+    out: list[ObjectDetection] = []
     for it in items:
-        x1 = it["x"] * w
-        y1 = it["y"] * h
-        x2 = (it["x"] + it["w"]) * w
-        y2 = (it["y"] + it["h"]) * h
-        objs.append(LabelledObject(label=it["label"], bbox_xyxy_abs=(x1, y1, x2, y2)))
-    return objs
+        out.append(
+            ObjectDetection(
+                label=it["label"],
+                confidence=float(it.get("conf", 1.0)),
+                x=max(0.0, min(1.0, it["x"])),
+                y=max(0.0, min(1.0, it["y"])),
+                w=max(0.0, min(1.0, it["w"])),
+                h=max(0.0, min(1.0, it["h"])),
+                model=provenance,
+            )
+        )
+    return out
 
 
-def _detections_payload(fd) -> list[dict]:
-    """FrameDetections -> normalized box dicts for the client."""
+def _boxes_payload(boxes: list[ObjectDetection]) -> list[dict]:
+    """ObjectDetection list -> normalized box dicts for the client (with source)."""
     return [
-        {"label": d.label, "x": d.x, "y": d.y, "w": d.w, "h": d.h, "conf": d.confidence}
-        for d in fd.detections
+        {
+            "label": b.label,
+            "x": b.x,
+            "y": b.y,
+            "w": b.w,
+            "h": b.h,
+            "conf": b.confidence,
+            "source": b.model,
+        }
+        for b in boxes
     ]
 
 
@@ -140,9 +211,14 @@ async def get_frame(idx: int) -> Response:
 
 @app.post("/autodetect")
 async def autodetect(body: dict) -> dict:
-    """Run YOLO on a frame; return seed boxes as normalized xywh dicts."""
+    """Run YOLO on a frame, WRITE the boxes (yolo provenance) into the timeline.
+
+    Keeps any existing labeller boxes on that frame (merge rule). Returns the
+    frame's full box set so the client can render it.
+    """
     if SESSION.video_path is None:
-        return {"objects": []}
+        return {"idx": 0, "boxes": []}
+    idx = int(body.get("frame_idx", 0))
     seeds = await asyncio.to_thread(
         yolo_seed_objects,
         SESSION.video_path,
@@ -151,34 +227,72 @@ async def autodetect(body: dict) -> dict:
         SESSION.width,
         SESSION.height,
         float(body.get("iou", 0.5)),
-        int(body.get("frame_idx", 0)),
+        idx,
     )
     w, h = SESSION.width, SESSION.height
-    objects = [
-        {
-            "label": o.label,
-            "x": o.bbox_xyxy_abs[0] / w,
-            "y": o.bbox_xyxy_abs[1] / h,
-            "w": (o.bbox_xyxy_abs[2] - o.bbox_xyxy_abs[0]) / w,
-            "h": (o.bbox_xyxy_abs[3] - o.bbox_xyxy_abs[1]) / h,
-        }
+    yolo_boxes = [
+        ObjectDetection(
+            label=o.label,
+            confidence=1.0,
+            x=o.bbox_xyxy_abs[0] / w,
+            y=o.bbox_xyxy_abs[1] / h,
+            w=(o.bbox_xyxy_abs[2] - o.bbox_xyxy_abs[0]) / w,
+            h=(o.bbox_xyxy_abs[3] - o.bbox_xyxy_abs[1]) / h,
+            model=PROV_YOLO,
+        )
         for o in seeds
         if o.bbox_xyxy_abs is not None
     ]
-    return {"objects": objects}
+    # Replace this frame's non-labeller boxes with the fresh YOLO set.
+    existing = SESSION.get_frame(idx)
+    kept = [b for b in existing if b.model == PROV_LABELLER]
+    SESSION.set_frame(idx, kept + yolo_boxes)
+    return {"idx": idx, "boxes": _boxes_payload(SESSION.get_frame(idx))}
 
 
-@app.get("/detections/{idx}")
-async def get_detections(idx: int) -> dict:
-    completed = SESSION.bg.completed_frames()
-    if 0 <= idx < len(completed):
-        return {"idx": idx, "detections": _detections_payload(completed[idx])}
-    return {"idx": idx, "detections": []}
+@app.get("/timeline/{idx}")
+async def get_timeline(idx: int) -> dict:
+    """Return the authoritative boxes (with provenance) for a frame."""
+    return {"idx": idx, "boxes": _boxes_payload(SESSION.get_frame(idx))}
+
+
+@app.post("/edit")
+async def edit_frame(body: dict) -> dict:
+    """Overwrite a frame with the user's boxes (labeller provenance = ground truth)."""
+    idx = int(body["idx"])
+    boxes = _boxes_from_payload(body.get("objects", []), PROV_LABELLER)
+    SESSION.set_frame(idx, boxes)
+    return {"idx": idx, "boxes": _boxes_payload(SESSION.get_frame(idx))}
 
 
 # ----------------------------------------------------------------------------
 # WebSocket: control (run/pause/restart) + live frame stream
 # ----------------------------------------------------------------------------
+
+
+def _ingest_completed_frame(idx: int, fd, start_idx: int) -> list[ObjectDetection]:
+    """Write a propagated frame into the timeline and return its boxes to send.
+
+    The seed frame (idx == start_idx) is the ground-truth seed — its timeline
+    entry is already correct, so we don't merge SAM3's re-segmentation into it.
+    Downstream frames get SAM3 boxes merged in (keeping labeller ground truth).
+    """
+    if idx == start_idx:
+        return SESSION.get_frame(idx)
+    sam3_boxes = [
+        ObjectDetection(
+            label=d.label,
+            confidence=d.confidence,
+            x=d.x,
+            y=d.y,
+            w=d.w,
+            h=d.h,
+            model=PROV_SAM3,
+        )
+        for d in fd.detections
+    ]
+    SESSION.merge_propagated(idx, sam3_boxes)
+    return SESSION.get_frame(idx)
 
 
 async def _stream_frames(websocket: WebSocket, start_idx: int) -> None:
@@ -195,11 +309,12 @@ async def _stream_frames(websocket: WebSocket, start_idx: int) -> None:
                 if not announced_running:
                     await websocket.send_json({"type": "status", "state": "running"})
                     announced_running = True
+                boxes = _ingest_completed_frame(sent, completed[sent], start_idx)
                 await websocket.send_json(
                     {
                         "type": "frame",
                         "idx": sent,
-                        "detections": _detections_payload(completed[sent]),
+                        "boxes": _boxes_payload(boxes),
                     }
                 )
         if cur_bg.anomaly_frame is not None:
@@ -244,10 +359,21 @@ async def ws(websocket: WebSocket) -> None:
                         await streamer
                 bg = SESSION.bg
                 start_frame = int(msg.get("start_frame", 0))
-                objects = _objects_from_payload(msg.get("objects", []))
+                # Seed from the TIMELINE at the start frame (the single source of
+                # truth) — not from whatever the client happens to send. This is
+                # what makes "restart from frame N" deterministic.
+                objects = SESSION.seed_objects(start_frame)
+                print(
+                    f"[ws] {mtype}: start_frame={start_frame} "
+                    f"seed_objects={len(objects)} (from timeline)",
+                    flush=True,
+                )
                 if not objects:
                     await websocket.send_json(
-                        {"type": "error", "message": "No boxes to run."}
+                        {
+                            "type": "error",
+                            "message": f"No boxes on frame {start_frame} to seed from.",
+                        }
                     )
                     continue
                 await asyncio.to_thread(
