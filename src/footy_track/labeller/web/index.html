@@ -50,6 +50,10 @@
   <button id="loadBtn" class="primary">Load</button>
   <span id="status">no video</span>
 </div>
+<div class="row" style="padding:0 16px 8px;">
+  <input type="text" id="modelPath" placeholder="SAM3 checkpoint path (blank = default sam3.1_multiplex.pt)" />
+  <span class="muted">leave blank for default</span>
+</div>
 
 <div class="wrap">
   <div>
@@ -119,8 +123,8 @@ function $(id){ return document.getElementById(id); }
 function setStatus(s){ $("status").textContent = s; }
 
 function boxesNorm() {
-  // current canvas rects -> normalized xywh + label
-  return boxLayer.find("Rect").map(r => ({
+  // Only our labelled boxes (name="box") — NOT the Transformer's handle rects.
+  return boxLayer.find(".box").map(r => ({
     label: r.getAttr("label"),
     x: r.x()/dispW, y: r.y()/dispH,
     w: (r.width()*r.scaleX())/dispW, h: (r.height()*r.scaleY())/dispH,
@@ -288,12 +292,25 @@ $("scrub").oninput = (e)=>gotoFrame(parseInt(e.target.value));
 $("prevBtn").onclick = ()=>gotoFrame(Math.max(0, viewFrame-1));
 $("nextBtn").onclick = ()=>gotoFrame(Math.min(meta.total_frames-1, viewFrame+1));
 
+// Client-side per-frame edit cache so scrubbing away from an edited frame and
+// back keeps your edits (key = frame index -> normalized boxes).
+let frameEdits = {};
+function saveCurrentEdits(){
+  if ((mode==="paused"||mode==="idle_results") && viewFrame!=null){
+    frameEdits[viewFrame] = boxesNorm();
+  }
+}
+
 async function gotoFrame(idx){
+  saveCurrentEdits();          // persist edits on the frame we're leaving
   await showFrame(idx);
   if (mode==="paused" || mode==="idle_results") {
-    // editable: load that frame's propagated detections
-    const res = await fetch(`/detections/${idx}`); const data = await res.json();
-    drawBoxes(data.detections, true);
+    if (frameEdits[idx]) {
+      drawBoxes(frameEdits[idx], true);   // restore prior edits
+    } else {
+      const res = await fetch(`/detections/${idx}`); const data = await res.json();
+      drawBoxes(data.detections, true);   // else the propagated detections
+    }
     if (mode==="paused") $("restartBtn").textContent = `▶️ Restart from frame ${idx}`;
   } else if (mode==="running") {
     // read-only live frames handled by WS; just show image
@@ -301,12 +318,21 @@ async function gotoFrame(idx){
 }
 
 // ---------- run / pause / restart ----------
+$("modelPath").value = localStorage.getItem("lastModelPath") || "";
+function modelUri(){
+  let p = $("modelPath").value.trim();
+  if ((p.startsWith("'")&&p.endsWith("'"))||(p.startsWith('"')&&p.endsWith('"'))) p=p.slice(1,-1);
+  localStorage.setItem("lastModelPath", p);
+  return p || null;
+}
 $("runBtn").onclick = ()=>{
-  ws.send(JSON.stringify({type:"run", objects:boxesNorm(), start_frame:0, conf:0.25, imgsz:512}));
+  frameEdits = {};  // fresh propagation supersedes any cached frame edits
+  ws.send(JSON.stringify({type:"run", objects:boxesNorm(), start_frame:0, conf:0.25, imgsz:512, model_uri:modelUri()}));
   mode="running"; uiRunning();
 };
 $("restartBtn").onclick = ()=>{
-  ws.send(JSON.stringify({type:"restart", objects:boxesNorm(), start_frame:viewFrame, conf:0.25, imgsz:512}));
+  ws.send(JSON.stringify({type:"restart", objects:boxesNorm(), start_frame:viewFrame, conf:0.25, imgsz:512, model_uri:modelUri()}));
+  frameEdits = {};  // the new propagation overwrites frames >= start_frame
   mode="running"; uiRunning();
 };
 $("pauseBtn").onclick = ()=>{ ws.send(JSON.stringify({type:"pause"})); };
@@ -341,9 +367,13 @@ function connectWS(){
     const m = JSON.parse(ev.data);
     if (m.type==="status"){
       setStatus(`● ${m.state}`);
+      // Drive the run message from the server's actual phase.
+      if (m.state==="compiling"){ $("runMsg").textContent="⏳ Compiling model…"; }
+      else if (m.state==="running" && lastCompleted<0){ $("runMsg").textContent="⏳ Compiling model…"; }
       if (m.state==="paused" && mode!=="paused"){
         // user-initiated pause: switch to editable on the last live frame
         const idx = lastCompleted>=0?lastCompleted:viewFrame;
+        mode="paused";  // set BEFORE gotoFrame so it renders editable
         await gotoFrame(idx); uiPaused(idx);
       }
     }
@@ -356,8 +386,14 @@ function connectWS(){
       $("runMsg").textContent = `Running… ${m.idx+1}/${meta.total_frames} frames`;
     }
     else if (m.type==="anomaly"){
-      setStatus(`⚠️ anomaly at frame ${m.idx} — auto-paused`);
-      await gotoFrame(m.idx); uiPaused(m.idx);
+      setStatus(`⚠️ auto-paused (anomaly)`);
+      mode="paused";                 // set BEFORE gotoFrame so it renders editable
+      await gotoFrame(m.idx);
+      uiPaused(m.idx);
+      const h=$("hint");
+      h.innerHTML = `⚠️ <b>Auto-paused at frame ${m.idx}</b> — anomaly detected because `
+        + `${m.reason||"a track moved implausibly"}. Fix the boxes, then Restart.`;
+      h.style.color = "#ffc800";
     }
     else if (m.type==="done"){ await gotoFrame(lastCompleted>=0?lastCompleted:0); uiIdle(); }
     else if (m.type==="error"){ setStatus("⚠️ "+m.message); }

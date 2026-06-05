@@ -8,8 +8,11 @@ studio, ads). Each contiguous broadcast run is written as its own MP4, plus a
 manifest JSON describing the segments.
 
 Sampling: classifying every frame of a full match is slow, so by default we
-classify every Nth frame (``--sample 5``) and the frames in between inherit the
-last sampled label. Use ``--sample 1`` to classify every frame.
+classify every Nth frame (``--sample 5``). Whenever a sample's label differs from
+the previous sample's, the whole interval between them is classified frame-by-
+frame to pin the *exact* transition frame(s), so the cut boundaries stay frame-
+accurate even with coarse sampling. Frames inside stable intervals inherit the
+last sampled label. Use ``--sample 1`` to classify every frame unconditionally.
 
 Smoothing: brief misclassifications are bridged — non-broadcast gaps shorter
 than ``--merge-gap-s`` are absorbed into the surrounding broadcast run, and
@@ -57,14 +60,28 @@ def _check_ffmpeg() -> str:
     return ffmpeg
 
 
+def _classify_frame(model, frame: np.ndarray) -> bool:
+    """Return True if the classifier labels this frame as broadcast."""
+    result = model.predict(source=frame, device="mps", verbose=False)[0]
+    label = model.names[result.probs.top1]
+    return label == EnumBroadcastClassification.YES.value
+
+
 def classify_broadcast_mask(
     video_path: Path, sample: int
 ) -> tuple[np.ndarray, float, int]:
     """Classify the video and return (per-frame broadcast mask, fps, total_frames).
 
-    Every ``sample``-th frame is classified; frames in between inherit the most
-    recent sampled label. The classifier's YOLO model is fed numpy frames
-    directly to avoid writing a temp image per frame.
+    Done in a single forward decode pass (no random seeks — important for ``.ts``
+    sources, which have no clean frame index). Every ``sample``-th frame is
+    classified. When a sample's label differs from the previous sample's, the
+    entire interval between them is classified frame-by-frame so the exact flip
+    frame(s) are found — this stays robust even if the classifier flickers
+    (multiple transitions) inside a single interval. Frames in stable intervals
+    inherit the last classified label.
+
+    The classifier's YOLO model is fed numpy frames directly to avoid writing a
+    temp image per frame.
     """
     classifier = get_current_best_guess_classifier()
     model = classifier.model  # underlying ultralytics YOLO classification model
@@ -73,9 +90,12 @@ def classify_broadcast_mask(
     fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
     total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
-    mask = np.zeros(total if total > 0 else 0, dtype=bool)
+    # Buffer the frames of the current (not-yet-on-a-sample-boundary) interval so
+    # that, if the upcoming sample reveals a label change, we can go back and
+    # classify each buffered frame — all from this single forward pass.
     mask_list: list[bool] = []
-    last_is_broadcast = False
+    buffer: list[np.ndarray] = []  # frames since the last sample boundary
+    prev_sample_label = False  # label of the most recent sample boundary
     frame_idx = 0
 
     pbar = tqdm(total=total or None, unit="frame", desc="Classifying")
@@ -84,12 +104,27 @@ def classify_broadcast_mask(
         if not ok:
             break
         if frame_idx % sample == 0:
-            result = model.predict(source=frame, device="mps", verbose=False)[0]
-            label = model.names[result.probs.top1]
-            last_is_broadcast = label == EnumBroadcastClassification.YES.value
-        mask_list.append(last_is_broadcast)
+            cur_label = _classify_frame(model, frame)
+            if buffer:
+                # Flush the preceding interval [prev_sample .. this_sample).
+                if cur_label == prev_sample_label:
+                    # No change across the interval: every in-between frame
+                    # inherits that stable label (one classification for many).
+                    mask_list.extend([prev_sample_label] * len(buffer))
+                else:
+                    # Change detected: classify each buffered frame to pin the
+                    # exact transition frame(s) within the interval.
+                    mask_list.extend(_classify_frame(model, f) for f in buffer)
+                buffer = []
+            mask_list.append(cur_label)
+            prev_sample_label = cur_label
+        else:
+            buffer.append(frame)
         frame_idx += 1
         pbar.update(1)
+    # Trailing frames after the final sample boundary inherit its label.
+    if buffer:
+        mask_list.extend([prev_sample_label] * len(buffer))
     pbar.close()
     cap.release()
 
@@ -191,7 +226,11 @@ def main(argv: list[str] | None = None) -> int:
         "--sample",
         type=int,
         default=5,
-        help="Classify every Nth frame (default 5; use 1 for every frame).",
+        help=(
+            "Classify every Nth frame (default 5; try 24 for ~1/sec). "
+            "Intervals where the label changes are refined frame-by-frame, so "
+            "boundaries stay exact. Use 1 to classify every frame."
+        ),
     )
     parser.add_argument(
         "--merge-gap-s",

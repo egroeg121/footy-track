@@ -14,14 +14,21 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import os
 from pathlib import Path
 
-import cv2
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from fastapi.responses import HTMLResponse, Response
-from fastapi.staticfiles import StaticFiles
+# Persist torch.compile (Inductor) cache before torch loads — see video_utils.
+os.environ.setdefault(
+    "TORCHINDUCTOR_CACHE_DIR",
+    str(Path.home() / ".cache" / "footy_torch_inductor"),
+)
 
-from footy_track.labeller.video_utils import (
+import cv2  # noqa: E402
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect  # noqa: E402
+from fastapi.responses import HTMLResponse, Response  # noqa: E402
+from fastapi.staticfiles import StaticFiles  # noqa: E402
+
+from footy_track.labeller.video_utils import (  # noqa: E402
     BackgroundLabeller,
     LabelledObject,
     yolo_seed_objects,
@@ -174,6 +181,47 @@ async def get_detections(idx: int) -> dict:
 # ----------------------------------------------------------------------------
 
 
+async def _stream_frames(websocket: WebSocket, start_idx: int) -> None:
+    """Push each newly-completed frame to the client until the run stops."""
+    sent = start_idx - 1
+    await websocket.send_json({"type": "status", "state": "compiling"})
+    announced_running = False
+    while True:
+        cur_bg = SESSION.bg  # may swap on a fresh load
+        while sent < cur_bg.last_completed_frame:
+            sent += 1
+            completed = cur_bg.completed_frames()
+            if sent < len(completed):
+                if not announced_running:
+                    await websocket.send_json({"type": "status", "state": "running"})
+                    announced_running = True
+                await websocket.send_json(
+                    {
+                        "type": "frame",
+                        "idx": sent,
+                        "detections": _detections_payload(completed[sent]),
+                    }
+                )
+        if cur_bg.anomaly_frame is not None:
+            await websocket.send_json(
+                {
+                    "type": "anomaly",
+                    "idx": cur_bg.anomaly_frame,
+                    "reason": cur_bg.anomaly_reason or "implausible track motion",
+                }
+            )
+            cur_bg.anomaly_frame = None
+            await websocket.send_json({"type": "status", "state": "paused"})
+            return
+        if not cur_bg.running:
+            await websocket.send_json(
+                {"type": "done", "last_frame": cur_bg.last_completed_frame}
+            )
+            await websocket.send_json({"type": "status", "state": "idle"})
+            return
+        await asyncio.sleep(0.1)
+
+
 @app.websocket("/ws")
 async def ws(websocket: WebSocket) -> None:
     await websocket.accept()
@@ -181,43 +229,7 @@ async def ws(websocket: WebSocket) -> None:
     streamer: asyncio.Task | None = None
 
     async def stream_frames(start_idx: int) -> None:
-        """Push each newly-completed frame to the client until the run stops."""
-        sent = start_idx - 1
-        await websocket.send_json({"type": "status", "state": "compiling"})
-        announced_running = False
-        while True:
-            cur_bg = SESSION.bg  # may swap on a fresh load
-            last = cur_bg.last_completed_frame
-            while sent < last:
-                sent += 1
-                completed = cur_bg.completed_frames()
-                if sent < len(completed):
-                    if not announced_running:
-                        await websocket.send_json(
-                            {"type": "status", "state": "running"}
-                        )
-                        announced_running = True
-                    await websocket.send_json(
-                        {
-                            "type": "frame",
-                            "idx": sent,
-                            "detections": _detections_payload(completed[sent]),
-                        }
-                    )
-            if cur_bg.anomaly_frame is not None:
-                await websocket.send_json(
-                    {"type": "anomaly", "idx": cur_bg.anomaly_frame}
-                )
-                cur_bg.anomaly_frame = None
-                await websocket.send_json({"type": "status", "state": "paused"})
-                return
-            if not cur_bg.running:
-                await websocket.send_json(
-                    {"type": "done", "last_frame": cur_bg.last_completed_frame}
-                )
-                await websocket.send_json({"type": "status", "state": "idle"})
-                return
-            await asyncio.sleep(0.1)
+        await _stream_frames(websocket, start_idx)
 
     try:
         while True:

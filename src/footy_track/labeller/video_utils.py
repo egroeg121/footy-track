@@ -13,6 +13,7 @@ our semantic labels.
 
 from __future__ import annotations
 
+import os
 import subprocess
 import tempfile
 import threading
@@ -20,13 +21,26 @@ from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
-import cv2
-import numpy as np
-import torch
+# Persist the torch.compile (Inductor) cache so SAM3's first-run "compiling" cost
+# is paid ONCE, not every session. torch's default cache lives in $TMPDIR, which
+# macOS periodically purges — forcing a recompile. Pin it to a stable location
+# under the user's home. MUST be set before `import torch` so Inductor picks it
+# up on init. Override with TORCHINDUCTOR_CACHE_DIR in the environment.
+os.environ.setdefault(
+    "TORCHINDUCTOR_CACHE_DIR",
+    str(Path.home() / ".cache" / "footy_torch_inductor"),
+)
 
-from footy_track.detectors.utils import _available_device, mask_poly_to_norm_xywh
-from footy_track.schema import FrameDetections, ObjectDetection
-from footy_track.utils import get_project_root
+import cv2  # noqa: E402
+import numpy as np  # noqa: E402
+import torch  # noqa: E402
+
+from footy_track.detectors.utils import (  # noqa: E402
+    _available_device,
+    mask_poly_to_norm_xywh,
+)
+from footy_track.schema import FrameDetections, ObjectDetection  # noqa: E402
+from footy_track.utils import get_project_root  # noqa: E402
 
 MODEL_TAG = "sam3_video"
 
@@ -527,6 +541,7 @@ class BackgroundLabeller:
         # frames (e.g. the ball snapping to the penalty spot), stop so the user
         # can correct. anomaly_frame is the index where it was detected, or None.
         self.anomaly_frame: int | None = None
+        self.anomaly_reason: str | None = None
         self.anomaly_detection: bool = True
 
     def submit(
@@ -554,6 +569,7 @@ class BackgroundLabeller:
                 self.frames = [None] * total
             self.error = None
             self.anomaly_frame = None
+            self.anomaly_reason = None
             # Absolute progress: a restart at frame N shows N/total.
             self.progress = (start_frame, total)
             self.running = True
@@ -603,15 +619,17 @@ class BackgroundLabeller:
                     self.last_completed_frame = max(self.last_completed_frame, idx)
 
                 # Anomaly auto-stop: if a track box did something implausible vs
-                # the previous frame, record the frame and stop so the user can
-                # correct it (don't let bad tracks propagate further).
-                if (
-                    self.anomaly_detection
-                    and prev_fd is not None
-                    and _has_track_anomaly(prev_fd, fd)
-                ):
+                # the previous frame, record the frame + reason and stop so the
+                # user can correct it (don't let bad tracks propagate further).
+                reason = (
+                    _track_anomaly_reason(prev_fd, fd)
+                    if (self.anomaly_detection and prev_fd is not None)
+                    else None
+                )
+                if reason is not None:
                     with self._lock:
                         self.anomaly_frame = idx
+                        self.anomaly_reason = reason
                     self._stop_event.set()
                     break
                 prev_fd = fd
@@ -626,12 +644,12 @@ class BackgroundLabeller:
             self.progress = (done, total)
 
 
-def _has_track_anomaly(
+def _track_anomaly_reason(
     prev: FrameDetections,
     cur: FrameDetections,
-    jump_frac: float = 0.20,
-    area_ratio: float = 4.0,
-) -> bool:
+    jump_frac: float = 0.40,
+    area_ratio: float = 8.0,
+) -> str | None:
     """Heuristic: did any tracked box move/resize implausibly between frames?
 
     For each box in ``cur`` we find the nearest same-label box in ``prev`` and
@@ -639,6 +657,8 @@ def _has_track_anomaly(
     diagonal, or the area changed by more than ``area_ratio``x. Catches the
     classic SAM3 failure where a lost ball track snaps onto a distant marking.
     Coordinates are normalized [0,1], so thresholds are resolution-independent.
+
+    Returns a human-readable reason string, or ``None`` if no anomaly.
     """
 
     def _center(d) -> tuple[float, float]:
@@ -650,7 +670,6 @@ def _has_track_anomaly(
         if not same:
             continue  # a brand-new label this frame isn't an anomaly per se
         cx, cy = _center(c)
-        # nearest previous box of the same label
         nearest = min(
             same,
             key=lambda p: (_center(p)[0] - cx) ** 2 + (_center(p)[1] - cy) ** 2,
@@ -658,13 +677,19 @@ def _has_track_anomaly(
         px, py = _center(nearest)
         dist = ((px - cx) ** 2 + (py - cy) ** 2) ** 0.5
         if dist > jump_frac * diag:
-            return True
+            return (
+                f"a '{c.label}' box jumped {dist / diag * 100:.0f}% of the frame "
+                f"between frames (threshold {jump_frac * 100:.0f}%)"
+            )
         c_area = max(c.w * c.h, 1e-9)
         p_area = max(nearest.w * nearest.h, 1e-9)
         ratio = max(c_area / p_area, p_area / c_area)
         if ratio > area_ratio:
-            return True
-    return False
+            return (
+                f"a '{c.label}' box changed size {ratio:.1f}x between frames "
+                f"(threshold {area_ratio:.0f}x)"
+            )
+    return None
 
 
 def _frame_index_from_uri(fd: FrameDetections, default: int = 0) -> int:
