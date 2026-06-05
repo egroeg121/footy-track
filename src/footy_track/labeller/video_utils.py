@@ -100,10 +100,11 @@ def video_dimensions(video_path: Path) -> tuple[int, int]:
 def _default_model_uri() -> str:
     """Resolve the default SAM3 checkpoint.
 
-    Prefers the iCloud sam3.1_multiplex.pt, then falls back to a project-local or
-    shared-store sam3.pt, and finally to Ultralytics auto-download.
+    Prefers the base ``sam3.pt``. NOTE: ``sam3.1_multiplex.pt`` was found to
+    return whole-frame masks for every seeded object on this footage (verified
+    with both box and point prompts), so it is deliberately NOT the default.
     """
-    icloud = (
+    icloud_base = (
         Path.home()
         / "Library"
         / "Mobile Documents"
@@ -111,10 +112,11 @@ def _default_model_uri() -> str:
         / "footy_data"
         / "model_saves"
         / "sam3"
-        / "sam3.1_multiplex.pt"
+        / "sam3.pt"
     )
     candidates = [
-        icloud,
+        icloud_base,
+        Path.home() / "Downloads" / "sam3.pt",
         get_project_root() / "model_saves" / "sam3" / "sam3.pt",
         Path.home()
         / "code"
