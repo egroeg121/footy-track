@@ -1,0 +1,42 @@
+[     717ms] [LOG] [App] Initializing Gas Town GUI... @ http://localhost:7667/js/app.js:95
+[     749ms] [LOG] [WS] Connected @ http://localhost:7667/js/app.js:266
+[   25444ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:7667/api/status:0
+[   25445ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:7667/api/status:0
+[   25447ms] [ERROR] [App] Failed to load status: Error: Command failed: gt status --json --fast
+
+    at Object.request (http://localhost:7667/js/api.js:35:21)
+    at async Promise.allSettled (index 0)
+    at async loadInitialData (http://localhost:7667/js/app.js:387:21)
+    at async init (http://localhost:7667/js/app.js:141:3) @ http://localhost:7667/js/app.js:400
+[   25449ms] [LOG] [App] Initialization complete @ http://localhost:7667/js/app.js:142
+[   25950ms] [LOG] [App] Preloading background data... @ http://localhost:7667/js/app.js:427
+[   55956ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:7667/api/agents:0
+[   55960ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:7667/api/github/prs?state=open:0
+[   55960ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:7667/api/github/issues?state=open:0
+[   55960ms] [ERROR] [PRList] Failed to load PRs: Error: Command failed: gt status --json --fast
+
+    at Object.request (http://localhost:7667/js/api.js:35:21)
+    at async loadPRs (http://localhost:7667/js/components/pr-list.js:60:11)
+    at async Promise.allSettled (index 2)
+    at async preloadBackgroundData (http://localhost:7667/js/app.js:431:5) @ http://localhost:7667/js/components/pr-list.js:76
+[   55960ms] [ERROR] [Issues] Load error: Error: Command failed: gt status --json --fast
+
+    at Object.request (http://localhost:7667/js/api.js:35:21)
+    at async loadIssues (http://localhost:7667/js/components/issue-list.js:62:14)
+    at async Promise.allSettled (index 4)
+    at async preloadBackgroundData (http://localhost:7667/js/app.js:431:5) @ http://localhost:7667/js/components/issue-list.js:64
+[   55960ms] [LOG] [App] Background data preloaded @ http://localhost:7667/js/app.js:438
+[  207113ms] [ERROR] [App] Failed to load status: TypeError: Failed to fetch
+    at Object.request (http://localhost:7667/js/api.js:30:28)
+    at Object.get (http://localhost:7667/js/api.js:49:17)
+    at Object.getStatus (http://localhost:7667/js/api.js:59:17)
+    at loadInitialData (http://localhost:7667/js/app.js:388:11)
+    at HTMLDocument.<anonymous> (http://localhost:7667/js/app.js:815:11) @ http://localhost:7667/js/app.js:400
+[  207113ms] [ERROR] [App] Failed to load status: TypeError: Failed to fetch
+    at Object.request (http://localhost:7667/js/api.js:30:28)
+    at Object.get (http://localhost:7667/js/api.js:49:17)
+    at Object.getStatus (http://localhost:7667/js/api.js:59:17)
+    at loadInitialData (http://localhost:7667/js/app.js:388:11)
+    at HTMLDocument.<anonymous> (http://localhost:7667/js/app.js:815:11) @ http://localhost:7667/js/app.js:400
+[  207151ms] [LOG] [App] Initializing Gas Town GUI... @ http://localhost:7667/js/app.js:95
+[  207156ms] [LOG] [WS] Connected @ http://localhost:7667/js/app.js:266

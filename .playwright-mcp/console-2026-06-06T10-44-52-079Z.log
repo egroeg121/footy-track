@@ -1,0 +1,44 @@
+[      47ms] [LOG] [App] Initializing Gas Town GUI... @ http://localhost:7667/js/app.js:95
+[      76ms] [LOG] [WS] Connected @ http://localhost:7667/js/app.js:266
+[   30061ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:7667/api/status:0
+[   30061ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:7667/api/status:0
+[   30061ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:7667/api/status:0
+[   30063ms] [ERROR] [App] Failed to load status: Error: Command failed: gt status --json --fast
+
+    at Object.request (http://localhost:7667/js/api.js:35:21)
+    at async Promise.allSettled (index 0)
+    at async loadInitialData (http://localhost:7667/js/app.js:387:21)
+    at async init (http://localhost:7667/js/app.js:141:3) @ http://localhost:7667/js/app.js:400
+[   30063ms] [LOG] [App] Initialization complete @ http://localhost:7667/js/app.js:142
+[   30064ms] [ERROR] [App] Failed to load rigs: Error: Command failed: gt status --json --fast
+
+    at Object.request (http://localhost:7667/js/api.js:35:21)
+    at async loadRigs (http://localhost:7667/js/app.js:620:20) @ http://localhost:7667/js/app.js:624
+[   30564ms] [LOG] [App] Preloading background data... @ http://localhost:7667/js/app.js:427
+[   60570ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:7667/api/github/prs?state=open:0
+[   60570ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:7667/api/github/issues?state=open:0
+[   60570ms] [ERROR] [PRList] Failed to load PRs: Error: Command failed: gt status --json --fast
+
+    at Object.request (http://localhost:7667/js/api.js:35:21)
+    at async loadPRs (http://localhost:7667/js/components/pr-list.js:60:11)
+    at async Promise.allSettled (index 2)
+    at async preloadBackgroundData (http://localhost:7667/js/app.js:431:5) @ http://localhost:7667/js/components/pr-list.js:76
+[   60571ms] [ERROR] [Issues] Load error: Error: Command failed: gt status --json --fast
+
+    at Object.request (http://localhost:7667/js/api.js:35:21)
+    at async loadIssues (http://localhost:7667/js/components/issue-list.js:62:14)
+    at async Promise.allSettled (index 4)
+    at async preloadBackgroundData (http://localhost:7667/js/app.js:431:5) @ http://localhost:7667/js/components/issue-list.js:64
+[   60571ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:7667/api/agents:0
+[   60575ms] [LOG] [App] Background data preloaded @ http://localhost:7667/js/app.js:438
+[   90579ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:7667/api/agents:0
+[   90579ms] [ERROR] [App] Failed to load agents: Error: Command failed: gt status --json --fast
+
+    at Object.request (http://localhost:7667/js/api.js:35:21)
+    at async loadAgents (http://localhost:7667/js/app.js:583:22) @ http://localhost:7667/js/app.js:594
+[  122325ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:7667/api/github/issues?state=open:0
+[  122325ms] [ERROR] [Issues] Load error: Error: Command failed: gt status --json --fast
+
+    at Object.request (http://localhost:7667/js/api.js:35:21)
+    at async loadIssues (http://localhost:7667/js/components/issue-list.js:62:14) @ http://localhost:7667/js/components/issue-list.js:64
+[  342246ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:7667/api/status:0

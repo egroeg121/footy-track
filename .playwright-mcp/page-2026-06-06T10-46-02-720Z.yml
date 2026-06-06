@@ -1,0 +1,139 @@
+- generic [ref=e1]:
+  - generic [ref=e2]:
+    - banner [ref=e3]:
+      - generic [ref=e4]:
+        - generic [ref=e5]:
+          - img "Gas Town" [ref=e6]
+          - generic [ref=e7]: GAS TOWN
+        - generic [ref=e8]: Loading...
+        - generic [ref=e9]:
+          - generic [ref=e10]: assistant
+          - textbox "Tell Mayor what to build..." [ref=e11]
+          - button "send" [ref=e12] [cursor=pointer]:
+            - generic [ref=e13]: send
+          - button "visibility" [ref=e14] [cursor=pointer]:
+            - generic [ref=e15]: visibility
+      - generic [ref=e17]:
+        - button "dashboard Overview" [ref=e18] [cursor=pointer]:
+          - generic [ref=e19]: dashboard
+          - text: Overview
+        - button "local_shipping Convoys" [ref=e20] [cursor=pointer]:
+          - generic [ref=e21]: local_shipping
+          - text: Convoys
+        - button "task_alt Work" [ref=e22] [cursor=pointer]:
+          - generic [ref=e23]: task_alt
+          - text: Work
+        - button "groups Agents" [active] [ref=e118] [cursor=pointer]:
+          - generic [ref=e25]: groups
+          - text: Agents
+        - button "folder_special Rigs" [ref=e108] [cursor=pointer]:
+          - generic [ref=e27]: folder_special
+          - text: Rigs
+        - button "groups Crews" [ref=e28] [cursor=pointer]:
+          - generic [ref=e29]: groups
+          - text: Crews
+        - button "merge_type PRs" [ref=e30] [cursor=pointer]:
+          - generic [ref=e31]: merge_type
+          - text: PRs
+        - button "science Formulas" [ref=e32] [cursor=pointer]:
+          - generic [ref=e33]: science
+          - text: Formulas
+        - button "bug_report Issues" [ref=e34] [cursor=pointer]:
+          - generic [ref=e35]: bug_report
+          - text: Issues
+        - button "mail Mail" [ref=e36] [cursor=pointer]:
+          - generic [ref=e37]: mail
+          - text: Mail
+        - button "health_and_safety Health" [ref=e38] [cursor=pointer]:
+          - generic [ref=e39]: health_and_safety
+          - text: Health
+      - generic [ref=e40]:
+        - button "help_outline" [ref=e41] [cursor=pointer]:
+          - generic [ref=e42]: help_outline
+        - button "dark_mode" [ref=e43] [cursor=pointer]:
+          - generic [ref=e44]: dark_mode
+        - button "refresh" [ref=e45] [cursor=pointer]:
+          - generic [ref=e46]: refresh
+        - generic [ref=e49]: Connected
+    - main [ref=e50]:
+      - complementary [ref=e51]:
+        - generic [ref=e52]:
+          - heading "Agents" [level=2] [ref=e53]
+          - button "chevron_left" [ref=e54] [cursor=pointer]:
+            - generic [ref=e55]: chevron_left
+      - generic [ref=e109]:
+        - generic [ref=e110]:
+          - heading "All Agents" [level=1] [ref=e111]
+          - combobox [ref=e113] [cursor=pointer]:
+            - option "All Agents" [selected]
+            - option "Running"
+            - option "Idle"
+            - option "Working"
+        - generic [ref=e117]: Loading agents...
+    - contentinfo [ref=e73]:
+      - generic [ref=e75]:
+        - generic [ref=e76]: anchor
+        - generic [ref=e77]: No work hooked
+      - generic [ref=e79]: Ready (status unavailable)
+      - generic [ref=e81]:
+        - text: Press
+        - generic [ref=e82]: "?"
+        - text: for help
+  - generic [ref=e121]:
+    - generic [ref=e122]:
+      - generic [ref=e123]:
+        - generic [ref=e125]: waving_hand
+        - generic [ref=e126]: Welcome to Gas Town
+      - generic [ref=e127]:
+        - generic [ref=e129]: build_circle
+        - generic [ref=e130]: Checking Your Setup
+      - generic [ref=e131]:
+        - generic [ref=e133]: link
+        - generic [ref=e134]: Connect a Project
+      - generic [ref=e135]:
+        - generic [ref=e137]: add_task
+        - generic [ref=e138]: Create Your First Issue
+      - generic [ref=e139]:
+        - generic [ref=e141]: local_shipping
+        - generic [ref=e142]: Track Your Work
+      - generic [ref=e143]:
+        - generic [ref=e145]: send
+        - generic [ref=e146]: Assign to an Agent
+      - generic [ref=e147]:
+        - generic [ref=e149]: celebration
+        - generic [ref=e150]: You're All Set!
+    - generic [ref=e151]:
+      - generic [ref=e152]:
+        - generic [ref=e154]: waving_hand
+        - generic [ref=e155]:
+          - heading "Welcome to Gas Town" [level=2] [ref=e156]
+          - paragraph [ref=e157]: Multi-Agent Orchestrator for Claude Code
+        - button "close" [ref=e158] [cursor=pointer]:
+          - generic [ref=e159]: close
+      - generic [ref=e161]:
+        - paragraph [ref=e162]: Gas Town helps you run multiple AI agents working together on your codebase.
+        - generic [ref=e163]:
+          - generic [ref=e164]:
+            - generic [ref=e165]: 📝
+            - generic [ref=e166]: Create Issue
+          - generic [ref=e167]: →
+          - generic [ref=e168]:
+            - generic [ref=e169]: 🚀
+            - generic [ref=e170]: Assign Work
+          - generic [ref=e171]: →
+          - generic [ref=e172]:
+            - generic [ref=e173]: 🤖
+            - generic [ref=e174]: Agent Works
+          - generic [ref=e175]: →
+          - generic [ref=e176]:
+            - generic [ref=e177]: ✅
+            - generic [ref=e178]: Done!
+        - paragraph [ref=e179]: This wizard will guide you through your first workflow.
+      - generic [ref=e180]:
+        - button "arrow_back Back" [disabled] [ref=e181] [cursor=pointer]:
+          - generic [ref=e182]: arrow_back
+          - text: Back
+        - generic [ref=e183]: Step 1 of 7
+        - button "Next arrow_forward" [ref=e184] [cursor=pointer]:
+          - text: Next
+          - generic [ref=e185]: arrow_forward

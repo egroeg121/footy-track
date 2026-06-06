@@ -1,0 +1,76 @@
+- generic [ref=e2]:
+  - banner [ref=e3]:
+    - generic [ref=e4]:
+      - generic [ref=e5]:
+        - img "Gas Town" [ref=e6]
+        - generic [ref=e7]: GAS TOWN
+      - generic [ref=e8]: Loading...
+      - generic [ref=e9]:
+        - generic [ref=e10]: assistant
+        - textbox "Tell Mayor what to build..." [ref=e11]
+        - button "send" [ref=e12] [cursor=pointer]:
+          - generic [ref=e13]: send
+        - button "visibility" [ref=e14] [cursor=pointer]:
+          - generic [ref=e15]: visibility
+    - generic [ref=e17]:
+      - button "dashboard Overview System overview - health, metrics, and quick actions." [active] [ref=e328] [cursor=pointer]:
+        - generic [ref=e19]: dashboard
+        - text: Overview System overview - health, metrics, and quick actions.
+      - button "local_shipping Convoys" [ref=e308] [cursor=pointer]:
+        - generic [ref=e21]: local_shipping
+        - text: Convoys
+      - button "task_alt Work" [ref=e329] [cursor=pointer]:
+        - generic [ref=e23]: task_alt
+        - text: Work
+      - button "groups Agents" [ref=e118] [cursor=pointer]:
+        - generic [ref=e25]: groups
+        - text: Agents
+      - button "folder_special Rigs" [ref=e108] [cursor=pointer]:
+        - generic [ref=e27]: folder_special
+        - text: Rigs
+      - button "groups Crews" [ref=e28] [cursor=pointer]:
+        - generic [ref=e29]: groups
+        - text: Crews
+      - button "merge_type PRs" [ref=e30] [cursor=pointer]:
+        - generic [ref=e31]: merge_type
+        - text: PRs
+      - button "science Formulas" [ref=e32] [cursor=pointer]:
+        - generic [ref=e33]: science
+        - text: Formulas
+      - button "bug_report Issues" [ref=e204] [cursor=pointer]:
+        - generic [ref=e35]: bug_report
+        - text: Issues
+      - button "mail Mail" [ref=e222] [cursor=pointer]:
+        - generic [ref=e37]: mail
+        - text: Mail
+      - button "health_and_safety Health" [ref=e268] [cursor=pointer]:
+        - generic [ref=e39]: health_and_safety
+        - text: Health
+    - generic [ref=e40]:
+      - button "help_outline" [ref=e41] [cursor=pointer]:
+        - generic [ref=e42]: help_outline
+      - button "dark_mode" [ref=e43] [cursor=pointer]:
+        - generic [ref=e44]: dark_mode
+      - button "refresh" [ref=e45] [cursor=pointer]:
+        - generic [ref=e46]: refresh
+      - generic [ref=e49]: Connected
+  - main [ref=e50]:
+    - complementary [ref=e51]:
+      - generic [ref=e52]:
+        - heading "Agents" [level=2] [ref=e53]
+        - button "chevron_left" [ref=e54] [cursor=pointer]:
+          - generic [ref=e55]: chevron_left
+    - generic [ref=e59]:
+      - heading "System Overview" [level=1] [ref=e60]
+      - button "refresh Refresh" [ref=e62] [cursor=pointer]:
+        - generic [ref=e63]: refresh
+        - text: Refresh
+  - contentinfo [ref=e73]:
+    - generic [ref=e75]:
+      - generic [ref=e76]: anchor
+      - generic [ref=e77]: No work hooked
+    - generic [ref=e79]: Ready (status unavailable)
+    - generic [ref=e81]:
+      - text: Press
+      - generic [ref=e82]: "?"
+      - text: for help
