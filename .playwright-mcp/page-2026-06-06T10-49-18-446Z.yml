@@ -1,0 +1,108 @@
+- generic [ref=e2]:
+  - banner [ref=e3]:
+    - generic [ref=e4]:
+      - generic [ref=e5]:
+        - img "Gas Town" [ref=e6]
+        - generic [ref=e7]: GAS TOWN
+      - generic [ref=e8]: Loading...
+      - generic [ref=e9]:
+        - generic [ref=e10]: assistant
+        - textbox "Tell Mayor what to build..." [ref=e11]
+        - button "send" [ref=e12] [cursor=pointer]:
+          - generic [ref=e13]: send
+        - button "visibility" [ref=e14] [cursor=pointer]:
+          - generic [ref=e15]: visibility
+    - generic [ref=e17]:
+      - button "dashboard Overview" [ref=e18] [cursor=pointer]:
+        - generic [ref=e19]: dashboard
+        - text: Overview
+      - button "local_shipping Convoys Groups of related work items. Track progress across multiple tasks." [active] [ref=e267] [cursor=pointer]:
+        - generic [ref=e21]: local_shipping
+        - text: Convoys Groups of related work items. Track progress across multiple tasks.
+      - button "task_alt Work" [ref=e22] [cursor=pointer]:
+        - generic [ref=e23]: task_alt
+        - text: Work
+      - button "groups Agents" [ref=e118] [cursor=pointer]:
+        - generic [ref=e25]: groups
+        - text: Agents
+      - button "folder_special Rigs" [ref=e108] [cursor=pointer]:
+        - generic [ref=e27]: folder_special
+        - text: Rigs
+      - button "groups Crews" [ref=e28] [cursor=pointer]:
+        - generic [ref=e29]: groups
+        - text: Crews
+      - button "merge_type PRs" [ref=e30] [cursor=pointer]:
+        - generic [ref=e31]: merge_type
+        - text: PRs
+      - button "science Formulas" [ref=e32] [cursor=pointer]:
+        - generic [ref=e33]: science
+        - text: Formulas
+      - button "bug_report Issues" [ref=e204] [cursor=pointer]:
+        - generic [ref=e35]: bug_report
+        - text: Issues
+      - button "mail Mail" [ref=e222] [cursor=pointer]:
+        - generic [ref=e37]: mail
+        - text: Mail
+      - button "health_and_safety Health" [ref=e268] [cursor=pointer]:
+        - generic [ref=e39]: health_and_safety
+        - text: Health
+    - generic [ref=e40]:
+      - button "help_outline" [ref=e41] [cursor=pointer]:
+        - generic [ref=e42]: help_outline
+      - button "dark_mode" [ref=e43] [cursor=pointer]:
+        - generic [ref=e44]: dark_mode
+      - button "refresh" [ref=e45] [cursor=pointer]:
+        - generic [ref=e46]: refresh
+      - generic [ref=e49]: Connected
+  - main [ref=e50]:
+    - complementary [ref=e51]:
+      - generic [ref=e52]:
+        - heading "Agents" [level=2] [ref=e53]
+        - button "chevron_left" [ref=e54] [cursor=pointer]:
+          - generic [ref=e55]: chevron_left
+    - generic [ref=e269]:
+      - generic [ref=e270]:
+        - heading "Active Convoys" [level=1] [ref=e271]
+        - generic [ref=e272]:
+          - button "pending Active" [ref=e273] [cursor=pointer]:
+            - generic [ref=e274]: pending
+            - text: Active
+          - button "history All History" [ref=e275] [cursor=pointer]:
+            - generic [ref=e276]: history
+            - text: All History
+        - generic [ref=e277]:
+          - button "add_circle New Bead" [ref=e278] [cursor=pointer]:
+            - generic [ref=e279]: add_circle
+            - text: New Bead
+          - button "send Sling" [ref=e280] [cursor=pointer]:
+            - generic [ref=e281]: send
+            - text: Sling
+          - button "add New Convoy" [ref=e282] [cursor=pointer]:
+            - generic [ref=e283]: add
+            - text: New Convoy
+      - generic [ref=e285]:
+        - generic [ref=e286] [cursor=pointer]:
+          - button "expand_more" [ref=e287]:
+            - generic [ref=e288]: expand_more
+          - generic [ref=e290]: help
+          - generic [ref=e291]:
+            - heading "hq-cv-dvu44" [level=3] [ref=e292]
+            - generic [ref=e294]: "#hq-cv-dv"
+          - generic [ref=e295]:
+            - button "send" [ref=e296]:
+              - generic [ref=e297]: send
+            - button "priority_high" [ref=e298]:
+              - generic [ref=e299]: priority_high
+            - button "visibility" [ref=e300]:
+              - generic [ref=e301]: visibility
+        - generic [ref=e305]: 50%
+        - generic [ref=e307]: 7m ago
+  - contentinfo [ref=e73]:
+    - generic [ref=e75]:
+      - generic [ref=e76]: anchor
+      - generic [ref=e77]: No work hooked
+    - generic [ref=e79]: Ready (status unavailable)
+    - generic [ref=e81]:
+      - text: Press
+      - generic [ref=e82]: "?"
+      - text: for help

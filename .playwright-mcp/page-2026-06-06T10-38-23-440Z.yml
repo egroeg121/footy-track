@@ -1,0 +1,185 @@
+- generic [ref=e2]:
+  - banner [ref=e3]:
+    - generic [ref=e4]:
+      - generic [ref=e5]:
+        - img "Gas Town" [ref=e6]
+        - generic [ref=e7]: GAS TOWN
+      - generic [ref=e8]: Loading...
+      - generic [ref=e9]:
+        - generic [ref=e10]: assistant
+        - textbox "Tell Mayor what to build..." [ref=e11]
+        - button "send" [ref=e12] [cursor=pointer]:
+          - generic [ref=e13]: send
+        - button "visibility" [ref=e14] [cursor=pointer]:
+          - generic [ref=e15]: visibility
+    - generic [ref=e17]:
+      - button "dashboard Overview" [ref=e18] [cursor=pointer]:
+        - generic [ref=e19]: dashboard
+        - text: Overview
+      - button "local_shipping Convoys" [ref=e20] [cursor=pointer]:
+        - generic [ref=e21]: local_shipping
+        - text: Convoys
+      - button "task_alt Work" [ref=e22] [cursor=pointer]:
+        - generic [ref=e23]: task_alt
+        - text: Work
+      - button "groups Agents" [ref=e24] [cursor=pointer]:
+        - generic [ref=e25]: groups
+        - text: Agents
+      - button "folder_special Rigs" [ref=e26] [cursor=pointer]:
+        - generic [ref=e27]: folder_special
+        - text: Rigs
+      - button "groups Crews" [ref=e28] [cursor=pointer]:
+        - generic [ref=e29]: groups
+        - text: Crews
+      - button "merge_type PRs" [ref=e30] [cursor=pointer]:
+        - generic [ref=e31]: merge_type
+        - text: PRs
+      - button "science Formulas" [ref=e32] [cursor=pointer]:
+        - generic [ref=e33]: science
+        - text: Formulas
+      - button "bug_report Issues" [ref=e34] [cursor=pointer]:
+        - generic [ref=e35]: bug_report
+        - text: Issues
+      - button "mail Mail" [ref=e36] [cursor=pointer]:
+        - generic [ref=e37]: mail
+        - text: Mail
+      - button "health_and_safety Health" [ref=e38] [cursor=pointer]:
+        - generic [ref=e39]: health_and_safety
+        - text: Health
+    - generic [ref=e40]:
+      - button "help_outline" [ref=e41] [cursor=pointer]:
+        - generic [ref=e42]: help_outline
+      - button "dark_mode" [ref=e43] [cursor=pointer]:
+        - generic [ref=e44]: dark_mode
+      - button "refresh" [ref=e45] [cursor=pointer]:
+        - generic [ref=e46]: refresh
+      - generic [ref=e49]: Connected
+  - main [ref=e50]:
+    - complementary [ref=e51]:
+      - generic [ref=e52]:
+        - heading "Agents" [level=2] [ref=e53]
+        - button "chevron_left" [ref=e54] [cursor=pointer]:
+          - generic [ref=e55]: chevron_left
+    - generic [ref=e58]:
+      - generic [ref=e59]:
+        - heading "System Overview" [level=1] [ref=e60]
+        - button "refresh Refresh" [ref=e62] [cursor=pointer]:
+          - generic [ref=e63]: refresh
+          - text: Refresh
+      - generic [ref=e64]:
+        - generic [ref=e94]:
+          - generic [ref=e96]: warning
+          - generic [ref=e97]:
+            - generic [ref=e98]: Warnings
+            - generic [ref=e99]: System health check
+          - button "View Details arrow_forward" [ref=e100] [cursor=pointer]:
+            - text: View Details
+            - generic [ref=e101]: arrow_forward
+        - generic [ref=e102]:
+          - generic [ref=e103] [cursor=pointer]:
+            - generic [ref=e105]: local_shipping
+            - generic [ref=e106]:
+              - generic [ref=e107]: "1"
+              - generic [ref=e108]: Active Convoys
+              - generic [ref=e109]: 1 of 1
+          - generic [ref=e112] [cursor=pointer]:
+            - generic [ref=e114]: task_alt
+            - generic [ref=e115]:
+              - generic [ref=e116]: "0"
+              - generic [ref=e117]: Open Work
+          - generic [ref=e119] [cursor=pointer]:
+            - generic [ref=e121]: smart_toy
+            - generic [ref=e122]:
+              - generic [ref=e123]: "0"
+              - generic [ref=e124]: Active Agents
+              - generic [ref=e125]: none
+          - generic [ref=e126] [cursor=pointer]:
+            - generic [ref=e128]: mail
+            - generic [ref=e129]:
+              - generic [ref=e130]: "0"
+              - generic [ref=e131]: Unread Mail
+        - generic [ref=e133]:
+          - generic [ref=e134]:
+            - generic [ref=e135]:
+              - generic [ref=e136]: bolt
+              - heading "Quick Actions" [level=3] [ref=e137]
+            - generic [ref=e139]:
+              - button "add_circle New Bead" [ref=e140] [cursor=pointer]:
+                - generic [ref=e141]: add_circle
+                - generic [ref=e142]: New Bead
+              - button "send Sling Work" [ref=e143] [cursor=pointer]:
+                - generic [ref=e144]: send
+                - generic [ref=e145]: Sling Work
+              - button "local_shipping New Convoy" [ref=e146] [cursor=pointer]:
+                - generic [ref=e147]: local_shipping
+                - generic [ref=e148]: New Convoy
+              - button "edit Send Mail" [ref=e149] [cursor=pointer]:
+                - generic [ref=e150]: edit
+                - generic [ref=e151]: Send Mail
+              - button "folder_special Add Rig" [ref=e152] [cursor=pointer]:
+                - generic [ref=e153]: folder_special
+                - generic [ref=e154]: Add Rig
+              - button "health_and_safety Health Check" [ref=e155] [cursor=pointer]:
+                - generic [ref=e156]: health_and_safety
+                - generic [ref=e157]: Health Check
+          - generic [ref=e158]:
+            - generic [ref=e159]:
+              - generic [ref=e160]: monitoring
+              - heading "Agent Status" [level=3] [ref=e161]
+            - generic [ref=e163]:
+              - generic [ref=e164]:
+                - generic [ref=e166]: account_balance
+                - generic [ref=e167]:
+                  - generic [ref=e168]: Mayor
+                  - generic [ref=e169]: none
+                - generic [ref=e172]: radio_button_unchecked
+              - generic [ref=e173]:
+                - generic [ref=e175]: gavel
+                - generic [ref=e176]:
+                  - generic [ref=e177]: Deacon
+                  - generic [ref=e178]: none
+                - generic [ref=e181]: radio_button_unchecked
+              - generic [ref=e182]:
+                - generic [ref=e184]: visibility
+                - generic [ref=e185]:
+                  - generic [ref=e186]: Witness
+                  - generic [ref=e187]: none
+                - generic [ref=e190]: radio_button_unchecked
+              - generic [ref=e191]:
+                - generic [ref=e193]: precision_manufacturing
+                - generic [ref=e194]:
+                  - generic [ref=e195]: Refinery
+                  - generic [ref=e196]: none
+                - generic [ref=e199]: radio_button_unchecked
+              - generic [ref=e200]:
+                - generic [ref=e202]: smart_toy
+                - generic [ref=e203]:
+                  - generic [ref=e204]: Polecat
+                  - generic [ref=e205]: none
+                - generic [ref=e208]: radio_button_unchecked
+          - generic [ref=e209]:
+            - generic [ref=e210]:
+              - generic [ref=e211]: history
+              - heading "Recent Activity" [level=3] [ref=e212]
+            - generic [ref=e214]:
+              - generic [ref=e215]: inbox
+              - paragraph [ref=e216]: No recent work
+          - generic [ref=e217]:
+            - generic [ref=e218]:
+              - generic [ref=e219]: folder_special
+              - heading "Rigs" [level=3] [ref=e220]
+            - generic [ref=e222]:
+              - generic [ref=e223]: folder_off
+              - paragraph [ref=e224]: No rigs configured
+              - button "add Add Rig" [ref=e225] [cursor=pointer]:
+                - generic [ref=e226]: add
+                - text: Add Rig
+  - contentinfo [ref=e79]:
+    - generic [ref=e81]:
+      - generic [ref=e82]: anchor
+      - generic [ref=e83]: No work hooked
+    - generic [ref=e85]: Ready (status unavailable)
+    - generic [ref=e87]:
+      - text: Press
+      - generic [ref=e88]: "?"
+      - text: for help
