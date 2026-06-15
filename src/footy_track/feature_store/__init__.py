@@ -6,6 +6,12 @@ detections from multiple sources, and tracks. See
 ``docs/design/feature_store.md``.
 """
 
+from footy_track.feature_store.importers import (
+    ImportReport,
+    import_labeller_json,
+    import_roboflow,
+    source_overlap,
+)
 from footy_track.feature_store.ingest import (
     classifier_run,
     detector_run,
@@ -32,6 +38,7 @@ __all__ = [
     "FeatureStore",
     "FrameRow",
     "GameRow",
+    "ImportReport",
     "Point",
     "RunRow",
     "Source",
@@ -39,7 +46,10 @@ __all__ = [
     "TrackMetaRow",
     "classifier_run",
     "detector_run",
+    "import_labeller_json",
+    "import_roboflow",
     "ingest_frame",
+    "source_overlap",
     "to_detection_rows",
     "to_frame_row",
 ]

@@ -341,6 +341,30 @@ store/
   masks/game_id=<id>/<frame>__<detection_id>.png   # mask_ref targets
 ```
 
+### 6.1 Importing existing label sets
+
+Implemented in `src/footy_track/feature_store/importers.py`. Two label sources
+land as `detection` rows under different `source`s and stay comparable:
+
+- **Roboflow YOLO datasets** (`import_roboflow`) → `source='hand_label'`,
+  `run_id='roboflow_v<version>'`. Handles the three format gaps: YOLO **centre**
+  xywh → store **top-left** xywh; class **indices** → names via `data.yaml`;
+  Roboflow's mangled filename (`<stem>_<frame>_png.rf.<hash>.jpg`) → `(game_id,
+  frame_index)`. Frame dims are read from the image. Validated on
+  `roboflow_dataset_3`: 257 frames, 4 915 detections.
+- **Web-labeller / SAM 3 JSON** (`import_labeller_json`) → `source='sam3'` by
+  default (so it can be evaluated against the hand labels), or
+  `source='hand_label'` to treat verified output as ground truth. Boxes are
+  already top-left; `uri` (`<stem>_frame_<frame>`) → `(game_id, frame_index)`.
+
+Frame identity is shared because both decode to `<video_stem>_<frame_index>`
+(`extract_frames` names frames `<stem>_%06d`). Two label sets **align
+frame-for-frame only if extracted from the same video at the same fps**;
+`source_overlap(store)` reports, per `(game_id, frame_index)`, how many sources
+are present so overlap (and thus comparability) is verified empirically rather
+than assumed. `continuous_time_s` is derived `frame_index / fps + time_offset`
+(default 1-fps extraction, offset 0) pending true kickoff alignment.
+
 ---
 
 ## 7. Idempotency, keys, and write protocol
