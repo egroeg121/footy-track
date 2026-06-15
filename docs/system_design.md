@@ -177,7 +177,7 @@ has a persistent ID. Output is the canonical Parquet store of
 | Aspect | Detail |
 |---|---|
 | Input | `FrameDetections` over time |
-| Output | `tracks.parquet` (per-row `Detection`) + `tracks_meta.json` (per-track summary) — schema in [`design/player_tracking_format.md`](design/player_tracking_format.md) |
+| Output | Track-tagged `detection` rows (`track_id`, `is_interpolated`) + per-track `track_meta` rows in the **feature store** (see [`design/feature_store.md`](design/feature_store.md) §8); lifecycle & semantics in [`design/player_tracking_format.md`](design/player_tracking_format.md) |
 | Tracker | Pluggable: ByteTrack / BoT-SORT (Ultralytics-native) or a Hungarian-assignment custom tracker (`lap`) |
 | Status | **Planned** — schema designed; no end-to-end implementation yet |
 | Design link | [`design/player_tracking_format.md`](design/player_tracking_format.md) |
@@ -216,10 +216,10 @@ downstream consumers (analytics, footy-stats, FiftyOne, overlays).
 | Aspect | Detail |
 |---|---|
 | Input | All preceding stage outputs, joined by `ContinuousTime` |
-| Output | <ul><li>`tracks.parquet` + `tracks_meta.json` (canonical, see §2.5)</li><li>`detections.parquet`, `geometry.parquet`, `ocr_clock.parquet`, `frames.parquet`, `embeddings.parquet` (per-stage artifacts; see [`pipelines.md` §Data model](pipelines.md#data-model-proposed))</li><li>FiftyOne dataset (consumer of the above)</li><li>JSON / CSV exporters for ad-hoc analytics</li></ul> |
+| Output | <ul><li>The **feature store** (`feature_store.duckdb` over partitioned Parquet) — the single consolidated store holding `game` / `frame` / `detection` / `track_meta` / `run` and exposing `frame_features` / `detections_enriched` / `tracks_enriched` views (see [`design/feature_store.md`](design/feature_store.md))</li><li>FiftyOne dataset (a consumer of the store)</li><li>JSON / CSV exporters for ad-hoc analytics (views over the store)</li></ul> |
 | Canonical timestamp | `ContinuousTime` (seconds from kickoff) — see [`timings.md`](timings.md) |
-| Status | **Partial** — Parquet stores designed; FiftyOne integration partly wired in `schema.py` (`to_fiftyone_sample`); JSON / CSV exporters pending |
-| Design link | [`design/player_tracking_format.md`](design/player_tracking_format.md) (canonical store); [`pipelines.md` §Data model](pipelines.md#data-model-proposed) (per-stage artifacts) |
+| Status | **Partial** — feature store implemented (`src/footy_track/feature_store/`); pipeline writers into it and FiftyOne / JSON / CSV exporters pending |
+| Design link | [`design/feature_store.md`](design/feature_store.md) (consolidated store); [`design/player_tracking_format.md`](design/player_tracking_format.md) (track lifecycle & semantics) |
 
 ---
 
@@ -292,6 +292,11 @@ extraction, re-ID), it MUST:
 - [`data_formats.md`](data_formats.md) — raw match directory layout,
   Roboflow dataset structure, environment variables.
 - [`design/player_tracking_format.md`](design/player_tracking_format.md) —
-  canonical Parquet store for the Tracking stage.
+  track lifecycle & semantics for the Tracking stage.
+- [`design/feature_store.md`](design/feature_store.md) — the consolidated
+  DuckDB/Parquet **feature store** that physically holds every per-frame fact
+  and detection (all sources) plus tracks; supersedes the per-stage Parquet
+  artifacts and is the storage substrate the Output stage reads from.
+  Implemented in `src/footy_track/feature_store/`.
 - [`training.md`](training.md), [`training/notable_runs.md`](training/notable_runs.md) —
   classifier and detector training reference.

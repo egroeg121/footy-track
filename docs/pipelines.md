@@ -134,20 +134,22 @@ Output
 - Consolidated timeline with: {game_clock, is_overhead, detections, geometry}
 - Ready for tracking, identity stitching, team assignment, event detection, analytics
 
-## Data model (proposed)
+## Data model
 
-- video.json
-  - fps, duration, segments
-- frames.parquet
-  - frame_id, timestamp, is_overhead, overhead_conf
-- embeddings.parquet
-  - frame_id, embedding (vector)
-- ocr_clock.parquet
-  - timestamp, game_clock, conf
-- detections.parquet
-  - frame_id, timestamp, class, bbox(xywh), conf
-- geometry.parquet
-  - frame_id, timestamp, H(3x3 flattened), quality, inliers
+> **Superseded.** These per-stage Parquet files have been consolidated into a
+> single **feature store** (DuckDB over partitioned Parquet). See
+> [`design/feature_store.md`](design/feature_store.md) for the implemented
+> schema; the mapping below shows where each artifact now lives. The store is
+> implemented in `src/footy_track/feature_store/`.
+
+| Old per-stage artifact | Now in the feature store |
+|---|---|
+| `video.json` (fps, duration, segments) | `game` table |
+| `frames.parquet` (frame_id, timestamp, is_overhead, conf) | `frame` table (+ `is_broadcast`) |
+| `embeddings.parquet` | `frame_embedding` table (kept off the hot path) |
+| `ocr_clock.parquet` (timestamp, game_clock, conf) | `frame.game_time_s` / `frame.half` |
+| `detections.parquet` (frame_id, class, bbox, conf) | `detection` table (now multi-source via `source` + `run_id`) |
+| `geometry.parquet` (H, quality, inliers) | `frame.homography` / `frame.calibration_quality` |
 
 ## Processing of a new video (example)
 

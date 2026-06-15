@@ -20,6 +20,7 @@ classifiers = [
 ]
 dependencies = [
   "clip @ git+https://github.com/ultralytics/CLIP.git",
+  "duckdb>=1.5.3",
   "fastapi>=0.136.3",
   "lap>=0.5.12",
   "mkdocs>=1.5.3",
