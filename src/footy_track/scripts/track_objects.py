@@ -21,6 +21,7 @@ from rich.logging import RichHandler
 from tqdm import tqdm
 
 from footy_track.detectors.ultralytics import CURRENT_BEST_DETECTOR_CHECKPOINT
+from footy_track.pitch_crop import CropRect, compute_segment_crop
 from footy_track.trackers import TrackingWriter, UltralyticsTracker
 from footy_track.utils import get_project_root
 
@@ -83,10 +84,18 @@ def _run_tracking(
     vid_w: int,
     vid_h: int,
     save_video: bool,
+    crop: CropRect | None = None,
 ) -> int:
-    """Process video frames, annotate, and buffer detections. Returns frame count."""
+    """Process video frames, annotate, and buffer detections. Returns frame count.
+
+    When ``crop`` is set (and not identity), the tracker runs on the cropped
+    pitch region; detections are remapped back to full-frame-normalized coords
+    before they are drawn or written, so storage and overlays are unchanged.
+    """
     frames_dir = run_dir / "frames"
     frames_dir.mkdir(exist_ok=True)
+
+    use_crop = crop is not None and not crop.is_identity
 
     cap = cv2.VideoCapture(str(video_path))
     video_writer = None
@@ -107,10 +116,27 @@ def _run_tracking(
                 break
 
             tmp_path = Path(tmpdir) / f"frame_{frame_idx:06d}.jpg"
-            cv2.imwrite(str(tmp_path), frame)
+            # Feed the model the cropped pitch (consistent rect across the
+            # segment keeps the tracker's motion model valid).
+            cv2.imwrite(str(tmp_path), crop.apply(frame) if use_crop else frame)
 
             frame_t = frame_idx / fps
             tracked = tracker.update_from_path(tmp_path, frame_t)
+
+            if use_crop:
+                # Detections came back normalized to the crop; map to full frame.
+                tracked = [
+                    td.model_copy(
+                        update=dict(
+                            zip(
+                                ("x", "y", "w", "h"),
+                                crop.to_full(td.x, td.y, td.w, td.h),
+                                strict=True,
+                            )
+                        )
+                    )
+                    for td in tracked
+                ]
 
             for td in tracked:
                 writer.write(td)
@@ -179,6 +205,18 @@ def main() -> None:
         action="store_true",
         help="Also write an annotated output video (tracks_overlay.mp4).",
     )
+    parser.add_argument(
+        "--crop_pitch",
+        action="store_true",
+        help="Crop to the detected pitch (green heuristic) before detection. "
+        "One stable rect per segment; detections are remapped to the full frame.",
+    )
+    parser.add_argument(
+        "--crop_pad",
+        type=float,
+        default=0.06,
+        help="Upward pad off the grass line as a fraction of frame height.",
+    )
     args = parser.parse_args()
 
     if not args.video_path.exists():
@@ -218,6 +256,17 @@ def main() -> None:
     vid_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     cap.release()
 
+    crop: CropRect | None = None
+    if args.crop_pitch:
+        crop = compute_segment_crop(args.video_path, height_pad=args.crop_pad)
+        if crop.is_identity:
+            logging.warning("Pitch crop: no pitch found — running on full frame.")
+        else:
+            logging.info(
+                f"Pitch crop: ({crop.x0},{crop.y0},{crop.x1},{crop.y1}) "
+                f"keeps {crop.kept_fraction:.0%} of the frame."
+            )
+
     frame_count = _run_tracking(
         tracker,
         writer,
@@ -228,6 +277,7 @@ def main() -> None:
         vid_w,
         vid_h,
         args.save_video,
+        crop,
     )
 
     meta = tracker.finalise()
