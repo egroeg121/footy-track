@@ -614,9 +614,9 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#data-model-proposed" class="md-nav__link">
+  <a href="#data-model" class="md-nav__link">
     <span class="md-ellipsis">
-      Data model (proposed)
+      Data model
     </span>
   </a>
   
@@ -778,21 +778,48 @@
 <p>Output
 - Consolidated timeline with: {game_clock, is_overhead, detections, geometry}
 - Ready for tracking, identity stitching, team assignment, event detection, analytics</p>
-<h2 id="data-model-proposed">Data model (proposed)<a class="headerlink" href="#data-model-proposed" title="Permanent link">&para;</a></h2>
-<ul>
-<li>video.json</li>
-<li>fps, duration, segments</li>
-<li>frames.parquet</li>
-<li>frame_id, timestamp, is_overhead, overhead_conf</li>
-<li>embeddings.parquet</li>
-<li>frame_id, embedding (vector)</li>
-<li>ocr_clock.parquet</li>
-<li>timestamp, game_clock, conf</li>
-<li>detections.parquet</li>
-<li>frame_id, timestamp, class, bbox(xywh), conf</li>
-<li>geometry.parquet</li>
-<li>frame_id, timestamp, H(3x3 flattened), quality, inliers</li>
-</ul>
+<h2 id="data-model">Data model<a class="headerlink" href="#data-model" title="Permanent link">&para;</a></h2>
+<blockquote>
+<p><strong>Superseded.</strong> These per-stage Parquet files have been consolidated into a
+single <strong>feature store</strong> (DuckDB over partitioned Parquet). See
+<a href="../design/feature_store/"><code>design/feature_store.md</code></a> for the implemented
+schema; the mapping below shows where each artifact now lives. The store is
+implemented in <code>src/footy_track/feature_store/</code>.</p>
+</blockquote>
+<table>
+<thead>
+<tr>
+<th>Old per-stage artifact</th>
+<th>Now in the feature store</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>video.json</code> (fps, duration, segments)</td>
+<td><code>game</code> table</td>
+</tr>
+<tr>
+<td><code>frames.parquet</code> (frame_id, timestamp, is_overhead, conf)</td>
+<td><code>frame</code> table (+ <code>is_broadcast</code>)</td>
+</tr>
+<tr>
+<td><code>embeddings.parquet</code></td>
+<td><code>frame_embedding</code> table (kept off the hot path)</td>
+</tr>
+<tr>
+<td><code>ocr_clock.parquet</code> (timestamp, game_clock, conf)</td>
+<td><code>frame.game_time_s</code> / <code>frame.half</code></td>
+</tr>
+<tr>
+<td><code>detections.parquet</code> (frame_id, class, bbox, conf)</td>
+<td><code>detection</code> table (now multi-source via <code>source</code> + <code>run_id</code>)</td>
+</tr>
+<tr>
+<td><code>geometry.parquet</code> (H, quality, inliers)</td>
+<td><code>frame.homography</code> / <code>frame.calibration_quality</code></td>
+</tr>
+</tbody>
+</table>
 <h2 id="processing-of-a-new-video-example">Processing of a new video (example)<a class="headerlink" href="#processing-of-a-new-video-example" title="Permanent link">&para;</a></h2>
 <p>1) Ingest video; optionally split into N-minute segments for parallelism
 2) Sample frames at 1–2 fps; compute embeddings and cluster to label overhead frames

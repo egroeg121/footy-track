@@ -1,0 +1,1699 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Tracking players, actions, and events in football matches.">
+      
+      
+      
+        <link rel="canonical" href="https://egroeg121.github.io/footy-track/design/feature_store/">
+      
+      
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.6.20">
+    
+    
+      
+        <title>Feature Store — Design - Footy Scan</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.e53b48f4.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+    
+  </head>
+  
+  
+    <body dir="ltr">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#feature-store-design" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="Footy Scan" class="md-header__button md-logo" aria-label="Footy Scan" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Footy Scan
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Feature Store — Design
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="Footy Scan" class="md-nav__button md-logo" aria-label="Footy Scan" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Footy Scan
+  </label>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Home
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    Development
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            Development
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../system_design/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    System Design
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../system_overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    System Overview
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Getting Started
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../pipeline_architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Pipeline Architecture
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../timings/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Time Formats
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../data_formats/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Data Formats
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../training/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Training
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../training/notable_runs/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Notable Training Runs
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    Contributing
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            Contributing
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../agent_guidelines/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Agent Guidelines
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-goals-and-non-goals" class="md-nav__link">
+    <span class="md-ellipsis">
+      1. Goals and non-goals
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-the-core-decision-one-store-not-one-table" class="md-nav__link">
+    <span class="md-ellipsis">
+      2. The core decision: one store, not one table
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="2. The core decision: one store, not one table">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#why-duckdb-as-the-store-parquet-as-the-substrate" class="md-nav__link">
+    <span class="md-ellipsis">
+      Why DuckDB as the store, Parquet as the substrate
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-schema-overview" class="md-nav__link">
+    <span class="md-ellipsis">
+      3. Schema overview
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="3. Schema overview">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#31-game-one-row-per-match" class="md-nav__link">
+    <span class="md-ellipsis">
+      3.1 game — one row per match
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#32-frame-one-row-per-game-frame" class="md-nav__link">
+    <span class="md-ellipsis">
+      3.2 frame — one row per (game, frame)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#33-detection-one-row-per-game-frame-source-object" class="md-nav__link">
+    <span class="md-ellipsis">
+      3.3 detection — one row per (game, frame, source, object)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#34-track_meta-one-row-per-track-8" class="md-nav__link">
+    <span class="md-ellipsis">
+      3.4 track_meta — one row per track (§8)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#35-run-one-row-per-processing-run-provenance" class="md-nav__link">
+    <span class="md-ellipsis">
+      3.5 run — one row per processing run (provenance)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#36-views-the-one-table-ergonomics" class="md-nav__link">
+    <span class="md-ellipsis">
+      3.6 Views (the "one table" ergonomics)
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-embeddings-live-outside-the-hot-path" class="md-nav__link">
+    <span class="md-ellipsis">
+      4. Embeddings live outside the hot path
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-how-each-requested-feature-maps-in" class="md-nav__link">
+    <span class="md-ellipsis">
+      5. How each requested feature maps in
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="5. How each requested feature maps in">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#51-per-frame-info-path-resolution-clock-frame-number" class="md-nav__link">
+    <span class="md-ellipsis">
+      5.1 Per-frame info (path, resolution, clock, frame number)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#52-broadcast-features-binary-yesno-confidence-model-version" class="md-nav__link">
+    <span class="md-ellipsis">
+      5.2 Broadcast features (binary yes/no, confidence, model version)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#53-pitch-segmentation-final-polygon-thresholdsallowances" class="md-nav__link">
+    <span class="md-ellipsis">
+      5.3 Pitch segmentation (final polygon + thresholds/allowances)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#54-calibration-homography" class="md-nav__link">
+    <span class="md-ellipsis">
+      5.4 Calibration / homography
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#55-object-detections-from-multiple-sources" class="md-nav__link">
+    <span class="md-ellipsis">
+      5.5 Object detections from multiple sources
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#56-tracking-longer-term" class="md-nav__link">
+    <span class="md-ellipsis">
+      5.6 Tracking (longer term)
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-multiple-sources-over-the-same-frames-the-central-pattern" class="md-nav__link">
+    <span class="md-ellipsis">
+      6. Multiple sources over the same frames — the central pattern
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="6. Multiple sources over the same frames — the central pattern">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#61-importing-existing-label-sets" class="md-nav__link">
+    <span class="md-ellipsis">
+      6.1 Importing existing label sets
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-idempotency-keys-and-write-protocol" class="md-nav__link">
+    <span class="md-ellipsis">
+      7. Idempotency, keys, and write protocol
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-tracking-integration-forward-compatible" class="md-nav__link">
+    <span class="md-ellipsis">
+      8. Tracking integration (forward-compatible)
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#9-relationship-to-existing-docs-what-this-changes" class="md-nav__link">
+    <span class="md-ellipsis">
+      9. Relationship to existing docs (what this changes)
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#10-why-this-over-the-alternatives" class="md-nav__link">
+    <span class="md-ellipsis">
+      10. Why this over the alternatives
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#11-open-questions-file-as-beads-before-building" class="md-nav__link">
+    <span class="md-ellipsis">
+      11. Open questions (file as beads before building)
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#12-summary" class="md-nav__link">
+    <span class="md-ellipsis">
+      12. Summary
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+
+<h1 id="feature-store-design">Feature Store — Design<a class="headerlink" href="#feature-store-design" title="Permanent link">&para;</a></h1>
+<p>Status: <strong>IMPLEMENTED (v1)</strong> · Code: <code>src/footy_track/feature_store/</code> · Tests: <code>tests/feature_store/</code></p>
+<p>This document proposes a single, queryable <strong>feature store</strong> for footy-track:
+the consolidated home for everything we know about a match's frames —
+per-frame metadata, broadcast classification, pitch segmentation,
+object detections from multiple sources, and (later) tracks and pitch
+projections.</p>
+<p>It <strong>supersedes and consolidates</strong> the scattered per-stage Parquet artifacts
+sketched in <a href="../../pipelines/#data-model-proposed"><code>../pipelines.md</code> §Data model</a>
+(<code>frames.parquet</code>, <code>detections.parquet</code>, <code>geometry.parquet</code>,
+<code>ocr_clock.parquet</code>, <code>embeddings.parquet</code>) and folds in the canonical track
+store from <a href="../player_tracking_format/"><code>player_tracking_format.md</code></a>. See
+§9 for how the migration relates to those documents.</p>
+<p>It honours the cross-stage invariants in
+<a href="../../system_design/"><code>../system_design.md</code> §4</a> — <code>ContinuousTime</code> as the only
+canonical timestamp, normalised top-left xywh boxes, class labels from
+<code>constants.py</code>, and monotone non-reused track IDs.</p>
+<hr />
+<h2 id="1-goals-and-non-goals">1. Goals and non-goals<a class="headerlink" href="#1-goals-and-non-goals" title="Permanent link">&para;</a></h2>
+<p><strong>Goals</strong></p>
+<ul>
+<li>One <strong>portable store per environment</strong> that a human or a downstream
+  consumer (footy-stats, FiftyOne, evaluation, overlays) can query with a
+  single <code>SELECT</code> and no bespoke join glue.</li>
+<li>Hold, for every frame of every game: identity (path, resolution, frame
+  index), time (<code>ContinuousTime</code> + <code>GameTime</code> + half), and the outputs of
+  every analysis stage — broadcast classification, pitch segmentation,
+  calibration, and object detections.</li>
+<li>Support <strong>multiple independent detection sources</strong> over the same frames
+  (hand-labelled ground truth, SAM 3, YOLO runs, future trackers) coexisting
+  without overwriting each other, each carrying its own confidence and model
+  version.</li>
+<li>Be <strong>idempotent</strong>: re-ingesting the same run must not duplicate rows
+  (footy-stats invariant).</li>
+<li>Allow <strong>schema evolution</strong> — adding a new stage's columns or a new source
+  must not require rewriting existing data.</li>
+</ul>
+<p><strong>Non-goals</strong></p>
+<ul>
+<li>A query <em>API</em> or serving layer — that is footy-stats' job. This store is
+  the substrate footy-stats (and notebooks) read from.</li>
+<li>Re-identification, team assignment, jersey OCR, event extraction — these
+  populate columns reserved here but are designed elsewhere.</li>
+<li>The tracker/detector algorithms themselves.</li>
+<li>Real-time/streaming ingestion — this design is batch-on-completion.
+  §10 notes the streaming extension point.</li>
+</ul>
+<hr />
+<h2 id="2-the-core-decision-one-store-not-one-table">2. The core decision: one <em>store</em>, not one <em>table</em><a class="headerlink" href="#2-the-core-decision-one-store-not-one-table" title="Permanent link">&para;</a></h2>
+<p>The request is "a single Parquet/DuckDB table with lots of data in it." The
+honest engineering answer is: <strong>a single DuckDB database file (the store)
+containing a small set of normalised tables at their natural grains, plus a
+wide <code>frame_features</code> view that presents the per-frame world as one table.</strong></p>
+<p>A literally-single physical table fails on <strong>grain</strong>:</p>
+<table>
+<thead>
+<tr>
+<th>Fact</th>
+<th>Natural grain</th>
+<th>Rows for a 90-min game @ 25fps</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>frame metadata, clock, broadcast flag, pitch polygon, homography</td>
+<td><strong>1 row per frame</strong></td>
+<td>~135 k</td>
+</tr>
+<tr>
+<td>object detections (per source, per run)</td>
+<td><strong>N rows per frame</strong> (≈25 objects × M sources)</td>
+<td>millions</td>
+</tr>
+<tr>
+<td>game metadata (teams, venue, time mapping)</td>
+<td><strong>1 row per game</strong></td>
+<td>tens</td>
+</tr>
+<tr>
+<td>processing provenance (model, params, run time)</td>
+<td><strong>1 row per run</strong></td>
+<td>hundreds</td>
+</tr>
+</tbody>
+</table>
+<p>Forcing detections into the frame row means array-of-struct columns that are
+awkward to filter and explode; forcing frame metadata onto every detection row
+means massive duplication and update anomalies (change one pitch polygon →
+rewrite 25 M rows). So we <strong>normalise by grain</strong> and <strong>denormalise on read</strong>
+via views. The user gets "one table" ergonomics (<code>SELECT * FROM
+frame_features</code>); the storage stays sane.</p>
+<h3 id="why-duckdb-as-the-store-parquet-as-the-substrate">Why DuckDB as the store, Parquet as the substrate<a class="headerlink" href="#why-duckdb-as-the-store-parquet-as-the-substrate" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>DuckDB file = the single store.</strong> One <code>feature_store.duckdb</code> is the
+  portable, single-file artifact the request asks for. It gives real tables,
+  constraints, <code>UPSERT</code> (idempotency), and SQL across grains.</li>
+<li><strong>Parquet = the on-disk table format and interchange.</strong> Each table is also
+  materialisable as a partitioned Parquet dataset
+  (<code>store/&lt;table&gt;/game_id=&lt;id&gt;/part.parquet</code>) for DVC versioning, for
+  consumers that don't want DuckDB, and so DuckDB can query it in place
+  (<code>read_parquet</code>) without import.</li>
+<li>DuckDB reads/writes Parquet natively, so the two are the same data in two
+  skins. We treat <strong>Parquet as the source of truth on disk</strong> and the DuckDB
+  file as a fast, constraint-enforcing index over it (rebuildable from
+  Parquet at any time). This keeps the store DVC-friendly and reproducible.</li>
+</ul>
+<hr />
+<h2 id="3-schema-overview">3. Schema overview<a class="headerlink" href="#3-schema-overview" title="Permanent link">&para;</a></h2>
+<p>Five tables plus three convenience views. All timestamps <code>ContinuousTime</code>
+(seconds, <code>float64</code>) per <a href="../../timings/"><code>../timings.md</code></a>. All boxes
+normalised top-left xywh in <code>[0,1]</code>.</p>
+<div class="highlight"><pre><span></span><code>game ──1:N── frame ──1:N── detection
+  │             │              │
+  │             │              └── source/run carried per row (see §6)
+  │             └── pitch_segmentation, calibration: inlined on frame (§5.3)
+  └── run (provenance for every produced artifact, §7)
+
+track / track_meta: derived from detection, see §8
+</code></pre></div>
+<h3 id="31-game-one-row-per-match">3.1 <code>game</code> — one row per match<a class="headerlink" href="#31-game-one-row-per-match" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Column</th>
+<th>Type</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>game_id</code></td>
+<td><code>VARCHAR</code> PK</td>
+<td>e.g. <code>arsenal_mancity</code> (matches <code>data/&lt;match_name&gt;</code>)</td>
+</tr>
+<tr>
+<td><code>home_team</code></td>
+<td><code>VARCHAR</code></td>
+<td></td>
+</tr>
+<tr>
+<td><code>away_team</code></td>
+<td><code>VARCHAR</code></td>
+<td></td>
+</tr>
+<tr>
+<td><code>match_date</code></td>
+<td><code>DATE</code></td>
+<td>nullable</td>
+</tr>
+<tr>
+<td><code>venue</code></td>
+<td><code>VARCHAR</code></td>
+<td>nullable</td>
+</tr>
+<tr>
+<td><code>source_video_uri</code></td>
+<td><code>VARCHAR</code></td>
+<td>original video path/URI</td>
+</tr>
+<tr>
+<td><code>fps</code></td>
+<td><code>DOUBLE</code></td>
+<td>nominal sampling/extraction fps</td>
+</tr>
+<tr>
+<td><code>width</code></td>
+<td><code>INTEGER</code></td>
+<td>native video resolution</td>
+</tr>
+<tr>
+<td><code>height</code></td>
+<td><code>INTEGER</code></td>
+<td></td>
+</tr>
+<tr>
+<td><code>half1_start_continuous_s</code></td>
+<td><code>DOUBLE</code></td>
+<td>always <code>0.0</code> (kept explicit)</td>
+</tr>
+<tr>
+<td><code>half2_start_continuous_s</code></td>
+<td><code>DOUBLE</code></td>
+<td><code>GameTime→ContinuousTime</code> offset for 2nd half (<code>GameMetadata</code>, <a href="../../timings/"><code>../timings.md</code></a>)</td>
+</tr>
+<tr>
+<td><code>game_start_wallclock</code></td>
+<td><code>TIMESTAMP</code></td>
+<td>nullable</td>
+</tr>
+<tr>
+<td><code>schema_version</code></td>
+<td><code>VARCHAR</code></td>
+<td>store schema version this row was written under</td>
+</tr>
+</tbody>
+</table>
+<p>This subsumes the <code>GameMetadata</code> block previously living in
+<code>tracks_meta.json</code>.</p>
+<h3 id="32-frame-one-row-per-game-frame">3.2 <code>frame</code> — one row per (game, frame)<a class="headerlink" href="#32-frame-one-row-per-game-frame" title="Permanent link">&para;</a></h3>
+<p>The per-frame spine. One row whether or not the frame is a usable broadcast
+view (non-broadcast frames are recorded, not dropped — invariant #5).</p>
+<table>
+<thead>
+<tr>
+<th>Column</th>
+<th>Type</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>game_id</code></td>
+<td><code>VARCHAR</code></td>
+<td>FK → <code>game</code></td>
+</tr>
+<tr>
+<td><code>frame_index</code></td>
+<td><code>INTEGER</code></td>
+<td>zero-based frame number within the game</td>
+</tr>
+<tr>
+<td><code>frame_uri</code></td>
+<td><code>VARCHAR</code></td>
+<td>path to the extracted image (<code>full_video_frames/*.jpg</code>)</td>
+</tr>
+<tr>
+<td><code>width</code></td>
+<td><code>INTEGER</code></td>
+<td>frame resolution (may differ from game native if downscaled)</td>
+</tr>
+<tr>
+<td><code>height</code></td>
+<td><code>INTEGER</code></td>
+<td></td>
+</tr>
+<tr>
+<td><code>continuous_time_s</code></td>
+<td><code>DOUBLE</code></td>
+<td><strong>canonical</strong> time, seconds from kickoff</td>
+</tr>
+<tr>
+<td><code>half</code></td>
+<td><code>TINYINT</code></td>
+<td>1 or 2; nullable until time-mapped</td>
+</tr>
+<tr>
+<td><code>game_time_s</code></td>
+<td><code>DOUBLE</code></td>
+<td>referee/broadcast clock seconds in-half; nullable</td>
+</tr>
+<tr>
+<td><strong>broadcast classification</strong></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>is_broadcast</code></td>
+<td><code>BOOLEAN</code></td>
+<td>from §2.2 classifier; nullable until run</td>
+</tr>
+<tr>
+<td><code>broadcast_confidence</code></td>
+<td><code>FLOAT</code></td>
+<td>nullable</td>
+</tr>
+<tr>
+<td><code>broadcast_model_version</code></td>
+<td><code>VARCHAR</code></td>
+<td>FK → <code>run.run_id</code> or a model tag</td>
+</tr>
+<tr>
+<td><strong>pitch segmentation</strong> (§5.3)</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>pitch_polygon</code></td>
+<td><code>LIST&lt;STRUCT(x DOUBLE, y DOUBLE)&gt;</code></td>
+<td>final pitch boundary, normalised; nullable</td>
+</tr>
+<tr>
+<td><code>pitch_seg_threshold</code></td>
+<td><code>FLOAT</code></td>
+<td>the allowance/threshold used to derive the polygon</td>
+</tr>
+<tr>
+<td><code>pitch_seg_confidence</code></td>
+<td><code>FLOAT</code></td>
+<td>nullable</td>
+</tr>
+<tr>
+<td><code>pitch_seg_model_version</code></td>
+<td><code>VARCHAR</code></td>
+<td>FK → <code>run.run_id</code></td>
+</tr>
+<tr>
+<td><strong>calibration</strong> (§5.4)</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>homography</code></td>
+<td><code>LIST&lt;DOUBLE&gt;</code> (len 9)</td>
+<td>flattened 3×3 image→pitch H; nullable</td>
+</tr>
+<tr>
+<td><code>calibration_quality</code></td>
+<td><code>FLOAT</code></td>
+<td>inlier ratio / quality metric; nullable</td>
+</tr>
+<tr>
+<td><code>calibration_model_version</code></td>
+<td><code>VARCHAR</code></td>
+<td>FK → <code>run.run_id</code></td>
+</tr>
+</tbody>
+</table>
+<p>PK: <code>(game_id, frame_index)</code>. The clock fields come from the OCR stage
+(<code>ocr_clock.parquet</code> is absorbed here); time-mapping fills <code>half</code> /
+<code>continuous_time_s</code> via <code>game.half2_start_continuous_s</code>.</p>
+<blockquote>
+<p><strong>Design note — why pitch/calibration are inlined on <code>frame</code>, not a
+separate table.</strong> They are strictly per-frame (one polygon, one homography
+per frame) and almost always read alongside the frame. Inlining avoids a
+join for the common case. We keep only <strong>one</strong> "final" segmentation/
+calibration per frame in this table; if we ever need to compare <em>multiple</em>
+segmentation runs per frame, segmentation graduates to its own
+source-tagged table exactly like detections (§6). Flagged in §11.</p>
+</blockquote>
+<h3 id="33-detection-one-row-per-game-frame-source-object">3.3 <code>detection</code> — one row per (game, frame, source, object)<a class="headerlink" href="#33-detection-one-row-per-game-frame-source-object" title="Permanent link">&para;</a></h3>
+<p>The high-volume table. Every detected object from every source/run is a row.</p>
+<table>
+<thead>
+<tr>
+<th>Column</th>
+<th>Type</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>game_id</code></td>
+<td><code>VARCHAR</code></td>
+<td>FK → <code>game</code></td>
+</tr>
+<tr>
+<td><code>frame_index</code></td>
+<td><code>INTEGER</code></td>
+<td>FK → <code>frame</code></td>
+</tr>
+<tr>
+<td><code>continuous_time_s</code></td>
+<td><code>DOUBLE</code></td>
+<td>denormalised from <code>frame</code> for time-range scans without a join</td>
+</tr>
+<tr>
+<td><code>detection_id</code></td>
+<td><code>BIGINT</code></td>
+<td><strong>per-frame</strong> object index (0..N-1) within <code>(game_id, source, run_id, frame_index)</code>; see §6</td>
+</tr>
+<tr>
+<td><code>source</code></td>
+<td><code>VARCHAR</code> (dict)</td>
+<td><code>hand_label</code> | <code>yolo</code> | <code>sam3</code> | <code>bytetrack</code> | … (§6)</td>
+</tr>
+<tr>
+<td><code>run_id</code></td>
+<td><code>VARCHAR</code></td>
+<td>FK → <code>run</code>; pins model + params + version</td>
+</tr>
+<tr>
+<td><code>label</code></td>
+<td><code>VARCHAR</code> (dict)</td>
+<td>class from <code>constants.py</code></td>
+</tr>
+<tr>
+<td><code>confidence</code></td>
+<td><code>FLOAT</code></td>
+<td><code>[0,1]</code>; <code>1.0</code> (or null) for hand labels</td>
+</tr>
+<tr>
+<td><code>bbox_x</code></td>
+<td><code>FLOAT</code></td>
+<td>normalised top-left x</td>
+</tr>
+<tr>
+<td><code>bbox_y</code></td>
+<td><code>FLOAT</code></td>
+<td></td>
+</tr>
+<tr>
+<td><code>bbox_w</code></td>
+<td><code>FLOAT</code></td>
+<td></td>
+</tr>
+<tr>
+<td><code>bbox_h</code></td>
+<td><code>FLOAT</code></td>
+<td></td>
+</tr>
+<tr>
+<td><code>mask_ref</code></td>
+<td><code>VARCHAR</code></td>
+<td>nullable; pointer to RLE/PNG mask sidecar for SAM3 (§5.5)</td>
+</tr>
+<tr>
+<td><code>track_id</code></td>
+<td><code>INTEGER</code></td>
+<td>nullable; set by the tracking stage (§8)</td>
+</tr>
+<tr>
+<td><code>is_interpolated</code></td>
+<td><code>BOOLEAN</code></td>
+<td>tracker fill vs raw detection (§8)</td>
+</tr>
+</tbody>
+</table>
+<p>PK: <code>(game_id, source, run_id, frame_index, detection_id)</code>. <code>detection_id</code> is
+the <strong>per-frame</strong> object index, so detectors emit <code>0..N-1</code> per frame with no
+need for a run-global counter; re-ingesting one frame's detections upserts
+cleanly. Partitioned on disk by <code>game_id</code> then <code>source</code> (§6) so a single
+source's detections are a cheap column/partition scan and one source can be
+rewritten without touching others.</p>
+<h3 id="34-track_meta-one-row-per-track-8">3.4 <code>track_meta</code> — one row per track (§8)<a class="headerlink" href="#34-track_meta-one-row-per-track-8" title="Permanent link">&para;</a></h3>
+<p>Per-track summary (label, span, identity). Kept separate from <code>detection</code>
+because it is updated post-hoc (re-ID, team, jersey) without rewriting the
+row store. Replaces the <code>tracks</code> block of <code>tracks_meta.json</code>.</p>
+<table>
+<thead>
+<tr>
+<th>Column</th>
+<th>Type</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>game_id</code></td>
+<td><code>VARCHAR</code></td>
+<td></td>
+</tr>
+<tr>
+<td><code>source</code></td>
+<td><code>VARCHAR</code></td>
+<td>the tracker source (e.g. <code>bytetrack</code>)</td>
+</tr>
+<tr>
+<td><code>run_id</code></td>
+<td><code>VARCHAR</code></td>
+<td>FK → <code>run</code></td>
+</tr>
+<tr>
+<td><code>track_id</code></td>
+<td><code>INTEGER</code></td>
+<td>monotone within <code>(game_id, source, run_id)</code>, never reused</td>
+</tr>
+<tr>
+<td><code>label</code></td>
+<td><code>VARCHAR</code></td>
+<td>representative class</td>
+</tr>
+<tr>
+<td><code>start_frame</code> / <code>end_frame</code></td>
+<td><code>INTEGER</code></td>
+<td>inclusive</td>
+</tr>
+<tr>
+<td><code>start_continuous_time_s</code> / <code>end_continuous_time_s</code></td>
+<td><code>DOUBLE</code></td>
+<td>last <em>real</em> detection</td>
+</tr>
+<tr>
+<td><code>team_id</code></td>
+<td><code>VARCHAR</code></td>
+<td>nullable — TODO, team assignment</td>
+</tr>
+<tr>
+<td><code>jersey_number</code></td>
+<td><code>INTEGER</code></td>
+<td>nullable — TODO, OCR</td>
+</tr>
+<tr>
+<td><code>player_id</code></td>
+<td><code>VARCHAR</code></td>
+<td>nullable — TODO, identity</td>
+</tr>
+<tr>
+<td><code>reid_parent_track_id</code></td>
+<td><code>INTEGER</code></td>
+<td>nullable — re-ID link (invariant #6)</td>
+</tr>
+</tbody>
+</table>
+<h3 id="35-run-one-row-per-processing-run-provenance">3.5 <code>run</code> — one row per processing run (provenance)<a class="headerlink" href="#35-run-one-row-per-processing-run-provenance" title="Permanent link">&para;</a></h3>
+<p>Every produced value (a broadcast flag, a polygon, a detection set) names the
+<code>run_id</code> that produced it. This is how we get reproducibility and how two
+YOLO runs with different weights coexist (§6).</p>
+<table>
+<thead>
+<tr>
+<th>Column</th>
+<th>Type</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>run_id</code></td>
+<td><code>VARCHAR</code> PK</td>
+<td>stable id, e.g. <code>yolo11n_v3__2026-06-10</code> or a content hash</td>
+</tr>
+<tr>
+<td><code>stage</code></td>
+<td><code>VARCHAR</code></td>
+<td><code>broadcast</code> | <code>detection</code> | <code>pitch_seg</code> | <code>calibration</code> | <code>tracking</code></td>
+</tr>
+<tr>
+<td><code>source</code></td>
+<td><code>VARCHAR</code></td>
+<td>the <code>source</code> value rows from this run carry</td>
+</tr>
+<tr>
+<td><code>model_name</code></td>
+<td><code>VARCHAR</code></td>
+<td>e.g. <code>yolo11n.pt</code>, <code>sam3.pt</code>, <code>human</code></td>
+</tr>
+<tr>
+<td><code>model_version</code></td>
+<td><code>VARCHAR</code></td>
+<td>weights tag / git sha / roboflow dataset version</td>
+</tr>
+<tr>
+<td><code>params_json</code></td>
+<td><code>VARCHAR</code></td>
+<td>JSON of thresholds/config (e.g. conf threshold, tracker yaml)</td>
+</tr>
+<tr>
+<td><code>created_at</code></td>
+<td><code>TIMESTAMP</code></td>
+<td>when the run was produced</td>
+</tr>
+<tr>
+<td><code>code_version</code></td>
+<td><code>VARCHAR</code></td>
+<td>footy-track git sha</td>
+</tr>
+<tr>
+<td><code>schema_version</code></td>
+<td><code>VARCHAR</code></td>
+<td>store schema version</td>
+</tr>
+</tbody>
+</table>
+<h3 id="36-views-the-one-table-ergonomics">3.6 Views (the "one table" ergonomics)<a class="headerlink" href="#36-views-the-one-table-ergonomics" title="Permanent link">&para;</a></h3>
+<ul>
+<li><code>frame_features</code> — <code>frame</code> ⨝ <code>game</code>: every per-frame fact plus game
+  metadata, one row per frame. The "single wide table" the request describes.</li>
+<li><code>detections_enriched</code> — <code>detection</code> ⨝ <code>frame</code> ⨝ <code>run</code>: each detection with
+  its frame's time/broadcast context and its run's model metadata.</li>
+<li><code>tracks_enriched</code> — <code>detection</code> ⨝ <code>track_meta</code>: tracked detections with
+  per-track identity.</li>
+</ul>
+<p>Views cost nothing on disk and can be <code>CREATE TABLE AS</code> materialised if a
+consumer wants a frozen flat export.</p>
+<hr />
+<h2 id="4-embeddings-live-outside-the-hot-path">4. Embeddings live outside the hot path<a class="headerlink" href="#4-embeddings-live-outside-the-hot-path" title="Permanent link">&para;</a></h2>
+<p>Frame/instance embedding vectors (<code>embeddings.parquet</code> in the old model) are
+<strong>not</strong> stored in <code>frame</code> or <code>detection</code>. A 512–1024-dim float vector per
+frame bloats every scan of the spine. Keep them in a dedicated
+<code>frame_embedding(game_id, frame_index, embedding LIST&lt;FLOAT&gt;, model_version)</code>
+table (or a vector store later), joined only when needed. Same rule for any
+future per-instance appearance descriptors used for re-ID.</p>
+<hr />
+<h2 id="5-how-each-requested-feature-maps-in">5. How each requested feature maps in<a class="headerlink" href="#5-how-each-requested-feature-maps-in" title="Permanent link">&para;</a></h2>
+<h3 id="51-per-frame-info-path-resolution-clock-frame-number">5.1 Per-frame info (path, resolution, clock, frame number)<a class="headerlink" href="#51-per-frame-info-path-resolution-clock-frame-number" title="Permanent link">&para;</a></h3>
+<p>→ <code>frame</code> columns <code>frame_uri</code>, <code>width</code>/<code>height</code>, <code>continuous_time_s</code> +
+<code>half</code> + <code>game_time_s</code>, <code>frame_index</code>. (§3.2)</p>
+<h3 id="52-broadcast-features-binary-yesno-confidence-model-version">5.2 Broadcast features (binary yes/no, confidence, model version)<a class="headerlink" href="#52-broadcast-features-binary-yesno-confidence-model-version" title="Permanent link">&para;</a></h3>
+<p>→ <code>frame.is_broadcast</code> (BOOLEAN), <code>broadcast_confidence</code>,
+<code>broadcast_model_version</code>. The <code>model_version</code> resolves to a <code>run</code> row for
+full provenance. (§3.2, §3.5)</p>
+<h3 id="53-pitch-segmentation-final-polygon-thresholdsallowances">5.3 Pitch segmentation (final polygon + thresholds/allowances)<a class="headerlink" href="#53-pitch-segmentation-final-polygon-thresholdsallowances" title="Permanent link">&para;</a></h3>
+<p>→ <code>frame.pitch_polygon</code> (list of normalised points = the final segregation
+line), <code>pitch_seg_threshold</code> (the allowance), <code>pitch_seg_confidence</code>,
+<code>pitch_seg_model_version</code>. Polygon stored as <code>LIST&lt;STRUCT(x,y)&gt;</code> (DuckDB
+native, explodes cleanly); a WKB/GEOMETRY column is an alternative if we
+adopt DuckDB's <code>spatial</code> extension for point-in-polygon "is this player on
+the pitch" queries — recommended once we need geometric predicates. (§3.2)</p>
+<h3 id="54-calibration-homography">5.4 Calibration / homography<a class="headerlink" href="#54-calibration-homography" title="Permanent link">&para;</a></h3>
+<p>→ <code>frame.homography</code> (flattened 3×3), <code>calibration_quality</code>. Absorbs
+<code>geometry.parquet</code>. (§3.2)</p>
+<h3 id="55-object-detections-from-multiple-sources">5.5 Object detections from multiple sources<a class="headerlink" href="#55-object-detections-from-multiple-sources" title="Permanent link">&para;</a></h3>
+<p>→ <code>detection</code> table, one row per object, tagged by <code>source</code> + <code>run_id</code>.
+Hand labels, SAM 3, and YOLO predictions over the same frame are distinct
+rows distinguished by <code>source</code>/<code>run_id</code>; none overwrites another. SAM 3
+instance <strong>masks</strong> are large — store the box in <code>detection</code> and the mask as
+RLE/PNG in a sidecar referenced by <code>mask_ref</code> (don't inline mask blobs in the
+hot table). (§3.3, §6)</p>
+<h3 id="56-tracking-longer-term">5.6 Tracking (longer term)<a class="headerlink" href="#56-tracking-longer-term" title="Permanent link">&para;</a></h3>
+<p>→ <code>detection.track_id</code> + <code>detection.is_interpolated</code> for per-frame
+membership, <code>track_meta</code> for per-track summary and identity. Schema and
+lifecycle already specified in
+<a href="../player_tracking_format/"><code>player_tracking_format.md</code></a>; this store is where
+those rows live. (§3.3, §3.4, §8)</p>
+<hr />
+<h2 id="6-multiple-sources-over-the-same-frames-the-central-pattern">6. Multiple sources over the same frames — the central pattern<a class="headerlink" href="#6-multiple-sources-over-the-same-frames-the-central-pattern" title="Permanent link">&para;</a></h2>
+<p>The hardest requirement is "object detections likely from multiple
+sources/runs — hand-labelled, SAM 3, YOLO — all with locations and
+confidences." The pattern:</p>
+<ul>
+<li><strong><code>source</code></strong> is the <em>kind</em> of producer (<code>hand_label</code>, <code>yolo</code>, <code>sam3</code>,
+  <code>bytetrack</code>). <strong><code>run_id</code></strong> is a <em>specific</em> production of that source
+  (weights + params + date). Two YOLO weights → two <code>run_id</code>s, same <code>source</code>.</li>
+<li>A detection's full key is <code>(game_id, source, run_id, frame_index, detection_id)</code>. The
+  same physical player in the same frame appears as <strong>separate rows</strong> under
+  each source — by design. No source is privileged in storage.</li>
+<li><strong>Idempotency</strong>: re-running a run upserts on the PK and replaces that run's
+  partition; it never touches other sources. Concretely, ingestion writes
+  <code>detection/game_id=&lt;id&gt;/source=&lt;src&gt;/run_id=&lt;rid&gt;/part.parquet</code> atomically
+  (write-temp-then-rename), so a re-run is a partition swap.</li>
+<li><strong>Comparison/eval becomes a self-join</strong>: ground truth is just
+  <code>source='hand_label'</code>; precision/recall vs YOLO is
+  <code>detections_enriched WHERE source='hand_label'</code> joined to
+  <code>source='yolo'</code> on IoU. No separate eval format needed — the MOT-CSV
+  exporter from <code>player_tracking_format.md</code> §4 becomes an optional view, not a
+  storage concern.</li>
+</ul>
+<p>Partition layout on disk:</p>
+<div class="highlight"><pre><span></span><code>store/
+  feature_store.duckdb            # the single store (index over parquet)
+  game/part.parquet
+  run/part.parquet
+  frame/game_id=&lt;id&gt;/part.parquet
+  detection/game_id=&lt;id&gt;/source=&lt;src&gt;/run_id=&lt;rid&gt;/part.parquet
+  track_meta/game_id=&lt;id&gt;/source=&lt;src&gt;/run_id=&lt;rid&gt;/part.parquet
+  frame_embedding/game_id=&lt;id&gt;/part.parquet
+  masks/game_id=&lt;id&gt;/&lt;frame&gt;__&lt;detection_id&gt;.png   # mask_ref targets
+</code></pre></div>
+<h3 id="61-importing-existing-label-sets">6.1 Importing existing label sets<a class="headerlink" href="#61-importing-existing-label-sets" title="Permanent link">&para;</a></h3>
+<p>Implemented in <code>src/footy_track/feature_store/importers.py</code>. Two label sources
+land as <code>detection</code> rows under different <code>source</code>s and stay comparable:</p>
+<ul>
+<li><strong>Roboflow YOLO datasets</strong> (<code>import_roboflow</code>) → <code>source='hand_label'</code>,
+  <code>run_id='roboflow_v&lt;version&gt;'</code>. Handles the three format gaps: YOLO <strong>centre</strong>
+  xywh → store <strong>top-left</strong> xywh; class <strong>indices</strong> → names via <code>data.yaml</code>;
+  Roboflow's mangled filename (<code>&lt;stem&gt;_&lt;frame&gt;_png.rf.&lt;hash&gt;.jpg</code>) → <code>(game_id,
+  frame_index)</code>. Frame dims are read from the image. Validated on
+  <code>roboflow_dataset_3</code>: 257 frames, 4 915 detections.</li>
+<li><strong>Web-labeller / SAM 3 JSON</strong> (<code>import_labeller_json</code>) → <code>source='sam3'</code> by
+  default (so it can be evaluated against the hand labels), or
+  <code>source='hand_label'</code> to treat verified output as ground truth. Boxes are
+  already top-left; <code>uri</code> (<code>&lt;stem&gt;_frame_&lt;frame&gt;</code>) → <code>(game_id, frame_index)</code>.</li>
+</ul>
+<p>Frame identity is shared because both decode to <code>&lt;video_stem&gt;_&lt;frame_index&gt;</code>
+(<code>extract_frames</code> names frames <code>&lt;stem&gt;_%06d</code>). Two label sets <strong>align
+frame-for-frame only if extracted from the same video at the same fps</strong>;
+<code>source_overlap(store)</code> reports, per <code>(game_id, frame_index)</code>, how many sources
+are present so overlap (and thus comparability) is verified empirically rather
+than assumed. <code>continuous_time_s</code> is derived <code>frame_index / fps + time_offset</code>
+(default 1-fps extraction, offset 0) pending true kickoff alignment.</p>
+<hr />
+<h2 id="7-idempotency-keys-and-write-protocol">7. Idempotency, keys, and write protocol<a class="headerlink" href="#7-idempotency-keys-and-write-protocol" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>Primary keys</strong> (enforced in DuckDB; logically honoured in Parquet):</li>
+<li><code>game(game_id)</code></li>
+<li><code>frame(game_id, frame_index)</code></li>
+<li><code>detection(game_id, source, run_id, frame_index, detection_id)</code></li>
+<li><code>track_meta(game_id, source, run_id, track_id)</code></li>
+<li><code>run(run_id)</code></li>
+<li><strong>Upsert semantics</strong>: ingestion is <code>INSERT … ON CONFLICT DO UPDATE</code>
+  (DuckDB) / partition-replace (Parquet). Re-ingesting an identical run is a
+  no-op on row count. This satisfies the footy-stats "re-upload must not
+  duplicate" rule from the project CLAUDE.md.</li>
+<li><strong>Frame spine first</strong>: a run that produces detections requires the
+  <code>(game_id, frame_index)</code> frame rows to exist (FK). Frame extraction is the
+  first writer; analysis stages update/insert against existing frames.</li>
+<li><strong>Atomic partition writes</strong>: write to a temp path, fsync, rename. A crashed
+  run leaves no half-written partition visible.</li>
+</ul>
+<hr />
+<h2 id="8-tracking-integration-forward-compatible">8. Tracking integration (forward-compatible)<a class="headerlink" href="#8-tracking-integration-forward-compatible" title="Permanent link">&para;</a></h2>
+<p>Tracking reuses the <code>detection</code> table rather than a parallel <code>tracks.parquet</code>:</p>
+<ul>
+<li>A tracker run writes detection rows with <code>source</code> = tracker name (e.g.
+  <code>bytetrack</code>), <code>track_id</code> set, <code>is_interpolated</code> flagged for Kalman fills.</li>
+<li>It may either (a) emit fresh detection rows, or (b) be modelled as a
+  run that copies a detector run's boxes and adds <code>track_id</code>. <strong>(a)</strong> is
+  cleaner for provenance and keeps tracker output independently
+  rewritable.</li>
+<li>Per-track summary + identity lands in <code>track_meta</code>. Lifecycle, ID
+  allocation, and re-ID semantics are unchanged from
+  <a href="../player_tracking_format/"><code>player_tracking_format.md</code> §5</a> — this doc only
+  changes <em>where the rows live</em> (the store, not a per-match sidecar).</li>
+</ul>
+<hr />
+<h2 id="9-relationship-to-existing-docs-what-this-changes">9. Relationship to existing docs (what this changes)<a class="headerlink" href="#9-relationship-to-existing-docs-what-this-changes" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Existing artifact</th>
+<th>Fate under this design</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>frames.parquet</code> (pipelines.md)</td>
+<td>→ <code>frame</code> table</td>
+</tr>
+<tr>
+<td><code>ocr_clock.parquet</code></td>
+<td>→ <code>frame.game_time_s</code> / <code>half</code> columns</td>
+</tr>
+<tr>
+<td><code>detections.parquet</code></td>
+<td>→ <code>detection</code> table (now multi-source)</td>
+</tr>
+<tr>
+<td><code>geometry.parquet</code></td>
+<td>→ <code>frame.homography</code> / <code>calibration_quality</code></td>
+</tr>
+<tr>
+<td><code>embeddings.parquet</code></td>
+<td>→ <code>frame_embedding</code> table (§4)</td>
+</tr>
+<tr>
+<td><code>tracks.parquet</code> + <code>tracks_meta.json</code> (player_tracking_format.md)</td>
+<td>→ <code>detection</code> (track_id) + <code>track_meta</code> table</td>
+</tr>
+<tr>
+<td><code>GameMetadata</code> block in sidecar</td>
+<td>→ <code>game</code> table</td>
+</tr>
+<tr>
+<td><code>MatchExporter</code> (output.md)</td>
+<td>reads the store instead of N parquet files; JSON/CSV/FiftyOne exporters become views/queries over the store</td>
+</tr>
+</tbody>
+</table>
+<p><code>player_tracking_format.md</code> stays valid as the <strong>track lifecycle &amp;
+semantics</strong> spec; this doc is the <strong>physical storage</strong> spec it plugs into.
+<code>pipelines.md</code> §Data model should be updated to point here (follow-up).</p>
+<hr />
+<h2 id="10-why-this-over-the-alternatives">10. Why this over the alternatives<a class="headerlink" href="#10-why-this-over-the-alternatives" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Verdict</th>
+<th>Why</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>DuckDB file + partitioned Parquet, normalised by grain</strong> (this design)</td>
+<td><strong>Chosen</strong></td>
+<td>Single portable store, real keys/upsert, multi-source clean, DVC-friendly, schema-evolvable</td>
+</tr>
+<tr>
+<td>One literal wide table</td>
+<td>No</td>
+<td>Grain mismatch → array columns or massive duplication; can't rewrite one source cheaply</td>
+</tr>
+<tr>
+<td>Per-stage Parquet files joined ad-hoc (status quo)</td>
+<td>No</td>
+<td>The join glue is exactly what the request wants to eliminate; no enforced keys/idempotency</td>
+</tr>
+<tr>
+<td>Postgres / a server DB</td>
+<td>No</td>
+<td>Adds an always-on service; loses single-file portability and DVC versioning; overkill for a single-writer batch warehouse</td>
+</tr>
+<tr>
+<td>FiftyOne as canonical</td>
+<td>No</td>
+<td>FiftyOne is a <em>consumer</em>; we ingest the store <strong>into</strong> it, not vice-versa (matches existing stance)</td>
+</tr>
+<tr>
+<td>SQLite</td>
+<td>No</td>
+<td>Row-oriented; poor at the columnar range/aggregate scans (time windows, per-source filters) that dominate here</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="11-open-questions-file-as-beads-before-building">11. Open questions (file as beads before building)<a class="headerlink" href="#11-open-questions-file-as-beads-before-building" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>Streaming producers.</strong> This is batch-on-completion. A live feed wants
+  append-friendly chunk Parquet compacted at end-of-game (same open question
+  as <code>player_tracking_format.md</code> §6). Pick before building a live path.</li>
+<li><strong>Multiple segmentation/calibration runs per frame.</strong> Currently "one final
+  per frame" inlined on <code>frame</code>. If we need to compare segmentation runs,
+  promote pitch_seg/calibration to source-tagged tables like <code>detection</code>.
+  Decide when a second segmentation model appears.</li>
+<li><strong>Geometry predicates.</strong> Adopt DuckDB <code>spatial</code> (WKB <code>GEOMETRY</code> for
+  <code>pitch_polygon</code>) so "is this player inside the pitch" is a SQL
+  <code>ST_Contains</code>? Recommended but pulls in the extension.</li>
+<li>~~<strong><code>detection_id</code> allocation.</strong>~~ <strong>Resolved (v1):</strong> <code>detection_id</code> is the
+  <strong>per-frame</strong> object index (0..N-1) and <code>frame_index</code> is part of the PK. This
+  matches how detectors emit, needs no run-global counter, and makes
+  re-ingesting a single frame's detections a clean upsert. A content-hash
+  variant remains an option for non-deterministic detectors but is not needed
+  for the deterministic ingest path.</li>
+<li><strong>Schema-version enforcement on read.</strong> <code>schema_version</code> is recorded but
+  there's no read-side policy (reject / best-effort upgrade). Same gap as
+  noted in <code>player_tracking_format.md</code> §6.</li>
+<li><strong>Store granularity: per-environment vs per-game.</strong> One global
+  <code>feature_store.duckdb</code> for all games, or one per game with a DuckDB
+  <code>ATTACH</code>/<code>UNION</code> overlay? Per-game files are more DVC-friendly and
+  parallel-write-safe; a global view attaches them. Leaning per-game files +
+  global attach view.</li>
+<li><strong>Embeddings storage.</strong> Plain <code>LIST&lt;FLOAT&gt;</code> Parquet vs a real vector index
+  (lancedb / duckdb-vss) once re-ID/search needs ANN. Defer until there's a
+  search workload.</li>
+</ul>
+<hr />
+<h2 id="12-summary">12. Summary<a class="headerlink" href="#12-summary" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>One store</strong> (<code>feature_store.duckdb</code> over partitioned Parquet),
+  <strong>normalised by grain</strong>: <code>game</code> → <code>frame</code> → <code>detection</code>, plus <code>track_meta</code>
+  and <code>run</code> provenance; embeddings off to the side.</li>
+<li>The request's "single table" is delivered as the <strong><code>frame_features</code> view</strong>
+  (frame ⨝ game) — one wide per-frame table to query — without paying the
+  duplication cost in storage.</li>
+<li><strong>Multiple detection sources</strong> (hand label / SAM 3 / YOLO / trackers)
+  coexist as <code>source</code> + <code>run_id</code>-tagged rows; none overwrites another, eval
+  is a self-join, re-runs are idempotent partition swaps.</li>
+<li><strong>Pitch segmentation</strong> (final polygon + thresholds), <strong>broadcast</strong> flags,
+  and <strong>calibration</strong> are inlined per-frame with their own model-version
+  provenance; <strong>tracking</strong> plugs into <code>detection</code>/<code>track_meta</code> per the
+  existing lifecycle spec.</li>
+<li>Folds together every previously-scattered Parquet artifact; honours the
+  ContinuousTime / bbox / class-label / track-ID invariants; stays
+  DVC-versioned and schema-evolvable.</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      <script id="__config" type="application/json">{"base": "../..", "features": [], "search": "../../assets/javascripts/workers/search.973d3a69.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.f55a23d4.min.js"></script>
+      
+    
+  </body>
+</html>
