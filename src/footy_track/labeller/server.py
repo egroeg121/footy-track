@@ -30,7 +30,7 @@ os.environ.setdefault(
 )
 
 import cv2  # noqa: E402
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect  # noqa: E402
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect  # noqa: E402
 from fastapi.responses import HTMLResponse, Response  # noqa: E402
 from fastapi.staticfiles import StaticFiles  # noqa: E402
 
@@ -545,8 +545,6 @@ async def gt_list_clips() -> dict:
 async def gt_load(body: dict) -> dict:
     path = Path(body["path"]).expanduser()
     if not path.exists():
-        from fastapi import HTTPException  # noqa: PLC0415
-
         raise HTTPException(status_code=404, detail=f"File not found: {path}")
     result = await asyncio.to_thread(GT_SESSION.load, path)
     return result
