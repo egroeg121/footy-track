@@ -8,12 +8,17 @@ Run with:
     uv run uvicorn footy_track.labeller.server:app --reload
 
 Then open http://localhost:8000
+
+Ball GT marking mode (http://localhost:8000/gt):
+    Pick an eval clip from eval_data/clips/, scrub frames, click the ball center.
+    Marks save incrementally to eval_data/clips/<clip>.jsonl in FrameLabel format.
 """
 
 from __future__ import annotations
 
 import asyncio
 import contextlib
+import json
 import os
 import threading
 from pathlib import Path
@@ -29,6 +34,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect  # noqa: E402
 from fastapi.responses import HTMLResponse, Response  # noqa: E402
 from fastapi.staticfiles import StaticFiles  # noqa: E402
 
+from footy_track.ball_eval.dataset import FrameLabel, write_labels  # noqa: E402
 from footy_track.labeller.video_utils import (  # noqa: E402
     BackgroundLabeller,
     LabelledObject,
@@ -399,6 +405,184 @@ async def ws(websocket: WebSocket) -> None:
         SESSION.bg.pause()
         if streamer and not streamer.done():
             streamer.cancel()
+
+
+# ----------------------------------------------------------------------------
+# Ball GT marking mode  (/gt  — browser-based replacement for label_ball_centers.py)
+# ----------------------------------------------------------------------------
+
+_EVAL_CLIPS_DIR = Path(__file__).parent.parent.parent.parent / "eval_data" / "clips"
+_VIDEO_SUFFIXES = {".mp4", ".avi", ".mov", ".mkv"}
+
+
+class GTSession:
+    """State for the ball-center GT marking session."""
+
+    def __init__(self) -> None:
+        self.video_path: Path | None = None
+        self.total_frames: int = 0
+        self.width: int = 0
+        self.height: int = 0
+        self.fps: float = 25.0
+        self.labels: dict[int, FrameLabel] = {}  # frame_index -> FrameLabel
+        self._lock = threading.Lock()
+
+    def load(self, video_path: Path) -> dict:
+        cap = cv2.VideoCapture(str(video_path))
+        try:
+            self.fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
+            self.total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+            self.width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+            self.height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        finally:
+            cap.release()
+        self.video_path = video_path
+        # Load existing labels if sidecar exists
+        jsonl = video_path.with_suffix(".jsonl")
+        with self._lock:
+            self.labels = {}
+            if jsonl.exists():
+                with jsonl.open() as f:
+                    for raw_line in f:
+                        stripped = raw_line.strip()
+                        if stripped:
+                            d = json.loads(stripped)
+                            lbl = FrameLabel.from_dict(d)
+                            self.labels[lbl.frame_index] = lbl
+        return {
+            "fps": self.fps,
+            "total_frames": self.total_frames,
+            "width": self.width,
+            "height": self.height,
+            "clip_name": video_path.stem,
+            "existing_marks": len(self.labels),
+        }
+
+    def mark_center(self, frame_index: int, cx: float, cy: float) -> None:
+        """Record a ball center mark and flush to JSONL incrementally."""
+        lbl = FrameLabel(frame_index=frame_index, bbox=None, tags=(), center=(cx, cy))
+        with self._lock:
+            self.labels[frame_index] = lbl
+            self._flush()
+
+    def mark_absent(self, frame_index: int) -> None:
+        """Record ball-not-visible and flush incrementally."""
+        lbl = FrameLabel(
+            frame_index=frame_index, bbox=None, tags=("ball_not_visible",), center=None
+        )
+        with self._lock:
+            self.labels[frame_index] = lbl
+            self._flush()
+
+    def unmark(self, frame_index: int) -> None:
+        """Remove the mark for a frame."""
+        with self._lock:
+            self.labels.pop(frame_index, None)
+            self._flush()
+
+    def _flush(self) -> None:
+        """Write all labels to the sidecar JSONL (must hold _lock)."""
+        if self.video_path is None:
+            return
+        out = self.video_path.with_suffix(".jsonl")
+        sorted_labels = [self.labels[k] for k in sorted(self.labels)]
+        write_labels(sorted_labels, out)
+
+    def get_marks(self) -> list[dict]:
+        with self._lock:
+            return [lbl.to_dict() for lbl in self.labels.values()]
+
+    def frame_jpeg(self, idx: int) -> bytes | None:
+        if self.video_path is None:
+            return None
+        cap = cv2.VideoCapture(str(self.video_path))
+        try:
+            cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
+            ok, frame = cap.read()
+        finally:
+            cap.release()
+        if not ok:
+            return None
+        ok, buf = cv2.imencode(".jpg", frame)
+        return buf.tobytes() if ok else None
+
+
+GT_SESSION = GTSession()
+
+
+def _list_eval_clips() -> list[dict]:
+    """Return clips in eval_data/clips/ that have a matching video file."""
+    if not _EVAL_CLIPS_DIR.exists():
+        return []
+    clips = []
+    for p in sorted(_EVAL_CLIPS_DIR.iterdir()):
+        if p.suffix.lower() in _VIDEO_SUFFIXES:
+            jsonl = p.with_suffix(".jsonl")
+            mark_count = 0
+            if jsonl.exists():
+                with jsonl.open() as f:
+                    mark_count = sum(1 for line in f if line.strip())
+            clips.append({"name": p.stem, "path": str(p), "marks": mark_count})
+    return clips
+
+
+_GT_STATIC = Path(__file__).parent / "web"
+
+
+@app.get("/gt", response_class=HTMLResponse)
+async def gt_index() -> HTMLResponse:
+    return HTMLResponse((_GT_STATIC / "gt.html").read_text())
+
+
+@app.get("/gt/clips")
+async def gt_list_clips() -> dict:
+    clips = await asyncio.to_thread(_list_eval_clips)
+    clips_dir = str(_EVAL_CLIPS_DIR)
+    return {"clips": clips, "clips_dir": clips_dir}
+
+
+@app.post("/gt/load")
+async def gt_load(body: dict) -> dict:
+    path = Path(body["path"]).expanduser()
+    if not path.exists():
+        from fastapi import HTTPException  # noqa: PLC0415
+
+        raise HTTPException(status_code=404, detail=f"File not found: {path}")
+    result = await asyncio.to_thread(GT_SESSION.load, path)
+    return result
+
+
+@app.get("/gt/frame/{idx}.jpg")
+async def gt_frame(idx: int) -> Response:
+    data = await asyncio.to_thread(GT_SESSION.frame_jpeg, idx)
+    if data is None:
+        return Response(status_code=404)
+    return Response(content=data, media_type="image/jpeg")
+
+
+@app.get("/gt/marks")
+async def gt_get_marks() -> dict:
+    return {"marks": GT_SESSION.get_marks()}
+
+
+@app.post("/gt/mark")
+async def gt_mark(body: dict) -> dict:
+    """Mark ball center (cx, cy normalised) or mark as absent."""
+    idx = int(body["frame_index"])
+    if body.get("absent"):
+        await asyncio.to_thread(GT_SESSION.mark_absent, idx)
+    else:
+        cx = float(body["cx"])
+        cy = float(body["cy"])
+        await asyncio.to_thread(GT_SESSION.mark_center, idx, cx, cy)
+    return {"frame_index": idx, "total_marks": len(GT_SESSION.labels)}
+
+
+@app.post("/gt/unmark")
+async def gt_unmark(body: dict) -> dict:
+    idx = int(body["frame_index"])
+    await asyncio.to_thread(GT_SESSION.unmark, idx)
+    return {"frame_index": idx, "total_marks": len(GT_SESSION.labels)}
 
 
 # Mount static assets (JS/CSS) if any beyond index.html.

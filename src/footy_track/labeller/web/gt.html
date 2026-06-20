@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Ball GT Marker</title>
+<style>
+  :root { --bg:#0f1419; --panel:#1a2129; --ink:#e6edf3; --muted:#9bb0c0;
+          --accent:#1e90ff; --green:#3fb950; --red:#f85149; --border:#2d3742;
+          --yellow:#ffc800; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink);
+         font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+  header { padding:10px 16px; border-bottom:1px solid var(--border);
+           display:flex; align-items:center; gap:16px; }
+  header h1 { margin:0; font-size:18px; }
+  header a { color:var(--muted); font-size:12px; text-decoration:none; }
+  header a:hover { color:var(--ink); }
+  .layout { display:grid; grid-template-columns:220px 1fr; gap:0; height:calc(100vh - 45px); }
+  .sidebar { background:var(--panel); border-right:1px solid var(--border);
+             padding:12px; overflow-y:auto; display:flex; flex-direction:column; gap:10px; }
+  .sidebar h3 { margin:0 0 6px; font-size:13px; color:var(--muted); text-transform:uppercase; letter-spacing:.05em; }
+  .clip-item { padding:6px 8px; border-radius:6px; cursor:pointer; font-size:13px;
+               border:1px solid transparent; display:flex; justify-content:space-between; align-items:center; }
+  .clip-item:hover { background:rgba(255,255,255,.06); }
+  .clip-item.active { border-color:var(--accent); background:rgba(30,144,255,.12); }
+  .clip-marks { font-size:11px; color:var(--muted); }
+  .clip-marks.has-marks { color:var(--green); }
+  .main { display:flex; flex-direction:column; padding:12px; gap:10px; overflow:hidden; }
+  .toolbar { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  button { background:#0d1620; color:var(--ink); border:1px solid var(--border);
+           border-radius:6px; padding:6px 12px; font-size:13px; cursor:pointer; }
+  button.primary { background:var(--accent); border-color:var(--accent); color:#fff; }
+  button.danger { background:var(--red); border-color:var(--red); color:#fff; }
+  button:disabled { opacity:.4; cursor:not-allowed; }
+  #canvasWrap { position:relative; border:1px solid var(--border); border-radius:8px;
+                overflow:hidden; background:#000; cursor:crosshair; flex:1; min-height:0; }
+  #canvas { display:block; max-width:100%; max-height:100%; width:100%; height:100%;
+            object-fit:contain; }
+  #overlay { position:absolute; top:0; left:0; pointer-events:none; }
+  .nav-row { display:flex; gap:8px; align-items:center; }
+  #scrub { flex:1; }
+  .stat { font-size:12px; color:var(--muted); }
+  .stat strong { color:var(--green); }
+  #hint { font-size:12px; color:var(--muted); }
+  .kbd { display:inline-block; background:#1a2129; border:1px solid var(--border);
+         border-radius:3px; padding:1px 5px; font-size:11px; font-family:monospace; }
+  #status { font-size:12px; color:var(--muted); }
+  .mark-dot { position:absolute; width:16px; height:16px; border-radius:50%;
+              border:2px solid var(--green); transform:translate(-50%,-50%);
+              pointer-events:none; }
+  .mark-dot::after { content:''; position:absolute; top:50%; left:50%;
+                     width:4px; height:4px; background:var(--green); border-radius:50%;
+                     transform:translate(-50%,-50%); }
+  .absent-badge { position:absolute; left:8px; top:8px; background:rgba(248,81,73,.8);
+                  color:#fff; font-size:13px; font-weight:700; padding:4px 10px;
+                  border-radius:6px; pointer-events:none; }
+  #progress { height:4px; background:var(--border); border-radius:2px; overflow:hidden; }
+  #progressBar { height:100%; background:var(--green); transition:width .2s; }
+  .empty-hint { color:var(--muted); font-size:13px; padding:20px 0; }
+</style>
+</head>
+<body>
+<header>
+  <h1>⚽ Ball GT Marker</h1>
+  <a href="/">← SAM3 Labeller</a>
+  <span id="status">no clip loaded</span>
+</header>
+
+<div class="layout">
+  <!-- Clip picker sidebar -->
+  <div class="sidebar">
+    <div>
+      <h3>Eval Clips</h3>
+      <div id="clipList"><span class="empty-hint">Loading…</span></div>
+    </div>
+    <div id="statsBox" style="display:none">
+      <h3>Progress</h3>
+      <div id="progress"><div id="progressBar" style="width:0%"></div></div>
+      <div class="stat" id="markCount">0 marks</div>
+      <div class="stat" id="clipInfo"></div>
+    </div>
+    <div>
+      <h3>Keys</h3>
+      <div class="stat"><span class="kbd">Click</span> mark ball center</div>
+      <div class="stat"><span class="kbd">N</span> ball not visible</div>
+      <div class="stat"><span class="kbd">U</span> undo / clear frame</div>
+      <div class="stat"><span class="kbd">←</span> <span class="kbd">→</span> prev / next frame</div>
+      <div class="stat"><span class="kbd">A</span> <span class="kbd">D</span> same (WASD)</div>
+    </div>
+  </div>
+
+  <!-- Main canvas area -->
+  <div class="main">
+    <div class="toolbar">
+      <button id="prevBtn" disabled>⬅️ Prev</button>
+      <button id="nextBtn" disabled>Next ➡️</button>
+      <button id="absentBtn" disabled class="danger">✗ Not Visible <span class="kbd">N</span></button>
+      <button id="undoBtn" disabled>↩ Undo <span class="kbd">U</span></button>
+      <span class="stat" id="frameLbl">—</span>
+      <span style="flex:1"></span>
+      <span id="hint">Load a clip from the sidebar to begin. Click on the frame to mark the ball center.</span>
+    </div>
+
+    <div style="display:flex; gap:8px; align-items:center;">
+      <input type="range" id="scrub" min="0" max="0" value="0" disabled style="flex:1;" />
+    </div>
+
+    <div id="canvasWrap" style="flex:1; position:relative;">
+      <img id="canvas" src="" alt="frame" style="display:none;" />
+      <canvas id="overlay" width="1" height="1"></canvas>
+    </div>
+  </div>
+</div>
+
+<script>
+// State
+let meta = null;       // {fps, total_frames, width, height, clip_name, existing_marks}
+let viewFrame = 0;
+let marks = {};        // frame_index -> {frame_index, center:[cx,cy]|null, tags:[...], bbox:null}
+let loaded = false;
+let currentClipPath = null;
+
+const $ = id => document.getElementById(id);
+
+// --- Canvas overlay drawing ---
+const canvas = $("canvas");
+const overlay = $("overlay");
+const ctx = overlay.getContext("2d");
+
+function syncOverlaySize() {
+  const r = canvas.getBoundingClientRect();
+  overlay.style.position = "absolute";
+  overlay.style.top = r.top - canvas.parentElement.getBoundingClientRect().top + "px";
+  overlay.style.left = r.left - canvas.parentElement.getBoundingClientRect().left + "px";
+  overlay.width = r.width;
+  overlay.height = r.height;
+}
+
+function drawOverlay() {
+  syncOverlaySize();
+  ctx.clearRect(0, 0, overlay.width, overlay.height);
+  const lbl = marks[viewFrame];
+  if (!lbl) return;
+  if (lbl.center) {
+    const [cx, cy] = lbl.center;
+    const px = cx * overlay.width;
+    const py = cy * overlay.height;
+    ctx.strokeStyle = "#3fb950";
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(px, py, 10, 0, Math.PI*2); ctx.stroke();
+    ctx.fillStyle = "#3fb950";
+    ctx.beginPath(); ctx.arc(px, py, 3, 0, Math.PI*2); ctx.fill();
+    // crosshair lines
+    ctx.strokeStyle = "rgba(63,185,80,.5)";
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(px-20, py); ctx.lineTo(px+20, py); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(px, py-20); ctx.lineTo(px, py+20); ctx.stroke();
+  } else if (lbl.tags && lbl.tags.includes("ball_not_visible")) {
+    ctx.fillStyle = "rgba(248,81,73,.75)";
+    ctx.fillRect(0, 0, overlay.width, 36);
+    ctx.fillStyle = "#fff";
+    ctx.font = "bold 14px sans-serif";
+    ctx.fillText("NOT VISIBLE", 10, 24);
+  }
+}
+
+// --- Frame loading ---
+async function showFrame(idx) {
+  if (!loaded) return;
+  viewFrame = idx;
+  $("scrub").value = idx;
+  $("frameLbl").textContent = `Frame ${idx} / ${meta.total_frames - 1}`;
+  canvas.src = `/gt/frame/${idx}.jpg?ts=${Date.now()}`;
+  canvas.onload = drawOverlay;
+  updateButtons();
+}
+
+function updateButtons() {
+  $("prevBtn").disabled = !loaded || viewFrame <= 0;
+  $("nextBtn").disabled = !loaded || viewFrame >= (meta ? meta.total_frames - 1 : 0);
+  $("absentBtn").disabled = !loaded;
+  $("undoBtn").disabled = !loaded;
+}
+
+function updateStats() {
+  const total = meta ? meta.total_frames : 0;
+  const n = Object.keys(marks).length;
+  $("markCount").innerHTML = `<strong>${n}</strong> marks / ${total} frames`;
+  const pct = total > 0 ? Math.round(n / total * 100) : 0;
+  $("progressBar").style.width = pct + "%";
+  if (meta) $("clipInfo").textContent = meta.clip_name;
+  $("statsBox").style.display = "";
+}
+
+// --- Clip list ---
+async function loadClipList() {
+  const res = await fetch("/gt/clips");
+  const data = await res.json();
+  const el = $("clipList");
+  if (!data.clips.length) {
+    el.innerHTML = `<div class="empty-hint">No clips found in<br><code>${data.clips_dir}</code><br><br>Drop .mp4 files there to begin.</div>`;
+    return;
+  }
+  el.innerHTML = "";
+  data.clips.forEach(clip => {
+    const div = document.createElement("div");
+    div.className = "clip-item" + (clip.path === currentClipPath ? " active" : "");
+    div.innerHTML = `<span>${clip.name}</span><span class="clip-marks ${clip.marks>0?'has-marks':''}">${clip.marks} marks</span>`;
+    div.onclick = () => loadClip(clip.path, div);
+    el.appendChild(div);
+  });
+}
+
+async function loadClip(path, el) {
+  $("status").textContent = "loading…";
+  currentClipPath = path;
+  const res = await fetch("/gt/load", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({path})});
+  if (!res.ok) { $("status").textContent = "load failed"; return; }
+  meta = await res.json();
+  // Load existing marks
+  const mr = await fetch("/gt/marks");
+  const md = await mr.json();
+  marks = {};
+  md.marks.forEach(m => { marks[m.frame_index] = m; });
+  loaded = true;
+  $("scrub").max = meta.total_frames - 1;
+  $("scrub").disabled = false;
+  canvas.style.display = "";
+  $("status").textContent = `${meta.clip_name} · ${meta.total_frames} frames · ${meta.existing_marks} existing marks`;
+  updateStats();
+  document.querySelectorAll(".clip-item").forEach(d => d.classList.remove("active"));
+  if (el) el.classList.add("active");
+  await showFrame(0);
+  // reload list to update mark counts
+  await loadClipList();
+}
+
+// --- Click to mark ---
+$("canvasWrap").addEventListener("click", async (e) => {
+  if (!loaded) return;
+  const rect = canvas.getBoundingClientRect();
+  // Only register clicks on the image itself
+  if (e.clientX < rect.left || e.clientX > rect.right || e.clientY < rect.top || e.clientY > rect.bottom) return;
+  const cx = (e.clientX - rect.left) / rect.width;
+  const cy = (e.clientY - rect.top) / rect.height;
+  const res = await fetch("/gt/mark", {
+    method:"POST", headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({frame_index: viewFrame, cx, cy})
+  });
+  const data = await res.json();
+  marks[viewFrame] = {frame_index: viewFrame, center:[cx, cy], bbox:null, tags:[]};
+  drawOverlay();
+  updateStats();
+  // auto-advance after marking
+  if (viewFrame < meta.total_frames - 1) await showFrame(viewFrame + 1);
+});
+
+// --- Buttons ---
+$("prevBtn").onclick = () => { if (viewFrame > 0) showFrame(viewFrame - 1); };
+$("nextBtn").onclick = () => { if (meta && viewFrame < meta.total_frames - 1) showFrame(viewFrame + 1); };
+
+$("absentBtn").onclick = async () => {
+  if (!loaded) return;
+  await fetch("/gt/mark", {
+    method:"POST", headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({frame_index: viewFrame, absent: true})
+  });
+  marks[viewFrame] = {frame_index: viewFrame, center:null, bbox:null, tags:["ball_not_visible"]};
+  drawOverlay();
+  updateStats();
+  if (viewFrame < meta.total_frames - 1) await showFrame(viewFrame + 1);
+};
+
+$("undoBtn").onclick = async () => {
+  if (!loaded) return;
+  await fetch("/gt/unmark", {
+    method:"POST", headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({frame_index: viewFrame})
+  });
+  delete marks[viewFrame];
+  drawOverlay();
+  updateStats();
+};
+
+$("scrub").oninput = (e) => showFrame(parseInt(e.target.value));
+
+// --- Keyboard ---
+window.addEventListener("keydown", async (e) => {
+  if (!loaded) return;
+  if (e.target.tagName === "INPUT") return;
+  if (e.key === "ArrowRight" || e.key === "d" || e.key === "D") {
+    if (viewFrame < meta.total_frames - 1) await showFrame(viewFrame + 1);
+  } else if (e.key === "ArrowLeft" || e.key === "a" || e.key === "A") {
+    if (viewFrame > 0) await showFrame(viewFrame - 1);
+  } else if (e.key === "n" || e.key === "N") {
+    $("absentBtn").click();
+  } else if (e.key === "u" || e.key === "U") {
+    $("undoBtn").click();
+  }
+});
+
+// Redraw overlay on window resize
+window.addEventListener("resize", drawOverlay);
+
+// Init
+loadClipList();
+</script>
+</body>
+</html>
