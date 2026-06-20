@@ -28,7 +28,9 @@ from footy_track.ball_eval.dataset import (
 from footy_track.ball_eval.metrics import (
     FramePrediction,
     MethodResult,
+    bbox_center,
     bbox_iou,
+    center_dist_px,
     compute_clip_metrics,
 )
 from footy_track.ball_eval.runner import compare_methods, run_benchmark
@@ -403,3 +405,185 @@ def test_run_benchmark_effective_resolution_captured(tmp_path):
 
     cm = result.clip_metrics[0]
     assert cm.effective_resolution_px == 128
+
+
+# --------------------------------------------------------------------------- #
+# Center-distance and new metrics                                              #
+# --------------------------------------------------------------------------- #
+
+
+def test_bbox_center():
+    assert bbox_center((0.4, 0.3, 0.1, 0.1)) == pytest.approx((0.45, 0.35))
+
+
+def test_center_dist_px_same_point():
+    assert center_dist_px((0.5, 0.5), (0.5, 0.5), 1080, 1920) == pytest.approx(0.0)
+
+
+def test_center_dist_px_known_distance():
+    # 0.1 * 1920 = 192 px horizontal offset
+    d = center_dist_px((0.0, 0.5), (0.1, 0.5), 1080, 1920)
+    assert d == pytest.approx(192.0)
+
+
+def test_frame_label_center_only_round_trip():
+    lbl = FrameLabel(frame_index=10, bbox=None, tags=(), center=(0.45, 0.32))
+    restored = FrameLabel.from_dict(lbl.to_dict())
+    assert restored.center == pytest.approx((0.45, 0.32))
+    assert restored.bbox is None
+    assert restored.is_ball_visible()
+
+
+def test_frame_label_ball_center_from_bbox():
+    lbl = FrameLabel(frame_index=0, bbox=(0.4, 0.3, 0.1, 0.1), tags=())
+    ctr = lbl.ball_center()
+    assert ctr == pytest.approx((0.45, 0.35))
+
+
+def test_frame_label_ball_center_explicit_wins():
+    lbl = FrameLabel(
+        frame_index=0, bbox=(0.4, 0.3, 0.1, 0.1), tags=(), center=(0.9, 0.9)
+    )
+    ctr = lbl.ball_center()
+    assert ctr == pytest.approx((0.9, 0.9))
+
+
+def test_frame_label_is_ball_visible_absent():
+    lbl = FrameLabel(frame_index=0, bbox=None, tags=("ball_not_visible",))
+    assert not lbl.is_ball_visible()
+
+
+def test_perfect_tracker_center_metrics(tmp_path):
+    """A perfect tracker should score 100% center_within_radius."""
+    bbox: BBox = (0.4, 0.3, 0.05, 0.05)
+    clip = _synthetic_clip(tmp_path, num_frames=10)
+    preds = _make_frame_preds(clip, lambda i: bbox)
+    cm = compute_clip_metrics(
+        clip_name=clip.name,
+        total_frames=clip.total_frames,
+        ball_present_frames=clip.ball_present_count(),
+        frame_preds=preds,
+        total_inference_s=1.0,
+        peak_vram_mb=0.0,
+        occlusion_frame_indices=[],
+        frame_size=(1080, 1920),
+    )
+    assert cm.center_within_radius_pct == pytest.approx(100.0)
+    assert cm.mean_center_dist_px == pytest.approx(0.0)
+    assert cm.catastrophic_failure_rate == pytest.approx(0.0)
+    assert cm.max_track_streak == 10
+
+
+def test_catastrophic_failure_detected(tmp_path):
+    """A wildly wrong prediction counts as catastrophic."""
+    wrong_bbox: BBox = (0.9, 0.9, 0.05, 0.05)  # far corner
+    clip = _synthetic_clip(tmp_path, num_frames=5)
+    preds = _make_frame_preds(clip, lambda i: wrong_bbox)
+    cm = compute_clip_metrics(
+        clip_name=clip.name,
+        total_frames=clip.total_frames,
+        ball_present_frames=clip.ball_present_count(),
+        frame_preds=preds,
+        total_inference_s=1.0,
+        peak_vram_mb=0.0,
+        occlusion_frame_indices=[],
+        frame_size=(1080, 1920),
+    )
+    # Distance between (0.425,0.325) and (0.925,0.925) should be >> CATASTROPHIC_DIST_PX
+    assert cm.catastrophic_failure_rate == pytest.approx(100.0)
+
+
+def test_track_streak_resets_on_failure(tmp_path):
+    """Streak resets when tracker leaves the radius."""
+    bbox: BBox = (0.4, 0.3, 0.05, 0.05)
+    wrong_bbox: BBox = (0.9, 0.9, 0.05, 0.05)
+
+    # frames 0-3 correct, frame 4 wrong, frames 5-9 correct → streak 5
+    def _predict(i):
+        return wrong_bbox if i == 4 else bbox
+
+    clip = _synthetic_clip(tmp_path, num_frames=10)
+    preds = _make_frame_preds(clip, _predict)
+    cm = compute_clip_metrics(
+        clip_name=clip.name,
+        total_frames=clip.total_frames,
+        ball_present_frames=clip.ball_present_count(),
+        frame_preds=preds,
+        total_inference_s=1.0,
+        peak_vram_mb=0.0,
+        occlusion_frame_indices=[],
+        frame_size=(1080, 1920),
+    )
+    assert cm.max_track_streak == 5  # frames 5-9
+
+
+def test_center_only_gt_in_benchmark(tmp_path):
+    """Center-only labels (no bbox) work in the runner."""
+    center_bbox: BBox = (0.4, 0.3, 0.05, 0.05)
+    # Label frames with center-only (no bbox)
+    labels: dict[int, FrameLabel] = {
+        i: FrameLabel(frame_index=i, bbox=None, tags=(), center=(0.425, 0.325))
+        for i in range(6)
+    }
+    clip = EvalClip(
+        name="center_clip",
+        video_path=tmp_path / "center_clip.mp4",
+        labels=labels,
+        total_frames=6,
+    )
+    frames = [_make_frame(h=128, w=128) for _ in range(6)]
+    dataset = _SyntheticEvalDataset(clip, frames)
+
+    tracker = _ConstantTracker(center_bbox)
+    result = run_benchmark(tracker, dataset, method_name="center_test", verbose=False)
+
+    cm = result.clip_metrics[0]
+    # Prediction center = (0.425, 0.325), GT center = (0.425, 0.325) → 0px error
+    assert cm.mean_center_dist_px == pytest.approx(0.0, abs=1.0)
+    assert cm.center_within_radius_pct == pytest.approx(100.0)
+
+
+def test_compare_methods_sorted_by_center(tmp_path):
+    """compare_methods defaults to center_within_radius_pct sort."""
+    clip = _synthetic_clip(tmp_path, num_frames=5)
+    bbox = (0.4, 0.3, 0.05, 0.05)
+
+    def _result(name: str, predict_fn) -> MethodResult:
+        preds = _make_frame_preds(clip, predict_fn)
+        cm = compute_clip_metrics(
+            clip_name=clip.name,
+            total_frames=clip.total_frames,
+            ball_present_frames=clip.ball_present_count(),
+            frame_preds=preds,
+            total_inference_s=1.0,
+            peak_vram_mb=0.0,
+            occlusion_frame_indices=[],
+        )
+        return MethodResult(method_name=name, clip_metrics=[cm])
+
+    perfect = _result("method_perfect", lambda i: bbox)
+    zero = _result("method_zero", lambda i: None)
+
+    table = compare_methods([zero, perfect])
+    # perfect has 100% center accuracy, should appear first
+    assert table.index("method_perfect") < table.index("method_zero")
+
+
+def test_write_labels_center_field(tmp_path):
+    """write_labels preserves center field in round-trip."""
+    labels = [
+        FrameLabel(frame_index=0, bbox=None, tags=(), center=(0.45, 0.32)),
+        FrameLabel(frame_index=5, bbox=(0.4, 0.3, 0.05, 0.05), tags=("occlusion",)),
+    ]
+    path = tmp_path / "centers.jsonl"
+    write_labels(labels, path)
+
+    restored = []
+    with path.open() as f:
+        for line in f:
+            restored.append(FrameLabel.from_dict(json.loads(line)))
+
+    assert restored[0].center == pytest.approx((0.45, 0.32))
+    assert restored[0].bbox is None
+    assert restored[1].center is None
+    assert restored[1].bbox is not None

@@ -2,12 +2,26 @@
 
 Ground-truth data is stored as a directory containing:
   - One or more video files (mp4/avi/etc.)
-  - A sidecar ``<clip_name>.jsonl`` per clip, one JSON object per frame:
-      {"frame_index": 0, "bbox": [x, y, w, h], "tags": ["occlusion"]}
-    or {"frame_index": 1, "bbox": null, "tags": ["ball_not_visible"]} if ball
-    is absent / out of frame.
+  - A sidecar ``<clip_name>.jsonl`` per clip, one JSON object per labelled frame:
+
+    Full bbox (automated or careful manual annotation)::
+
+        {"frame_index": 0, "bbox": [x, y, w, h], "tags": ["occlusion"]}
+
+    Sparse human center-point (faster to label, primary for bake-off GT)::
+
+        {"frame_index": 5, "center": [cx, cy], "tags": ["small_ball"]}
+
+    Ball absent / not visible::
+
+        {"frame_index": 1, "bbox": null, "tags": ["ball_not_visible"]}
+
+Sparse center-point GT is the primary format for human-anchored ground truth.
+A human only needs to click the ball center — no box drawing required.
+Frames without a JSONL entry are unlabelled (the harness skips them for metrics).
 
 BBox: normalised (x, y, w, h) top-left, matching footy-track convention.
+Center: normalised (cx, cy) ball center.
 Tags are free strings; standard values: "occlusion", "motion_blur",
 "small_ball", "crowd_background", "ball_not_visible".
 
@@ -34,33 +48,60 @@ import numpy as np
 
 # Normalised (x, y, w, h) top-left. Using a plain tuple for zero-overhead.
 BBox = tuple[float, float, float, float]
+# Normalised (cx, cy) ball center.
+Center = tuple[float, float]
 
 _VIDEO_SUFFIXES = {".mp4", ".avi", ".mov", ".mkv"}
 
 
 class FrameLabel(NamedTuple):
-    """Ground-truth label for one frame."""
+    """Ground-truth label for one frame.
+
+    One of ``bbox`` or ``center`` will be set when the ball is visible.
+    ``bbox`` gives a full box; ``center`` gives just the ball center (used for
+    sparse human-anchored GT where drawing a box is impractical).
+    ``center`` is always derivable from ``bbox`` via ``bbox_center()``.
+    """
 
     frame_index: int
-    bbox: BBox | None  # None → ball absent / not visible
+    bbox: BBox | None  # None → ball absent / not visible, or center-only label
     tags: tuple[str, ...]  # e.g. ("occlusion",)
+    center: Center | None = None  # explicit center when bbox not available
 
     @classmethod
     def from_dict(cls, d: dict) -> FrameLabel:
         raw_bbox = d.get("bbox")
         bbox: BBox | None = tuple(raw_bbox) if raw_bbox is not None else None  # type: ignore[arg-type]
+        raw_center = d.get("center")
+        center: Center | None = tuple(raw_center) if raw_center is not None else None  # type: ignore[arg-type]
         return cls(
             frame_index=int(d["frame_index"]),
             bbox=bbox,
             tags=tuple(d.get("tags", [])),
+            center=center,
         )
 
     def to_dict(self) -> dict:
-        return {
+        d: dict = {
             "frame_index": self.frame_index,
             "bbox": list(self.bbox) if self.bbox is not None else None,
             "tags": list(self.tags),
         }
+        if self.center is not None:
+            d["center"] = list(self.center)
+        return d
+
+    def ball_center(self) -> Center | None:
+        """Return the ball center, derived from bbox if no explicit center."""
+        if self.center is not None:
+            return self.center
+        if self.bbox is not None:
+            return (self.bbox[0] + self.bbox[2] / 2, self.bbox[1] + self.bbox[3] / 2)
+        return None
+
+    def is_ball_visible(self) -> bool:
+        """True when ball is present in this frame."""
+        return self.bbox is not None or self.center is not None
 
 
 class EvalClip:
@@ -136,8 +177,8 @@ class EvalClip:
         return len(self.labels)
 
     def ball_present_count(self) -> int:
-        """Number of frames where the ball is visible (bbox not None)."""
-        return sum(1 for lbl in self.labels.values() if lbl.bbox is not None)
+        """Number of labelled frames where the ball is visible."""
+        return sum(1 for lbl in self.labels.values() if lbl.is_ball_visible())
 
     def frames_with_tag(self, tag: str) -> list[int]:
         """Return frame indices that carry the given tag."""
