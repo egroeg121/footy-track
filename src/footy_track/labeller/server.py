@@ -372,6 +372,47 @@ async def list_clips() -> dict:
     return {"clips": clips, "clips_dir": str(_EVAL_CLIPS_DIR)}
 
 
+@app.post("/session/export")
+async def export_session(body: dict) -> dict:
+    """Export the current session timeline to a JSONL sidecar next to the video.
+
+    Each populated frame is written as a FrameLabel.  Ball-box center is computed
+    from the first 'ball' box on the frame; frames with no boxes are skipped.
+    The sidecar path is ``<video_stem>.jsonl`` in the same directory as the video.
+    Pass ``{"path": "/custom/out.jsonl"}`` in the body to override the destination.
+    """
+    if SESSION.video_path is None:
+        from fastapi import HTTPException  # noqa: PLC0415
+
+        raise HTTPException(status_code=400, detail="No video loaded")
+
+    out_path = Path(body.get("path") or SESSION.video_path.with_suffix(".jsonl"))
+
+    labels: list[FrameLabel] = []
+    with SESSION._tl_lock:
+        timeline_copy = list(SESSION.timeline)
+
+    for frame_idx, boxes in enumerate(timeline_copy):
+        if not boxes:
+            continue
+        ball_box = next((b for b in boxes if "ball" in b.label.lower()), None)
+        if ball_box is None:
+            ball_box = boxes[0]
+        cx = ball_box.x + ball_box.w / 2
+        cy = ball_box.y + ball_box.h / 2
+        labels.append(
+            FrameLabel(
+                frame_index=frame_idx,
+                bbox=(ball_box.x, ball_box.y, ball_box.w, ball_box.h),
+                center=(cx, cy),
+                tags=(),
+            )
+        )
+
+    write_labels(labels, out_path)
+    return {"saved": str(out_path), "frames": len(labels)}
+
+
 # ----------------------------------------------------------------------------
 # WebSocket: control (run/pause/restart) + live frame stream
 # ----------------------------------------------------------------------------

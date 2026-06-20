@@ -94,6 +94,7 @@
       <button id="restartBtn" class="primary" style="display:none">▶️ Restart from frame 0</button>
       <span id="runMsg" class="muted"></span>
       <button id="pauseBtn" disabled>⏸️ Pause</button>
+      <button id="exportBtn" disabled title="Save timeline to JSONL sidecar next to the video">💾 Export</button>
     </div>
 
     <div class="muted" id="hint" style="margin-bottom:8px;">Load a video to begin. Edit: drag/resize, Delete removes. Draw: drag a box.</div>
@@ -339,6 +340,7 @@ $("loadBtn").onclick = async ()=>{
   mode="idle"; lastCompleted=-1;
   $("scrub").max = meta.total_frames-1; $("scrub").disabled=false;
   $("runBtn").disabled=false; $("prevBtn").disabled=false; $("nextBtn").disabled=false;
+  $("exportBtn").disabled=false;
   setStatus(`loaded · ${meta.total_frames} frames @ ${meta.fps.toFixed(1)}fps`);
   await autodetect(0);
   connectWS();
@@ -353,6 +355,12 @@ async function autodetect(frameIdx){
   setStatus(`auto-detected ${data.boxes.length} objects`);
 }
 $("autoBtn").onclick = ()=>autodetect(viewFrame);
+$("exportBtn").onclick = async ()=>{
+  const res = await fetch("/session/export",{method:"POST",headers:{"Content-Type":"application/json"},body:"{}"});
+  const data = await res.json();
+  if (res.ok) setStatus(`Saved ${data.frames} frames → ${data.saved}`);
+  else setStatus(`Export failed: ${data.detail||"unknown error"}`);
+};
 
 // ---------- scrubbing ----------
 $("scrub").oninput = (e)=>gotoFrame(parseInt(e.target.value));
@@ -443,7 +451,7 @@ function connectWS(){
     if (m.type==="status"){
       setStatus(`● ${m.state}`);
       if (m.state==="compiling"){ $("runMsg").textContent="⏳ Compiling model…"; }
-      else if (m.state==="running" && lastCompleted<0){ $("runMsg").textContent="⏳ Compiling model…"; }
+      else if (m.state==="running" && lastCompleted<0 && currentMethod()==="sam3"){ $("runMsg").textContent="⏳ Compiling model…"; }
       if (m.state==="paused" && mode!=="paused"){
         const idx = lastCompleted>=0?lastCompleted:viewFrame;
         mode="paused";
