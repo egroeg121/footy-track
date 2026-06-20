@@ -124,6 +124,7 @@ class DetectionRow(_Row):
     mask_ref: str | None = None
     track_id: int | None = None
     is_interpolated: bool = False
+    needs_review: bool = False
 
 
 class TrackMetaRow(_Row):
@@ -238,6 +239,7 @@ DDL: tuple[str, ...] = (
         mask_ref           VARCHAR,
         track_id           INTEGER,
         is_interpolated    BOOLEAN,
+        needs_review       BOOLEAN DEFAULT FALSE,
         PRIMARY KEY (game_id, source, run_id, frame_index, detection_id)
     );
     """,
