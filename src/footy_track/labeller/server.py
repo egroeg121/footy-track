@@ -561,6 +561,7 @@ async def _stream_bakeoff(
     cap = cv2.VideoCapture(str(SESSION.video_path))
     cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
     prev_bbox = seed_bbox
+    abs_idx = start_frame - 1  # guard against empty range in done message
     try:
         for abs_idx in range(start_frame, total):
             ok, bgr = cap.read()
