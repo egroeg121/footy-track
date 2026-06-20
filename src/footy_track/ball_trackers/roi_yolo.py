@@ -35,6 +35,7 @@ import math
 import cv2
 import numpy as np
 import torch
+from ultralytics import YOLO
 
 from footy_track.ball_eval.dataset import BBox
 
@@ -72,6 +73,85 @@ def _kf_update(kf: dict, cx: float, cy: float) -> None:
     kf["P"] = (np.eye(4) - K @ _H) @ kf["P"]
 
 
+def _pick_device() -> str:
+    if torch.backends.mps.is_available():
+        return "mps"
+    if torch.cuda.is_available():
+        return "cuda"
+    return "cpu"
+
+
+def _kalman_predict(
+    kf: dict | None,
+    prev_bbox: BBox | None,
+    q: float,
+    r: float,
+) -> tuple[dict, float, float]:
+    """Advance Kalman state; return (kf, pred_cx, pred_cy)."""
+    if prev_bbox is not None:
+        cx_n = prev_bbox[0] + prev_bbox[2] / 2.0
+        cy_n = prev_bbox[1] + prev_bbox[3] / 2.0
+        if kf is None:
+            kf = _kf_init(cx_n, cy_n, q, r)
+            pred_cx, pred_cy = cx_n, cy_n
+        else:
+            pred_cx, pred_cy = _kf_predict(kf)
+        _kf_update(kf, cx_n, cy_n)
+        pred_cx, pred_cy = _kf_predict(kf)
+    elif kf is not None:
+        pred_cx, pred_cy = _kf_predict(kf)
+    else:
+        pred_cx, pred_cy = 0.5, 0.5
+    if kf is None:
+        kf = _kf_init(pred_cx, pred_cy, q, r)
+    return kf, pred_cx, pred_cy
+
+
+def _compute_roi(
+    prev_bbox: BBox | None,
+    pred_cx: float,
+    pred_cy: float,
+    H: int,
+    W: int,
+    roi_scale: float,
+    min_roi_frac: float,
+) -> tuple[int, int, int, int]:
+    """Return (x0, y0, x1, y1) pixel ROI for the current frame."""
+    roi_side_min = int(H * min_roi_frac)
+
+    if prev_bbox is None:
+        return 0, 0, W, H
+
+    bw, bh = prev_bbox[2], prev_bbox[3]
+    roi_side = max(int(math.hypot(bw * W, bh * H) * roi_scale), roi_side_min)
+
+    px, py = int(pred_cx * W), int(pred_cy * H)
+    half = roi_side // 2
+    x0 = max(0, px - half)
+    y0 = max(0, py - half)
+    x1 = min(W, x0 + roi_side)
+    y1 = min(H, y0 + roi_side)
+    if x1 - x0 < roi_side:
+        x0 = max(0, x1 - roi_side)
+    if y1 - y0 < roi_side:
+        y0 = max(0, y1 - roi_side)
+    return x0, y0, x1, y1
+
+
+def _best_detection(result, min_confidence: float) -> BBox | None:
+    """Extract the highest-confidence sports-ball bbox from a YOLO result.
+
+    Returns crop-normalised (x1, y1, x2, y2) or None.
+    """
+    if result.boxes is None or result.boxes.conf is None or len(result.boxes.conf) == 0:
+        return None
+    confs = result.boxes.conf.tolist()
+    best_idx = int(max(range(len(confs)), key=lambda i: confs[i]))
+    if confs[best_idx] < min_confidence:
+        return None
+    return tuple(result.boxes.xyxyn[best_idx].tolist())  # type: ignore[return-value]
+
+
 class RoiYoloTracker:
     """Bake-off Method C: tiny YOLO inference on a Kalman-predicted ROI crop.
 
@@ -82,10 +162,9 @@ class RoiYoloTracker:
         which includes COCO "sports ball" class 32).
     roi_scale:
         ROI side length as a multiple of the ball's bounding-box diagonal from
-        the previous frame.  1.5 → 50% padding around the predicted ball centre.
+        the previous frame.  3.0 → 3× diagonal padding around the predicted centre.
     min_roi_frac:
-        Minimum ROI size as a fraction of frame height (prevents tiny crops when
-        the ball bounding box is unreliably small on first detection).
+        Minimum ROI size as a fraction of frame height.
     min_confidence:
         Detection confidence threshold.
     process_noise / measurement_noise:
@@ -101,8 +180,6 @@ class RoiYoloTracker:
         process_noise: float = 5e-5,
         measurement_noise: float = 5e-4,
     ) -> None:
-        from ultralytics import YOLO
-
         self._model = YOLO(model_uri)
         self._device = _pick_device()
         self._roi_scale = roi_scale
@@ -112,14 +189,14 @@ class RoiYoloTracker:
         self._r = measurement_noise
 
         self._kf: dict | None = None
-        self._last_bbox: BBox | None = None  # prev frame's tracked bbox (normalised)
+        self._last_bbox: BBox | None = None
         self._last_crop_height: int | None = None  # read by harness runner
 
     # ------------------------------------------------------------------
     # BallTracker protocol
     # ------------------------------------------------------------------
 
-    def track(self, prev_bbox: BBox | None, frame: np.ndarray) -> BBox | None:
+    def track(self, prev_bbox: BBox | None, frame: np.ndarray) -> BBox | None:  # noqa: PLR0912
         """Locate the ball in *frame* using motion-guided ROI + YOLO.
 
         Args:
@@ -131,59 +208,16 @@ class RoiYoloTracker:
         """
         H, W = frame.shape[:2]
 
-        if prev_bbox is not None:
-            cx_n = prev_bbox[0] + prev_bbox[2] / 2.0
-            cy_n = prev_bbox[1] + prev_bbox[3] / 2.0
-            if self._kf is None:
-                self._kf = _kf_init(cx_n, cy_n, self._q, self._r)
-                pred_cx, pred_cy = cx_n, cy_n
-            else:
-                pred_cx, pred_cy = _kf_predict(self._kf)
-            # Correct immediately with the prev bbox centre (we already have it)
-            _kf_update(self._kf, cx_n, cy_n)
-            # Predict again for the *current* frame
-            pred_cx, pred_cy = _kf_predict(self._kf)
-        elif self._kf is not None:
-            # Ball was lost last frame — keep predicting without update
-            pred_cx, pred_cy = _kf_predict(self._kf)
-        else:
-            # Cold start — no prior info; search the full frame
-            pred_cx, pred_cy = 0.5, 0.5
+        self._kf, pred_cx, pred_cy = _kalman_predict(
+            self._kf, prev_bbox, self._q, self._r
+        )
 
-        # Determine ROI size
-        if prev_bbox is not None:
-            bw, bh = prev_bbox[2], prev_bbox[3]
-            diag = math.hypot(bw * W, bh * H)
-            roi_side = int(diag * self._roi_scale)
-        else:
-            roi_side = None  # full frame cold start
-
-        roi_side_min = int(H * self._min_roi_frac)
-
-        if roi_side is None:
-            # Cold start — use full frame
-            crop = frame
-            roi_x0, roi_y0, roi_x1, roi_y1 = 0, 0, W, H
-        else:
-            roi_side = max(roi_side, roi_side_min)
-            # Crop centred on prediction
-            px = int(pred_cx * W)
-            py = int(pred_cy * H)
-            half = roi_side // 2
-            roi_x0 = max(0, px - half)
-            roi_y0 = max(0, py - half)
-            roi_x1 = min(W, roi_x0 + roi_side)
-            roi_y1 = min(H, roi_y0 + roi_side)
-            # Shift if clipped
-            if roi_x1 - roi_x0 < roi_side:
-                roi_x0 = max(0, roi_x1 - roi_side)
-            if roi_y1 - roi_y0 < roi_side:
-                roi_y0 = max(0, roi_y1 - roi_side)
-            crop = frame[roi_y0:roi_y1, roi_x0:roi_x1]
-
+        x0, y0, x1, y1 = _compute_roi(
+            prev_bbox, pred_cx, pred_cy, H, W, self._roi_scale, self._min_roi_frac
+        )
+        crop = frame[y0:y1, x0:x1]
         self._last_crop_height = crop.shape[0]
 
-        # YOLO expects BGR; frame is RGB
         crop_bgr = cv2.cvtColor(crop, cv2.COLOR_RGB2BGR)
 
         with torch.no_grad():
@@ -195,27 +229,18 @@ class RoiYoloTracker:
                 verbose=False,
             )
 
-        result = results[0]
-        if result.boxes is None or len(result.boxes) == 0:
+        xyxyn_crop = _best_detection(results[0], self._min_confidence)
+        if xyxyn_crop is None:
             return None
 
-        # Pick highest-confidence sports-ball detection
-        confs = result.boxes.conf.tolist()
-        best_idx = int(max(range(len(confs)), key=lambda i: confs[i]))
-        if confs[best_idx] < self._min_confidence:
-            return None
-
-        # Extract crop-normalised top-left box
-        xyxyn = result.boxes.xyxyn[best_idx].tolist()
-        cx1, cy1, cx2, cy2 = xyxyn
-        cw_crop = crop.shape[1]
-        ch_crop = crop.shape[0]
-
-        # Map from crop-normalised to pixel in crop, then to full-frame normalised
-        px1 = cx1 * cw_crop + roi_x0
-        py1 = cy1 * ch_crop + roi_y0
-        px2 = cx2 * cw_crop + roi_x0
-        py2 = cy2 * ch_crop + roi_y0
+        # Map from crop-normalised x1y1x2y2 → full-frame normalised xywh
+        cx1, cy1, cx2, cy2 = xyxyn_crop
+        cw = x1 - x0
+        ch = y1 - y0
+        px1 = cx1 * cw + x0
+        py1 = cy1 * ch + y0
+        px2 = cx2 * cw + x0
+        py2 = cy2 * ch + y0
 
         x_n = float(max(0.0, px1 / W))
         y_n = float(max(0.0, py1 / H))
@@ -227,13 +252,9 @@ class RoiYoloTracker:
 
         detected: BBox = (x_n, y_n, w_n, h_n)
 
-        # Update Kalman with actual detection
         det_cx = x_n + w_n / 2.0
         det_cy = y_n + h_n / 2.0
-        if self._kf is None:
-            self._kf = _kf_init(det_cx, det_cy, self._q, self._r)
-        else:
-            _kf_update(self._kf, det_cx, det_cy)
+        _kf_update(self._kf, det_cx, det_cy)
 
         self._last_bbox = detected
         return detected
@@ -243,11 +264,3 @@ class RoiYoloTracker:
         self._kf = None
         self._last_bbox = None
         self._last_crop_height = None
-
-
-def _pick_device() -> str:
-    if torch.backends.mps.is_available():
-        return "mps"
-    if torch.cuda.is_available():
-        return "cuda"
-    return "cpu"
