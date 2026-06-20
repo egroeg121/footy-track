@@ -8,12 +8,17 @@ Run with:
     uv run uvicorn footy_track.labeller.server:app --reload
 
 Then open http://localhost:8000
+
+Ball GT marking mode (http://localhost:8000/gt):
+    Pick an eval clip from eval_data/clips/, scrub frames, click the ball center.
+    Marks save incrementally to eval_data/clips/<clip>.jsonl in FrameLabel format.
 """
 
 from __future__ import annotations
 
 import asyncio
 import contextlib
+import json
 import os
 import threading
 from pathlib import Path
@@ -29,6 +34,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect  # noqa: E402
 from fastapi.responses import HTMLResponse, Response  # noqa: E402
 from fastapi.staticfiles import StaticFiles  # noqa: E402
 
+from footy_track.ball_eval.dataset import FrameLabel, write_labels  # noqa: E402
 from footy_track.labeller.video_utils import (  # noqa: E402
     BackgroundLabeller,
     LabelledObject,
@@ -40,6 +46,18 @@ app = FastAPI(title="SAM3 Video Labeller")
 
 _STATIC_DIR = Path(__file__).parent / "web"
 
+# Eval clips directory: <repo_root>/eval_data/clips/
+# Walk up from this file: labeller/ -> footy_track/ -> src/ -> <repo>
+_EVAL_CLIPS_DIR = Path(__file__).parent.parent.parent.parent / "eval_data" / "clips"
+_VIDEO_SUFFIXES = {".mp4", ".avi", ".mov", ".mkv"}
+
+# Bake-off method identifiers exposed to the client
+METHODS = {
+    "sam3": "SAM3 (current baseline)",
+    "sot": "SOT VitTrack (method A)",
+    "sam2": "SAM2 ROI (method B)",
+    "roi_yolo": "ROI-YOLO (method C)",
+}
 
 # Provenance tags stored in each box's ObjectDetection.model field.
 PROV_LABELLER = "labeller"  # manual edit — ground truth, never auto-overwritten
@@ -67,12 +85,13 @@ class Session:
         self._tl_lock = threading.Lock()
 
     def load(self, video_path: str) -> dict:
+        p = Path(video_path).expanduser()
+        if not p.exists():
+            raise FileNotFoundError(p)
         self.bg.pause()
         self.bg = BackgroundLabeller()
-        self.video_path = Path(video_path).expanduser()
-        if not self.video_path.exists():
-            raise FileNotFoundError(self.video_path)
-        cap = cv2.VideoCapture(str(self.video_path))
+        self.video_path = p
+        cap = cv2.VideoCapture(str(p))
         try:
             self.fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
             self.total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
@@ -129,7 +148,12 @@ class Session:
             )
         return objs
 
-    def frame_jpeg(self, idx: int) -> bytes | None:
+    def frame_jpeg(self, idx: int, roi_box: tuple | None = None) -> bytes | None:
+        """Return JPEG for frame ``idx``.
+
+        If ``roi_box`` is given as (x, y, w, h) normalised, also renders a
+        second panel showing the ROI crop alongside the full frame (debug mode).
+        """
         if self.video_path is None:
             return None
         cap = cv2.VideoCapture(str(self.video_path))
@@ -140,8 +164,52 @@ class Session:
             cap.release()
         if not ok:
             return None
+        if roi_box is not None:
+            frame = _render_debug_frame(frame, roi_box)
         ok, buf = cv2.imencode(".jpg", frame)
         return buf.tobytes() if ok else None
+
+
+def _render_debug_frame(
+    frame: cv2.typing.MatLike,
+    roi_box: tuple,
+) -> cv2.typing.MatLike:
+    """Render full frame + ROI crop side by side for debug/dual-image mode."""
+    h, w = frame.shape[:2]
+    x, y, bw, bh = roi_box
+    x1 = max(0, int(x * w))
+    y1 = max(0, int(y * h))
+    x2 = min(w, int((x + bw) * w))
+    y2 = min(h, int((y + bh) * h))
+
+    # Draw ROI rectangle on full frame
+    annotated = frame.copy()
+    cv2.rectangle(annotated, (x1, y1), (x2, y2), (0, 255, 255), 2)
+
+    # Crop the ROI and scale to a quarter of the full frame height
+    crop = frame[y1:y2, x1:x2] if (x2 > x1 and y2 > y1) else frame[:64, :64]
+    panel_h = h // 2
+    panel_w = max(1, int(crop.shape[1] * panel_h / max(crop.shape[0], 1)))
+    crop_resized = cv2.resize(crop, (panel_w, panel_h))
+
+    # Pad crop to same height as full frame
+    crop_padded = cv2.copyMakeBorder(
+        crop_resized, 0, h - panel_h, 0, 0, cv2.BORDER_CONSTANT, value=(30, 30, 30)
+    )
+    # Make crop panel same width as needed, pad to w//2
+    target_w = w // 2
+    if crop_padded.shape[1] < target_w:
+        crop_padded = cv2.copyMakeBorder(
+            crop_padded, 0, 0, 0, target_w - crop_padded.shape[1],
+            cv2.BORDER_CONSTANT, value=(30, 30, 30)
+        )
+    else:
+        crop_padded = crop_padded[:, :target_w]
+
+    # Shrink full frame to same width
+    full_resized = cv2.resize(annotated, (target_w, h))
+    combined = cv2.hconcat([full_resized, crop_padded])
+    return combined
 
 
 SESSION = Session()
@@ -196,14 +264,30 @@ async def index() -> HTMLResponse:
     return HTMLResponse((_STATIC_DIR / "index.html").read_text())
 
 
+@app.get("/gt", response_class=HTMLResponse)
+async def gt_index() -> HTMLResponse:
+    return HTMLResponse((_STATIC_DIR / "gt.html").read_text())
+
+
 @app.post("/session/load")
 async def load_session(body: dict) -> dict:
-    return SESSION.load(body["video_path"])
+    try:
+        return SESSION.load(body["video_path"])
+    except FileNotFoundError as exc:
+        from fastapi import HTTPException  # noqa: PLC0415
+        raise HTTPException(status_code=404, detail=f"Video not found: {exc}")
 
 
 @app.get("/frame/{idx}.jpg")
-async def get_frame(idx: int) -> Response:
-    data = SESSION.frame_jpeg(idx)
+async def get_frame(idx: int, debug: int = 0) -> Response:
+    # debug=1: ask for dual-image if we have a last-known ROI
+    roi = None
+    if debug:
+        boxes = SESSION.get_frame(idx)
+        ball_box = next((b for b in boxes if "ball" in b.label.lower()), None)
+        if ball_box is not None:
+            roi = (ball_box.x, ball_box.y, ball_box.w, ball_box.h)
+    data = SESSION.frame_jpeg(idx, roi_box=roi)
     if data is None:
         return Response(status_code=404)
     return Response(content=data, media_type="image/jpeg")
@@ -263,6 +347,23 @@ async def edit_frame(body: dict) -> dict:
     boxes = _boxes_from_payload(body.get("objects", []), PROV_LABELLER)
     SESSION.set_frame(idx, boxes)
     return {"idx": idx, "boxes": _boxes_payload(SESSION.get_frame(idx))}
+
+
+@app.get("/methods")
+async def list_methods() -> dict:
+    """Return the available bake-off tracking methods."""
+    return {"methods": [{"id": k, "label": v} for k, v in METHODS.items()]}
+
+
+@app.get("/clips")
+async def list_clips() -> dict:
+    """List discoverable eval clips for the main labeller."""
+    clips: list[dict] = []
+    if _EVAL_CLIPS_DIR.exists():
+        for p in sorted(_EVAL_CLIPS_DIR.iterdir()):
+            if p.suffix.lower() in _VIDEO_SUFFIXES:
+                clips.append({"name": p.stem, "path": str(p)})
+    return {"clips": clips, "clips_dir": str(_EVAL_CLIPS_DIR)}
 
 
 # ----------------------------------------------------------------------------
@@ -359,13 +460,13 @@ async def ws(websocket: WebSocket) -> None:
                         await streamer
                 bg = SESSION.bg
                 start_frame = int(msg.get("start_frame", 0))
+                method = msg.get("method", "sam3")
                 # Seed from the TIMELINE at the start frame (the single source of
-                # truth) — not from whatever the client happens to send. This is
-                # what makes "restart from frame N" deterministic.
+                # truth) — not from whatever the client happens to send.
                 objects = SESSION.seed_objects(start_frame)
                 print(
                     f"[ws] {mtype}: start_frame={start_frame} "
-                    f"seed_objects={len(objects)} (from timeline)",
+                    f"seed_objects={len(objects)} method={method} (from timeline)",
                     flush=True,
                 )
                 if not objects:
@@ -376,16 +477,43 @@ async def ws(websocket: WebSocket) -> None:
                         }
                     )
                     continue
-                await asyncio.to_thread(
-                    bg.submit,
-                    SESSION.video_path,
-                    objects,
-                    msg.get("model_uri") or None,
-                    float(msg.get("conf", 0.25)),
-                    start_frame,
-                    int(msg.get("imgsz", 512)),
-                )
-                streamer = asyncio.create_task(stream_frames(start_frame))
+
+                if method == "sam3":
+                    await asyncio.to_thread(
+                        bg.submit,
+                        SESSION.video_path,
+                        objects,
+                        msg.get("model_uri") or None,
+                        float(msg.get("conf", 0.25)),
+                        start_frame,
+                        int(msg.get("imgsz", 512)),
+                    )
+                    streamer = asyncio.create_task(stream_frames(start_frame))
+                else:
+                    # Non-SAM3 bake-off method: run frame-by-frame via helper
+                    ball_box = next(
+                        (
+                            (o.bbox_xyxy_abs[0] / SESSION.width,
+                             o.bbox_xyxy_abs[1] / SESSION.height,
+                             (o.bbox_xyxy_abs[2] - o.bbox_xyxy_abs[0]) / SESSION.width,
+                             (o.bbox_xyxy_abs[3] - o.bbox_xyxy_abs[1]) / SESSION.height)
+                            for o in objects
+                            if "ball" in o.label.lower() and o.bbox_xyxy_abs
+                        ),
+                        None,
+                    )
+                    if ball_box is None:
+                        # Fall back to first object
+                        o = objects[0]
+                        if o.bbox_xyxy_abs:
+                            x1, y1, x2, y2 = o.bbox_xyxy_abs
+                            ball_box = (
+                                x1 / SESSION.width, y1 / SESSION.height,
+                                (x2 - x1) / SESSION.width, (y2 - y1) / SESSION.height,
+                            )
+                    streamer = asyncio.create_task(
+                        _stream_bakeoff(websocket, method, start_frame, ball_box)
+                    )
 
             elif mtype == "pause":
                 SESSION.bg.pause()
@@ -399,6 +527,242 @@ async def ws(websocket: WebSocket) -> None:
         SESSION.bg.pause()
         if streamer and not streamer.done():
             streamer.cancel()
+
+
+async def _stream_bakeoff(
+    websocket: WebSocket,
+    method: str,
+    start_frame: int,
+    seed_bbox: tuple | None,
+) -> None:
+    """Run a non-SAM3 bake-off tracker frame-by-frame and stream results."""
+    try:
+        tracker = _build_bakeoff_tracker(method)
+    except ImportError as exc:
+        await websocket.send_json(
+            {"type": "error", "message": f"Method {method!r} unavailable: {exc}"}
+        )
+        return
+
+    await websocket.send_json({"type": "status", "state": "running"})
+    total = SESSION.total_frames
+    cap = cv2.VideoCapture(str(SESSION.video_path))
+    cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
+    prev_bbox = seed_bbox
+    try:
+        for abs_idx in range(start_frame, total):
+            ok, bgr = cap.read()
+            if not ok:
+                break
+            frame_rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
+            try:
+                result_bbox = await asyncio.to_thread(tracker.track, prev_bbox, frame_rgb)
+            except Exception as exc:  # noqa: BLE001
+                await websocket.send_json(
+                    {"type": "error", "message": f"Tracker error at frame {abs_idx}: {exc}"}
+                )
+                break
+            boxes: list[dict] = []
+            if result_bbox is not None:
+                x, y, w, h = result_bbox
+                boxes = [{"label": "ball", "x": x, "y": y, "w": w, "h": h,
+                          "conf": 1.0, "source": method}]
+                prev_bbox = result_bbox
+                # Persist to timeline
+                SESSION.merge_propagated(
+                    abs_idx,
+                    [ObjectDetection(
+                        label="ball", confidence=1.0,
+                        x=x, y=y, w=w, h=h, model=method,
+                    )],
+                )
+            await websocket.send_json({"type": "frame", "idx": abs_idx, "boxes": boxes})
+    finally:
+        cap.release()
+    await websocket.send_json({"type": "done", "last_frame": abs_idx})
+    await websocket.send_json({"type": "status", "state": "idle"})
+
+
+def _build_bakeoff_tracker(method: str):
+    """Instantiate a bake-off tracker by method id. Raises ImportError if unavailable."""
+    if method == "sot":
+        from footy_track.ball_trackers.sot_vittrack import VitTrackSOT  # noqa: PLC0415
+        return VitTrackSOT()
+    if method == "sam2":
+        from footy_track.ball_tracking.sam2_tracker import SAM2Tracker  # noqa: PLC0415
+        return SAM2Tracker()
+    if method == "roi_yolo":
+        from footy_track.ball_trackers.roi_yolo import ROIYOLOTracker  # noqa: PLC0415
+        return ROIYOLOTracker()
+    raise ImportError(f"Unknown bake-off method: {method!r}")
+
+
+# ----------------------------------------------------------------------------
+# Ball GT marking mode  (/gt  — browser-based ball-center marking)
+# ----------------------------------------------------------------------------
+
+
+class GTSession:
+    """State for the ball-center GT marking session."""
+
+    def __init__(self) -> None:
+        self.video_path: Path | None = None
+        self.total_frames: int = 0
+        self.width: int = 0
+        self.height: int = 0
+        self.fps: float = 25.0
+        self.labels: dict[int, FrameLabel] = {}  # frame_index -> FrameLabel
+        self._lock = threading.Lock()
+
+    def load(self, video_path: Path) -> dict:
+        if not video_path.exists():
+            raise FileNotFoundError(video_path)
+        cap = cv2.VideoCapture(str(video_path))
+        try:
+            self.fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
+            self.total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+            self.width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+            self.height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        finally:
+            cap.release()
+        self.video_path = video_path
+        # Load existing labels if sidecar exists (resumable)
+        jsonl = video_path.with_suffix(".jsonl")
+        with self._lock:
+            self.labels = {}
+            if jsonl.exists():
+                with jsonl.open() as f:
+                    for line in f:
+                        line = line.strip()
+                        if line:
+                            d = json.loads(line)
+                            lbl = FrameLabel.from_dict(d)
+                            self.labels[lbl.frame_index] = lbl
+        return {
+            "fps": self.fps,
+            "total_frames": self.total_frames,
+            "width": self.width,
+            "height": self.height,
+            "clip_name": video_path.stem,
+            "existing_marks": len(self.labels),
+        }
+
+    def mark_center(self, frame_index: int, cx: float, cy: float) -> None:
+        """Record a ball center mark and flush to JSONL incrementally."""
+        lbl = FrameLabel(frame_index=frame_index, bbox=None, tags=(), center=(cx, cy))
+        with self._lock:
+            self.labels[frame_index] = lbl
+            self._flush()
+
+    def mark_absent(self, frame_index: int) -> None:
+        """Record ball-not-visible and flush incrementally."""
+        lbl = FrameLabel(
+            frame_index=frame_index, bbox=None, tags=("ball_not_visible",), center=None
+        )
+        with self._lock:
+            self.labels[frame_index] = lbl
+            self._flush()
+
+    def unmark(self, frame_index: int) -> None:
+        """Remove the mark for a frame."""
+        with self._lock:
+            self.labels.pop(frame_index, None)
+            self._flush()
+
+    def _flush(self) -> None:
+        """Write all labels to the sidecar JSONL (must hold _lock)."""
+        if self.video_path is None:
+            return
+        out = self.video_path.with_suffix(".jsonl")
+        sorted_labels = [self.labels[k] for k in sorted(self.labels)]
+        write_labels(sorted_labels, out)
+
+    def get_marks(self) -> list[dict]:
+        with self._lock:
+            return [lbl.to_dict() for lbl in self.labels.values()]
+
+    def frame_jpeg(self, idx: int) -> bytes | None:
+        if self.video_path is None:
+            return None
+        cap = cv2.VideoCapture(str(self.video_path))
+        try:
+            cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
+            ok, frame = cap.read()
+        finally:
+            cap.release()
+        if not ok:
+            return None
+        ok, buf = cv2.imencode(".jpg", frame)
+        return buf.tobytes() if ok else None
+
+
+GT_SESSION = GTSession()
+
+
+def _list_eval_clips() -> list[dict]:
+    """Return clips in eval_data/clips/ that have a matching video file."""
+    if not _EVAL_CLIPS_DIR.exists():
+        return []
+    clips = []
+    for p in sorted(_EVAL_CLIPS_DIR.iterdir()):
+        if p.suffix.lower() in _VIDEO_SUFFIXES:
+            jsonl = p.with_suffix(".jsonl")
+            mark_count = 0
+            if jsonl.exists():
+                with jsonl.open() as f:
+                    mark_count = sum(1 for line in f if line.strip())
+            clips.append({"name": p.stem, "path": str(p), "marks": mark_count})
+    return clips
+
+
+@app.get("/gt/clips")
+async def gt_list_clips() -> dict:
+    clips = await asyncio.to_thread(_list_eval_clips)
+    return {"clips": clips, "clips_dir": str(_EVAL_CLIPS_DIR)}
+
+
+@app.post("/gt/load")
+async def gt_load(body: dict) -> dict:
+    path = Path(body["path"]).expanduser()
+    try:
+        result = await asyncio.to_thread(GT_SESSION.load, path)
+    except FileNotFoundError:
+        from fastapi import HTTPException  # noqa: PLC0415
+        raise HTTPException(status_code=404, detail=f"File not found: {path}")
+    return result
+
+
+@app.get("/gt/frame/{idx}.jpg")
+async def gt_frame(idx: int) -> Response:
+    data = await asyncio.to_thread(GT_SESSION.frame_jpeg, idx)
+    if data is None:
+        return Response(status_code=404)
+    return Response(content=data, media_type="image/jpeg")
+
+
+@app.get("/gt/marks")
+async def gt_get_marks() -> dict:
+    return {"marks": GT_SESSION.get_marks()}
+
+
+@app.post("/gt/mark")
+async def gt_mark(body: dict) -> dict:
+    """Mark ball center (cx, cy normalised) or mark as absent."""
+    idx = int(body["frame_index"])
+    if body.get("absent"):
+        await asyncio.to_thread(GT_SESSION.mark_absent, idx)
+    else:
+        cx = float(body["cx"])
+        cy = float(body["cy"])
+        await asyncio.to_thread(GT_SESSION.mark_center, idx, cx, cy)
+    return {"frame_index": idx, "total_marks": len(GT_SESSION.labels)}
+
+
+@app.post("/gt/unmark")
+async def gt_unmark(body: dict) -> dict:
+    idx = int(body["frame_index"])
+    await asyncio.to_thread(GT_SESSION.unmark, idx)
+    return {"frame_index": idx, "total_marks": len(GT_SESSION.labels)}
 
 
 # Mount static assets (JS/CSS) if any beyond index.html.

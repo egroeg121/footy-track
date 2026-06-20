@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Ball GT Marking</title>
+<style>
+  :root { --bg:#0f1419; --panel:#1a2129; --ink:#e6edf3; --muted:#9bb0c0;
+          --accent:#1e90ff; --green:#3fb950; --red:#f85149; --yellow:#ffc800;
+          --border:#2d3742; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink);
+         font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+  header { padding:10px 16px; border-bottom:1px solid var(--border);
+           display:flex; align-items:center; gap:16px; }
+  header h1 { margin:0; font-size:18px; }
+  header a { color:var(--muted); font-size:12px; text-decoration:none; }
+  header a:hover { color:var(--accent); }
+  .wrap { display:grid; grid-template-columns:240px 1fr 280px; gap:12px; padding:12px 16px; }
+  button, select { background:#0d1620; color:var(--ink); border:1px solid var(--border);
+    border-radius:6px; padding:6px 10px; font-size:13px; cursor:pointer; }
+  button.primary { background:var(--accent); border-color:var(--accent); color:#fff; }
+  button.danger  { background:var(--red); border-color:var(--red); color:#fff; }
+  button:disabled { opacity:.4; cursor:not-allowed; }
+  .panel { background:var(--panel); border:1px solid var(--border); border-radius:8px; padding:10px; }
+  .panel h3 { margin:0 0 8px; font-size:13px; color:var(--muted); text-transform:uppercase; letter-spacing:.05em; }
+  .clip-item { padding:6px 8px; border-radius:6px; cursor:pointer; font-size:13px; margin-bottom:4px; }
+  .clip-item:hover { background:#243040; }
+  .clip-item.active { background:rgba(30,144,255,.2); border:1px solid var(--accent); }
+  .clip-marks { float:right; font-size:11px; color:var(--green); }
+  #canvas-wrap { position:relative; border:1px solid var(--border); border-radius:8px; overflow:hidden;
+                 background:#000; cursor:crosshair; user-select:none; }
+  #canvas-wrap img { display:block; width:100%; height:auto; }
+  #overlay { position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none; }
+  .mark-dot { position:absolute; width:12px; height:12px; border-radius:50%;
+              background:var(--yellow); border:2px solid #fff;
+              transform:translate(-50%,-50%); pointer-events:none; }
+  .mark-dot.absent { background:var(--red); }
+  .row { display:flex; gap:8px; align-items:center; margin-bottom:8px; flex-wrap:wrap; }
+  .grow { flex:1; }
+  #progress-bar { height:6px; background:#243040; border-radius:3px; margin-bottom:8px; }
+  #progress-fill { height:100%; background:var(--green); border-radius:3px; transition:width .2s; }
+  #frame-lbl { font-size:12px; color:var(--muted); }
+  #status { font-size:12px; color:var(--muted); }
+  #mark-list { max-height:400px; overflow:auto; font-size:12px; }
+  .mark-row { display:flex; gap:6px; align-items:center; padding:3px 0;
+              border-bottom:1px solid var(--border); }
+  .mark-row .fi { width:40px; color:var(--muted); }
+  .mark-row .coord { flex:1; font-family:monospace; font-size:11px; }
+  .mark-row .tag { color:var(--red); font-size:10px; }
+  .mark-row .del { color:var(--red); cursor:pointer; padding:0 4px; }
+  #hint { font-size:12px; color:var(--muted); margin-bottom:8px; }
+  input[type=range] { width:100%; accent-color:var(--accent); }
+  .kbd { display:inline-block; background:#243040; border:1px solid var(--border);
+         border-radius:3px; padding:1px 5px; font-size:11px; font-family:monospace; }
+</style>
+</head>
+<body>
+<header>
+  <h1>⚽ Ball GT Marking</h1>
+  <span style="color:var(--muted);font-size:12px">Click the ball center on each frame • Arrow keys to navigate • N = no ball visible</span>
+  <span class="grow"></span>
+  <a href="/">← Back to SAM3 Labeller</a>
+</header>
+
+<div class="wrap">
+  <!-- Clip picker -->
+  <div class="panel">
+    <h3>Eval Clips</h3>
+    <div id="clip-list"><span style="color:var(--muted);font-size:12px">Loading…</span></div>
+    <div style="margin-top:8px;">
+      <div style="font-size:11px;color:var(--muted);margin-bottom:4px;">Or enter path:</div>
+      <input type="text" id="clip-path" placeholder="/path/to/clip.mp4"
+        style="width:100%;background:#0d1620;color:var(--ink);border:1px solid var(--border);
+               border-radius:6px;padding:5px 8px;font-size:12px;" />
+      <button class="primary" id="load-path-btn" style="width:100%;margin-top:4px;">Load</button>
+    </div>
+    <div style="margin-top:12px;font-size:11px;color:var(--muted);">
+      Drop clips at:<br/>
+      <code style="font-size:10px;" id="clips-dir">eval_data/clips/</code>
+    </div>
+  </div>
+
+  <!-- Canvas -->
+  <div>
+    <div id="hint">Load a clip to begin marking.</div>
+    <div id="canvas-wrap">
+      <img id="frame-img" src="" alt="" style="display:none;" />
+      <div id="overlay"></div>
+    </div>
+    <div style="margin-top:8px;">
+      <div id="progress-bar"><div id="progress-fill" style="width:0%"></div></div>
+      <div class="row">
+        <button id="prev-btn" disabled>⬅️ Prev</button>
+        <input type="range" id="scrub" min="0" max="0" value="0" disabled class="grow" />
+        <button id="next-btn" disabled>Next ➡️</button>
+        <span id="frame-lbl" class="muted">—</span>
+      </div>
+      <div class="row" style="margin-top:4px;">
+        <button id="mark-absent-btn" disabled>🚫 No ball visible <kbd class="kbd">N</kbd></button>
+        <button id="unmark-btn" disabled>✕ Unmark this frame</button>
+        <span class="grow"></span>
+        <span id="status">no clip loaded</span>
+      </div>
+    </div>
+    <div style="margin-top:8px;font-size:12px;color:var(--muted);">
+      <strong>Keys:</strong>
+      <kbd class="kbd">←</kbd><kbd class="kbd">→</kbd> navigate •
+      <kbd class="kbd">N</kbd> no ball visible •
+      <kbd class="kbd">U</kbd> unmark frame •
+      <strong>Click</strong> = mark ball center
+    </div>
+  </div>
+
+  <!-- Mark list -->
+  <div class="panel">
+    <h3>Marks <span id="mark-count" style="color:var(--green)">0</span></h3>
+    <div id="mark-list"><span style="color:var(--muted);font-size:12px">No marks yet.</span></div>
+    <div style="margin-top:8px;">
+      <div id="mark-summary" style="font-size:12px;color:var(--muted);"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+let meta = null;       // {fps,total_frames,width,height,clip_name}
+let viewFrame = 0;
+let marks = {};        // frame_index -> {frame_index,bbox,center,tags}
+let dispW = 0, dispH = 0;
+let loading = false;
+
+const img = document.getElementById("frame-img");
+const overlay = document.getElementById("overlay");
+const scrub = document.getElementById("scrub");
+const prevBtn = document.getElementById("prev-btn");
+const nextBtn = document.getElementById("next-btn");
+const markAbsentBtn = document.getElementById("mark-absent-btn");
+const unmarkBtn = document.getElementById("unmark-btn");
+
+// ---------- load clips list ----------
+async function loadClipsList() {
+  const res = await fetch("/gt/clips");
+  const data = await res.json();
+  document.getElementById("clips-dir").textContent = data.clips_dir;
+  const list = document.getElementById("clip-list");
+  if (!data.clips.length) {
+    list.innerHTML = '<span style="color:var(--muted);font-size:12px">No clips found in eval_data/clips/.<br/>Drop .mp4 files there to begin.</span>';
+    return;
+  }
+  list.innerHTML = "";
+  data.clips.forEach(c => {
+    const div = document.createElement("div");
+    div.className = "clip-item";
+    div.innerHTML = `<span>${c.name}</span><span class="clip-marks">${c.marks > 0 ? c.marks + " ✓" : ""}</span>`;
+    div.onclick = () => loadClip(c.path, div);
+    list.appendChild(div);
+  });
+}
+
+loadClipsList();
+document.getElementById("load-path-btn").onclick = () => {
+  const p = document.getElementById("clip-path").value.trim();
+  if (p) loadClip(p, null);
+};
+
+async function loadClip(path, clickedEl) {
+  if (loading) return;
+  loading = true;
+  setStatus("loading…");
+  // Highlight active clip
+  document.querySelectorAll(".clip-item").forEach(el => el.classList.remove("active"));
+  if (clickedEl) clickedEl.classList.add("active");
+  try {
+    const res = await fetch("/gt/load", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({path})});
+    if (!res.ok) {
+      const err = await res.json().catch(()=>({}));
+      setStatus("load failed: " + (err.detail || res.status));
+      return;
+    }
+    meta = await res.json();
+    viewFrame = 0;
+    scrub.max = meta.total_frames - 1;
+    scrub.value = 0;
+    scrub.disabled = false;
+    prevBtn.disabled = false;
+    nextBtn.disabled = false;
+    markAbsentBtn.disabled = false;
+    unmarkBtn.disabled = false;
+    img.style.display = "";
+    // Load existing marks
+    const mres = await fetch("/gt/marks");
+    const mdata = await mres.json();
+    marks = {};
+    mdata.marks.forEach(m => { marks[m.frame_index] = m; });
+    await showFrame(0);
+    setStatus(`loaded · ${meta.total_frames} frames · ${meta.existing_marks} existing marks`);
+    renderMarkList();
+    updateProgress();
+  } finally {
+    loading = false;
+  }
+}
+
+// ---------- frame display ----------
+async function showFrame(idx) {
+  viewFrame = idx;
+  scrub.value = idx;
+  document.getElementById("frame-lbl").textContent = `Frame ${idx} / ${meta ? meta.total_frames-1 : "?"}`;
+  img.src = `/gt/frame/${idx}.jpg?ts=${Date.now()}`;
+  img.onload = () => {
+    dispW = img.clientWidth || img.naturalWidth;
+    dispH = img.clientHeight || img.naturalHeight;
+    renderOverlay();
+  };
+}
+
+function renderOverlay() {
+  overlay.innerHTML = "";
+  // Scale overlay to img size
+  overlay.style.width = img.clientWidth + "px";
+  overlay.style.height = img.clientHeight + "px";
+  const mark = marks[viewFrame];
+  if (!mark) return;
+  if (mark.center) {
+    const [cx, cy] = mark.center;
+    const dot = document.createElement("div");
+    dot.className = "mark-dot";
+    dot.style.left = (cx * img.clientWidth) + "px";
+    dot.style.top  = (cy * img.clientHeight) + "px";
+    overlay.appendChild(dot);
+  } else if (mark.tags && mark.tags.includes("ball_not_visible")) {
+    const dot = document.createElement("div");
+    dot.className = "mark-dot absent";
+    dot.style.left = "16px";
+    dot.style.top = "16px";
+    overlay.appendChild(dot);
+  }
+}
+
+// ---------- click to mark ----------
+document.getElementById("canvas-wrap").addEventListener("click", async (e) => {
+  if (!meta) return;
+  const rect = img.getBoundingClientRect();
+  if (e.clientX < rect.left || e.clientX > rect.right ||
+      e.clientY < rect.top  || e.clientY > rect.bottom) return;
+  const cx = (e.clientX - rect.left) / rect.width;
+  const cy = (e.clientY - rect.top)  / rect.height;
+  await markCenter(viewFrame, cx, cy);
+});
+
+async function markCenter(idx, cx, cy) {
+  const res = await fetch("/gt/mark",{method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({frame_index:idx, cx, cy})});
+  const data = await res.json();
+  marks[idx] = {frame_index:idx, bbox:null, center:[cx,cy], tags:[]};
+  renderOverlay();
+  renderMarkList();
+  updateProgress();
+  setStatus(`Mark ${data.total_marks} total · frame ${idx} marked`);
+  // Auto-advance to next unmarked frame
+  autoAdvance(idx);
+}
+
+async function markAbsent(idx) {
+  const res = await fetch("/gt/mark",{method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({frame_index:idx, absent:true})});
+  const data = await res.json();
+  marks[idx] = {frame_index:idx, bbox:null, center:null, tags:["ball_not_visible"]};
+  renderOverlay();
+  renderMarkList();
+  updateProgress();
+  setStatus(`Mark ${data.total_marks} total · frame ${idx} = no ball`);
+  autoAdvance(idx);
+}
+
+async function unmarkFrame(idx) {
+  const res = await fetch("/gt/unmark",{method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({frame_index:idx})});
+  const data = await res.json();
+  delete marks[idx];
+  renderOverlay();
+  renderMarkList();
+  updateProgress();
+  setStatus(`Unmarked frame ${idx} · ${data.total_marks} marks remain`);
+}
+
+function autoAdvance(fromIdx) {
+  if (!meta) return;
+  // Jump to next frame every 5 frames (sparse marking mode)
+  const next = fromIdx + 5;
+  if (next < meta.total_frames) {
+    gotoFrame(next);
+  }
+}
+
+markAbsentBtn.onclick = () => { if (meta) markAbsent(viewFrame); };
+unmarkBtn.onclick = () => { if (meta) unmarkFrame(viewFrame); };
+
+// ---------- navigation ----------
+scrub.oninput = (e) => gotoFrame(parseInt(e.target.value));
+prevBtn.onclick = () => gotoFrame(Math.max(0, viewFrame-1));
+nextBtn.onclick = () => gotoFrame(Math.min(meta.total_frames-1, viewFrame+1));
+
+function gotoFrame(idx) {
+  if (!meta) return;
+  idx = Math.max(0, Math.min(meta.total_frames-1, idx));
+  showFrame(idx);
+}
+
+window.addEventListener("keydown", (e) => {
+  if (!meta) return;
+  if (e.target.tagName === "INPUT") return;
+  if (e.key === "ArrowLeft")  { e.preventDefault(); gotoFrame(viewFrame-1); }
+  if (e.key === "ArrowRight") { e.preventDefault(); gotoFrame(viewFrame+1); }
+  if (e.key === "n" || e.key === "N") { e.preventDefault(); markAbsent(viewFrame); }
+  if (e.key === "u" || e.key === "U") { e.preventDefault(); unmarkFrame(viewFrame); }
+});
+
+// ---------- mark list ----------
+function renderMarkList() {
+  const list = document.getElementById("mark-list");
+  const keys = Object.keys(marks).map(Number).sort((a,b)=>a-b);
+  document.getElementById("mark-count").textContent = keys.length;
+  if (!keys.length) {
+    list.innerHTML = '<span style="color:var(--muted);font-size:12px">No marks yet.</span>';
+    return;
+  }
+  list.innerHTML = "";
+  keys.slice(-50).forEach(fi => {  // show last 50
+    const m = marks[fi];
+    const row = document.createElement("div");
+    row.className = "mark-row";
+    const isAbsent = m.tags && m.tags.includes("ball_not_visible");
+    const coordText = isAbsent ? "no ball" :
+      (m.center ? `(${m.center[0].toFixed(3)}, ${m.center[1].toFixed(3)})` : "");
+    row.innerHTML = `
+      <span class="fi">f${fi}</span>
+      <span class="coord">${coordText}</span>
+      ${isAbsent ? '<span class="tag">absent</span>' : ""}
+      <span class="del" onclick="unmarkFrame(${fi})" title="Remove">✕</span>
+    `;
+    row.onclick = (e) => { if (e.target.classList.contains("del")) return; gotoFrame(fi); };
+    list.appendChild(row);
+  });
+  if (keys.length > 50) {
+    const more = document.createElement("div");
+    more.style.cssText = "color:var(--muted);font-size:11px;padding:4px 0;";
+    more.textContent = `+ ${keys.length - 50} more (showing latest 50)`;
+    list.prepend(more);
+  }
+  // scroll to bottom
+  list.scrollTop = list.scrollHeight;
+}
+
+function updateProgress() {
+  if (!meta) return;
+  const total = meta.total_frames;
+  const marked = Object.keys(marks).length;
+  const pct = total > 0 ? (marked / total * 100) : 0;
+  document.getElementById("progress-fill").style.width = Math.min(pct, 100) + "%";
+  document.getElementById("mark-summary").textContent =
+    `${marked} marks / ${total} frames (${pct.toFixed(1)}%)`;
+}
+
+function setStatus(s) { document.getElementById("status").textContent = s; }
+</script>
+</body>
+</html>

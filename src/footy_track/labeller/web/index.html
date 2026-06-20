@@ -10,8 +10,11 @@
   * { box-sizing:border-box; }
   body { margin:0; background:var(--bg); color:var(--ink);
          font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
-  header { padding:10px 16px; border-bottom:1px solid var(--border); }
+  header { padding:10px 16px; border-bottom:1px solid var(--border);
+           display:flex; align-items:center; gap:16px; }
   header h1 { margin:0; font-size:18px; }
+  header a { color:var(--muted); font-size:12px; text-decoration:none; }
+  header a:hover { color:var(--accent); }
   .wrap { display:grid; grid-template-columns:1fr 280px; gap:14px; padding:14px 16px; }
   .toolbar { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:8px; }
   button, select, input[type=text] {
@@ -19,7 +22,7 @@
     border-radius:6px; padding:6px 10px; font-size:13px; cursor:pointer; }
   button.primary { background:var(--accent); border-color:var(--accent); color:#fff; }
   button:disabled { opacity:.4; cursor:not-allowed; }
-  input[type=text] { cursor:text; min-width:380px; }
+  input[type=text] { cursor:text; min-width:340px; }
   #stageWrap { border:1px solid var(--border); border-radius:8px; overflow:hidden;
                background:#000; width:100%; }
   .row { display:flex; gap:8px; align-items:center; margin-bottom:8px; }
@@ -40,18 +43,28 @@
   .seg { display:inline-flex; border:1px solid var(--border); border-radius:6px; overflow:hidden; }
   .seg button { border:none; border-radius:0; }
   .seg button.on { background:var(--accent); color:#fff; }
+  #clip-suggestions { font-size:11px; color:var(--muted); margin-top:4px; }
+  #clip-suggestions span { cursor:pointer; color:var(--accent); text-decoration:underline; margin-right:8px; }
+  .debug-badge { background:#243040; border:1px solid var(--border); border-radius:4px;
+                 padding:2px 6px; font-size:11px; color:var(--muted); }
+  .debug-badge.on { background:rgba(63,185,80,.2); border-color:var(--green); color:var(--green); }
 </style>
 </head>
 <body>
-<header><h1>⚽ SAM3 Video Labeller</h1></header>
+<header>
+  <h1>⚽ SAM3 Video Labeller</h1>
+  <span class="grow"></span>
+  <a href="/gt">🎯 Ball GT Marking →</a>
+</header>
 
-<div class="row" style="padding:0 16px;">
+<div class="row" style="padding:8px 16px 0;">
   <input type="text" id="videoPath" placeholder="/path/to/video.mp4" />
   <button id="loadBtn" class="primary">Load</button>
   <span id="status">no video</span>
 </div>
+<div id="clip-suggestions" style="padding:0 16px 8px;"></div>
 <div class="row" style="padding:0 16px 8px;">
-  <input type="text" id="modelPath" placeholder="SAM3 checkpoint path (blank = default sam3.1_multiplex.pt)" />
+  <input type="text" id="modelPath" placeholder="SAM3 checkpoint path (blank = default)" style="min-width:280px;" />
   <span class="muted">leave blank for default</span>
 </div>
 
@@ -72,6 +85,10 @@
           <option value="1280">1280</option>
         </select>
       </label>
+      <label class="muted" style="margin-left:8px;" title="Tracking method to use when you click Run">method
+        <select id="methodSel"></select>
+      </label>
+      <button id="debugBtn" class="debug-badge" title="Toggle dual-image debug mode (show ROI crop alongside full frame)">🔍 Debug</button>
       <span class="grow"></span>
       <button id="runBtn" class="primary" disabled>▶️ Run</button>
       <button id="restartBtn" class="primary" style="display:none">▶️ Restart from frame 0</button>
@@ -111,6 +128,7 @@ let viewFrame = 0;          // currently shown frame index
 let mode = "idle";          // idle | running | paused
 let lastCompleted = -1;
 let ws = null;
+let debugMode = false;      // show ROI crop alongside full frame
 
 // --- Konva setup ---
 const stage = new Konva.Stage({ container: "stageWrap", width: 100, height: 100 });
@@ -126,12 +144,49 @@ const classSel = document.getElementById("classSel");
 CLASSES.forEach(c => { const o=document.createElement("option"); o.value=c; o.textContent=c; classSel.appendChild(o); });
 classSel.value = "ball";
 
+// method dropdown — populated from /methods
+const methodSel = document.getElementById("methodSel");
+fetch("/methods").then(r=>r.json()).then(data=>{
+  data.methods.forEach(m => {
+    const o = document.createElement("option");
+    o.value = m.id; o.textContent = m.label;
+    methodSel.appendChild(o);
+  });
+  methodSel.value = localStorage.getItem("lastMethod") || "sam3";
+}).catch(()=>{
+  const o = document.createElement("option"); o.value="sam3"; o.textContent="SAM3 (default)";
+  methodSel.appendChild(o);
+});
+methodSel.onchange = () => localStorage.setItem("lastMethod", methodSel.value);
+
+// clip suggestions from eval_data/clips/
+fetch("/clips").then(r=>r.json()).then(data=>{
+  const el = document.getElementById("clip-suggestions");
+  if (data.clips && data.clips.length) {
+    el.innerHTML = "Quick load: " + data.clips.map(c =>
+      `<span onclick="quickLoad('${c.path.replace(/'/g,"\\'")}')">📹 ${c.name}</span>`
+    ).join("");
+  }
+}).catch(()=>{});
+
+function quickLoad(path) {
+  document.getElementById("videoPath").value = path;
+  document.getElementById("loadBtn").click();
+}
+
+// debug toggle
+const debugBtn = document.getElementById("debugBtn");
+debugBtn.onclick = () => {
+  debugMode = !debugMode;
+  debugBtn.classList.toggle("on", debugMode);
+  if (meta) showFrame(viewFrame);  // reload with/without ROI
+};
+
 // ---------- helpers ----------
 function $(id){ return document.getElementById(id); }
 function setStatus(s){ $("status").textContent = s; }
 
 function boxesNorm() {
-  // Only our labelled boxes (name="box") — NOT the Transformer's handle rects.
   return boxLayer.find(".box").map(r => ({
     label: r.getAttr("label"),
     x: r.x()/dispW, y: r.y()/dispH,
@@ -150,7 +205,6 @@ function addRect(label, x, y, w, h, editable) {
     r.on("transformend dragend", () => { normalizeScale(r); renderList(); });
   }
   boxLayer.add(r);
-  // number label
   const t = new Konva.Text({ x:x+2, y:Math.max(0,y-16), text:"", fontSize:13,
     fontStyle:"bold", fill:colorOf(label), name:"num" });
   r.setAttr("numText", t);
@@ -158,7 +212,7 @@ function addRect(label, x, y, w, h, editable) {
   return r;
 }
 
-function normalizeScale(r){ // fold scale into width/height so reads are simple
+function normalizeScale(r){
   r.width(Math.max(4, r.width()*r.scaleX())); r.height(Math.max(4, r.height()*r.scaleY()));
   r.scaleX(1); r.scaleY(1);
 }
@@ -213,13 +267,14 @@ async function showFrame(idx){
   viewFrame = idx;
   $("frameLbl").textContent = `Frame ${idx}` + (meta?` / ${meta.total_frames-1}`:"");
   $("scrub").value = idx;
+  const debugParam = debugMode ? "?debug=1" : "";
   const img = new Image();
   img.onload = () => {
     if (bgImage) bgImage.destroy();
     bgImage = new Konva.Image({ image: img, width: dispW, height: dispH });
     bgLayer.add(bgImage); bgImage.moveToBottom(); bgLayer.draw();
   };
-  img.src = `/frame/${idx}.jpg?ts=${Date.now()}`;
+  img.src = `/frame/${idx}.jpg${debugParam}&ts=${Date.now()}`;
 }
 
 function fitStage(){
@@ -265,16 +320,20 @@ window.addEventListener("keydown",(e)=>{
 });
 
 // ---------- load ----------
-// Restore the last-used video path so it's pre-filled next time.
 $("videoPath").value = localStorage.getItem("lastVideoPath") || "";
 
 $("loadBtn").onclick = async ()=>{
   let path = $("videoPath").value.trim();
   if ((path.startsWith("'")&&path.endsWith("'"))||(path.startsWith('"')&&path.endsWith('"'))) path=path.slice(1,-1);
+  if (!path) return;
   localStorage.setItem("lastVideoPath", path);
   setStatus("loading…");
   const res = await fetch("/session/load",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({video_path:path})});
-  if(!res.ok){ setStatus("load failed"); return; }
+  if(!res.ok){
+    const err = await res.json().catch(()=>({}));
+    setStatus("load failed: " + (err.detail || "file not found"));
+    return;
+  }
   meta = await res.json();
   fitStage(); await showFrame(0);
   mode="idle"; lastCompleted=-1;
@@ -289,7 +348,7 @@ async function autodetect(frameIdx){
   setStatus("auto-detecting…");
   const res = await fetch("/autodetect",{method:"POST",headers:{"Content-Type":"application/json"},
     body:JSON.stringify({frame_idx:frameIdx, conf:0.35, iou:0.5})});
-  const data = await res.json();   // writes to timeline server-side
+  const data = await res.json();
   drawBoxes(data.boxes, true);
   setStatus(`auto-detected ${data.boxes.length} objects`);
 }
@@ -300,9 +359,6 @@ $("scrub").oninput = (e)=>gotoFrame(parseInt(e.target.value));
 $("prevBtn").onclick = ()=>gotoFrame(Math.max(0, viewFrame-1));
 $("nextBtn").onclick = ()=>gotoFrame(Math.min(meta.total_frames-1, viewFrame+1));
 
-// The server timeline is the single source of truth. When leaving an editable
-// frame we POST the current boxes to /edit (labeller ground truth); when
-// entering a frame we GET /timeline/{idx} and render it.
 async function saveCurrentEdits(){
   if ((mode==="paused"||mode==="idle_results") && viewFrame!=null){
     await fetch("/edit",{method:"POST",headers:{"Content-Type":"application/json"},
@@ -316,13 +372,11 @@ async function loadTimelineFrame(idx, editable){
 }
 
 async function gotoFrame(idx){
-  await saveCurrentEdits();     // persist edits on the frame we're leaving
+  await saveCurrentEdits();
   await showFrame(idx);
   if (mode==="paused" || mode==="idle_results") {
     await loadTimelineFrame(idx, true);
     if (mode==="paused") $("restartBtn").textContent = `▶️ Restart from frame ${idx}`;
-  } else if (mode==="running") {
-    // read-only live frames handled by WS; just show image
   }
 }
 
@@ -334,20 +388,25 @@ function modelUri(){
   localStorage.setItem("lastModelPath", p);
   return p || null;
 }
+
+function currentMethod() { return methodSel.value || "sam3"; }
+
 async function commitCanvasTo(idx){
-  // Persist the current canvas boxes as ground truth at idx so the server seeds
-  // the run from exactly what's on screen.
   await fetch("/edit",{method:"POST",headers:{"Content-Type":"application/json"},
     body:JSON.stringify({idx, objects:boxesNorm()})});
 }
 $("runBtn").onclick = async ()=>{
   await commitCanvasTo(viewFrame);
-  ws.send(JSON.stringify({type:"run", start_frame:viewFrame, conf:0.25, imgsz:+$("imgszSel").value, model_uri:modelUri()}));
+  const msg = {type:"run", start_frame:viewFrame, conf:0.25,
+                imgsz:+$("imgszSel").value, model_uri:modelUri(), method:currentMethod()};
+  ws.send(JSON.stringify(msg));
   mode="running"; uiRunning();
 };
 $("restartBtn").onclick = async ()=>{
   await commitCanvasTo(viewFrame);
-  ws.send(JSON.stringify({type:"restart", start_frame:viewFrame, conf:0.25, imgsz:+$("imgszSel").value, model_uri:modelUri()}));
+  const msg = {type:"restart", start_frame:viewFrame, conf:0.25,
+                imgsz:+$("imgszSel").value, model_uri:modelUri(), method:currentMethod()};
+  ws.send(JSON.stringify(msg));
   mode="running"; uiRunning();
 };
 $("pauseBtn").onclick = ()=>{ ws.send(JSON.stringify({type:"pause"})); };
@@ -355,7 +414,8 @@ $("pauseBtn").onclick = ()=>{ ws.send(JSON.stringify({type:"pause"})); };
 function uiRunning(){
   $("runBtn").style.display="none"; $("restartBtn").style.display="none";
   $("pauseBtn").disabled=false; $("autoBtn").disabled=true; setTool("edit");
-  $("runMsg").textContent="⏳ Compiling model…";
+  const m = currentMethod();
+  $("runMsg").textContent=`⏳ ${m === "sam3" ? "Compiling model…" : "Running " + m + "…"}`;
   $("hint").textContent="Running… Pause to correct boxes.";
 }
 function uiPaused(idx){
@@ -382,21 +442,16 @@ function connectWS(){
     const m = JSON.parse(ev.data);
     if (m.type==="status"){
       setStatus(`● ${m.state}`);
-      // Drive the run message from the server's actual phase.
       if (m.state==="compiling"){ $("runMsg").textContent="⏳ Compiling model…"; }
       else if (m.state==="running" && lastCompleted<0){ $("runMsg").textContent="⏳ Compiling model…"; }
       if (m.state==="paused" && mode!=="paused"){
-        // user-initiated pause: switch to editable on the last live frame
         const idx = lastCompleted>=0?lastCompleted:viewFrame;
-        mode="paused";  // set BEFORE gotoFrame so it renders editable
+        mode="paused";
         await gotoFrame(idx); uiPaused(idx);
       }
     }
     else if (m.type==="frame"){
       lastCompleted = Math.max(lastCompleted, m.idx);
-      // Only render live frames while actually running — ignore in-flight frame
-      // messages that arrive after a pause/scrub (they'd reset viewFrame and make
-      // Restart use the wrong frame).
       if (mode==="running"){
         await showFrame(m.idx);
         drawBoxes(m.boxes, false);
@@ -406,7 +461,7 @@ function connectWS(){
     }
     else if (m.type==="anomaly"){
       setStatus(`⚠️ auto-paused (anomaly)`);
-      mode="paused";                 // set BEFORE gotoFrame so it renders editable
+      mode="paused";
       await gotoFrame(m.idx);
       uiPaused(m.idx);
       const h=$("hint");
@@ -419,10 +474,6 @@ function connectWS(){
   };
   ws.onclose = ()=>setStatus("disconnected");
 }
-
-// when paused, clicking pause arrives via status; switch to editable on current frame
-// (the server sends status:paused after pause)
-const _origStatus = setStatus;
 </script>
 </body>
 </html>
