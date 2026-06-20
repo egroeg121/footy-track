@@ -54,7 +54,9 @@ dev = [
   "pyarrow>=24.0.0",
   "pylint>=3.3.8",
   "pyrefly>=0.34",
+  "playwright>=1.48",
   "pytest>=8.3",
+  "pytest-playwright>=0.6",
   "pytest-xdist>=3.5",
   "ruff>=0.13.2",
   "transformers>=4.57",
@@ -106,6 +108,7 @@ per-file-ignores."tests/*.py" = [ "PLR2004" ]
 addopts = "-q -n 2"
 markers = [
   "slow: tests that run models and may take longer",
+  "playwright: tests that require a running labeller server and a real browser",
 ]
 
 # Ruff configuration for linting and formatting
