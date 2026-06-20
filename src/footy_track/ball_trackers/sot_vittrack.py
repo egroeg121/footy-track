@@ -261,11 +261,12 @@ class VitTrackSOT:
 
         # Warm template on first valid bbox
         if self._template_blob is None:
+            self._last_bbox_px = bbox_px  # set before _init_template to ensure non-None
             self._template_blob = self._init_template(frame, bbox_px)
-            self._last_bbox_px = bbox_px
 
         # Extract search region around last known position
-        search_bbox_px = self._last_bbox_px  # use internal state, not caller-supplied
+        assert self._last_bbox_px is not None
+        search_bbox_px = self._last_bbox_px
         search_crop, crop_sz = _crop_region(frame, search_bbox_px, _SEARCH_FACTOR)
         search_blob = _preprocess(search_crop, _SEARCH_SIZE)
         self._last_crop_height = search_crop.shape[0]

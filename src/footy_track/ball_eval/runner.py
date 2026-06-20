@@ -70,7 +70,6 @@ def _score_clip(tracker: BallTracker, clip, verbose: bool = False) -> ClipMetric
     frame_preds: list[FramePrediction] = []
     total_inference_s = 0.0
 
-    peak_vram_mb = 0.0
     _reset_vram_counter()
 
     prev_bbox: BBox | None = None
