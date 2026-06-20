@@ -31,7 +31,7 @@ Usage::
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -63,8 +63,16 @@ class DifficultyReport:
         )
 
 
-def _iou(ax: float, ay: float, aw: float, ah: float,
-          bx: float, by: float, bw: float, bh: float) -> float:
+def _iou(
+    ax: float,
+    ay: float,
+    aw: float,
+    ah: float,
+    bx: float,
+    by: float,
+    bw: float,
+    bh: float,
+) -> float:
     """Intersection-over-Union for two top-left xywh boxes, all normalised."""
     ix1 = max(ax, bx)
     iy1 = max(ay, by)
@@ -129,9 +137,20 @@ def score_detections(
 
         # Criterion 2: crowded (pairwise IoU)
         for i, a in enumerate(rows):
-            for b in rows[i + 1:]:
-                if _iou(a["bbox_x"], a["bbox_y"], a["bbox_w"], a["bbox_h"],
-                        b["bbox_x"], b["bbox_y"], b["bbox_w"], b["bbox_h"]) >= iou_threshold:
+            for b in rows[i + 1 :]:
+                if (
+                    _iou(
+                        a["bbox_x"],
+                        a["bbox_y"],
+                        a["bbox_w"],
+                        a["bbox_h"],
+                        b["bbox_x"],
+                        b["bbox_y"],
+                        b["bbox_w"],
+                        b["bbox_h"],
+                    )
+                    >= iou_threshold
+                ):
                     flagged_crowded.add((int(frame_idx), int(a["detection_id"])))
                     flagged_crowded.add((int(frame_idx), int(b["detection_id"])))
 

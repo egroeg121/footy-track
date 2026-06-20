@@ -10,10 +10,9 @@ from footy_track.feature_store import (
     FrameRow,
     GameRow,
     RunRow,
-    flag_for_review,
+    flag_for_review,  # noqa: F401
     score_detections,
 )
-
 
 # --------------------------------------------------------------------------- #
 # Fixtures                                                                     #
@@ -27,8 +26,12 @@ def store() -> FeatureStore:
     s.upsert_games([GameRow(game_id="g1", fps=25.0)])
     s.upsert_runs(
         [
-            RunRow(run_id="run1", stage="detection", source="yolo", model_name="yolo.pt"),
-            RunRow(run_id="hl1", stage="detection", source="hand_label", model_name="human"),
+            RunRow(
+                run_id="run1", stage="detection", source="yolo", model_name="yolo.pt"
+            ),
+            RunRow(
+                run_id="hl1", stage="detection", source="hand_label", model_name="human"
+            ),
         ]
     )
     return s
@@ -89,9 +92,27 @@ def test_low_confidence_flagged(store: FeatureStore) -> None:
     store.upsert_detections(
         [
             # detection 0: low confidence (flagged)
-            _det(0, 0, label="player", confidence=0.2, bbox_x=0.0, bbox_y=0.0, bbox_w=0.1, bbox_h=0.1),
+            _det(
+                0,
+                0,
+                label="player",
+                confidence=0.2,
+                bbox_x=0.0,
+                bbox_y=0.0,
+                bbox_w=0.1,
+                bbox_h=0.1,
+            ),
             # detection 1: good confidence, no overlap with det 0
-            _det(0, 1, label="ball", confidence=0.9, bbox_x=0.5, bbox_y=0.5, bbox_w=0.1, bbox_h=0.1),
+            _det(
+                0,
+                1,
+                label="ball",
+                confidence=0.9,
+                bbox_x=0.5,
+                bbox_y=0.5,
+                bbox_w=0.1,
+                bbox_h=0.1,
+            ),
         ]
     )
     report = score_detections(store, game_id="g1", source="yolo", run_id="run1")
@@ -127,8 +148,26 @@ def test_overlapping_boxes_flagged(store: FeatureStore) -> None:
     # inter = 0.25*0.25=0.0625  union=0.09+0.09-0.0625=0.1175  IoU≈0.53
     store.upsert_detections(
         [
-            _det(0, 0, label="ball", bbox_x=0.0, bbox_y=0.0, bbox_w=0.3, bbox_h=0.3, confidence=0.9),
-            _det(0, 1, label="player", bbox_x=0.05, bbox_y=0.05, bbox_w=0.3, bbox_h=0.3, confidence=0.9),
+            _det(
+                0,
+                0,
+                label="ball",
+                bbox_x=0.0,
+                bbox_y=0.0,
+                bbox_w=0.3,
+                bbox_h=0.3,
+                confidence=0.9,
+            ),
+            _det(
+                0,
+                1,
+                label="player",
+                bbox_x=0.05,
+                bbox_y=0.05,
+                bbox_w=0.3,
+                bbox_h=0.3,
+                confidence=0.9,
+            ),
         ]
     )
     report = score_detections(store, game_id="g1", source="yolo", run_id="run1")
@@ -184,7 +223,9 @@ def test_ball_present_no_missing_ball_flag(store: FeatureStore) -> None:
 
 
 @pytest.mark.parametrize("ball_label", ["ball", "in_play_ball", "out_of_play_ball"])
-def test_all_ball_label_variants_recognised(store: FeatureStore, ball_label: str) -> None:
+def test_all_ball_label_variants_recognised(
+    store: FeatureStore, ball_label: str
+) -> None:
     _frame(store, 0)
     store.upsert_detections(
         [
@@ -208,11 +249,47 @@ def test_multi_frame_independent_scoring(store: FeatureStore) -> None:
     store.upsert_detections(
         [
             # Frame 0: has ball, high confidence, no overlap → not flagged
-            _det(0, 0, label="player", confidence=0.9, bbox_x=0.0, bbox_y=0.0, bbox_w=0.1, bbox_h=0.1),
-            _det(0, 1, label="ball", confidence=0.85, bbox_x=0.5, bbox_y=0.5, bbox_w=0.1, bbox_h=0.1),
+            _det(
+                0,
+                0,
+                label="player",
+                confidence=0.9,
+                bbox_x=0.0,
+                bbox_y=0.0,
+                bbox_w=0.1,
+                bbox_h=0.1,
+            ),
+            _det(
+                0,
+                1,
+                label="ball",
+                confidence=0.85,
+                bbox_x=0.5,
+                bbox_y=0.5,
+                bbox_w=0.1,
+                bbox_h=0.1,
+            ),
             # Frame 1: no ball → all flagged
-            _det(1, 0, label="player", confidence=0.9, bbox_x=0.0, bbox_y=0.0, bbox_w=0.1, bbox_h=0.1),
-            _det(1, 1, label="referee", confidence=0.9, bbox_x=0.5, bbox_y=0.5, bbox_w=0.1, bbox_h=0.1),
+            _det(
+                1,
+                0,
+                label="player",
+                confidence=0.9,
+                bbox_x=0.0,
+                bbox_y=0.0,
+                bbox_w=0.1,
+                bbox_h=0.1,
+            ),
+            _det(
+                1,
+                1,
+                label="referee",
+                confidence=0.9,
+                bbox_x=0.5,
+                bbox_y=0.5,
+                bbox_w=0.1,
+                bbox_h=0.1,
+            ),
         ]
     )
     report = score_detections(store, game_id="g1", source="yolo", run_id="run1")
@@ -243,7 +320,9 @@ def test_idempotent_rescore(store: FeatureStore) -> None:
 
 
 def test_empty_run_returns_empty_report(store: FeatureStore) -> None:
-    report = score_detections(store, game_id="g1", source="yolo", run_id="run_nonexistent")
+    report = score_detections(
+        store, game_id="g1", source="yolo", run_id="run_nonexistent"
+    )
     assert report.total_detections == 0
     assert report.total_flagged == 0
 

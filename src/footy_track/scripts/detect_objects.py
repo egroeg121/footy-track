@@ -44,6 +44,69 @@ def _parse_frame_index(filename: str) -> int | None:
     return int(m.group(1)) if m else None
 
 
+def _image_dims(path: Path) -> tuple[int, int] | None:
+    try:
+        from PIL import Image  # noqa: PLC0415
+
+        with Image.open(path) as im:
+            return int(im.width), int(im.height)
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _setup_store(store_path: Path, game_id: str, fps: float, model_path: str) -> tuple:
+    """Open feature store, register game + run, return (store, run_id)."""
+    from footy_track.feature_store import FeatureStore  # noqa: PLC0415
+    from footy_track.feature_store.ingest import detector_run  # noqa: PLC0415
+    from footy_track.feature_store.schema import GameRow  # noqa: PLC0415
+
+    store = FeatureStore.open(store_path)
+    run_id = f"sam3_{datetime.now():%Y%m%d_%H%M%S}_{uuid.uuid4().hex[:8]}"
+    store.upsert_games([GameRow(game_id=game_id, fps=fps)])
+    store.upsert_runs([detector_run(run_id, model_name=model_path, source="sam3")])
+    return store, run_id
+
+
+def _push_frame_to_store(
+    store,
+    run_id: str,
+    game_id: str,
+    frame: Path,
+    fd,
+    fps: float,
+    width: int | None,
+    height: int | None,
+) -> None:
+    """Write one frame's detections into the feature store."""
+    from footy_track.feature_store.ingest import ingest_frame  # noqa: PLC0415
+
+    frame_index = _parse_frame_index(frame.name)
+    if frame_index is None:
+        logging.warning(
+            f"Cannot parse frame index from {frame.name!r}; skipping store write"
+        )
+        return
+
+    w, h = width, height
+    if w is None or h is None:
+        dims = _image_dims(frame)
+        w = dims[0] if dims else 0
+        h = dims[1] if dims else 0
+
+    ingest_frame(
+        store,
+        game_id=game_id,
+        frame_index=frame_index,
+        frame_uri=str(frame),
+        width=w,
+        height=h,
+        continuous_time_s=frame_index / fps,
+        detections=fd,
+        detection_source="sam3",
+        detection_run_id=run_id,
+    )
+
+
 def main():
     """Run the SAM3 detector on a folder of frames and print the detection summary."""
     parser = argparse.ArgumentParser(description="Detect objects in frames using SAM3.")
@@ -123,20 +186,16 @@ def main():
     )
     save_root.mkdir(parents=True, exist_ok=True)
 
-    # Feature store setup (optional)
-    store = None
     game_id = args.game_id or args.frames_folder.name
+    store = None
     run_id: str | None = None
     if args.store_path is not None:
-        from footy_track.feature_store import FeatureStore
-        from footy_track.feature_store.ingest import detector_run
-        from footy_track.feature_store.schema import GameRow
-
-        store = FeatureStore.open(args.store_path)
-        run_id = f"sam3_{datetime.now():%Y%m%d_%H%M%S}_{uuid.uuid4().hex[:8]}"
-        store.upsert_games([GameRow(game_id=game_id, fps=args.fps)])
-        store.upsert_runs([detector_run(run_id, model_name=str(args.model_path), source="sam3")])
-        logging.info(f"Feature store: {args.store_path} | game={game_id!r} | run={run_id!r}")
+        store, run_id = _setup_store(
+            args.store_path, game_id, args.fps, args.model_path
+        )
+        logging.info(
+            f"Feature store: {args.store_path} | game={game_id!r} | run={run_id!r}"
+        )
 
     total_detections = 0
     total_by_label: Counter[str] = Counter()
@@ -147,44 +206,15 @@ def main():
         num_detections = len(fd.detections)
         total_detections += num_detections
         total_by_label.update(by_label)
-        # Save visualisation; do not pop a viewer
         out_path = save_root / frame.name
         visualise_detections_on_image(fd, save_path=out_path, show=False)
         logging.info(
             f"{frame.name}: {num_detections} detections | per-label {dict(by_label)}"
         )
 
-        # Push to feature store if configured
         if store is not None and run_id is not None:
-            frame_index = _parse_frame_index(frame.name)
-            if frame_index is None:
-                logging.warning(f"Cannot parse frame index from {frame.name!r}; skipping store write")
-                continue
-
-            from footy_track.feature_store.ingest import ingest_frame
-
-            w = args.width
-            h = args.height
-            if w is None or h is None:
-                try:
-                    from PIL import Image  # noqa: PLC0415
-                    with Image.open(frame) as im:
-                        w, h = im.width, im.height
-                except Exception:
-                    w = w or 0
-                    h = h or 0
-
-            ingest_frame(
-                store,
-                game_id=game_id,
-                frame_index=frame_index,
-                frame_uri=str(frame),
-                width=w,
-                height=h,
-                continuous_time_s=frame_index / args.fps,
-                detections=fd,
-                detection_source="sam3",
-                detection_run_id=run_id,
+            _push_frame_to_store(
+                store, run_id, game_id, frame, fd, args.fps, args.width, args.height
             )
 
     if store is not None:
