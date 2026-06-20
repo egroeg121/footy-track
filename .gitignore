@@ -49,3 +49,7 @@ CLAUDE.local.md
 labeller_*.png
 .playwright-mcp/
 .mcp.json
+
+# Gas Town (added by gt)
+.opencode/
+GEMINI.md
