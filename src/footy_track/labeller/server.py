@@ -200,8 +200,13 @@ def _render_debug_frame(
     target_w = w // 2
     if crop_padded.shape[1] < target_w:
         crop_padded = cv2.copyMakeBorder(
-            crop_padded, 0, 0, 0, target_w - crop_padded.shape[1],
-            cv2.BORDER_CONSTANT, value=(30, 30, 30)
+            crop_padded,
+            0,
+            0,
+            0,
+            target_w - crop_padded.shape[1],
+            cv2.BORDER_CONSTANT,
+            value=(30, 30, 30),
         )
     else:
         crop_padded = crop_padded[:, :target_w]
@@ -275,7 +280,8 @@ async def load_session(body: dict) -> dict:
         return SESSION.load(body["video_path"])
     except FileNotFoundError as exc:
         from fastapi import HTTPException  # noqa: PLC0415
-        raise HTTPException(status_code=404, detail=f"Video not found: {exc}")
+
+        raise HTTPException(status_code=404, detail=f"Video not found: {exc}") from exc
 
 
 @app.get("/frame/{idx}.jpg")
@@ -493,10 +499,14 @@ async def ws(websocket: WebSocket) -> None:
                     # Non-SAM3 bake-off method: run frame-by-frame via helper
                     ball_box = next(
                         (
-                            (o.bbox_xyxy_abs[0] / SESSION.width,
-                             o.bbox_xyxy_abs[1] / SESSION.height,
-                             (o.bbox_xyxy_abs[2] - o.bbox_xyxy_abs[0]) / SESSION.width,
-                             (o.bbox_xyxy_abs[3] - o.bbox_xyxy_abs[1]) / SESSION.height)
+                            (
+                                o.bbox_xyxy_abs[0] / SESSION.width,
+                                o.bbox_xyxy_abs[1] / SESSION.height,
+                                (o.bbox_xyxy_abs[2] - o.bbox_xyxy_abs[0])
+                                / SESSION.width,
+                                (o.bbox_xyxy_abs[3] - o.bbox_xyxy_abs[1])
+                                / SESSION.height,
+                            )
                             for o in objects
                             if "ball" in o.label.lower() and o.bbox_xyxy_abs
                         ),
@@ -508,8 +518,10 @@ async def ws(websocket: WebSocket) -> None:
                         if o.bbox_xyxy_abs:
                             x1, y1, x2, y2 = o.bbox_xyxy_abs
                             ball_box = (
-                                x1 / SESSION.width, y1 / SESSION.height,
-                                (x2 - x1) / SESSION.width, (y2 - y1) / SESSION.height,
+                                x1 / SESSION.width,
+                                y1 / SESSION.height,
+                                (x2 - x1) / SESSION.width,
+                                (y2 - y1) / SESSION.height,
                             )
                     streamer = asyncio.create_task(
                         _stream_bakeoff(websocket, method, start_frame, ball_box)
@@ -556,25 +568,46 @@ async def _stream_bakeoff(
                 break
             frame_rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
             try:
-                result_bbox = await asyncio.to_thread(tracker.track, prev_bbox, frame_rgb)
+                result_bbox = await asyncio.to_thread(
+                    tracker.track, prev_bbox, frame_rgb
+                )
             except Exception as exc:  # noqa: BLE001
                 await websocket.send_json(
-                    {"type": "error", "message": f"Tracker error at frame {abs_idx}: {exc}"}
+                    {
+                        "type": "error",
+                        "message": f"Tracker error at frame {abs_idx}: {exc}",
+                    }
                 )
                 break
             boxes: list[dict] = []
             if result_bbox is not None:
                 x, y, w, h = result_bbox
-                boxes = [{"label": "ball", "x": x, "y": y, "w": w, "h": h,
-                          "conf": 1.0, "source": method}]
+                boxes = [
+                    {
+                        "label": "ball",
+                        "x": x,
+                        "y": y,
+                        "w": w,
+                        "h": h,
+                        "conf": 1.0,
+                        "source": method,
+                    }
+                ]
                 prev_bbox = result_bbox
                 # Persist to timeline
                 SESSION.merge_propagated(
                     abs_idx,
-                    [ObjectDetection(
-                        label="ball", confidence=1.0,
-                        x=x, y=y, w=w, h=h, model=method,
-                    )],
+                    [
+                        ObjectDetection(
+                            label="ball",
+                            confidence=1.0,
+                            x=x,
+                            y=y,
+                            w=w,
+                            h=h,
+                            model=method,
+                        )
+                    ],
                 )
             await websocket.send_json({"type": "frame", "idx": abs_idx, "boxes": boxes})
     finally:
@@ -587,12 +620,15 @@ def _build_bakeoff_tracker(method: str):
     """Instantiate a bake-off tracker by method id. Raises ImportError if unavailable."""
     if method == "sot":
         from footy_track.ball_trackers.sot_vittrack import VitTrackSOT  # noqa: PLC0415
+
         return VitTrackSOT()
     if method == "sam2":
         from footy_track.ball_tracking.sam2_tracker import SAM2Tracker  # noqa: PLC0415
+
         return SAM2Tracker()
     if method == "roi_yolo":
         from footy_track.ball_trackers.roi_yolo import ROIYOLOTracker  # noqa: PLC0415
+
         return ROIYOLOTracker()
     raise ImportError(f"Unknown bake-off method: {method!r}")
 
@@ -632,10 +668,10 @@ class GTSession:
             self.labels = {}
             if jsonl.exists():
                 with jsonl.open() as f:
-                    for line in f:
-                        line = line.strip()
-                        if line:
-                            d = json.loads(line)
+                    for raw_line in f:
+                        stripped = raw_line.strip()
+                        if stripped:
+                            d = json.loads(stripped)
                             lbl = FrameLabel.from_dict(d)
                             self.labels[lbl.frame_index] = lbl
         return {
@@ -726,9 +762,10 @@ async def gt_load(body: dict) -> dict:
     path = Path(body["path"]).expanduser()
     try:
         result = await asyncio.to_thread(GT_SESSION.load, path)
-    except FileNotFoundError:
+    except FileNotFoundError as exc:
         from fastapi import HTTPException  # noqa: PLC0415
-        raise HTTPException(status_code=404, detail=f"File not found: {path}")
+
+        raise HTTPException(status_code=404, detail=f"File not found: {path}") from exc
     return result
 
 
