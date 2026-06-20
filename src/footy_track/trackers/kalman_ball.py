@@ -19,7 +19,7 @@ Key design choices:
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 import numpy as np
 
@@ -181,8 +181,7 @@ class KalmanBallTracker:
                 self._track.age += 1
                 if self._track.age > self._max_age:
                     self._finalise_track()
-                    self._pending.clear()
-                    # Spawn fresh track for this detection
+                    # discard gap frames for the old track — predictions for a dead track
                     self._spawn(best_det, frame_idx, frame_t)
                     return [self._make_tracked(best_det, frame_idx, frame_t, interpolated=False)]
                 # Buffer predicted position for potential later gap-fill
