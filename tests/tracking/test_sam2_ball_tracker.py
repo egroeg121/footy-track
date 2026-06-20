@@ -21,7 +21,6 @@ from footy_track.ball_tracking.sam2_tracker import (
     _mask_to_bbox,
 )
 
-
 # --------------------------------------------------------------------------- #
 # Pure helpers                                                                 #
 # --------------------------------------------------------------------------- #
@@ -98,7 +97,7 @@ def _make_fake_result(mask_array: np.ndarray | None = None):
     """Build a mock Ultralytics result with an optional mask."""
     result = MagicMock()
     if mask_array is not None:
-        import torch
+        import torch  # noqa: PLC0415
 
         mask_tensor = torch.from_numpy(mask_array.astype(np.float32)).unsqueeze(0)
         result.masks.data = mask_tensor

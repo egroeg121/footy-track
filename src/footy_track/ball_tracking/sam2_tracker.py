@@ -162,7 +162,9 @@ class Sam2BallTracker:
         pred_cy = max(bh / 2.0, min(1.0 - bh / 2.0, pred_cy))
 
         # --- 2. Crop ROI ---
-        roi_x1, roi_y1, roi_x2, roi_y2 = _compute_roi(pred_cx, pred_cy, bw, bh, self._roi_scale)
+        roi_x1, roi_y1, roi_x2, roi_y2 = _compute_roi(
+            pred_cx, pred_cy, bw, bh, self._roi_scale
+        )
 
         # Pixel coords of ROI
         px1 = int(roi_x1 * W)
@@ -219,11 +221,12 @@ class Sam2BallTracker:
         self._last_bbox = (full_x, full_y, full_w, full_h)
         return self._last_bbox
 
-    def _run_sam2(self, crop: np.ndarray, box_prompt: list[float] | None) -> BBox | None:
+    def _run_sam2(
+        self, crop: np.ndarray, box_prompt: list[float] | None
+    ) -> BBox | None:
         """Run SAM2 on the crop, return normalised (x, y, w, h) or None."""
-        import torch  # noqa: PLC0415
-
         import cv2  # noqa: PLC0415
+        import torch  # noqa: PLC0415
 
         # SAM2 predictor expects BGR
         bgr_crop = cv2.cvtColor(crop, cv2.COLOR_RGB2BGR)
@@ -246,7 +249,12 @@ class Sam2BallTracker:
                 xyxy = boxes.xyxy[0].cpu().numpy()
                 h, w = crop.shape[:2]
                 x1, y1, x2, y2 = xyxy
-                return (float(x1 / w), float(y1 / h), float((x2 - x1) / w), float((y2 - y1) / h))
+                return (
+                    float(x1 / w),
+                    float(y1 / h),
+                    float((x2 - x1) / w),
+                    float((y2 - y1) / h),
+                )
             return None
 
         # Use the highest-confidence mask
