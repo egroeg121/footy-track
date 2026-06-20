@@ -5,12 +5,12 @@ Re-ID is out of scope for v1 — see player_tracking_format.md §6.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 import numpy as np
 
 from footy_track.schema import FrameDetections, ObjectDetection
-from footy_track.trackers.base import TrackMeta, TrackedDetection
+from footy_track.trackers.base import TrackedDetection, TrackMeta
 
 
 def _iou(a: ObjectDetection, b: ObjectDetection) -> float:
@@ -94,7 +94,9 @@ class LapTracker:
         padded = np.full((size, size), fill_value=1.0, dtype=np.float64)
         padded[:n_tracks, :n_dets] = cost
 
-        _, row_ind, col_ind = lap.lapjv(padded, extend_cost=True, cost_limit=1.0 - self._iou_threshold)
+        _, row_ind, col_ind = lap.lapjv(
+            padded, extend_cost=True, cost_limit=1.0 - self._iou_threshold
+        )
 
         matched_track_idx: set[int] = set()
         matched_det_idx: set[int] = set()
@@ -124,7 +126,9 @@ class LapTracker:
         for det_j, det in enumerate(dets):
             if det_j not in matched_det_idx:
                 trk = self._new_track(det, frame_idx, frame_t)
-                results.append(self._make_tracked(det, trk.track_id, frame_idx, frame_t))
+                results.append(
+                    self._make_tracked(det, trk.track_id, frame_idx, frame_t)
+                )
 
         self._age_out(frame_idx)
         return results
@@ -148,7 +152,9 @@ class LapTracker:
             results.append(self._make_tracked(det, trk.track_id, frame_idx, frame_t))
         return results
 
-    def _new_track(self, det: ObjectDetection, frame_idx: int, frame_t: float) -> _Track:
+    def _new_track(
+        self, det: ObjectDetection, frame_idx: int, frame_t: float
+    ) -> _Track:
         trk = _Track(
             track_id=self._next_id,
             label=det.label,
