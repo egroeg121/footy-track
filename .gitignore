@@ -26,12 +26,26 @@ wheels/
 .beads/
 .claude/
 .runtime/
+CLAUDE.md
 
 # Test artifacts
 tests/data/tmp_extracted_frames
 tests/data/split_videos/
-model_saves/
 yolo11n.pt
 
 # Training/Inference folders
 runs/
+wandb/
+footy_scan_detection/
+footy_scan_classifier/
+/yolo11n-cls.pt
+
+# Gas Town (added by gt)
+.logs/
+state.json
+CLAUDE.local.md
+
+# Playwright debug screenshots
+labeller_*.png
+.playwright-mcp/
+.mcp.json
