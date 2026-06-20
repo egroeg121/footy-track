@@ -39,11 +39,19 @@ def get_current_best_detector(
     min_confidence: float = 0.3,
     iou_threshold: float = 0.90,
     verbose: bool = False,
+    class_thresholds: dict[str, float] | None = None,
 ) -> "UltralyticsObjectDetector":
     """Return the current best-guess object detector.
 
     Resolves CURRENT_BEST_DETECTOR_CHECKPOINT against the project root so the
     same constant works regardless of the caller's working directory.
+
+    Parameters
+    ----------
+    class_thresholds:
+        Optional per-class confidence overrides, e.g. ``{"ball": 0.2}`` to use
+        a lower threshold for the ball without affecting player/referee thresholds.
+        Any class not listed here falls back to ``min_confidence``.
     """
     model_uri = str(get_project_root() / CURRENT_BEST_DETECTOR_CHECKPOINT)
     return UltralyticsObjectDetector(
@@ -52,6 +60,7 @@ def get_current_best_detector(
         iou_threshold=iou_threshold,
         verbose=verbose,
         use_model_names=True,
+        class_thresholds=class_thresholds,
     )
 
 
@@ -60,6 +69,18 @@ class UltralyticsObjectDetector(ObjectDetector):
 
     Uses the ultralytics YOLO models and returns a FrameDetections instance
     with normalized [x, y, w, h] boxes in [0, 1].
+
+    Parameters
+    ----------
+    class_thresholds:
+        Optional per-class confidence overrides applied as a post-processing
+        filter after YOLO inference. The model runs at ``min(min_confidence,
+        min(class_thresholds.values()))`` so low-confidence ball detections
+        are not suppressed at the YOLO level. Any class not listed falls back
+        to ``min_confidence``.
+
+        Example: ``{"ball": 0.2, "in_play_ball": 0.2, "out_of_play_ball": 0.2}``
+        lets the ball through at half the player threshold.
     """
 
     model_tag: str = "yolo"
@@ -72,6 +93,7 @@ class UltralyticsObjectDetector(ObjectDetector):
         min_confidence: float = 0.3,
         iou_threshold: float = 0.90,
         use_model_names: bool = False,
+        class_thresholds: dict[str, float] | None = None,
     ):
         # Use shared device selection util (prefers MPS on Apple, then CUDA, then CPU)
         dev = _available_device()
@@ -81,10 +103,17 @@ class UltralyticsObjectDetector(ObjectDetector):
         # When True, `classes` reflects the checkpoint's own label set rather than
         # the COCO person/ball subset used for stock weights.
         self.use_model_names = use_model_names
+        self._min_confidence = min_confidence
+        self._class_thresholds: dict[str, float] = class_thresholds or {}
+        # Run YOLO at the lowest threshold across all per-class overrides so
+        # candidates are not suppressed before our post-filter step.
+        effective_conf = min_confidence
+        if self._class_thresholds:
+            effective_conf = min(min_confidence, min(self._class_thresholds.values()))
         self.predict_kwargs = {
             "verbose": verbose,
             "compile": compile,
-            "conf": min_confidence,
+            "conf": effective_conf,
             "iou": iou_threshold,
         }
 
@@ -120,6 +149,15 @@ class UltralyticsObjectDetector(ObjectDetector):
 
         # Build detections via modular converter
         detections = ultralytics_result_to_detections(result, self.classes)
+
+        # Apply per-class confidence thresholds as a post-processing filter.
+        # YOLO ran at the lowest effective threshold; now enforce class-specific floors.
+        if self._class_thresholds:
+            detections = [
+                d
+                for d in detections
+                if d.confidence >= self._class_thresholds.get(d.label, self._min_confidence)
+            ]
 
         return FrameDetections(
             uri=Path(image_path),
