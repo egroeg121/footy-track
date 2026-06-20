@@ -128,12 +128,20 @@ class MethodResult:
 
     @property
     def mean_center_within_radius(self) -> float:
-        vals = [c.center_within_radius_pct for c in self.clip_metrics if c.ball_present_frames > 0]
+        vals = [
+            c.center_within_radius_pct
+            for c in self.clip_metrics
+            if c.ball_present_frames > 0
+        ]
         return sum(vals) / len(vals) if vals else 0.0
 
     @property
     def mean_center_dist_px(self) -> float:
-        vals = [c.mean_center_dist_px for c in self.clip_metrics if c.ball_present_frames > 0]
+        vals = [
+            c.mean_center_dist_px
+            for c in self.clip_metrics
+            if c.ball_present_frames > 0
+        ]
         return sum(vals) / len(vals) if vals else 0.0
 
     @property
@@ -211,7 +219,9 @@ class MethodResult:
                 "mean_fps": round(self.mean_fps, 1),
                 "peak_vram_mb": round(self.peak_vram_mb, 1),
                 "total_failures": self.total_failures,
-                "mean_catastrophic_failure_rate_pct": round(self.mean_catastrophic_failure_rate, 1),
+                "mean_catastrophic_failure_rate_pct": round(
+                    self.mean_catastrophic_failure_rate, 1
+                ),
                 "mean_occlusion_recovery_pct": round(self.mean_occlusion_recovery, 1),
             },
             "clips": [c.to_dict() for c in self.clip_metrics],
@@ -256,7 +266,9 @@ def bbox_center(bbox: tuple[float, float, float, float]) -> tuple[float, float]:
     return (bbox[0] + bbox[2] / 2, bbox[1] + bbox[3] / 2)
 
 
-def bbox_radius_px(bbox: tuple[float, float, float, float], frame_h: int, frame_w: int) -> float:
+def bbox_radius_px(
+    bbox: tuple[float, float, float, float], frame_h: int, frame_w: int
+) -> float:
     """Approximate ball radius in pixels from bbox size."""
     w_px = bbox[2] * frame_w
     h_px = bbox[3] * frame_h
@@ -275,7 +287,7 @@ def center_dist_px(
     return math.sqrt(dx * dx + dy * dy)
 
 
-def compute_clip_metrics(
+def compute_clip_metrics(  # noqa: PLR0912, PLR0915
     clip_name: str,
     total_frames: int,
     ball_present_frames: int,
@@ -298,13 +310,21 @@ def compute_clip_metrics(
     median_iou = statistics.median(ious) if ious else 0.0
 
     # Recall: GT present, pred returned something
-    gt_present = [fp for fp in frame_preds if fp.gt_bbox is not None or fp.gt_center_norm is not None]
+    gt_present = [
+        fp
+        for fp in frame_preds
+        if fp.gt_bbox is not None or fp.gt_center_norm is not None
+    ]
     recall_hits = [fp for fp in gt_present if fp.pred_bbox is not None]
     recall_pct = 100.0 * len(recall_hits) / len(gt_present) if gt_present else 0.0
 
     # Precision: tracker predicted something, GT present
     pred_present = [fp for fp in frame_preds if fp.pred_bbox is not None]
-    precision_hits = [fp for fp in pred_present if fp.gt_bbox is not None or fp.gt_center_norm is not None]
+    precision_hits = [
+        fp
+        for fp in pred_present
+        if fp.gt_bbox is not None or fp.gt_center_norm is not None
+    ]
     precision_pct = (
         100.0 * len(precision_hits) / len(pred_present) if pred_present else 0.0
     )
@@ -392,11 +412,15 @@ def compute_clip_metrics(
             current_streak = 0
 
     center_within_radius_pct = (
-        100.0 * within_radius_hits / within_radius_total if within_radius_total > 0 else 0.0
+        100.0 * within_radius_hits / within_radius_total
+        if within_radius_total > 0
+        else 0.0
     )
     mean_center_dist = statistics.mean(center_dists_px) if center_dists_px else 0.0
     catastrophic_rate = (
-        100.0 * catastrophic_count / catastrophic_total if catastrophic_total > 0 else 0.0
+        100.0 * catastrophic_count / catastrophic_total
+        if catastrophic_total > 0
+        else 0.0
     )
 
     return ClipMetrics(

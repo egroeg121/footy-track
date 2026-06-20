@@ -18,10 +18,21 @@ Typical usage::
     print(results.table())
 """
 
-from footy_track.ball_eval.dataset import BBox, Center, EvalClip, EvalDataset, FrameLabel, write_labels
+from footy_track.ball_eval.dataset import (
+    BBox,
+    Center,
+    EvalClip,
+    EvalDataset,
+    FrameLabel,
+    write_labels,
+)
 from footy_track.ball_eval.interface import BallTracker
 from footy_track.ball_eval.metrics import ClipMetrics, MethodResult
-from footy_track.ball_eval.runner import compare_methods, render_overlay_video, run_benchmark
+from footy_track.ball_eval.runner import (
+    compare_methods,
+    render_overlay_video,
+    run_benchmark,
+)
 
 __all__ = [
     "BallTracker",
