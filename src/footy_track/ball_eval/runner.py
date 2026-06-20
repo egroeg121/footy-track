@@ -122,7 +122,7 @@ def _score_clip(tracker: BallTracker, clip, verbose: bool = False) -> ClipMetric
 
 def _reset_vram_counter() -> None:
     try:
-        import torch
+        import torch  # noqa: PLC0415
 
         if torch.cuda.is_available():
             torch.cuda.reset_peak_memory_stats()
@@ -132,7 +132,7 @@ def _reset_vram_counter() -> None:
 
 def _read_peak_vram_mb() -> float:
     try:
-        import torch
+        import torch  # noqa: PLC0415
 
         if torch.cuda.is_available():
             return torch.cuda.max_memory_allocated() / (1024 * 1024)

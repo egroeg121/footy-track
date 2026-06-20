@@ -125,7 +125,9 @@ class MethodResult:
             f"{self.mean_occlusion_recovery:>10.1f} {self.total_failures:>9} "
             f"{self.mean_fps:>6.1f} {self.peak_vram_mb:>8.1f} "
         )
-        eff_res = self.clip_metrics[0].effective_resolution_px if self.clip_metrics else None
+        eff_res = (
+            self.clip_metrics[0].effective_resolution_px if self.clip_metrics else None
+        )
         row += f"{'full' if eff_res is None else str(eff_res):>7}"
         buf.write(row + "\n")
 
@@ -205,7 +207,9 @@ def compute_clip_metrics(
 
     pred_present = [fp for fp in frame_preds if fp.pred_bbox is not None]
     precision_hits = [fp for fp in pred_present if fp.gt_bbox is not None]
-    precision_pct = 100.0 * len(precision_hits) / len(pred_present) if pred_present else 0.0
+    precision_pct = (
+        100.0 * len(precision_hits) / len(pred_present) if pred_present else 0.0
+    )
 
     failures = len(gt_present) - len(recall_hits)
 

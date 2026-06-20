@@ -62,7 +62,7 @@ _HANN_WINDOW = _hann2d(_GRID, _GRID)
 def _download_model() -> pathlib.Path:
     """Return path to the ONNX model, downloading from HF Hub if needed."""
     try:
-        from huggingface_hub import hf_hub_download
+        from huggingface_hub import hf_hub_download  # noqa: PLC0415
 
         path = hf_hub_download(repo_id=_HF_REPO, filename=_HF_FILENAME)
         return pathlib.Path(path)
@@ -74,12 +74,12 @@ def _download_model() -> pathlib.Path:
 
 
 def _make_session(model_path: pathlib.Path) -> ort.InferenceSession:
-    import onnxruntime as ort
+    import onnxruntime as ort  # noqa: PLC0415
 
     providers = ["CPUExecutionProvider"]
     try:
         # Use CoreML on macOS if available (MPS-backed)
-        from onnxruntime.capi import _pybind_state as C  # noqa: N812
+        from onnxruntime.capi import _pybind_state as C  # noqa: N812, PLC0415
 
         available = C.get_available_providers()
         if "CoreMLExecutionProvider" in available:
@@ -129,7 +129,9 @@ def _crop_region(
 
     roi = frame[y1c:y2c, x1c:x2c]
     if pad_l or pad_t or pad_r or pad_b:
-        roi = cv2.copyMakeBorder(roi, pad_t, pad_b, pad_l, pad_r, cv2.BORDER_CONSTANT, value=0)
+        roi = cv2.copyMakeBorder(
+            roi, pad_t, pad_b, pad_l, pad_r, cv2.BORDER_CONSTANT, value=0
+        )
 
     return roi, crop_sz
 

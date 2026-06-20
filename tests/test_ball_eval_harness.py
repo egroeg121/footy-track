@@ -5,6 +5,7 @@ These tests use synthetic data only — no video files or real model weights nee
 
 from __future__ import annotations
 
+import json
 import pathlib
 import tempfile
 
@@ -18,6 +19,12 @@ from footy_track.ball_eval.metrics import (
     MethodResult,
     bbox_iou,
     compute_clip_metrics,
+)
+from footy_track.ball_trackers.sot_vittrack import (
+    _HANN_WINDOW,
+    VitTrackSOT,
+    _crop_region,
+    _preprocess,
 )
 
 # --------------------------------------------------------------------------- #
@@ -82,9 +89,9 @@ def test_write_labels_roundtrip():
         path = pathlib.Path(f.name)
     try:
         write_labels(labels, path)
-        import json
-
-        rows = [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
+        rows = [
+            json.loads(line) for line in path.read_text().splitlines() if line.strip()
+        ]
         assert len(rows) == 2
         assert rows[0]["frame_index"] == 0
         assert rows[1]["bbox"] is None
@@ -106,7 +113,12 @@ def test_perfect_tracking():
     gt_box: BBox = (0.1, 0.1, 0.2, 0.2)
     preds = [_make_pred(i, gt_box, gt_box) for i in range(10)]
     metrics = compute_clip_metrics(
-        "clip_a", 10, 10, preds, total_inference_s=1.0, peak_vram_mb=0.0,
+        "clip_a",
+        10,
+        10,
+        preds,
+        total_inference_s=1.0,
+        peak_vram_mb=0.0,
         occlusion_frame_indices=[],
     )
     assert metrics.mean_iou == pytest.approx(1.0, abs=1e-6)
@@ -119,13 +131,11 @@ def test_tracking_failure_counts():
     gt_box: BBox = (0.1, 0.1, 0.2, 0.2)
     preds = [
         _make_pred(0, gt_box, gt_box),
-        _make_pred(1, gt_box, None),   # failure
+        _make_pred(1, gt_box, None),  # failure
         _make_pred(2, gt_box, gt_box),
-        _make_pred(3, gt_box, None),   # failure
+        _make_pred(3, gt_box, None),  # failure
     ]
-    metrics = compute_clip_metrics(
-        "clip_b", 4, 4, preds, 0.4, 0.0, []
-    )
+    metrics = compute_clip_metrics("clip_b", 4, 4, preds, 0.4, 0.0, [])
     assert metrics.tracking_failures == 2
     assert metrics.recall_pct == pytest.approx(50.0)
 
@@ -133,7 +143,9 @@ def test_tracking_failure_counts():
 def test_occlusion_recovery():
     gt_box: BBox = (0.1, 0.1, 0.2, 0.2)
     # Occlusion at frame 2; tracker recovers at frame 4 (2 frames later ≤ 3)
-    preds = [_make_pred(i, gt_box, gt_box if i != 2 and i != 3 else None) for i in range(6)]
+    preds = [
+        _make_pred(i, gt_box, gt_box if i not in {2, 3} else None) for i in range(6)
+    ]
     metrics = compute_clip_metrics(
         "clip_c", 6, 6, preds, 0.6, 0.0, occlusion_frame_indices=[2]
     )
@@ -147,12 +159,10 @@ def test_precision_anti_hallucination():
         _make_pred(0, gt_box, gt_box),
         _make_pred(1, gt_box, gt_box),
         _make_pred(2, gt_box, gt_box),
-        _make_pred(3, None, gt_box),   # hallucination
-        _make_pred(4, None, gt_box),   # hallucination
+        _make_pred(3, None, gt_box),  # hallucination
+        _make_pred(4, None, gt_box),  # hallucination
     ]
-    metrics = compute_clip_metrics(
-        "clip_d", 5, 3, preds, 0.5, 0.0, []
-    )
+    metrics = compute_clip_metrics("clip_d", 5, 3, preds, 0.5, 0.0, [])
     # 3 predictions with GT, 5 total predictions → 60% precision
     assert metrics.precision_pct == pytest.approx(60.0)
     assert metrics.recall_pct == pytest.approx(100.0)
@@ -163,7 +173,9 @@ def test_precision_anti_hallucination():
 # --------------------------------------------------------------------------- #
 
 
-def _dummy_clip_metrics(name: str, iou: float, recall: float, fps: float) -> ClipMetrics:
+def _dummy_clip_metrics(
+    name: str, iou: float, recall: float, fps: float
+) -> ClipMetrics:
     return ClipMetrics(
         clip_name=name,
         total_frames=100,
@@ -219,8 +231,6 @@ def test_method_result_to_dict():
 
 
 def test_crop_region_centred():
-    from footy_track.ball_trackers.sot_vittrack import _crop_region
-
     frame = np.zeros((480, 640, 3), dtype=np.uint8)
     # Ball in the centre of the frame
     bbox_px = (270.0, 190.0, 100.0, 100.0)
@@ -230,8 +240,6 @@ def test_crop_region_centred():
 
 
 def test_crop_region_with_border_padding():
-    from footy_track.ball_trackers.sot_vittrack import _crop_region
-
     frame = np.zeros((480, 640, 3), dtype=np.uint8)
     # Ball near top-left corner — crop extends outside frame
     bbox_px = (5.0, 5.0, 30.0, 30.0)
@@ -242,8 +250,6 @@ def test_crop_region_with_border_padding():
 
 
 def test_preprocess_output_shape_and_dtype():
-    from footy_track.ball_trackers.sot_vittrack import _preprocess
-
     crop = np.random.randint(0, 256, (200, 200, 3), dtype=np.uint8)
     blob = _preprocess(crop, (128, 128))
     assert blob.shape == (1, 3, 128, 128)
@@ -251,8 +257,6 @@ def test_preprocess_output_shape_and_dtype():
 
 
 def test_preprocess_normalisation_range():
-    from footy_track.ball_trackers.sot_vittrack import _preprocess
-
     # All-white crop → should be positive after normalization
     white = np.full((100, 100, 3), 255, dtype=np.uint8)
     blob = _preprocess(white, (128, 128))
@@ -260,8 +264,6 @@ def test_preprocess_normalisation_range():
 
 
 def test_tracker_reset_clears_state():
-    from footy_track.ball_trackers.sot_vittrack import VitTrackSOT
-
     tracker = VitTrackSOT.__new__(VitTrackSOT)
     tracker._template_blob = np.zeros((1, 3, 128, 128), dtype=np.float32)
     tracker._last_bbox_px = (0.1, 0.1, 0.2, 0.2)
@@ -274,8 +276,6 @@ def test_tracker_reset_clears_state():
 
 def test_tracker_returns_none_on_cold_start():
     """Without a model, test that cold-start (prev_bbox=None) returns None."""
-    from footy_track.ball_trackers.sot_vittrack import VitTrackSOT
-
     tracker = VitTrackSOT.__new__(VitTrackSOT)
     tracker._template_blob = None
     tracker._last_bbox_px = None
@@ -287,8 +287,6 @@ def test_tracker_returns_none_on_cold_start():
 
 
 def test_hann_window_properties():
-    from footy_track.ball_trackers.sot_vittrack import _HANN_WINDOW
-
     assert _HANN_WINDOW.shape == (16, 16)
     # Centre should be close to 1.0 (peak of Hann)
     assert _HANN_WINDOW[8, 8] > 0.9
