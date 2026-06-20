@@ -6,6 +6,7 @@ detections from multiple sources, and tracks. See
 ``docs/design/feature_store.md``.
 """
 
+from footy_track.feature_store.difficulty import DifficultyReport, flag_for_review, score_detections
 from footy_track.feature_store.importers import (
     ImportReport,
     import_labeller_json,
@@ -35,6 +36,7 @@ from footy_track.feature_store.store import FeatureStore
 __all__ = [
     "SCHEMA_VERSION",
     "DetectionRow",
+    "DifficultyReport",
     "FeatureStore",
     "FrameRow",
     "GameRow",
@@ -46,9 +48,11 @@ __all__ = [
     "TrackMetaRow",
     "classifier_run",
     "detector_run",
+    "flag_for_review",
     "import_labeller_json",
     "import_roboflow",
     "ingest_frame",
+    "score_detections",
     "source_overlap",
     "to_detection_rows",
     "to_frame_row",
