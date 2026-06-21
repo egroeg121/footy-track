@@ -25,6 +25,7 @@ PROJECT_ROOT = pathlib.Path(__file__).parents[1]
 CLIPS_DIR_DEFAULT = pathlib.Path(
     "/Users/georgebarnett/code/footy/footy_track/refinery/rig/eval_data/clips"
 )
+GT_DIR_DEFAULT = pathlib.Path.home() / "Library" / "Mobile Documents" / "com~apple~CloudDocs" / "footy_data" / "ball_gt_marks"
 OUTPUT_DEFAULT = PROJECT_ROOT / "docs" / "bakeoff_results.json"
 
 
@@ -34,7 +35,13 @@ def main() -> None:
         "--clips-dir",
         type=pathlib.Path,
         default=CLIPS_DIR_DEFAULT,
-        help="Directory containing video + JSONL GT files",
+        help="Directory containing video files",
+    )
+    parser.add_argument(
+        "--gt-dir",
+        type=pathlib.Path,
+        default=GT_DIR_DEFAULT,
+        help="Directory containing JSONL GT mark files (default: iCloud ball_gt_marks)",
     )
     parser.add_argument(
         "--output",
@@ -53,8 +60,13 @@ def main() -> None:
         print(f"ERROR: clips directory not found: {args.clips_dir}", file=sys.stderr)
         sys.exit(1)
 
-    print(f"Loading dataset from: {args.clips_dir}")
-    dataset = EvalDataset.from_dir(args.clips_dir)
+    if not args.gt_dir.exists():
+        print(f"ERROR: GT directory not found: {args.gt_dir}", file=sys.stderr)
+        sys.exit(1)
+
+    print(f"Loading dataset from clips: {args.clips_dir}")
+    print(f"                   GT dir: {args.gt_dir}")
+    dataset = EvalDataset.from_dirs(args.clips_dir, args.gt_dir)
 
     print(f"\nDataset: {len(dataset.clips)} clips")
     for clip in dataset:

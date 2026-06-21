@@ -57,9 +57,19 @@ class FrameLabel(NamedTuple):
     @classmethod
     def from_dict(cls, d: dict) -> FrameLabel:
         raw_bbox = d.get("bbox")
-        bbox: BBox | None = tuple(raw_bbox) if raw_bbox is not None else None  # type: ignore[arg-type]
+        if raw_bbox is None:
+            bbox: BBox | None = None
+        elif isinstance(raw_bbox, dict):
+            bbox = (float(raw_bbox["x"]), float(raw_bbox["y"]), float(raw_bbox["w"]), float(raw_bbox["h"]))
+        else:
+            bbox = tuple(float(v) for v in raw_bbox)  # type: ignore[arg-type]
         raw_center = d.get("center")
-        center: Center | None = tuple(raw_center) if raw_center is not None else None  # type: ignore[arg-type]
+        if raw_center is None:
+            center: Center | None = None
+        elif isinstance(raw_center, dict):
+            center = (float(raw_center["x"]), float(raw_center["y"]))
+        else:
+            center = tuple(float(v) for v in raw_center)  # type: ignore[arg-type]
         return cls(
             frame_index=int(d["frame_index"]),
             bbox=bbox,
@@ -207,6 +217,35 @@ class EvalDataset:
 
         if not clips:
             raise ValueError(f"No labelled clips found in {directory}")
+
+        return cls(clips)
+
+    @classmethod
+    def from_dirs(
+        cls,
+        video_dir: str | pathlib.Path,
+        gt_dir: str | pathlib.Path,
+    ) -> "EvalDataset":
+        """Load clips with videos in *video_dir* and JSONL GT in *gt_dir*.
+
+        Useful when GT marks live separately from the video files (e.g. iCloud).
+        Only clips that have both a video and a matching JSONL are included.
+        """
+        video_dir = pathlib.Path(video_dir)
+        gt_dir = pathlib.Path(gt_dir)
+        clips: list[EvalClip] = []
+
+        for jsonl_path in sorted(gt_dir.glob("*.jsonl")):
+            video_path = _find_video(video_dir, jsonl_path.stem)
+            if video_path is None:
+                continue  # GT exists but no video — skip silently
+            clips.append(EvalClip.from_video_and_jsonl(video_path, jsonl_path))
+
+        if not clips:
+            raise ValueError(
+                f"No matched (video, GT) pairs found in video_dir={video_dir} "
+                f"and gt_dir={gt_dir}"
+            )
 
         return cls(clips)
 
