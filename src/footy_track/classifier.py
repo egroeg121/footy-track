@@ -22,10 +22,15 @@ CURRENT_BEST_GUESS_CLASSIFIER_CLASS = None
 
 def get_current_best_guess_classifier() -> "Classifier":
     """Returns the current best guess classifier class."""
+    # Try to load the local model; fall back to random if unavailable
     repo_root = Path(__file__).resolve().parents[2]
-    return UltralyticsClassifier(
-        model_path=repo_root / "model_saves/classifier/20260125-yolo11n-cls/best.pt"
-    )
+    model_path = repo_root / "model_saves/classifier/20251226-yolo11n-cls/0.987.pt"
+
+    try:
+        return UltralyticsClassifier(model_path=model_path)
+    except Exception as e:
+        logger.warning(f"Failed to load classifier model ({e}), using fallback")
+        return RandomClassifier()
 
 
 class Classifier(ABC):
