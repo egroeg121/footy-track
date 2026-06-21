@@ -30,6 +30,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect  # noqa: E402
 from fastapi.responses import HTMLResponse, Response  # noqa: E402
 from fastapi.staticfiles import StaticFiles  # noqa: E402
 
+from footy_track.ball_eval.metrics import bbox_iou  # noqa: E402
 from footy_track.labeller.video_utils import (  # noqa: E402
     BackgroundLabeller,
     LabelledObject,
@@ -371,6 +372,94 @@ async def mark_no_ball(body: dict) -> dict:
             ]
     SESSION.schedule_flush()
     return {"idx": idx, "no_ball": True}
+
+
+@app.post("/propagate")
+async def propagate_labels(body: dict) -> dict:
+    """Propagate player labels from a reference frame to subsequent frames using IoU matching.
+
+    Request body:
+    - ref_idx: reference frame index
+    - end_idx: end frame index (inclusive); propagate from ref_idx to end_idx
+    - iou_threshold: minimum IoU to consider a match (default 0.3)
+    - labels_to_propagate: list of player labels to propagate (e.g., ["player", "player_sub"])
+
+    Returns:
+    - propagated: dict mapping frame index to list of matched/propagated boxes
+    """
+    ref_idx = int(body.get("ref_idx", 0))
+    end_idx = int(body.get("end_idx", SESSION.total_frames - 1))
+    iou_threshold = float(body.get("iou_threshold", 0.3))
+    labels_to_propagate = set(body.get("labels_to_propagate", ["player", "player_sub"]))
+
+    # Get reference frame boxes
+    ref_boxes = SESSION.get_frame(ref_idx)
+    ref_player_boxes = [b for b in ref_boxes if b.label in labels_to_propagate]
+
+    propagated: dict[int, list[ObjectDetection]] = {}
+
+    # For each subsequent frame, match boxes by IoU
+    for idx in range(ref_idx + 1, min(end_idx + 1, SESSION.total_frames)):
+        frame_boxes = SESSION.get_frame(idx)
+        if not frame_boxes:
+            continue
+
+        # Match existing boxes in this frame to reference boxes by IoU
+        matched_labels: dict[int, str] = {}  # box_idx -> player_label
+        ref_box_matched = [False] * len(ref_player_boxes)
+
+        for box_idx, frame_box in enumerate(frame_boxes):
+            best_iou = -1.0
+            best_ref_idx = -1
+
+            # Find the best matching reference box
+            for ref_idx_local, ref_box in enumerate(ref_player_boxes):
+                if ref_box_matched[ref_idx_local]:
+                    continue
+                iou = bbox_iou(
+                    (ref_box.x, ref_box.y, ref_box.w, ref_box.h),
+                    (frame_box.x, frame_box.y, frame_box.w, frame_box.h),
+                )
+                if iou > best_iou:
+                    best_iou = iou
+                    best_ref_idx = ref_idx_local
+
+            # If we found a good match, assign the player label
+            if best_iou >= iou_threshold and best_ref_idx >= 0:
+                matched_labels[box_idx] = ref_player_boxes[best_ref_idx].label
+                ref_box_matched[best_ref_idx] = True
+
+        # Create propagated boxes with matched labels
+        if matched_labels:
+            new_boxes = []
+            for box_idx, frame_box in enumerate(frame_boxes):
+                if box_idx in matched_labels:
+                    # Update the label to the matched player identity
+                    new_box = ObjectDetection(
+                        label=matched_labels[box_idx],
+                        confidence=frame_box.confidence,
+                        x=frame_box.x,
+                        y=frame_box.y,
+                        w=frame_box.w,
+                        h=frame_box.h,
+                        model=PROV_SAM3,
+                    )
+                    new_boxes.append(new_box)
+                else:
+                    new_boxes.append(frame_box)
+
+            # Merge the updated boxes into the frame (keeping labeller ground truth)
+            SESSION.merge_propagated(idx, new_boxes)
+            propagated[idx] = new_boxes
+
+    SESSION.schedule_flush()
+    return {
+        "ref_idx": ref_idx,
+        "end_idx": end_idx,
+        "iou_threshold": iou_threshold,
+        "propagated_frames": len(propagated),
+        "propagated": {str(k): [b.model_dump() for b in v] for k, v in propagated.items()},
+    }
 
 
 # ----------------------------------------------------------------------------
