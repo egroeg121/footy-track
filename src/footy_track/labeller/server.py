@@ -41,7 +41,7 @@ from footy_track.schema import ObjectDetection  # noqa: E402
 app = FastAPI(title="SAM3 Video Labeller")
 
 _STATIC_DIR = Path(__file__).parent / "web"
-_CLIPS_DIR = Path(__file__).parents[5] / "eval_data" / "clips"
+_CLIPS_DIR = Path(__file__).parents[3] / "eval_data" / "clips"
 _GT_MARKS_DIR = (
     Path.home()
     / "Library"

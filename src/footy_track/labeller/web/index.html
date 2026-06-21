@@ -68,6 +68,7 @@
   <div class="clips-panel">
     <h3>📂 Clips</h3>
     <div id="clipList"><span class="muted">Loading…</span></div>
+    <button id="addClipBtn" style="margin-top:8px;width:100%;font-size:11px;">+ Add clip</button>
   </div>
 
   <div>
@@ -376,6 +377,15 @@ async function loadClip(name, el) {
 }
 
 loadClipList();
+
+$("addClipBtn").onclick = async () => {
+  const name = prompt("Clip filename (must be in clips dir):");
+  if (!name) return;
+  const res = await fetch("/clips/add", {method:"POST", headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({name})});
+  if (res.ok) loadClipList();
+  else alert("Failed to add clip");
+};
 
 // ---------- load ----------
 // Restore the last-used video path so it's pre-filled next time.
