@@ -1,0 +1,1301 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Tracking players, actions, and events in football matches.">
+      
+      
+      
+        <link rel="canonical" href="https://egroeg121.github.io/footy-track/design/autolabelling_architecture_review/">
+      
+      
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.6.20">
+    
+    
+      
+        <title>Architecture Review: GT Marking + Bake-off for Ball Autolabelling - Footy Scan</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.e53b48f4.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+    
+  </head>
+  
+  
+    <body dir="ltr">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#architecture-review-gt-marking-bake-off-for-ball-autolabelling" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="Footy Scan" class="md-header__button md-logo" aria-label="Footy Scan" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Footy Scan
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Architecture Review: GT Marking + Bake-off for Ball Autolabelling
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="Footy Scan" class="md-nav__button md-logo" aria-label="Footy Scan" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Footy Scan
+  </label>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Home
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    Development
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            Development
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../system_design/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    System Design
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../system_overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    System Overview
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Getting Started
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../pipeline_architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Pipeline Architecture
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../timings/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Time Formats
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../data_formats/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Data Formats
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../training/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Training
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../training/notable_runs/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Notable Training Runs
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    Contributing
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            Contributing
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../agent_guidelines/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Agent Guidelines
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-whats-being-proposed-as-i-understand-it" class="md-nav__link">
+    <span class="md-ellipsis">
+      1. What's being proposed (as I understand it)
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-ground-truth-what-the-tree-and-the-data-actually-say" class="md-nav__link">
+    <span class="md-ellipsis">
+      2. Ground truth: what the tree and the data actually say
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-q1-is-sparse-human-marking-tracker-seeding-the-right-architecture" class="md-nav__link">
+    <span class="md-ellipsis">
+      3. Q1 — Is sparse human marking + tracker seeding the right architecture?
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="3. Q1 — Is sparse human marking + tracker seeding the right architecture?">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#where-its-right" class="md-nav__link">
+    <span class="md-ellipsis">
+      Where it's right
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-caveat-every-5-frames-is-an-assertion-not-a-measurement" class="md-nav__link">
+    <span class="md-ellipsis">
+      The caveat — "every ~5 frames" is an assertion, not a measurement
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-deeper-architectural-point" class="md-nav__link">
+    <span class="md-ellipsis">
+      The deeper architectural point
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-q2-are-the-4-methods-well-chosen-whats-missing" class="md-nav__link">
+    <span class="md-ellipsis">
+      4. Q2 — Are the 4 methods well-chosen? What's missing?
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="4. Q2 — Are the 4 methods well-chosen? What&#39;s missing?">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#whats-good" class="md-nav__link">
+    <span class="md-ellipsis">
+      What's good
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#whats-missing-or-off" class="md-nav__link">
+    <span class="md-ellipsis">
+      What's missing or off
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-q3-is-incremental-jsonl-flush-to-icloud-the-right-data-safety-strategy" class="md-nav__link">
+    <span class="md-ellipsis">
+      5. Q3 — Is incremental JSONL flush to iCloud the right data-safety strategy?
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="5. Q3 — Is incremental JSONL flush to iCloud the right data-safety strategy?">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#whats-good_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      What's good
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-caveats" class="md-nav__link">
+    <span class="md-ellipsis">
+      The caveats
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-q4-after-the-bake-off-how-do-we-use-the-winner-to-produce-training-data" class="md-nav__link">
+    <span class="md-ellipsis">
+      6. Q4 — After the bake-off, how do we use the winner to produce training data?
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="6. Q4 — After the bake-off, how do we use the winner to produce training data?">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-pipeline-from-sam3_ball_labelling_gpumd-78" class="md-nav__link">
+    <span class="md-ellipsis">
+      The pipeline (from sam3_ball_labelling_gpu.md §7–§8)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#key-points-and-gaps" class="md-nav__link">
+    <span class="md-ellipsis">
+      Key points and gaps
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-q5-are-there-faster-paths-to-labelled-ball-data" class="md-nav__link">
+    <span class="md-ellipsis">
+      7. Q5 — Are there faster paths to labelled ball data?
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-recommendations-next-steps" class="md-nav__link">
+    <span class="md-ellipsis">
+      8. Recommendations &amp; next steps
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="8. Recommendations &amp; next steps">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#one-line-summary" class="md-nav__link">
+    <span class="md-ellipsis">
+      One-line summary
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#appendix-source-grounding" class="md-nav__link">
+    <span class="md-ellipsis">
+      Appendix: source grounding
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+
+<h1 id="architecture-review-gt-marking-bake-off-for-ball-autolabelling">Architecture Review: GT Marking + Bake-off for Ball Autolabelling<a class="headerlink" href="#architecture-review-gt-marking-bake-off-for-ball-autolabelling" title="Permanent link">&para;</a></h1>
+<p><strong>Bead:</strong> ft-q3y · <strong>Date:</strong> 2026-06-21 · <strong>Reviewer:</strong> polecat jade
+<strong>Scope:</strong> the proposed architecture for autolabelling ball positions in broadcast
+football video — sparse human GT marking, tracker seeding, the 4-method bake-off,
+data-safety strategy, and the path from bake-off winner to training data.</p>
+<blockquote>
+<p><strong>Headline.</strong> The architecture is <strong>sound in shape and wrong in sequencing</strong>.
+Sparse human marking + tracker seeding is the right way to <em>measure</em> trackers,
+but the project is currently optimising the wrong stage: the empirical evidence
+(<a href="../../ball_tracker_failure_analysis/"><code>ball_tracker_failure_analysis.md</code></a>,
+<a href="../../bakeoff_results.json"><code>bakeoff_results.json</code></a>) says <strong>detection — not
+tracking — is 100% of the failure</strong>, and the one bake-off method actually run
+(ROI-YOLO) scores <strong>0.2% recall</strong>. Before a bake-off can discriminate between
+trackers, the seeds those trackers re-acquire from have to exist. The
+single highest-leverage action is not "run more trackers" — it is <strong>close the
+labeller export gap (B1) and produce the first batch of human GT</strong>, because
+that GT is simultaneously (a) the bake-off's measuring stick and (b) the
+training data that fixes detection, which is the actual bottleneck.</p>
+</blockquote>
+<hr />
+<h2 id="1-whats-being-proposed-as-i-understand-it">1. What's being proposed (as I understand it)<a class="headerlink" href="#1-whats-being-proposed-as-i-understand-it" title="Permanent link">&para;</a></h2>
+<ol>
+<li>A human marks the ball bbox on a <strong>sparse</strong> set of frames (~every 5) via the
+   labeller UI.</li>
+<li>Each tracker is <strong>seeded</strong> from those GT marks (warm-start, not cold-start)
+   and tracks forward until it loses the ball.</li>
+<li>A <strong>bake-off</strong> compares four methods — A=SOT VitTrack, B=SAM2 ROI crop,
+   C=ROI-YOLO on a Kalman-predicted crop, D=SAM3 (control).</li>
+<li>Metrics deliberately favour the <em>seeded-tracking</em> regime — frames held before
+   drift, centre-distance while held, reseed count — and explicitly <strong>reject
+   global recall</strong>, on the grounds that recall is dominated by cold-start
+   acquisition failure rather than tracking quality.</li>
+<li>GT and results are flushed incrementally as JSONL to iCloud for safety.</li>
+<li>The winning method then produces training data at scale.</li>
+</ol>
+<p>This review takes each of the bead's five questions in turn (§3–§7), after first
+establishing what the code and data actually show today (§2), because the answers
+hinge on it.</p>
+<hr />
+<h2 id="2-ground-truth-what-the-tree-and-the-data-actually-say">2. Ground truth: what the tree and the data actually say<a class="headerlink" href="#2-ground-truth-what-the-tree-and-the-data-actually-say" title="Permanent link">&para;</a></h2>
+<p>Three facts from the codebase reframe every question the bead asks.</p>
+<p><strong>Fact 1 — detection is the entire problem, tracking is not.</strong>
+<a href="../../ball_tracker_failure_analysis/"><code>ball_tracker_failure_analysis.md</code></a>
+analysed 500 frames across two broadcast clips:</p>
+<table>
+<thead>
+<tr>
+<th>Cause of missed ball</th>
+<th>Count</th>
+<th>Share of misses</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Detection failure (YOLO conf = 0)</td>
+<td>392</td>
+<td><strong>100%</strong></td>
+</tr>
+<tr>
+<td>Tracker failure (conf ≥ 0.3 but dropped)</td>
+<td>0</td>
+<td><strong>0%</strong></td>
+</tr>
+</tbody>
+</table>
+<p>Overall detection rate was <strong>21.6%</strong> (36% on one clip, 7% on the other). Every
+single missed frame was a detection failure; the Hungarian tracker dropped
+<em>nothing</em> it was given. The ball is small, distant, motion-blurred, and often
+occluded — the detector simply doesn't see it.</p>
+<p><strong>Fact 2 — the bake-off has barely run, and what ran scored ~0.</strong>
+<a href="../../bakeoff_results.json"><code>bakeoff_results.json</code></a> (2026-06-21) contains exactly
+<strong>one</strong> method, <code>roi-yolo-trained</code> (Method C), over 5 clips:
+<code>center_within_radius_pct</code> 20% (driven by one trivial 1-frame clip),
+<strong><code>mean_recall_pct</code> 0.2%</strong>, <code>total_failures</code> 437. Methods A (VitTrack) and
+C (ROI-YOLO) are implemented in <code>src/footy_track/ball_trackers/</code>; <strong>B (SAM2) and
+D (SAM3) live only on un-merged feature branches</strong> (ft-xps, ft-76b) and have
+never been scored on this dataset. So today's "bake-off" is a single competitor
+posting a near-zero number — there is no comparison to make yet.</p>
+<p><strong>Fact 3 — the labeller cannot yet save GT.</strong>
+<a href="../labeller_review_2026-06/"><code>labeller_review_2026-06.md</code></a> §3 B1: the
+go-forward web labeller (<code>server.py</code> + <code>web/</code>) has <strong>no export endpoint</strong>. A user
+can mark and propagate in the browser and then lose everything;
+<code>export_frames_json</code> is wired only into the retiring Streamlit <code>app.py</code>. <strong>No
+human GT can currently be persisted from the intended UI.</strong> This is the literal
+precondition for both seeding trackers and retraining the detector, and it is not
+met.</p>
+<p>These three facts mean the project is, right now, trying to benchmark the
+<em>non-broken</em> stage (tracking) using seeds it <em>cannot yet produce</em> (GT export),
+to escape a problem that lives in a <em>third</em> stage (detection). The architecture
+below is good; the ordering needs correcting.</p>
+<hr />
+<h2 id="3-q1-is-sparse-human-marking-tracker-seeding-the-right-architecture">3. Q1 — Is sparse human marking + tracker seeding the right architecture?<a class="headerlink" href="#3-q1-is-sparse-human-marking-tracker-seeding-the-right-architecture" title="Permanent link">&para;</a></h2>
+<p><strong>Yes for evaluation. Partly, with a caveat, for production labelling.</strong></p>
+<h3 id="where-its-right">Where it's right<a class="headerlink" href="#where-its-right" title="Permanent link">&para;</a></h3>
+<p>Sparse marking + seeded forward-tracking is the <strong>correct evaluation harness</strong>
+and is well-aligned with the rest of the system:</p>
+<ul>
+<li>It isolates the variable that matters for autolabelling-at-scale — <em>how long a
+  tracker holds the ball once correctly initialised</em> — from the variable the
+  human is there to cover (acquisition). That's a clean factorisation.</li>
+<li>It matches the existing motion-guided design
+  (<a href="../sam3_ball_labelling_gpu/"><code>sam3_ball_labelling_gpu.md</code></a> §2): the plan of
+  record is already "Kalman-predict → tight ROI crop → cheap runner → full-frame
+  re-acquire on miss". A seeded tracker measured by "frames held before drift" is
+  exactly the per-step loop that doc describes, measured the right way.</li>
+<li>The <code>BallTracker</code> protocol (<code>ball_eval/interface.py</code>) with <code>track(prev_bbox,
+  frame)</code> + <code>reset()</code>, and the runner that feeds GT back as <code>prev_bbox</code> on
+  re-seed, is a faithful and minimal implementation of this idea.</li>
+</ul>
+<h3 id="the-caveat-every-5-frames-is-an-assertion-not-a-measurement">The caveat — "every ~5 frames" is an assertion, not a measurement<a class="headerlink" href="#the-caveat-every-5-frames-is-an-assertion-not-a-measurement" title="Permanent link">&para;</a></h3>
+<p>Sparse marking only works at scale if the <strong>reseed interval the trackers can
+sustain</strong> is large enough that human marking is a small fraction of the work. The
+bead picks "~every 5 frames" a priori. At 5-frame sparsity on 25fps broadcast,
+the human marks 5 balls/second of footage — that is <em>not</em> sparse; that is nearly
+manual labelling. The whole economic case for this architecture rests on the
+<strong>autolabel ratio</strong>: frames-auto-produced ÷ frames-hand-marked. The bake-off must
+<em>output that ratio per method</em>, and the target interval should be <strong>derived from
+the winning tracker's measured drift length, not assumed</strong>. If the best tracker
+only holds the ball for ~5 frames on hard clips, sparse marking has not actually
+bought scale — and that's a finding the bake-off must be able to surface, not
+hide.</p>
+<h3 id="the-deeper-architectural-point">The deeper architectural point<a class="headerlink" href="#the-deeper-architectural-point" title="Permanent link">&para;</a></h3>
+<p>Seeded tracking can produce GT <em>between</em> human marks, but every autolabelled
+frame inherits the tracker's drift. For <strong>training-data</strong> purposes (the end goal,
+§6) that's fine — a slightly loose bbox on a 24px ball is still a useful positive,
+and small label noise is tolerable for detector training. For <strong>evaluation
+ground truth</strong> it is not — you cannot measure a tracker against labels produced
+by a tracker. Keep the two uses distinct: human <code>PROV_LABELLER</code> boxes are the
+<em>only</em> GT the bake-off scores against; tracker-propagated boxes are <em>training
+fodder</em>, never the measuring stick. The labeller's provenance model
+(<code>PROV_LABELLER</code> survives re-propagation, <code>server.py:106-113</code>) already encodes
+this distinction correctly — the bake-off harness must respect it by scoring only
+against <code>PROV_LABELLER</code> frames.</p>
+<p><strong>Verdict:</strong> right architecture for the eval harness; sound for production
+labelling <em>only if</em> the reseed interval is an output, not an input, and human GT
+is kept strictly separate from tracker output.</p>
+<hr />
+<h2 id="4-q2-are-the-4-methods-well-chosen-whats-missing">4. Q2 — Are the 4 methods well-chosen? What's missing?<a class="headerlink" href="#4-q2-are-the-4-methods-well-chosen-whats-missing" title="Permanent link">&para;</a></h2>
+<p>The four methods are a reasonable spanning set across the design space, but the
+set has one structural gap and one redundancy.</p>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Family</th>
+<th>Role</th>
+<th>Status</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>A — SOT VitTrack</td>
+<td>Single-object tracker (ONNX, template+search)</td>
+<td>"track this box" specialist</td>
+<td>✅ implemented</td>
+</tr>
+<tr>
+<td>B — SAM2 ROI crop</td>
+<td>Promptable segmenter on crop</td>
+<td>seg-quality on crop</td>
+<td>⚠️ branch only</td>
+</tr>
+<tr>
+<td>C — ROI-YOLO on Kalman crop</td>
+<td>Detector on predicted crop</td>
+<td>re-detect-each-frame</td>
+<td>✅ implemented</td>
+</tr>
+<tr>
+<td>D — SAM3</td>
+<td>Promptable segmenter, full-frame</td>
+<td>control / quality ceiling</td>
+<td>⚠️ branch only</td>
+</tr>
+</tbody>
+</table>
+<h3 id="whats-good">What's good<a class="headerlink" href="#whats-good" title="Permanent link">&para;</a></h3>
+<p>The set spans the three relevant families — <strong>SOT trackers</strong> (A), <strong>detectors</strong>
+(C), <strong>promptable segmenters</strong> (B, D) — which is exactly the runner matrix
+<a href="../sam3_ball_labelling_gpu/"><code>sam3_ball_labelling_gpu.md</code></a> §5 calls for. Having
+SAM3 as the explicit control/ceiling (D) is the right experimental hygiene:
+SAM3 is the current incumbent and the quality bar everything else must beat at
+acceptable speed.</p>
+<h3 id="whats-missing-or-off">What's missing or off<a class="headerlink" href="#whats-missing-or-off" title="Permanent link">&para;</a></h3>
+<ol>
+<li>
+<p><strong>No "detector + temporal smoothing" baseline that <em>uses the existing
+   trained YOLO directly</em>.</strong> Method C is ROI-YOLO on a Kalman <em>crop</em>; there is no
+   simplest-possible baseline of "run the existing full-frame YOLO every frame,
+   NMS, link with the existing Hungarian tracker" — i.e. the <em>current production
+   pipeline</em>. Without it, the bake-off can't tell you how much the fancy
+   approaches actually buy over what already ships. Add a <strong>Method 0 = current
+   pipeline</strong> as the floor, the way SAM3 is the ceiling.</p>
+</li>
+<li>
+<p><strong>B and D are partly redundant and the cheap-SAM option is absent.</strong> Both B
+   (SAM2) and D (SAM3) are heavy promptable segmenters; the design doc explicitly
+   wanted <strong>SAM2.1-tiny / MobileSAM / EdgeTAM</strong> as the <em>cheap</em> segmenter
+   candidates (§4, §5), because the whole point is that full SAM is too slow.
+   Testing two heavyweight SAMs while omitting the lightweight ones tests the
+   wrong end of the cost curve. Swap one of B/D's slots (keep D as the
+   ceiling/control; replace B with <strong>SAM2.1-tiny on the crop</strong>) so the matrix
+   includes at least one segmenter that could plausibly be the <em>production</em>
+   runner, not just a baseline.</p>
+</li>
+<li>
+<p><strong>No explicit re-acquire method under test.</strong> The architecture's safety net is
+   full-frame re-acquire on miss (§2.3 of the GPU doc), and the <em>bake-off metric</em>
+   is "reseed count". But re-acquire quality is itself a method choice
+   (full-frame YOLO vs full-frame SAM3) and it determines whether a "lost" ball
+   is recovered automatically or needs a human mark. The bake-off should measure
+   each tracker <strong>with and without</strong> an automatic re-acquire pass, so the reseed
+   count reflects <em>human</em> reseeds, not tracker-internal recoveries — otherwise
+   "reseed count" conflates two very different costs.</p>
+</li>
+<li>
+<p><strong>Speed is a first-class axis, not a footnote.</strong> The pass-bar in the GPU doc
+   is <em>interactive fps with occasional correction</em>. Two methods can hold the ball
+   equally well while differing 10× in fps. The current <code>bakeoff_results.json</code>
+   does report <code>fps</code> and <code>effective_resolution_px</code> — good — but the <strong>decision
+   rule must weight fps explicitly</strong> (e.g. "best <code>frames_held</code> among methods
+   ≥15fps on the cropped path"), or the bake-off will crown an unusable
+   quality-king.</p>
+</li>
+</ol>
+<p><strong>Verdict:</strong> keep A, C, D; add <strong>Method 0 (current pipeline floor)</strong>; replace one
+heavyweight SAM with a <strong>tiny SAM</strong>; make <strong>re-acquire</strong> an explicit on/off
+condition; and bake the <strong>fps pass-bar into the decision rule</strong>.</p>
+<hr />
+<h2 id="5-q3-is-incremental-jsonl-flush-to-icloud-the-right-data-safety-strategy">5. Q3 — Is incremental JSONL flush to iCloud the right data-safety strategy?<a class="headerlink" href="#5-q3-is-incremental-jsonl-flush-to-icloud-the-right-data-safety-strategy" title="Permanent link">&para;</a></h2>
+<p><strong>Right instinct, adequate-for-now mechanism, wrong primary risk in focus.</strong></p>
+<h3 id="whats-good_1">What's good<a class="headerlink" href="#whats-good_1" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>Append-only JSONL with incremental flush</strong> is the correct <em>shape</em> for
+  in-progress human labelling: each marked frame is one self-contained line, a
+  crash loses at most the current line, and the format matches the eval dataset
+  sidecars (<code>eval_data/clips/&lt;clip&gt;.jsonl</code>, one <code>FrameLabel</code> per line) and the
+  feature-store importer contract (<code>&lt;stem&gt;_frame_&lt;idx&gt;</code>). No serialisation
+  ceremony, recoverable by hand, diff-friendly. Keep it.</li>
+<li><strong>iCloud</strong> as the sync target is a pragmatic, zero-infra choice consistent with
+  the rest of the project (model checkpoints already live under
+  <code>~/Library/Mobile Documents/com~apple~CloudDocs/footy_data/</code>). For solo
+  morning marking it is fine.</li>
+</ul>
+<h3 id="the-caveats">The caveats<a class="headerlink" href="#the-caveats" title="Permanent link">&para;</a></h3>
+<ol>
+<li>
+<p><strong>The flush is moot until B1 is fixed.</strong> The web labeller has <em>no export path
+   at all</em> right now (<a href="../labeller_review_2026-06/"><code>labeller_review_2026-06.md</code></a>
+   B1). "Incremental JSONL flush to iCloud" describes a strategy for a write path
+   that <strong>does not exist in the go-forward UI</strong>. The <em>first</em> data-safety task is
+   not tuning the flush cadence — it is shipping the <code>/session/export</code> endpoint
+   (R1) so there is anything to flush. Until then the real data-safety posture is
+   "everything is in a single browser tab's memory and one reload wipes it",
+   which is the most dangerous possible state.</p>
+</li>
+<li>
+<p><strong>iCloud is sync, not backup, and not atomic.</strong> iCloud Drive does <em>eventual</em>
+   sync and can conflict-rename files; a partially-flushed line synced mid-write,
+   or two devices touching the same clip, produces silent corruption or
+   <code>clip 2.jsonl</code> conflict copies. Mitigations: <strong>write to a local file and
+   <code>os.replace</code> (atomic rename) per flush</strong>, never append-in-place to the iCloud
+   path directly; flush whole lines only (never a partial JSON object); and treat
+   iCloud as the <em>propagation</em> layer over a local source of truth, with periodic
+   <code>git</code>/<code>bd</code> snapshots of completed clips as the actual backup. JSONL append +
+   atomic-rename-on-flush gives crash safety without depending on iCloud
+   semantics.</p>
+</li>
+<li>
+<p><strong>GT integrity &gt; GT durability.</strong> The labeller review flags two <em>silent
+   correctness</em> bugs that no flushing strategy protects against: positional
+   label-shift when SAM3 drops a track (B5) and the seeding-mode edit-loss
+   footgun (B4). A perfectly durable flush of <em>wrong</em> labels is worse than a lost
+   session, because wrong GT poisons both the bake-off scores and the retrain set
+   invisibly. Data safety here must include <strong>validating what gets flushed</strong>
+   (e.g. refuse to emit a frame whose mask-count ≠ seed-count; only flush
+   <code>PROV_LABELLER</code> boxes as GT).</p>
+</li>
+</ol>
+<p><strong>Verdict:</strong> JSONL-incremental is the right format; harden it with
+atomic-rename-per-flush over a local source of truth and treat iCloud as sync not
+backup; but the export endpoint (B1) and the silent-corruption bugs (B4/B5) are
+higher-priority data-safety work than flush cadence.</p>
+<hr />
+<h2 id="6-q4-after-the-bake-off-how-do-we-use-the-winner-to-produce-training-data">6. Q4 — After the bake-off, how do we use the winner to produce training data?<a class="headerlink" href="#6-q4-after-the-bake-off-how-do-we-use-the-winner-to-produce-training-data" title="Permanent link">&para;</a></h2>
+<p>The path already exists in design and partly in code — the bake-off winner slots
+into the <strong>existing</strong> motion-guided + Roboflow pipeline, not a new one.</p>
+<h3 id="the-pipeline-from-sam3_ball_labelling_gpumd-78">The pipeline (from <a href="../sam3_ball_labelling_gpu/"><code>sam3_ball_labelling_gpu.md</code></a> §7–§8)<a class="headerlink" href="#the-pipeline-from-sam3_ball_labelling_gpumd-78" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code>human marks sparse GT (PROV_LABELLER)            ← the bake-off measuring stick
+   │
+   ▼
+winning tracker = BackgroundLabeller backend=&lt;winner&gt;   (ft-rwg seam, video_utils.py:407-410)
+   │  Kalman-crop loop, re-acquire on miss, human corrects on anomaly pause
+   ▼
+human-corrected timeline  (PROV_LABELLER + accepted tracker boxes)
+   │
+   ▼
+frames + COCO annotations → RoboflowObjectDetectionHandler.upload_images  (labelling.py, ft-0y4)
+   │
+   ▼
+Roboflow dataset (footy-track-detection v4+)
+   │
+   ▼
+retrain ball YOLO  (ft-n2o) → measure recall lift on the same eval clips
+   │
+   └──────────────► feeds back: a better detector is a better Method-C runner
+                    AND a better re-acquire, raising the autolabel ratio next round
+</code></pre></div>
+<h3 id="key-points-and-gaps">Key points and gaps<a class="headerlink" href="#key-points-and-gaps" title="Permanent link">&para;</a></h3>
+<ol>
+<li>
+<p><strong>The winner is selected as a <code>BackgroundLabeller</code> <code>backend=</code>, not a new
+   tool.</strong> ft-rwg already specifies the single seam (<code>video_utils.py:407-410</code>)
+   where the chosen runner replaces the SAM3 stream. The bake-off's only output to
+   production is <em>which backend string to default</em>. This is the right
+   minimal-surface integration — keep it.</p>
+</li>
+<li>
+<p><strong>Training-data export is Roboflow, not the feature store.</strong> The GPU doc §8 is
+   explicit and correct: corrected labels → COCO → <code>RoboflowObjectDetectionHandler</code>
+   → retrain (ft-0y4 → ft-n2o). The feature store (ft-4jr) is for <em>runtime
+   tracking/event</em> data, not raw training images. Don't conflate them.</p>
+</li>
+<li>
+<p><strong>The flywheel is the actual payoff.</strong> The winning tracker labels frames the
+   detector currently misses → those become YOLO training data → the retrained
+   YOLO (Fact 1's 21.6% recall) climbs → a better YOLO is <em>simultaneously</em> a
+   better Method-C runner and a better re-acquire → the next labelling round needs
+   fewer human marks. <strong>The bake-off is not the deliverable; the first turn of
+   this flywheel is.</strong> The success metric for the whole effort is <strong>recall lift on
+   the eval clips after one retrain</strong>, not the bake-off table itself.</p>
+</li>
+<li>
+<p><strong>Gap: the bake-off and the retrain set must use disjoint clips.</strong> If the same
+   clips that the winning tracker labels are also the clips the detector is
+   evaluated on, recall lift is contaminated. Reserve a held-out eval set of
+   human-only-GT clips that never enter the training pool.</p>
+</li>
+</ol>
+<p><strong>Verdict:</strong> the post-bake-off path is already designed and mostly built
+(ft-rwg/ft-0y4/ft-n2o). The winner integrates as a backend string; training data
+flows through Roboflow; and the real success criterion is <strong>detector recall lift
+after the first retrain</strong>, with a held-out eval set kept clean.</p>
+<hr />
+<h2 id="7-q5-are-there-faster-paths-to-labelled-ball-data">7. Q5 — Are there faster paths to labelled ball data?<a class="headerlink" href="#7-q5-are-there-faster-paths-to-labelled-ball-data" title="Permanent link">&para;</a></h2>
+<p><strong>Yes — and given Fact 1, at least one of them should run <em>in parallel with</em>
+the bake-off, not after it.</strong> The bake-off optimises tracking; these paths attack
+detection, which is the actual bottleneck. Ranked by expected leverage:</p>
+<ol>
+<li>
+<p><strong>Weak supervision from the existing YOLO + NMS, high-precision-only.</strong> The
+   detector already fires on 21.6% of frames, and on those frames the tracker
+   drops <em>nothing</em> (Fact 1) — i.e. when it detects, it's usable. Harvest the
+   <strong>high-confidence</strong> detections (e.g. conf ≥ 0.5, after NMS) directly as
+   training positives with <em>zero human time</em>. The mechanism already exists
+   (<code>yolo_seed_objects</code> + <code>_nms_filter</code>, <code>video_utils.py:743-808</code>). This won't
+   fix the hard 78% — those are the frames it can't see — but it cheaply
+   <em>reinforces</em> the easy cases and, more importantly, <strong>mines the failure
+   distribution</strong>: the frames where confidence is just below threshold are the
+   exact hard examples the detector needs. Surface low-conf-but-real frames to the
+   human as priority marking targets.</p>
+</li>
+<li>
+<p><strong>Lower the confidence threshold and let the human reject false positives.</strong>
+   The failure analysis explicitly recommends dropping below 0.3
+   (<a href="../../ball_tracker_failure_analysis/"><code>ball_tracker_failure_analysis.md</code></a>):
+   the detector is missing balls, so it's operating too conservatively. A lower
+   threshold trades false positives (cheap for a human to reject in the labeller —
+   one click) for recovered true positives (expensive to mark from scratch). This
+   shifts human effort from <em>drawing</em> boxes to <em>accepting/rejecting</em> them, which
+   is far faster.</p>
+</li>
+<li>
+<p><strong>SAM3-propagate from sparse marks now, ignore the bake-off entirely for the
+   first batch.</strong> SAM3 (the incumbent, Method D) already tracks the ball from a
+   single mark — that's the UX the whole project is built on. It's slow, but for
+   <em>offline batch</em> labelling (not interactive) slowness is tolerable. Run SAM3
+   propagation overnight on a handful of clips, have the human correct the drifts
+   in the morning, and you have the <strong>first Roboflow batch before the bake-off
+   even concludes</strong>. The bake-off then optimises the <em>interactive</em> loop; it isn't
+   on the critical path to the first retrain.</p>
+</li>
+<li>
+<p><strong>Exploit broadcast priors the current detector ignores.</strong> The ball is
+   small, roughly circular, high-contrast, and moves on smooth parabolic
+   trajectories. Cheap classical signals — Hough-circle / blob proposals filtered
+   by the Kalman trajectory prior, or temporal differencing for the moving ball
+   against a near-static pitch — can <em>propose</em> candidates for the human to confirm
+   in occlusion-free frames. Lower precision than a trained detector, but they
+   fail on <em>different</em> frames than YOLO, so they fill in the 78% gap. Use as
+   candidate-generators feeding the human, not as autolabels.</p>
+</li>
+</ol>
+<p><strong>The strategic point:</strong> every one of these attacks <strong>detection recall</strong>, which
+Fact 1 says is 100% of the problem. The bake-off attacks <strong>tracking drift</strong>,
+which Fact 1 says is 0% of the problem <em>today</em>. Tracking only becomes the binding
+constraint <em>after</em> detection recall is high enough that cold-start acquisition
+stops dominating. So: <strong>run weak-supervision harvest (path 1) + threshold-lower
+(path 2) + an overnight SAM3 batch (path 3) immediately to get the first retrain
+turn</strong>, and let the bake-off run in parallel to optimise the <em>interactive</em> loop
+for the rounds after that.</p>
+<hr />
+<h2 id="8-recommendations-next-steps">8. Recommendations &amp; next steps<a class="headerlink" href="#8-recommendations-next-steps" title="Permanent link">&para;</a></h2>
+<p>Ordered by leverage on the actual goal — <em>labelled ball data that lifts detector
+recall</em> — not by where the current effort is pointed.</p>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>Priority</th>
+<th>Action</th>
+<th>Why</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>N1</td>
+<td><strong>P0</strong></td>
+<td>Ship the labeller export endpoint (R1 / B1 from the labeller review)</td>
+<td>Nothing — bake-off seeds, GT, retrain set — exists without it. The flush strategy is moot until this lands.</td>
+</tr>
+<tr>
+<td>N2</td>
+<td><strong>P0</strong></td>
+<td>Run an <strong>overnight SAM3 batch + morning human correction</strong> on ~5 clips to produce the <strong>first Roboflow batch</strong>, in parallel with bake-off work</td>
+<td>Gets the flywheel's first turn (detector retrain) onto the critical path; doesn't wait for the bake-off to conclude.</td>
+</tr>
+<tr>
+<td>N3</td>
+<td><strong>P0</strong></td>
+<td>Add <strong>high-confidence YOLO harvest</strong> (conf ≥ 0.5, NMS) as zero-human-cost training positives, and <strong>lower the live threshold</strong> so the human rejects FPs instead of drawing boxes</td>
+<td>Attacks detection recall (Fact 1 = 100% of failure) for near-zero cost using code that already exists.</td>
+</tr>
+<tr>
+<td>N4</td>
+<td><strong>P1</strong></td>
+<td>Make the bake-off <strong>output the autolabel ratio / measured reseed interval per method</strong>, and <strong>derive</strong> the sparse-marking interval from it rather than assuming ~5</td>
+<td>The economic case for the whole architecture depends on this number; "~every 5" must be measured, not asserted (§3).</td>
+</tr>
+<tr>
+<td>N5</td>
+<td><strong>P1</strong></td>
+<td>Add <strong>Method 0 = current production pipeline</strong> (full-frame YOLO + Hungarian) as the bake-off floor; keep SAM3 (D) as the ceiling</td>
+<td>Without the floor, the bake-off can't show what the new methods buy over what ships today (§4).</td>
+</tr>
+<tr>
+<td>N6</td>
+<td><strong>P1</strong></td>
+<td>Replace one heavyweight SAM (keep D as control) with a <strong>tiny SAM (SAM2.1-tiny / MobileSAM)</strong> on the crop; merge the B/D branches or cut them</td>
+<td>Tests the cheap end of the cost curve — the end that could actually be the production runner (§4).</td>
+</tr>
+<tr>
+<td>N7</td>
+<td><strong>P1</strong></td>
+<td>Bake the <strong>fps pass-bar (≥~15fps cropped) into the decision rule</strong>; measure each tracker <strong>with/without auto re-acquire</strong> so "reseed count" = human reseeds only</td>
+<td>Prevents crowning an unusable quality-king; disambiguates the headline metric (§4).</td>
+</tr>
+<tr>
+<td>N8</td>
+<td><strong>P1</strong></td>
+<td>Harden the flush: <strong>atomic <code>os.replace</code> per whole line over a local source of truth</strong>, iCloud as sync-not-backup; refuse to flush frames failing the mask-count==seed-count guard (B5)</td>
+<td>Crash safety without depending on iCloud semantics; stops silent GT corruption (§5).</td>
+</tr>
+<tr>
+<td>N9</td>
+<td><strong>P2</strong></td>
+<td>Keep a <strong>held-out human-GT eval set</strong> disjoint from the retrain pool; report <strong>detector recall lift after retrain</strong> as the project's headline success metric</td>
+<td>The flywheel's payoff is recall lift, not the bake-off table; contamination would hide it (§6).</td>
+</tr>
+<tr>
+<td>N10</td>
+<td><strong>P2</strong></td>
+<td>Fix the labeller GT-integrity bugs B2/B4/B5 before large-scale marking</td>
+<td>Durable wrong labels are worse than lost sessions; they poison both bake-off and retrain (§5).</td>
+</tr>
+</tbody>
+</table>
+<h3 id="one-line-summary">One-line summary<a class="headerlink" href="#one-line-summary" title="Permanent link">&para;</a></h3>
+<p><strong>Fix export (N1), harvest + batch the detector's training data now (N2–N3), and
+let the bake-off run in parallel as an <em>optimisation of the interactive loop</em> —
+not as the gate to the first retrain.</strong> The architecture is right; it's pointed at
+the second-most-important problem. Detection recall is the bottleneck, and the
+fastest path to fixing it is producing GT today by the cheapest means available,
+because that same GT is what the bake-off measures against tomorrow.</p>
+<hr />
+<h2 id="appendix-source-grounding">Appendix: source grounding<a class="headerlink" href="#appendix-source-grounding" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Detection-is-the-bottleneck data: <a href="../../ball_tracker_failure_analysis/"><code>ball_tracker_failure_analysis.md</code></a></li>
+<li>Single-method bake-off result (~0% recall): <a href="../../bakeoff_results.json"><code>bakeoff_results.json</code></a></li>
+<li>Motion-guided architecture / runner matrix / Roboflow export path: <a href="../sam3_ball_labelling_gpu/"><code>sam3_ball_labelling_gpu.md</code></a></li>
+<li>Labeller export gap (B1), provenance model, GT-integrity bugs: <a href="../labeller_review_2026-06/"><code>labeller_review_2026-06.md</code></a></li>
+<li>Tracker implementations: <code>src/footy_track/ball_trackers/sot_vittrack.py</code> (A), <code>src/footy_track/ball_trackers/roi_yolo.py</code> (C); B/D on branches ft-xps / ft-76b</li>
+<li>Tracker interface + harness: <code>src/footy_track/ball_eval/interface.py</code>, <code>.../runner.py</code>, <code>.../metrics.py</code></li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      <script id="__config" type="application/json">{"base": "../..", "features": [], "search": "../../assets/javascripts/workers/search.973d3a69.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.f55a23d4.min.js"></script>
+      
+    
+  </body>
+</html>
