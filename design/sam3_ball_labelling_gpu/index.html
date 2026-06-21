@@ -1,0 +1,1148 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Tracking players, actions, and events in football matches.">
+      
+      
+      
+        <link rel="canonical" href="https://egroeg121.github.io/footy-track/design/sam3_ball_labelling_gpu/">
+      
+      
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.6.20">
+    
+    
+      
+        <title>SAM3 GPU Ball-Labelling: compute target & mark-once architecture - Footy Scan</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.e53b48f4.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+    
+  </head>
+  
+  
+    <body dir="ltr">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#sam3-gpu-ball-labelling-compute-target-mark-once-architecture" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="Footy Scan" class="md-header__button md-logo" aria-label="Footy Scan" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Footy Scan
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              SAM3 GPU Ball-Labelling: compute target &amp; mark-once architecture
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="Footy Scan" class="md-nav__button md-logo" aria-label="Footy Scan" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Footy Scan
+  </label>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Home
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    Development
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            Development
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../system_design/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    System Design
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../system_overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    System Overview
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Getting Started
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../pipeline_architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Pipeline Architecture
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../timings/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Time Formats
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../data_formats/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Data Formats
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../training/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Training
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../training/notable_runs/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Notable Training Runs
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    Contributing
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            Contributing
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../agent_guidelines/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Agent Guidelines
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#0-tldr-decision" class="md-nav__link">
+    <span class="md-ellipsis">
+      0. TL;DR / Decision
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#1-problem-current-pain" class="md-nav__link">
+    <span class="md-ellipsis">
+      1. Problem &amp; current pain
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="1. Problem &amp; current pain">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#why-just-use-a-bigger-gpu-is-the-wrong-primary-lever" class="md-nav__link">
+    <span class="md-ellipsis">
+      Why "just use a bigger GPU" is the wrong primary lever
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-architecture-motion-guided-box-prompt-loop" class="md-nav__link">
+    <span class="md-ellipsis">
+      2. Architecture: motion-guided box-prompt loop
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="2. Architecture: motion-guided box-prompt loop">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#21-per-step-loop" class="md-nav__link">
+    <span class="md-ellipsis">
+      2.1 Per-step loop
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#22-the-crop-is-where-the-resolution-win-lives" class="md-nav__link">
+    <span class="md-ellipsis">
+      2.2 The crop is where the resolution win lives
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#23-full-frame-re-acquire-the-rare-path" class="md-nav__link">
+    <span class="md-ellipsis">
+      2.3 Full-frame re-acquire (the rare path)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#24-frametracker-croprunner-interface-ft-v43" class="md-nav__link">
+    <span class="md-ellipsis">
+      2.4 FrameTracker / CropRunner interface (ft-v43)
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-compute-targets-evaluated" class="md-nav__link">
+    <span class="md-ellipsis">
+      3. Compute targets evaluated
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="3. Compute targets evaluated">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#verdict" class="md-nav__link">
+    <span class="md-ellipsis">
+      Verdict
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#rough-vram-fps-expectations-to-be-confirmed-by-ft-gx9" class="md-nav__link">
+    <span class="md-ellipsis">
+      Rough VRAM / fps expectations (to be confirmed by ft-gx9)
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-optimisation-levers" class="md-nav__link">
+    <span class="md-ellipsis">
+      4. Optimisation levers
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-runner-matrix-ft-gx9-runner-is-a-first-class-variable" class="md-nav__link">
+    <span class="md-ellipsis">
+      5. Runner matrix (ft-gx9) — runner is a first-class variable
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-benchmark-plan-ft-gx9" class="md-nav__link">
+    <span class="md-ellipsis">
+      6. Benchmark plan (ft-gx9)
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-integration-into-the-existing-app-no-new-app" class="md-nav__link">
+    <span class="md-ellipsis">
+      7. Integration into the EXISTING app (no new app)
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="7. Integration into the EXISTING app (no new app)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#71-what-already-exists" class="md-nav__link">
+    <span class="md-ellipsis">
+      7.1 What already exists
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#72-where-the-new-tracker-plugs-in-ft-rwg" class="md-nav__link">
+    <span class="md-ellipsis">
+      7.2 Where the new tracker plugs in (ft-rwg)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#73-provenance-the-human-in-the-loop" class="md-nav__link">
+    <span class="md-ellipsis">
+      7.3 Provenance &amp; the human-in-the-loop
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-storage-training-data-export-ft-0y4" class="md-nav__link">
+    <span class="md-ellipsis">
+      8. Storage / training-data export (ft-0y4)
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#9-child-bead-breakdown" class="md-nav__link">
+    <span class="md-ellipsis">
+      9. Child-bead breakdown
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#10-open-questions-risks" class="md-nav__link">
+    <span class="md-ellipsis">
+      10. Open questions / risks
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+
+<h1 id="sam3-gpu-ball-labelling-compute-target-mark-once-architecture">SAM3 GPU Ball-Labelling: compute target &amp; mark-once architecture<a class="headerlink" href="#sam3-gpu-ball-labelling-compute-target-mark-once-architecture" title="Permanent link">&para;</a></h1>
+<blockquote>
+<p>Design doc for epic <strong>ft-8vx</strong> — <em>GPU-accelerated SAM3 ball-labelling loop: mark once, track high-res/high-fps</em>.
+Authored under <strong>ft-mhk</strong>. Child beads reference this doc by section number.</p>
+</blockquote>
+<h2 id="0-tldr-decision">0. TL;DR / Decision<a class="headerlink" href="#0-tldr-decision" title="Permanent link">&para;</a></h2>
+<p>The original framing ("we need a bigger GPU to run full-frame SAM3 fast enough")
+is <strong>rejected as plan-of-record</strong>. The bottleneck is not raw GPU FLOPs — it is
+that we run a heavy segmentation model over the <em>entire frame</em> every step when
+the ball occupies &lt; 0.1% of the pixels.</p>
+<p><strong>Plan of record: a motion-guided box-prompt tracking loop.</strong></p>
+<ol>
+<li>Maintain a temporal state for the ball (position + velocity, via a
+   constant-velocity Kalman filter).</li>
+<li>Each step: predict where the ball will be, crop a <strong>tight, high-resolution
+   ROI</strong> around that prediction.</li>
+<li>Run a <em>swappable</em> runner (a small detector/segmenter/SOT tracker) on that
+   crop only.</li>
+<li>Refine the box, map it back to full-frame coordinates, update the temporal
+   state, repeat.</li>
+<li>On a miss (low confidence / anomaly), fall back to a <strong>full-frame
+   re-acquire</strong> pass to relocate the ball, then resume the cheap loop.</li>
+</ol>
+<p>This keeps <em>effective</em> resolution high (we feed the runner a crop that is mostly
+ball) while keeping per-step cost tiny (a small crop, not a 4K frame). The
+expensive full-frame model is reserved for the rare re-acquire.</p>
+<p><strong>Compute target: local, in-process — RTX 2070 (8GB, Tailscale <code>desktop</code>) or Apple MPS.</strong>
+The motion-guided crop is cheap enough that 8GB is ample for the common path.
+<strong>AWS g4dn (ft-5yq, T4 16GB) is demoted to a fallback</strong>, only justified if the
+benchmark (§6 / ft-gx9) shows the chosen runner cannot hit target fps locally.</p>
+<p><strong>Runner choice is a benchmark variable, not a design assumption</strong> (§5, ft-gx9).
+SAM3 becomes one <em>backend among several</em> and the high-quality fallback for
+re-acquire — not the per-frame workhorse.</p>
+<hr />
+<h2 id="1-problem-current-pain">1. Problem &amp; current pain<a class="headerlink" href="#1-problem-current-pain" title="Permanent link">&para;</a></h2>
+<p>From the user (2026-06-20), the labelling loop is stuck:</p>
+<ul>
+<li>YOLO pre-load only works when the ball is obvious mid-pitch; it fails on
+  small/distant/occluded balls and emits false positives (other round/white
+  objects).</li>
+<li><strong>SAM3 can track the ball from a single marked point</strong> — excellent UX: mark
+  once, it follows.</li>
+<li>But SAM3 is <strong>too slow per frame at full resolution</strong> locally.</li>
+<li>Dropping SAM3's input resolution to gain speed <strong>destroys tracking quality</strong>
+  (it loses the small ball).</li>
+<li>Dead end: high-res = accurate but unusably slow; low-res = fast but useless.</li>
+</ul>
+<p>Fixing this unlocks two things at once:</p>
+<ol>
+<li><strong>Labelling friction</strong> (the immediate pain).</li>
+<li><strong>Detection quality</strong> — the corrected labels become training data to retrain
+   the YOLO ball detector (ft-n2o).</li>
+</ol>
+<h3 id="why-just-use-a-bigger-gpu-is-the-wrong-primary-lever">Why "just use a bigger GPU" is the wrong primary lever<a class="headerlink" href="#why-just-use-a-bigger-gpu-is-the-wrong-primary-lever" title="Permanent link">&para;</a></h3>
+<p>Full-frame SAM3 at high res is expensive because it segments <em>everything</em>. A
+T4/g4dn would buy maybe 2–3× throughput — still full-frame, still wasteful,
+still cloud-latency-bound for an interactive loop, and it costs money per hour.
+The ball is tiny and <em>moves predictably between adjacent frames</em>. Exploiting
+that temporal prior is a far larger lever than more FLOPs, and it runs on
+hardware we already own.</p>
+<hr />
+<h2 id="2-architecture-motion-guided-box-prompt-loop">2. Architecture: motion-guided box-prompt loop<a class="headerlink" href="#2-architecture-motion-guided-box-prompt-loop" title="Permanent link">&para;</a></h2>
+<p>The core new component (ft-v43). Independent of any specific GPU — runs on
+MPS/CPU/CUDA.</p>
+<h3 id="21-per-step-loop">2.1 Per-step loop<a class="headerlink" href="#21-per-step-loop" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code>state: KalmanBoxState  (cx, cy, w, h, vx, vy)
+for each frame f:
+    pred_box     = kalman.predict()                 # where do we expect the ball?
+    roi          = expand(pred_box, margin)          # tight crop window, full-res pixels
+    crop         = frame[roi]                         # high effective resolution
+    det          = runner.track(crop, prompt=local(pred_box))  # swappable backend
+    if det.confidence &gt;= thresh:
+        box_full = map_to_frame(det.box, roi)        # crop -&gt; frame coords
+        kalman.update(box_full)
+        emit(f, box_full, provenance=runner.name)
+    else:
+        box_full = reacquire(frame)                  # full-frame fallback (§2.3)
+        if box_full: kalman.reinit(box_full); emit(...)
+        else:        flag_anomaly(f); pause()         # let the human correct
+</code></pre></div>
+<h3 id="22-the-crop-is-where-the-resolution-win-lives">2.2 The crop is where the resolution win lives<a class="headerlink" href="#22-the-crop-is-where-the-resolution-win-lives" title="Permanent link">&para;</a></h3>
+<p>If the ball is ~24px in a 3840px-wide frame, a full-frame model downsampled to
+512px sees the ball at ~3px — invisible. A 256px crop around the predicted
+position contains the ball at its <strong>native ~24px</strong> size. Same model, same
+compute budget per call, but the ball is now large and clearly resolvable. This
+is the mechanism that lets us "keep high res" without paying full-frame cost.</p>
+<p>ROI sizing is the key tunable (ft-v43 / ft-gx9): too tight and a fast ball
+escapes the crop between frames; too loose and we lose the resolution advantage.
+Drive margin from predicted velocity (bigger crop when the ball is moving fast).</p>
+<h3 id="23-full-frame-re-acquire-the-rare-path">2.3 Full-frame re-acquire (the rare path)<a class="headerlink" href="#23-full-frame-re-acquire-the-rare-path" title="Permanent link">&para;</a></h3>
+<p>When the runner reports a miss (low confidence, or the anomaly detector fires —
+see <code>_track_anomaly_reason</code>), we cannot trust the temporal prior. Run a
+full-frame pass to relocate the ball:</p>
+<ul>
+<li>Cheapest option: full-frame YOLO ball detector (existing <code>yolo_seed_objects</code>).</li>
+<li>High-quality fallback: full-frame SAM3 (<code>Sam3VideoLabeller</code>) — the existing
+  backend, now used <em>only</em> here, where its cost is amortised over many cheap
+  steps.</li>
+</ul>
+<p>If re-acquire also fails, stop and surface an anomaly so the human marks the
+ball again (the existing pause/anomaly UX already does this).</p>
+<h3 id="24-frametracker-croprunner-interface-ft-v43">2.4 FrameTracker / CropRunner interface (ft-v43)<a class="headerlink" href="#24-frametracker-croprunner-interface-ft-v43" title="Permanent link">&para;</a></h3>
+<p>Two small protocols decouple the loop from the model:</p>
+<div class="highlight"><pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="nc">CropRunner</span><span class="p">(</span><span class="n">Protocol</span><span class="p">):</span>
+    <span class="n">name</span><span class="p">:</span> <span class="nb">str</span>                       <span class="c1"># provenance tag</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">warmup</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span> <span class="o">...</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">detect</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">crop</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">prior</span><span class="p">:</span> <span class="n">Box</span> <span class="o">|</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Detection</span><span class="p">:</span> <span class="o">...</span>
+    <span class="c1"># returns box in CROP coordinates + confidence</span>
+
+<span class="k">class</span><span class="w"> </span><span class="nc">FrameTracker</span><span class="p">(</span><span class="n">Protocol</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">reset</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">frame</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">seed</span><span class="p">:</span> <span class="n">Box</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span> <span class="o">...</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">step</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">frame</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Detection</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span> <span class="o">...</span>  <span class="c1"># FRAME coords</span>
+</code></pre></div>
+<p><code>MotionGuidedTracker</code> implements <code>FrameTracker</code> and owns the Kalman state, the
+crop logic, the coord round-trip, and the re-acquire fallback. <code>CropRunner</code> is
+the swappable backend benchmarked in §5/§6. Existing <code>Sam3VideoLabeller</code> is
+refactored to also satisfy <code>CropRunner</code> (as the <code>sam3-fullframe</code> backend) so it
+stays usable for re-acquire and as a quality baseline.</p>
+<p><strong>Seam into existing code:</strong> <code>video_utils.py:407-410</code> — today
+<code>set_prompts({"bboxes": ...})</code> then streams the predictor over the whole video.
+The new tracker replaces that streaming call; <code>BackgroundLabeller.submit</code> gains
+a <code>backend=</code> argument selecting the runner (§7).</p>
+<hr />
+<h2 id="3-compute-targets-evaluated">3. Compute targets evaluated<a class="headerlink" href="#3-compute-targets-evaluated" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Target</th>
+<th>VRAM</th>
+<th>Pros</th>
+<th>Cons</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>RTX 2070 <code>desktop</code></strong> (Tailscale, Windows)</td>
+<td>8GB</td>
+<td>Owned, free, local; fine for cropped runner; in-process or short-hop</td>
+<td>8GB tight for <em>full-frame</em> SAM3 high-res; Tailscale hop adds latency if remote-driven</td>
+</tr>
+<tr>
+<td><strong>Apple MPS</strong> (dev laptop)</td>
+<td>shared</td>
+<td>Zero setup, in-process, no network</td>
+<td>Slower than CUDA; some ops fall back to CPU</td>
+</tr>
+<tr>
+<td><strong>AWS g4dn</strong> (ft-5yq, T4)</td>
+<td>16GB</td>
+<td>Headroom for full-frame SAM3; clean Linux CUDA</td>
+<td>Costs $/hr; cloud round-trip kills interactivity; needs the blocked support case</td>
+</tr>
+</tbody>
+</table>
+<h3 id="verdict">Verdict<a class="headerlink" href="#verdict" title="Permanent link">&para;</a></h3>
+<p>The motion-guided loop makes per-step compute small, so <strong>8GB (RTX 2070) or MPS
+is sufficient for the common path</strong>. We keep the work <strong>local and in-process</strong>
+to avoid network latency in the interactive correction loop. <strong>g4dn is a
+fallback</strong> — pursued only if §6 benchmarks show the selected runner can't hit
+target fps locally, or if we later want batched offline re-labelling of large
+archives. ft-5yq stays open as that fallback but is <strong>no longer plan-of-record</strong>.</p>
+<h3 id="rough-vram-fps-expectations-to-be-confirmed-by-ft-gx9">Rough VRAM / fps expectations (to be confirmed by ft-gx9)<a class="headerlink" href="#rough-vram-fps-expectations-to-be-confirmed-by-ft-gx9" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Full-frame SAM3 high-res on 8GB: borderline OOM risk and single-digit fps —
+  this is exactly the pain we're routing around.</li>
+<li>Cropped runner (256–512px crop) on 8GB: comfortably fits; small SOT trackers
+  / ROI-YOLO / SAM2.1-tiny should reach interactive fps. <strong>Numbers TBD — see §6.</strong></li>
+</ul>
+<hr />
+<h2 id="4-optimisation-levers">4. Optimisation levers<a class="headerlink" href="#4-optimisation-levers" title="Permanent link">&para;</a></h2>
+<p>Applied to the per-step runner and the re-acquire pass:</p>
+<ul>
+<li><strong>ROI cropping</strong> (the big one, §2) — turns a full-frame problem into a small-crop one.</li>
+<li><strong>fp16 / autocast</strong> — halve memory &amp; speed up on both T4 and RTX 2070.</li>
+<li><strong>torch.compile</strong> — fuse the runner's forward pass; measure warmup vs steady-state.</li>
+<li><strong>Batching</strong> — for offline (non-interactive) re-labelling, batch crops across
+  frames. Not applicable to the live one-frame-at-a-time correction loop.</li>
+<li><strong>Warm predictor</strong> — keep the model resident (the codebase already caches a
+  hot predictor: <code>get_cached_predictor</code> / <code>warmup_model</code> / <code>start_warmup_thread</code>).</li>
+<li><strong>Smaller checkpoints</strong> — tiny SOT trackers / SAM2.1-tiny / MobileSAM as the
+  per-step runner; reserve heavy SAM3 for re-acquire only.</li>
+</ul>
+<hr />
+<h2 id="5-runner-matrix-ft-gx9-runner-is-a-first-class-variable">5. Runner matrix (ft-gx9) — runner is a first-class variable<a class="headerlink" href="#5-runner-matrix-ft-gx9-runner-is-a-first-class-variable" title="Permanent link">&para;</a></h2>
+<p>The per-step <code>CropRunner</code> is chosen by benchmark, not assumption. Candidates:</p>
+<ul>
+<li><strong>SOT trackers</strong>: OSTrack, MixFormer, LightTrack, SiamRPN++ — purpose-built
+  for "track this one box across frames", typically fast and small.</li>
+<li><strong>ROI-YOLO</strong>: run the existing/retrained YOLO ball detector on the crop only.</li>
+<li><strong>SAM family</strong>: Ultralytics SAM3, Meta <code>sam2_video_predictor</code>, HF SAM2/3,
+  SAM2.1-tiny, EdgeTAM, MobileSAM, FastSAM.</li>
+</ul>
+<p><strong>Default bet pending numbers:</strong> a SOT tracker <em>or</em> ROI-YOLO on the
+motion-guided crop, in-process on RTX 2070 / MPS. SAM3 = high-quality fallback
+backend for re-acquire and as the quality ceiling.</p>
+<p><strong>Checkpoint note:</strong> use <code>sam3.pt</code> base, <strong>not</strong> <code>sam3.1_multiplex</code> (known
+whole-frame mask bug — tracked separately in ft-f74).</p>
+<hr />
+<h2 id="6-benchmark-plan-ft-gx9">6. Benchmark plan (ft-gx9)<a class="headerlink" href="#6-benchmark-plan-ft-gx9" title="Permanent link">&para;</a></h2>
+<p>Produce a <strong>runner × resolution × fps × quality</strong> matrix:</p>
+<ul>
+<li><strong>Axes</strong>: runner (§5) × crop size (128/256/512/full) × precision (fp32/fp16)
+  × device (MPS / RTX 2070 / [g4dn if needed]).</li>
+<li><strong>Metrics</strong>: fps (steady-state), peak VRAM, tracking quality (IoU vs
+  hand-corrected ground truth, % frames the ball is held vs lost), re-acquire
+  frequency.</li>
+<li><strong>Pass bar</strong>: interactive fps (target ≥ ~15fps on the common cropped path)
+  with tracking quality good enough that human correction is occasional, not
+  per-frame.</li>
+<li><strong>Output</strong>: a table in <code>docs/training/</code> or alongside this doc, plus a
+  recommended default <code>(runner, crop, precision, device)</code>.</li>
+</ul>
+<p>This benchmark is what <em>confirms or overturns</em> the §0 decision (and decides
+whether ft-5yq/g4dn is needed at all).</p>
+<hr />
+<h2 id="7-integration-into-the-existing-app-no-new-app">7. Integration into the EXISTING app (no new app)<a class="headerlink" href="#7-integration-into-the-existing-app-no-new-app" title="Permanent link">&para;</a></h2>
+<p>The labelling app already exists and was confirmed by reading the code. We
+<strong>plug into it</strong>; we do not build a new UI or service.</p>
+<h3 id="71-what-already-exists">7.1 What already exists<a class="headerlink" href="#71-what-already-exists" title="Permanent link">&para;</a></h3>
+<ul>
+<li><code>labeller/server.py</code> — FastAPI: timeline + provenance
+  (<code>PROV_LABELLER</code> = manual ground truth, <code>PROV_YOLO</code>, <code>PROV_SAM3</code>), WebSocket
+  run/restart/pause, <code>/autodetect</code> <code>/edit</code> <code>/timeline</code> <code>/frame</code>, anomaly push.
+  <strong><code>PROV_LABELLER</code> boxes are ground truth and survive auto re-propagation.</strong></li>
+<li><code>web/index.html</code> — the annotation UI (mark point, correct boxes, scrub).</li>
+<li><code>video_utils.py</code> — <code>Sam3VideoLabeller</code>, <code>BackgroundLabeller</code>,
+  <code>_track_anomaly_reason</code>, hot-predictor cache.</li>
+</ul>
+<p><code>app.py</code> is the <strong>legacy Streamlit</strong> prototype and is <strong>retiring</strong> — do not
+build on it.</p>
+<h3 id="72-where-the-new-tracker-plugs-in-ft-rwg">7.2 Where the new tracker plugs in (ft-rwg)<a class="headerlink" href="#72-where-the-new-tracker-plugs-in-ft-rwg" title="Permanent link">&para;</a></h3>
+<ul>
+<li>New <code>FrameTracker</code>/<code>CropRunner</code> classes live in <code>video_utils.py</code> (or a sibling
+  module), implementing §2.4.</li>
+<li><code>BackgroundLabeller.submit</code> gains a <strong><code>backend=</code></strong> argument selecting the
+  runner; default can stay <code>sam3-fullframe</code> until benchmarks pick a winner.</li>
+<li>The worker swaps the seam at <code>video_utils.py:407-410</code> (the
+  <code>set_prompts</code> → predictor stream) for the motion-guided loop when a
+  crop-runner backend is selected.</li>
+<li><strong><code>server.py</code>, the WebSocket protocol, and <code>index.html</code> are UNCHANGED.</strong> New
+  runner provenance tags slot alongside <code>PROV_SAM3</code> / <code>PROV_YOLO</code>; manual
+  <code>PROV_LABELLER</code> corrections remain ground truth.</li>
+</ul>
+<h3 id="73-provenance-the-human-in-the-loop">7.3 Provenance &amp; the human-in-the-loop<a class="headerlink" href="#73-provenance-the-human-in-the-loop" title="Permanent link">&para;</a></h3>
+<p>The existing pause/anomaly/correct flow is preserved: tracker miss → anomaly →
+pause → human re-marks → <code>submit(..., start_frame=N)</code> resumes propagation with
+corrected seed. Corrected (<code>PROV_LABELLER</code>) boxes are never overwritten by
+auto-propagation — they are the training-data ground truth.</p>
+<hr />
+<h2 id="8-storage-training-data-export-ft-0y4">8. Storage / training-data export (ft-0y4)<a class="headerlink" href="#8-storage-training-data-export-ft-0y4" title="Permanent link">&para;</a></h2>
+<p><strong>Use the existing Roboflow export — do not build a new export tool.</strong>
+<code>labelling.py</code> already has <code>RoboflowObjectDetectionHandler.upload_images</code>
+(COCO format, <code>ROBOFLOW_API_KEY</code>). Corrected labels flow:</p>
+<div class="highlight"><pre><span></span><code>human-corrected timeline (PROV_LABELLER boxes)
+  -&gt; frames + COCO annotations
+  -&gt; RoboflowObjectDetectionHandler.upload_images
+  -&gt; Roboflow dataset
+  -&gt; retrain ball YOLO (ft-n2o)
+</code></pre></div>
+<p>The feature store (ft-4jr) is for <em>runtime tracking/event data</em>, not raw
+training-image export. Training images/labels go to <strong>Roboflow</strong> via the
+existing handler. ft-0y4 wires the corrected-timeline → COCO → upload path; no
+new infrastructure.</p>
+<hr />
+<h2 id="9-child-bead-breakdown">9. Child-bead breakdown<a class="headerlink" href="#9-child-bead-breakdown" title="Permanent link">&para;</a></h2>
+<p>All children already exist under epic <strong>ft-8vx</strong> and reference this doc:</p>
+<table>
+<thead>
+<tr>
+<th>Bead</th>
+<th>Title</th>
+<th>Maps to</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>ft-gx9</strong></td>
+<td>Benchmark runner × res × fps × quality matrix</td>
+<td>§5, §6</td>
+</tr>
+<tr>
+<td><strong>ft-v43</strong></td>
+<td>Motion-guided box-prompt tracker + <code>FrameTracker</code> interface (<strong>CORE</strong>)</td>
+<td>§2, §4</td>
+</tr>
+<tr>
+<td><strong>ft-rwg</strong></td>
+<td>Wire motion-guided tracker into EXISTING labeller server</td>
+<td>§7</td>
+</tr>
+<tr>
+<td><strong>ft-0y4</strong></td>
+<td>Corrected labels → EXISTING Roboflow export (<code>labelling.py</code>)</td>
+<td>§8</td>
+</tr>
+<tr>
+<td><strong>ft-n2o</strong></td>
+<td>Retrain ball YOLO on SAM3-generated labels; measure recall lift</td>
+<td>§1, §8</td>
+</tr>
+<tr>
+<td><strong>ft-f74</strong></td>
+<td>Re-evaluate SAM3.1 base checkpoint (whole-frame-mask bug?)</td>
+<td>§5</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Dependency order:</strong> ft-v43 (core tracker + interface) → ft-gx9 (benchmark
+backends through the interface) → ft-rwg (wire chosen backend into server) →
+labelling produces data → ft-0y4 (export) → ft-n2o (retrain). ft-f74 is
+independent and informs which SAM checkpoint ft-gx9 uses.</p>
+<p><strong>Fallback bead:</strong> ft-5yq (g4dn T4) stays open but is <strong>demoted to fallback</strong> —
+pursue only if ft-gx9 shows the local target can't hit interactive fps.</p>
+<hr />
+<h2 id="10-open-questions-risks">10. Open questions / risks<a class="headerlink" href="#10-open-questions-risks" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>Fast-ball ROI escape</strong>: if the ball leaves the predicted crop between
+  frames, the runner misses. Mitigation: velocity-scaled crop margin + prompt
+  re-acquire. Validate on fast clips in ft-gx9.</li>
+<li><strong>Occlusion / players</strong>: ball behind a player → temporary miss → re-acquire
+  may lock onto a wrong round object. The anomaly detector + human correction
+  is the safety net; measure false-lock rate.</li>
+<li><strong>Tailscale latency</strong>: if we <em>remote-drive</em> the RTX 2070 rather than run the
+  UI on the desktop box, the per-frame hop may hurt interactivity. Prefer
+  in-process; if remote, batch and stream rather than per-frame RPC.</li>
+<li><strong>Benchmark could overturn §0</strong>: if no local runner hits the fps bar at
+  acceptable quality, g4dn (ft-5yq) returns as plan-of-record. The decision is
+  explicitly contingent on ft-gx9 numbers.</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      <script id="__config" type="application/json">{"base": "../..", "features": [], "search": "../../assets/javascripts/workers/search.973d3a69.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.f55a23d4.min.js"></script>
+      
+    
+  </body>
+</html>
