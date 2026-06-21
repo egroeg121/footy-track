@@ -12,7 +12,7 @@
          font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
   header { padding:10px 16px; border-bottom:1px solid var(--border); }
   header h1 { margin:0; font-size:18px; }
-  .wrap { display:grid; grid-template-columns:1fr 280px; gap:14px; padding:14px 16px; }
+  .wrap { display:grid; grid-template-columns:200px 1fr 280px; gap:14px; padding:14px 16px; }
   .toolbar { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:8px; }
   button, select, input[type=text] {
     background:#0d1620; color:var(--ink); border:1px solid var(--border);
@@ -40,6 +40,15 @@
   .seg { display:inline-flex; border:1px solid var(--border); border-radius:6px; overflow:hidden; }
   .seg button { border:none; border-radius:0; }
   .seg button.on { background:var(--accent); color:#fff; }
+  .clips-panel { background:var(--panel); border:1px solid var(--border); border-radius:8px;
+                 padding:10px; max-height:80vh; overflow:auto; }
+  .clips-panel h3 { margin:0 0 8px; font-size:14px; }
+  .clip-item { padding:4px 6px; border-radius:4px; cursor:pointer; font-size:12px;
+               white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .clip-item:hover { background:rgba(30,144,255,.15); }
+  .clip-item.active { background:rgba(30,144,255,.3); color:#fff; }
+  .no-ball-badge { display:inline-block; background:#555; color:#fff; border-radius:3px;
+                   font-size:10px; padding:1px 4px; margin-left:4px; }
 </style>
 </head>
 <body>
@@ -56,6 +65,11 @@
 </div>
 
 <div class="wrap">
+  <div class="clips-panel">
+    <h3>📂 Clips</h3>
+    <div id="clipList"><span class="muted">Loading…</span></div>
+  </div>
+
   <div>
     <div class="toolbar">
       <span class="seg">
@@ -64,6 +78,7 @@
       </span>
       <select id="classSel"></select>
       <button id="autoBtn">🤖 Auto-detect</button>
+      <button id="noBallBtn" title="Mark frame as no-ball-visible (N)">🚫 No ball (N)</button>
       <label class="muted" style="margin-left:8px;">res
         <select id="imgszSel" title="SAM3 inference resolution — higher tracks small objects (ball) better but is slower">
           <option value="512">512</option>
@@ -111,6 +126,8 @@ let viewFrame = 0;          // currently shown frame index
 let mode = "idle";          // idle | running | paused
 let lastCompleted = -1;
 let ws = null;
+let clipsDir = "";          // resolved server-side clips directory
+const noBallFrames = new Set();  // frames marked no-ball locally for UI display
 
 // --- Konva setup ---
 const stage = new Konva.Stage({ container: "stageWrap", width: 100, height: 100 });
@@ -257,12 +274,85 @@ stage.on("mousemove", ()=>{
 });
 stage.on("mouseup", ()=>{ if(drawing){ if(drawing.width()<4||drawing.height()<4){const t=drawing.getAttr("numText");if(t)t.destroy();drawing.destroy();} drawing=null; renderList(); }});
 
-// delete key
+// no-ball mark
+async function markNoBall() {
+  if (mode === "running" || meta === null) return;
+  // Save canvas edits (saveCurrentEdits only covers paused/idle_results, handle idle too)
+  if (mode === "idle") {
+    await fetch("/edit", {method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({idx: viewFrame, objects: boxesNorm()})});
+  } else {
+    await saveCurrentEdits();
+  }
+  noBallFrames.add(viewFrame);
+  await fetch("/no-ball", {method:"POST", headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({idx: viewFrame})});
+  // Clear ball boxes from canvas (server already stripped them)
+  await loadTimelineFrame(viewFrame, mode !== "running");
+  setStatus(`🚫 Frame ${viewFrame} marked no-ball`);
+}
+
+$("noBallBtn").onclick = markNoBall;
+
+// keyboard shortcuts
 window.addEventListener("keydown",(e)=>{
+  // Ignore when typing in an input or select
+  if (e.target.tagName === "INPUT" || e.target.tagName === "SELECT") return;
+
   if((e.key==="Delete"||e.key==="Backspace") && tool==="edit"){
     const n=tr.nodes()[0]; if(n){ const t=n.getAttr("numText"); if(t)t.destroy(); n.destroy(); tr.nodes([]); boxLayer.draw(); renderList(); }
+    return;
+  }
+
+  if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+    if (meta === null) return;
+    let delta = e.key === "ArrowLeft" ? -1 : 1;
+    if (e.shiftKey) delta *= 10;
+    else if (e.ctrlKey || e.metaKey) delta *= 50;
+    const next = Math.max(0, Math.min(meta.total_frames - 1, viewFrame + delta));
+    if (next !== viewFrame) { e.preventDefault(); gotoFrame(next); }
+    return;
+  }
+
+  if (e.key === "n" || e.key === "N") {
+    markNoBall();
+    return;
   }
 });
+
+// ---------- clip picker ----------
+async function loadClipList() {
+  const res = await fetch("/clips");
+  if (!res.ok) return;
+  const data = await res.json();
+  clipsDir = data.dir || "";
+  const list = $("clipList");
+  list.innerHTML = "";
+  if (!data.clips.length) {
+    list.innerHTML = '<span class="muted">No clips found</span>';
+    return;
+  }
+  data.clips.forEach(name => {
+    const el = document.createElement("div");
+    el.className = "clip-item";
+    el.textContent = name;
+    el.title = name;
+    el.onclick = () => loadClip(name, el);
+    list.appendChild(el);
+  });
+}
+
+async function loadClip(name, el) {
+  if (!clipsDir) return;
+  const path = clipsDir + "/" + name;
+  $("videoPath").value = path;
+  // Highlight active clip
+  document.querySelectorAll(".clip-item").forEach(e => e.classList.remove("active"));
+  if (el) el.classList.add("active");
+  $("loadBtn").click();
+}
+
+loadClipList();
 
 // ---------- load ----------
 // Restore the last-used video path so it's pre-filled next time.

@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import json
 import os
 import threading
 from pathlib import Path
@@ -39,12 +40,24 @@ from footy_track.schema import ObjectDetection  # noqa: E402
 app = FastAPI(title="SAM3 Video Labeller")
 
 _STATIC_DIR = Path(__file__).parent / "web"
-
+_CLIPS_DIR = Path(__file__).parents[5] / "eval_data" / "clips"
+_GT_MARKS_DIR = (
+    Path.home()
+    / "Library"
+    / "Mobile Documents"
+    / "com~apple~CloudDocs"
+    / "footy_data"
+    / "ball_gt_marks"
+)
 
 # Provenance tags stored in each box's ObjectDetection.model field.
 PROV_LABELLER = "labeller"  # manual edit — ground truth, never auto-overwritten
 PROV_YOLO = "yolo"
 PROV_SAM3 = "sam3"
+
+# Ball-class labels that appear in the JSONL sidecar.
+_BALL_LABELS = {"ball", "in_play_ball", "out_of_play_ball"}
+_NO_BALL_TAG = "no_ball"
 
 
 class Session:
@@ -65,6 +78,11 @@ class Session:
         self.height: int = 0
         self.timeline: list[list[ObjectDetection] | None] = []
         self._tl_lock = threading.Lock()
+        # no-ball frame set: frames explicitly marked as no-ball-visible
+        self.no_ball_frames: set[int] = set()
+        # debounced JSONL flush
+        self._flush_timer: threading.Timer | None = None
+        self._flush_lock = threading.Lock()
 
     def load(self, video_path: str) -> dict:
         self.bg.pause()
@@ -82,6 +100,11 @@ class Session:
             cap.release()
         with self._tl_lock:
             self.timeline = [None] * self.total_frames
+        with self._flush_lock:
+            if self._flush_timer:
+                self._flush_timer.cancel()
+                self._flush_timer = None
+        self.no_ball_frames = set()
         return {
             "fps": self.fps,
             "total_frames": self.total_frames,
@@ -143,6 +166,62 @@ class Session:
         ok, buf = cv2.imencode(".jpg", frame)
         return buf.tobytes() if ok else None
 
+    # --- JSONL sidecar flush (debounced, 2 s) ----------------------------
+
+    def schedule_flush(self) -> None:
+        with self._flush_lock:
+            if self._flush_timer:
+                self._flush_timer.cancel()
+            self._flush_timer = threading.Timer(2.0, self._do_flush)
+            self._flush_timer.daemon = True
+            self._flush_timer.start()
+
+    def _do_flush(self) -> None:
+        if self.video_path is None:
+            return
+        stem = self.video_path.stem
+        out_path = _GT_MARKS_DIR / f"{stem}.jsonl"
+        try:
+            _GT_MARKS_DIR.mkdir(parents=True, exist_ok=True)
+            with self._tl_lock:
+                timeline_snapshot = list(self.timeline)
+            no_ball_snapshot = set(self.no_ball_frames)
+            lines: list[str] = []
+            for idx, boxes in enumerate(timeline_snapshot):
+                # no-ball frame
+                if idx in no_ball_snapshot:
+                    lines.append(
+                        json.dumps(
+                            {
+                                "frame_index": idx,
+                                "bbox": None,
+                                "center": None,
+                                "tags": [_NO_BALL_TAG],
+                            }
+                        )
+                    )
+                    continue
+                if boxes is None:
+                    continue
+                for b in boxes:
+                    if b.label not in _BALL_LABELS:
+                        continue
+                    cx = b.x + b.w / 2
+                    cy = b.y + b.h / 2
+                    lines.append(
+                        json.dumps(
+                            {
+                                "frame_index": idx,
+                                "bbox": {"x": b.x, "y": b.y, "w": b.w, "h": b.h},
+                                "center": {"x": cx, "y": cy},
+                                "tags": [b.label, b.model],
+                            }
+                        )
+                    )
+            out_path.write_text("\n".join(lines) + ("\n" if lines else ""))
+        except Exception as exc:
+            print(f"[flush] failed to write {out_path}: {exc}", flush=True)
+
 
 SESSION = Session()
 
@@ -194,6 +273,19 @@ def _boxes_payload(boxes: list[ObjectDetection]) -> list[dict]:
 @app.get("/", response_class=HTMLResponse)
 async def index() -> HTMLResponse:
     return HTMLResponse((_STATIC_DIR / "index.html").read_text())
+
+
+@app.get("/clips")
+async def list_clips() -> dict:
+    """Return sorted list of clip filenames from eval_data/clips/."""
+    if not _CLIPS_DIR.exists():
+        return {"clips": []}
+    clips = sorted(
+        p.name
+        for p in _CLIPS_DIR.iterdir()
+        if p.suffix.lower() in {".mp4", ".mov", ".avi", ".mkv"}
+    )
+    return {"clips": clips, "dir": str(_CLIPS_DIR)}
 
 
 @app.post("/session/load")
@@ -262,7 +354,23 @@ async def edit_frame(body: dict) -> dict:
     idx = int(body["idx"])
     boxes = _boxes_from_payload(body.get("objects", []), PROV_LABELLER)
     SESSION.set_frame(idx, boxes)
+    SESSION.schedule_flush()
     return {"idx": idx, "boxes": _boxes_payload(SESSION.get_frame(idx))}
+
+
+@app.post("/no-ball")
+async def mark_no_ball(body: dict) -> dict:
+    """Mark a frame as no-ball-visible; removes any ball boxes from that frame."""
+    idx = int(body["idx"])
+    SESSION.no_ball_frames.add(idx)
+    # Clear ball boxes from this frame so the JSONL is consistent.
+    with SESSION._tl_lock:
+        if 0 <= idx < len(SESSION.timeline) and SESSION.timeline[idx]:
+            SESSION.timeline[idx] = [
+                b for b in SESSION.timeline[idx] if b.label not in _BALL_LABELS
+            ]
+    SESSION.schedule_flush()
+    return {"idx": idx, "no_ball": True}
 
 
 # ----------------------------------------------------------------------------
