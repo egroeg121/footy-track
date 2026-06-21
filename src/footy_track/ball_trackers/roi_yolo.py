@@ -37,20 +37,19 @@ effective resolution in ClipMetrics.
 from __future__ import annotations
 
 import math
+import pathlib
 
 import cv2
 import numpy as np
 import torch
 from ultralytics import YOLO
 
-import pathlib
-
 from footy_track.ball_eval.dataset import BBox
 
 # Default trained detector: yolo11s fine-tuned on broadcast footage.
 # Classes: 0=ball, 1=coach, 2=in_play_ball, 3=person, 4=player, 5=player_sub, 6=referee
 _DEFAULT_MODEL_PATH = str(
-    pathlib.Path(__file__).parents[4]
+    pathlib.Path(__file__).parents[3]
     / "model_saves"
     / "detector"
     / "optuna_trial_1_2026-01-18_17-51_model_name=yolo11s_dataset_version=3_epochs=2226_freeze_layers=3"
