@@ -438,6 +438,14 @@ $("loadBtn").onclick = async ()=>{
   $("scrub").max = meta.total_frames-1; $("scrub").disabled=false;
   $("runBtn").disabled=false; $("prevBtn").disabled=false; $("nextBtn").disabled=false;
   setStatus(`loaded · ${meta.total_frames} frames @ ${meta.fps.toFixed(1)}fps`);
+  // Restore no-ball and not-broadcast marks from the server (loaded from JSONL sidecar).
+  noBallFrames.clear(); notBroadcastFrames.clear();
+  const marksRes = await fetch("/marks");
+  if (marksRes.ok) {
+    const marks = await marksRes.json();
+    (marks.no_ball || []).forEach(i => noBallFrames.add(i));
+    (marks.not_broadcast || []).forEach(i => notBroadcastFrames.add(i));
+  }
   await autodetect(0);
   connectWS();
 };

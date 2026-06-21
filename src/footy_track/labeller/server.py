@@ -109,12 +109,55 @@ class Session:
                 self._flush_timer = None
         self.no_ball_frames = set()
         self.not_broadcast_frames = set()
+        self._load_existing_marks()
         return {
             "fps": self.fps,
             "total_frames": self.total_frames,
             "width": self.width,
             "height": self.height,
         }
+
+    def _load_existing_marks(self) -> None:
+        """Populate timeline and no_ball/not_broadcast sets from existing JSONL sidecar."""
+        if self.video_path is None:
+            return
+        jsonl_path = _GT_MARKS_DIR / f"{self.video_path.stem}.jsonl"
+        if not jsonl_path.exists():
+            return
+        with jsonl_path.open() as f:
+            for raw in f:
+                raw = raw.strip()
+                if not raw:
+                    continue
+                try:
+                    d = json.loads(raw)
+                except json.JSONDecodeError:
+                    continue
+                idx = int(d.get("frame_index", -1))
+                if idx < 0 or idx >= self.total_frames:
+                    continue
+                tags = d.get("tags") or []
+                if _NOT_BROADCAST_TAG in tags:
+                    self.not_broadcast_frames.add(idx)
+                    continue
+                if _NO_BALL_TAG in tags:
+                    self.no_ball_frames.add(idx)
+                    continue
+                bbox = d.get("bbox")
+                if bbox is not None:
+                    if isinstance(bbox, dict):
+                        x, y, w, h = float(bbox["x"]), float(bbox["y"]), float(bbox["w"]), float(bbox["h"])
+                    else:
+                        x, y, w, h = (float(v) for v in bbox)
+                    # Label is the first tag that is a ball class (flush writes [label, model]).
+                    ball_labels = _BALL_LABELS | {"person", "player", "referee", "coach", "player_sub"}
+                    label = next((t for t in tags if t in ball_labels), "in_play_ball")
+                    box = ObjectDetection(label=label, confidence=1.0,
+                                         x=x, y=y, w=w, h=h, model=PROV_LABELLER)
+                    with self._tl_lock:
+                        if self.timeline[idx] is None:
+                            self.timeline[idx] = []
+                        self.timeline[idx].append(box)
 
     # --- timeline access -------------------------------------------------
 
@@ -307,6 +350,15 @@ async def get_frame(idx: int) -> Response:
     if data is None:
         return Response(status_code=404)
     return Response(content=data, media_type="image/jpeg")
+
+
+@app.get("/marks")
+async def get_marks() -> dict:
+    """Return no_ball and not_broadcast frame sets for the current session."""
+    return {
+        "no_ball": sorted(SESSION.no_ball_frames),
+        "not_broadcast": sorted(SESSION.not_broadcast_frames),
+    }
 
 
 @app.post("/autodetect")
