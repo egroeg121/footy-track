@@ -1,0 +1,28 @@
+{
+  "trial_metadata": {
+    "clip": "/Users/georgebarnett/Library/Mobile Documents/com~apple~CloudDocs/footy_data/arsenal_mancity/split_video_broadcast_frames/arsenal_mancity_20250925_seg010.mp4",
+    "clip_name": "arsenal_mancity_20250925_seg010",
+    "model": "/Users/georgebarnett/Library/Mobile Documents/com~apple~CloudDocs/footy_data/model_saves/sam3/sam3.pt",
+    "device": "mps",
+    "imgsz": 512,
+    "frame_w": 1920,
+    "frame_h": 1080,
+    "total_frames_in_clip": 595,
+    "max_frames_processed": 10,
+    "seed_method": "yolo_frame0",
+    "seed_note": "GT JSONL files not found; seeding from YOLO detection. Searched up to 100 frames from seed_frame to find ball.",
+    "crop_size_px": 512,
+    "run_start": "2026-06-21T13:01:09"
+  },
+  "status": "running",
+  "seed": {
+    "cx_norm": 0.21999673545360565,
+    "cy_norm": 0.4189504384994507,
+    "w_norm": 0.009491056203842163,
+    "h_norm": 0.00985938310623169,
+    "found_frame": 28
+  },
+  "roi": null,
+  "per_frame": [],
+  "metrics": null
+}
