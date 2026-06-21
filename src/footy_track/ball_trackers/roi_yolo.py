@@ -6,10 +6,16 @@ Algorithm
    should be in the current frame.
 2. A square ROI crop is cut around that prediction (size = prev_bbox diagonal
    × `roi_scale`, clamped to the frame).
-3. A tiny YOLO model (default: yolo11n.pt, COCO class 32 = "sports ball")
-   runs inference on only the cropped pixels.
-4. The highest-confidence sports-ball detection inside the crop is mapped back
+3. A YOLO model runs inference on only the cropped pixels.
+4. The highest-confidence ball detection inside the crop is mapped back
    to full-frame normalised (x, y, w, h) coordinates and returned.
+
+Model
+-----
+The default model is the project-trained detector (yolo11s fine-tuned on
+broadcast footage, classes 0=ball, 2=in_play_ball). Stock COCO models have
+0% recall on broadcast footage because "sports ball" (class 32) was not
+trained on football footage at broadcast resolution.
 
 Why this wins on "effective resolution": the ball is small (≈10-30 px on a
 1920-wide broadcast frame ≈ 0.5–1.5% of width).  Running YOLO on a tight
@@ -37,10 +43,21 @@ import numpy as np
 import torch
 from ultralytics import YOLO
 
+import pathlib
+
 from footy_track.ball_eval.dataset import BBox
 
-# COCO class index for "sports ball"
-_COCO_SPORTS_BALL = 32
+# Default trained detector: yolo11s fine-tuned on broadcast footage.
+# Classes: 0=ball, 1=coach, 2=in_play_ball, 3=person, 4=player, 5=player_sub, 6=referee
+_DEFAULT_MODEL_PATH = str(
+    pathlib.Path(__file__).parents[4]
+    / "model_saves"
+    / "detector"
+    / "optuna_trial_1_2026-01-18_17-51_model_name=yolo11s_dataset_version=3_epochs=2226_freeze_layers=3"
+    / "best.pt"
+)
+# Classes in the trained model that represent the ball
+_BALL_CLASSES = [0, 2]  # 0=ball, 2=in_play_ball
 
 # Kalman state: [cx, cy, vx, vy] — normalised screen coords
 _F = np.array(
@@ -157,9 +174,12 @@ class RoiYoloTracker:
 
     Parameters
     ----------
-    model_uri:
-        Path or Ultralytics hub name for the YOLO checkpoint (default: yolo11n.pt
-        which includes COCO "sports ball" class 32).
+    model_path:
+        Path to the YOLO checkpoint. Defaults to the project-trained detector
+        (yolo11s fine-tuned on broadcast footage). Override to use a different model.
+    ball_classes:
+        YOLO class indices that represent the ball. Defaults to [0, 2] for the
+        trained model (0=ball, 2=in_play_ball). Set to [32] for stock COCO models.
     roi_scale:
         ROI side length as a multiple of the ball's bounding-box diagonal from
         the previous frame.  3.0 → 3× diagonal padding around the predicted centre.
@@ -173,14 +193,16 @@ class RoiYoloTracker:
 
     def __init__(
         self,
-        model_uri: str = "yolo11n.pt",
+        model_path: str = _DEFAULT_MODEL_PATH,
+        ball_classes: list[int] | None = None,
         roi_scale: float = 3.0,
         min_roi_frac: float = 0.10,
         min_confidence: float = 0.20,
         process_noise: float = 5e-5,
         measurement_noise: float = 5e-4,
     ) -> None:
-        self._model = YOLO(model_uri)
+        self._model = YOLO(model_path)
+        self._ball_classes = ball_classes if ball_classes is not None else _BALL_CLASSES
         self._device = _pick_device()
         self._roi_scale = roi_scale
         self._min_roi_frac = min_roi_frac
@@ -225,7 +247,7 @@ class RoiYoloTracker:
                 crop_bgr,
                 device=self._device,
                 conf=self._min_confidence,
-                classes=[_COCO_SPORTS_BALL],
+                classes=self._ball_classes,
                 verbose=False,
             )
 
