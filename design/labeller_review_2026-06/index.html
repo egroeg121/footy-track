@@ -1,0 +1,1177 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Tracking players, actions, and events in football matches.">
+      
+      
+      
+        <link rel="canonical" href="https://egroeg121.github.io/footy-track/design/labeller_review_2026-06/">
+      
+      
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.6.20">
+    
+    
+      
+        <title>Labeller — Deep Review (Implementation + Design) - Footy Scan</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.e53b48f4.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+    
+  </head>
+  
+  
+    <body dir="ltr">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#labeller-deep-review-implementation-design" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="Footy Scan" class="md-header__button md-logo" aria-label="Footy Scan" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Footy Scan
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Labeller — Deep Review (Implementation + Design)
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="Footy Scan" class="md-nav__button md-logo" aria-label="Footy Scan" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Footy Scan
+  </label>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Home
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    Development
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            Development
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../system_design/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    System Design
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../system_overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    System Overview
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Getting Started
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../pipeline_architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Pipeline Architecture
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../timings/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Time Formats
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../data_formats/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Data Formats
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../training/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Training
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../training/notable_runs/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Notable Training Runs
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    Contributing
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            Contributing
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../agent_guidelines/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Agent Guidelines
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-component-map-data-flow" class="md-nav__link">
+    <span class="md-ellipsis">
+      1. Component map &amp; data flow
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="1. Component map &amp; data flow">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#module-responsibilities" class="md-nav__link">
+    <span class="md-ellipsis">
+      Module responsibilities
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-design-assessment" class="md-nav__link">
+    <span class="md-ellipsis">
+      2. Design assessment
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="2. Design assessment">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#2a-the-two-front-ends-are-the-central-design-problem" class="md-nav__link">
+    <span class="md-ellipsis">
+      2a. The two front-ends are the central design problem
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2b-duplicated-logic-across-the-two-front-ends" class="md-nav__link">
+    <span class="md-ellipsis">
+      2b. Duplicated logic across the two front-ends
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2c-video_utilspy-engine-solid-with-sharp-edges" class="md-nav__link">
+    <span class="md-ellipsis">
+      2c. video_utils.py engine — solid, with sharp edges
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2d-threading-async-correctness-in-serverpy" class="md-nav__link">
+    <span class="md-ellipsis">
+      2d. Threading / async correctness in server.py
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2e-frame-access-pattern-is-on-seeks-everywhere" class="md-nav__link">
+    <span class="md-ellipsis">
+      2e. Frame access pattern is O(n) seeks everywhere
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-bug-gap-register-ordered-by-impact-on-marking-clips-in-the-morning" class="md-nav__link">
+    <span class="md-ellipsis">
+      3. Bug / gap register (ordered by impact on "marking clips in the morning")
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="3. Bug / gap register (ordered by impact on &#34;marking clips in the morning&#34;)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#b1-web-labeller-cannot-export-blocker" class="md-nav__link">
+    <span class="md-ellipsis">
+      🔴 B1 — Web labeller cannot export (BLOCKER)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#b2-web-default-model-caption-contradicts-the-actual-default" class="md-nav__link">
+    <span class="md-ellipsis">
+      🔴 B2 — Web default-model caption contradicts the actual default
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#b3-hardcoded-class-list-in-js-can-drift-from-detection_classes" class="md-nav__link">
+    <span class="md-ellipsis">
+      🟠 B3 — Hardcoded class list in JS can drift from DETECTION_CLASSES
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#b4-idle_results-save-on-leave-only-triggers-if-mode-is-set-but-it-never-is-on-run-completion-then-edit" class="md-nav__link">
+    <span class="md-ellipsis">
+      🟠 B4 — idle_results save-on-leave only triggers if mode is set, but it never is on Run-completion-then-edit
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#b5-positional-label-shift-on-dropped-sam3-tracks-see-2c" class="md-nav__link">
+    <span class="md-ellipsis">
+      🟠 B5 — Positional label shift on dropped SAM3 tracks (see §2c)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#b6-anomaly-anomaly_frame-cross-thread-race-see-2d" class="md-nav__link">
+    <span class="md-ellipsis">
+      🟡 B6 — Anomaly anomaly_frame cross-thread race (see §2d)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#b7-streamlit-app-_load_frame_objects-reads-completed-captured-once-per-run" class="md-nav__link">
+    <span class="md-ellipsis">
+      🟡 B7 — Streamlit app: _load_frame_objects reads completed captured once per run
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#b8-_canvas_compat-is-streamlit-only-debt" class="md-nav__link">
+    <span class="md-ellipsis">
+      🟡 B8 — _canvas_compat is Streamlit-only debt
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#b9-no-tests-anywhere-in-labeller" class="md-nav__link">
+    <span class="md-ellipsis">
+      🟡 B9 — No tests anywhere in labeller/
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-where-gt-marking-the-4-bake-off-methods-plug-in" class="md-nav__link">
+    <span class="md-ellipsis">
+      4. Where GT-marking + the 4 bake-off methods plug in
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-consistency-check" class="md-nav__link">
+    <span class="md-ellipsis">
+      5. Consistency check
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-recommendations-prioritised-each-a-candidate-bead" class="md-nav__link">
+    <span class="md-ellipsis">
+      6. Recommendations (prioritised — each a candidate bead)
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+
+<h1 id="labeller-deep-review-implementation-design">Labeller — Deep Review (Implementation + Design)<a class="headerlink" href="#labeller-deep-review-implementation-design" title="Permanent link">&para;</a></h1>
+<p><strong>Bead:</strong> ft-31z · <strong>Date:</strong> 2026-06-21 · <strong>Reviewer:</strong> polecat ruby
+<strong>Scope:</strong> <code>src/footy_track/labeller/</code> (<code>app.py</code>, <code>server.py</code>, <code>video_utils.py</code>,
+<code>web/index.html</code>, <code>_canvas_compat.py</code>) plus how the GT-marking / bake-off and the
+SAM3 Run-loop integrate. All citations are <code>file:line</code> against the branch at
+review time.</p>
+<blockquote>
+<p><strong>Headline:</strong> there are <strong>two complete, divergent labeller front-ends</strong> in the
+tree (a Streamlit app and a FastAPI+Konva web app) sharing one backend engine
+(<code>video_utils.py</code>). The web app is the intended go-forward UX for mark-once GT
++ bake-off, but it is <strong>missing an export path</strong> — it can mark and propagate
+but cannot save the result. That is the single blocker for marking clips. There
+is <strong>no <code>ball_eval/</code> module yet</strong> (the bead assumed one exists); the bake-off
+harness is not present in this tree.</p>
+</blockquote>
+<hr />
+<h2 id="1-component-map-data-flow">1. Component map &amp; data flow<a class="headerlink" href="#1-component-map-data-flow" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code>                         ┌────────────────────────────────────────┐
+                         │  video_utils.py  (shared backend)        │
+                         │  • Sam3VideoLabeller  – SAM3 propagation │
+                         │  • BackgroundLabeller – daemon-thread    │
+                         │       run/pause/restart + anomaly stop   │
+                         │  • yolo_seed_objects  – YOLO seeding      │
+                         │  • export_frames_json – disk export      │
+                         └───────────────┬──────────────┬──────────┘
+                                         │              │
+              ┌──────────────────────────┘              └──────────────────────┐
+              │                                                                 │
+   ┌──────────▼───────────┐                              ┌─────────────────────▼──────────┐
+   │ app.py (Streamlit)    │                              │ server.py (FastAPI)             │
+   │ • server-side state in │                              │ • Session.timeline = single     │
+   │   st.session_state     │                              │   source of truth (per-frame)   │
+   │ • st_canvas drawing    │                              │ • provenance tags PROV_*        │
+   │ • _canvas_compat shim   │                              │ • HTTP + WebSocket              │
+   │ • export via Save JSON │   ◄── only this side exports │ • web/index.html (Konva canvas) │
+   └────────────────────────┘                              └─────────────────────────────────┘
+        run_labeller.py entrypoint                          uvicorn ...server:app  (no entrypoint script)
+</code></pre></div>
+<p><strong>Pipeline position.</strong> The labeller produces <code>FrameDetections</code> JSON whose <code>uri</code>
+stem encodes the absolute frame index (<code>&lt;stem&gt;_frame_000123</code>). <code>feature_store</code>
+ingests exactly this format: <code>importers.parse_labeller_uri</code>
+(<code>feature_store/importers.py:93</code>) parses <code>&lt;clip&gt;_frame_&lt;idx&gt;</code> back out, and
+<code>import_labeller_json</code> tags rows <code>source='sam3'</code>. So the contract between
+labeller output and the feature store is <strong>the <code>export_frames_json</code> file shape</strong>,
+not any in-memory object — which is why the web app's missing export is fatal to
+the downstream flow.</p>
+<h3 id="module-responsibilities">Module responsibilities<a class="headerlink" href="#module-responsibilities" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>File</th>
+<th>Responsibility</th>
+<th>LOC</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>video_utils.py</code></td>
+<td>SAM3 propagation engine, threaded run loop, YOLO seeding, anomaly heuristic, JSON export</td>
+<td>830</td>
+</tr>
+<tr>
+<td><code>app.py</code></td>
+<td>Streamlit UI — full interaction, state in <code>st.session_state</code></td>
+<td>911</td>
+</tr>
+<tr>
+<td><code>server.py</code></td>
+<td>FastAPI — authoritative timeline w/ provenance, run/pause/restart over WS</td>
+<td>406</td>
+</tr>
+<tr>
+<td><code>web/index.html</code></td>
+<td>Konva-based browser client for <code>server.py</code></td>
+<td>428</td>
+</tr>
+<tr>
+<td><code>_canvas_compat.py</code></td>
+<td>Monkeypatch restoring <code>image_to_url</code> for <code>st_canvas</code> on Streamlit ≥1.40 (Streamlit-only)</td>
+<td>44</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="2-design-assessment">2. Design assessment<a class="headerlink" href="#2-design-assessment" title="Permanent link">&para;</a></h2>
+<h3 id="2a-the-two-front-ends-are-the-central-design-problem">2a. The two front-ends are the central design problem<a class="headerlink" href="#2a-the-two-front-ends-are-the-central-design-problem" title="Permanent link">&para;</a></h3>
+<p><code>app.py</code> and <code>server.py</code> are <strong>two ~full implementations of the same feature</strong>.
+They share <code>video_utils.py</code> but duplicate everything above it and embody two
+<em>different</em> state models:</p>
+<ul>
+<li><strong><code>app.py</code></strong> keeps the working set in <code>st.session_state.objects</code> and re-derives
+  view mode every rerun (<code>app.py:331-336</code>). State is implicit, scattered across
+  ~14 session keys (<code>app.py:69-93</code>), and there is no single per-frame timeline —
+  corrections live only in <code>BackgroundLabeller.frames</code> plus transient session
+  state.</li>
+<li><strong><code>server.py</code></strong> introduces the <em>right</em> abstraction the Streamlit app lacks: a
+  single authoritative <code>Session.timeline[idx]</code> of <code>ObjectDetection</code> with
+  <strong>provenance</strong> (<code>PROV_LABELLER</code>/<code>PROV_YOLO</code>/<code>PROV_SAM3</code>, <code>server.py:44-47</code>).
+  Labeller boxes are ground truth and survive re-propagation via the merge rule
+  in <code>merge_propagated</code> (<code>server.py:106-113</code>). This is a cleaner, more correct
+  model than the Streamlit app's.</li>
+</ul>
+<p><strong>Recommendation:</strong> treat <code>server.py</code> + <code>web/</code> as the go-forward labeller and
+<strong>deprecate/retire <code>app.py</code></strong> once export parity exists (§5, P0/P1). Maintaining
+both doubles the surface for the morning's marking work and they have <em>already</em>
+drifted (see consistency bugs below). Do not invest further in <code>app.py</code>.</p>
+<h3 id="2b-duplicated-logic-across-the-two-front-ends">2b. Duplicated logic across the two front-ends<a class="headerlink" href="#2b-duplicated-logic-across-the-two-front-ends" title="Permanent link">&para;</a></h3>
+<p><code>yolo_seed_objects</code> and <code>_nms_filter</code> exist <strong>twice</strong>, verbatim:
+<code>video_utils.py:743-808</code> (used by <code>server.py</code>) and <code>app.py:96-160</code>
+(<code>app.py</code>-local copies). The <code>app.py</code> copies should be deleted and the
+<code>video_utils.py</code> versions imported (<code>app.py</code> already imports other helpers from
+<code>video_utils</code>). Pure dead duplication; risk of one drifting from the other.</p>
+<h3 id="2c-video_utilspy-engine-solid-with-sharp-edges">2c. <code>video_utils.py</code> engine — solid, with sharp edges<a class="headerlink" href="#2c-video_utilspy-engine-solid-with-sharp-edges" title="Permanent link">&para;</a></h3>
+<p>The engine is the strongest part of the labeller:</p>
+<ul>
+<li><strong>Hot-predictor cache</strong> (<code>get_cached_predictor</code>, <code>video_utils.py:146-188</code>)
+  keeps SAM3 weights + compiled kernels resident across pause/restart — this is
+  what makes the correct-and-restart loop usable. Good.</li>
+<li><strong>Restart-mid-clip via temp video</strong> (<code>iter_frames_from</code>,
+  <code>video_utils.py:416-490</code>): because <code>SAM3VideoPredictor</code> seeds tracks from the
+  <em>first frame it sees</em>, restarting at frame N writes frames <code>[N, end]</code> to a temp
+  <code>.mp4</code> and re-streams. Clever and necessary given the predictor's statefulness.</li>
+<li><strong>Seed frame is ground truth</strong> (<code>_seed_frame_detections</code>,
+  <code>video_utils.py:492-517</code>; <code>offset == 0</code> branch at <code>:477</code>): the user's exact
+  boxes are emitted verbatim rather than SAM3's re-segmentation. Correct call —
+  prevents a corrected box from being mangled on restart.</li>
+</ul>
+<p>Sharp edges:</p>
+<ul>
+<li><strong>Object-index → label mapping is positional and fragile</strong>
+  (<code>_result_to_frame</code>, <code>video_utils.py:519-554</code>). SAM3 only preserves object
+  <em>order</em>, so label assignment is <code>self.objects[obj_idx].label</code>. If SAM3 drops a
+  track or returns masks in a different count/order than seeds, <strong>labels silently
+  shift</strong> (<code>"unknown"</code> fallback at <code>:535</code>). For the ball specifically — the one
+  object most likely to be lost — a dropped ball track means every subsequent
+  object inherits the wrong label. This is a real correctness risk for GT.</li>
+<li><strong>Temp-clip rewrite is lossy and slow</strong> (<code>video_utils.py:449-465</code>):
+  re-encodes with <code>mp4v</code> at the source fps, doubling I/O and risking codec drift
+  vs the original frames. For long clips this is the dominant cost on every
+  restart.</li>
+<li><strong>Anomaly heuristic is plausible but untuned</strong> (<code>_track_anomaly_reason</code>,
+  <code>video_utils.py:683-728</code>): nearest-same-label matching with a 40%-of-diagonal
+  jump threshold and 8× area ratio. No tests; thresholds are magic numbers. It
+  matches by <em>label</em> not <em>track identity</em>, so with two players it can match the
+  wrong pair and false-positive. Fine as a "stop and let me look" aid, not
+  something to trust silently.</li>
+</ul>
+<h3 id="2d-threading-async-correctness-in-serverpy">2d. Threading / async correctness in <code>server.py</code><a class="headerlink" href="#2d-threading-async-correctness-in-serverpy" title="Permanent link">&para;</a></h3>
+<ul>
+<li><code>Session.timeline</code> is guarded by <code>_tl_lock</code> (<code>server.py:67</code>) — good. But
+  <code>BackgroundLabeller</code> exposes <code>running</code>, <code>last_completed_frame</code>,
+  <code>anomaly_frame</code> as plain attributes read from the asyncio loop
+  (<code>_stream_frames</code>, <code>server.py:298-337</code>) while written under <code>self._lock</code> in the
+  worker thread (<code>video_utils.py:652-676</code>). These cross-thread reads are
+  unsynchronized. In CPython they won't corrupt, but <code>anomaly_frame</code> is <em>both</em>
+  read and cleared from the async side (<code>server.py:328</code>) — a genuine race with
+  the worker setting it (<code>video_utils.py:666-668</code>). Low-probability, but it can
+  drop or double-fire an anomaly pause.</li>
+<li><strong><code>SESSION</code> is a single module-global</strong> (<code>server.py:147</code>). The server is
+  strictly <strong>single-session / single-user</strong>. Two browser tabs share one
+  timeline and one <code>bg</code>; the second <code>load</code> silently wipes the first. Acceptable
+  for solo morning marking, but must be stated, and the WS handler assumes it
+  (<code>server.py:343</code> captures <code>bg = SESSION.bg</code> then re-reads <code>SESSION.bg</code> later —
+  inconsistent).</li>
+</ul>
+<h3 id="2e-frame-access-pattern-is-on-seeks-everywhere">2e. Frame access pattern is O(n) seeks everywhere<a class="headerlink" href="#2e-frame-access-pattern-is-on-seeks-everywhere" title="Permanent link">&para;</a></h3>
+<p>Every frame fetch opens a fresh <code>cv2.VideoCapture</code>, seeks, reads one frame, and
+releases — <code>frame_jpeg</code> (<code>server.py:132-144</code>), and in <code>app.py</code> at <code>:405-408</code>,
+<code>:427-431</code>, <code>:485-488</code>, <code>:730-732</code>. On a long clip, scrubbing is a storm of
+open/seek/release. <code>video_utils.py</code> has no frame cache. For the morning's UX
+(scrub back to fix a box, scrub forward) this will feel sluggish. A small
+LRU frame cache in the <code>Session</code> (web) would help most.</p>
+<hr />
+<h2 id="3-bug-gap-register-ordered-by-impact-on-marking-clips-in-the-morning">3. Bug / gap register (ordered by impact on "marking clips in the morning")<a class="headerlink" href="#3-bug-gap-register-ordered-by-impact-on-marking-clips-in-the-morning" title="Permanent link">&para;</a></h2>
+<h3 id="b1-web-labeller-cannot-export-blocker">🔴 B1 — Web labeller cannot export (BLOCKER)<a class="headerlink" href="#b1-web-labeller-cannot-export-blocker" title="Permanent link">&para;</a></h3>
+<p><code>server.py</code> has <strong>no save/export endpoint</strong>. The timeline is never written to
+disk; <code>export_frames_json</code> (<code>video_utils.py:811-817</code>) is only wired into
+<code>app.py</code> (<code>app.py:743-745</code>). A user can mark + propagate in the browser and then
+<strong>lose everything</strong> — there is no path from <code>Session.timeline</code> to the
+<code>FrameDetections</code> JSON that <code>feature_store</code> ingests. Without this, the web app
+produces no GT. <strong>Must fix before marking.</strong></p>
+<h3 id="b2-web-default-model-caption-contradicts-the-actual-default">🔴 B2 — Web default-model caption contradicts the actual default<a class="headerlink" href="#b2-web-default-model-caption-contradicts-the-actual-default" title="Permanent link">&para;</a></h3>
+<p><code>web/index.html:54</code> tells the user the default is <code>sam3.1_multiplex.pt</code>. The
+backend default is <code>sam3.pt</code>, and <code>_default_model_uri</code> (<code>video_utils.py:100-132</code>)
+explicitly documents that <code>sam3.1_multiplex.pt</code> returns <strong>whole-frame masks for
+every object on this footage</strong> and is deliberately NOT used. A user trusting the
+caption and typing that checkpoint gets garbage GT. Fix the caption text.</p>
+<h3 id="b3-hardcoded-class-list-in-js-can-drift-from-detection_classes">🟠 B3 — Hardcoded class list in JS can drift from <code>DETECTION_CLASSES</code><a class="headerlink" href="#b3-hardcoded-class-list-in-js-can-drift-from-detection_classes" title="Permanent link">&para;</a></h3>
+<p><code>web/index.html:101</code> hardcodes <code>CLASSES = [...]</code> and <code>:102-103</code> hardcodes
+<code>COLORS</code>. The source of truth is <code>schema.DETECTION_CLASSES</code>
+(<code>schema.py:25-34</code>) and <code>detectors.utils.color_map</code>. They currently match, but
+any class change updates Python and silently leaves the JS stale → boxes drawn
+with the wrong class/colour, corrupting GT labels. Serve the class+colour list
+from an endpoint (<code>/classes</code>) instead of duplicating it.</p>
+<h3 id="b4-idle_results-save-on-leave-only-triggers-if-mode-is-set-but-it-never-is-on-run-completion-then-edit">🟠 B4 — <code>idle_results</code> save-on-leave only triggers if mode is set, but it never is on Run-completion-then-edit<a class="headerlink" href="#b4-idle_results-save-on-leave-only-triggers-if-mode-is-set-but-it-never-is-on-run-completion-then-edit" title="Permanent link">&para;</a></h3>
+<p>In <code>web/index.html</code>, <code>saveCurrentEdits</code> (<code>:306-311</code>) persists edits when
+<code>mode==="paused"||mode==="idle_results"</code>. After a run completes, <code>uiIdle()</code> sets
+<code>mode="idle_results"</code> (<code>:370</code>) — good. But the <strong>seed frame</strong> path: on first
+load <code>mode="idle"</code> (<code>:280</code>), and <code>autodetect</code> draws editable boxes; if the user
+edits those frame-0 boxes and immediately scrubs, <code>saveCurrentEdits</code> does
+<strong>nothing</strong> (mode is <code>"idle"</code>, not in the allowed set), so the edit is lost
+until they hit Run (which calls <code>commitCanvasTo</code>). Subtle data-loss footgun
+during seeding. Either include <code>"idle"</code> or persist on every box change.</p>
+<h3 id="b5-positional-label-shift-on-dropped-sam3-tracks-see-2c">🟠 B5 — Positional label shift on dropped SAM3 tracks (see §2c)<a class="headerlink" href="#b5-positional-label-shift-on-dropped-sam3-tracks-see-2c" title="Permanent link">&para;</a></h3>
+<p><code>video_utils.py:530-536</code>. If SAM3 returns fewer masks than seeds, the mask→label
+zip misaligns and downstream labels are wrong with no warning. Needs SAM3 to
+return per-object IDs, or a guard that pauses when mask count ≠ seed count.</p>
+<h3 id="b6-anomaly-anomaly_frame-cross-thread-race-see-2d">🟡 B6 — Anomaly <code>anomaly_frame</code> cross-thread race (see §2d)<a class="headerlink" href="#b6-anomaly-anomaly_frame-cross-thread-race-see-2d" title="Permanent link">&para;</a></h3>
+<p><code>server.py:320-328</code> vs <code>video_utils.py:666-668</code>. Read+clear of <code>anomaly_frame</code>
+from the async loop without the worker's lock.</p>
+<h3 id="b7-streamlit-app-_load_frame_objects-reads-completed-captured-once-per-run">🟡 B7 — Streamlit app: <code>_load_frame_objects</code> reads <code>completed</code> captured once per run<a class="headerlink" href="#b7-streamlit-app-_load_frame_objects-reads-completed-captured-once-per-run" title="Permanent link">&para;</a></h3>
+<p><code>app.py:353-361</code> closes over <code>completed</code> (<code>app.py:310</code>) computed at the top of
+<code>main()</code>. During a paused scrub the list is fixed for that run, which is fine,
+but the prev/next handlers (<code>:557-572</code>) call it after <code>st.rerun()</code> boundaries —
+behaviour depends on rerun timing. Works today; fragile.</p>
+<h3 id="b8-_canvas_compat-is-streamlit-only-debt">🟡 B8 — <code>_canvas_compat</code> is Streamlit-only debt<a class="headerlink" href="#b8-_canvas_compat-is-streamlit-only-debt" title="Permanent link">&para;</a></h3>
+<p><code>_canvas_compat.py</code> exists solely to keep <code>st_canvas</code> alive on modern Streamlit.
+If <code>app.py</code> is retired (§2a) this whole shim + the <code>streamlit-drawable-canvas</code>
+dependency can go. Tracked as cleanup.</p>
+<h3 id="b9-no-tests-anywhere-in-labeller">🟡 B9 — No tests anywhere in <code>labeller/</code><a class="headerlink" href="#b9-no-tests-anywhere-in-labeller" title="Permanent link">&para;</a></h3>
+<p>No test file exercises <code>Sam3VideoLabeller</code>, the anomaly heuristic, the merge
+rule, or <code>export_frames_json</code>. The merge rule (<code>merge_propagated</code>) and
+<code>_track_anomaly_reason</code> are pure functions and trivially unit-testable; they
+should be, given GT correctness rides on them.</p>
+<hr />
+<h2 id="4-where-gt-marking-the-4-bake-off-methods-plug-in">4. Where GT-marking + the 4 bake-off methods plug in<a class="headerlink" href="#4-where-gt-marking-the-4-bake-off-methods-plug-in" title="Permanent link">&para;</a></h2>
+<p>The bead assumes a <code>ball_eval/</code> module (GT marking + bake-off harness). <strong>It
+does not exist in this tree</strong> — <code>find src -iname '*ball*' -o -iname '*eval*'</code>
+returns nothing, and there are no references to <code>ball_eval</code>/<code>bake-off</code> anywhere
+in <code>src</code> or <code>docs</code>. So this section is about <em>where the seams are</em> for that work,
+not a review of existing code.</p>
+<p><strong>Mark-once GT</strong> is well-served by <code>server.py</code>'s provenance model: a box tagged
+<code>PROV_LABELLER</code> is ground truth and is preserved across re-propagation
+(<code>merge_propagated</code>, <code>server.py:106-113</code>). The natural GT artifact is the
+<code>Session.timeline</code> filtered to <code>model == PROV_LABELLER</code>. <strong>But</strong> (B1) there is no
+endpoint to emit it. The first bake-off prerequisite is therefore an export
+endpoint that writes the timeline (or just the labeller-provenance boxes) as
+<code>FrameDetections</code> JSON.</p>
+<p><strong>The 4 bake-off methods</strong> (detection/tracking variants competing against GT)
+would plug in at the <code>/autodetect</code> seam (<code>server.py:212-251</code>) — today that seam
+hardcodes a single YOLO detector via <code>yolo_seed_objects</code>. To bake off N methods
+you need: (a) a method registry, (b) per-method runs against the same frames,
+(c) a metric vs the <code>PROV_LABELLER</code> GT. None of that scaffolding exists yet. The
+cleanest insertion is a new <code>ball_eval/</code> module that consumes the exported GT
+JSON + each method's output and computes IoU/precision-style metrics — keeping it
+<em>out</em> of the labeller server (which should stay a marking tool).</p>
+<hr />
+<h2 id="5-consistency-check">5. Consistency check<a class="headerlink" href="#5-consistency-check" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Concern</th>
+<th>Status</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ObjectDetection</code> schema (<code>schema.py:57-65</code>) ↔ web wire format</td>
+<td>✅ server maps <code>model</code>→<code>source</code> over the wire (<code>server.py:173-186</code>) and back (<code>:155-170</code>); normalized xywh both sides. Consistent.</td>
+</tr>
+<tr>
+<td><code>DETECTION_CLASSES</code> ↔ JS <code>CLASSES</code></td>
+<td>⚠️ duplicated, currently aligned (B3).</td>
+</tr>
+<tr>
+<td><code>color_map</code> ↔ JS <code>COLORS</code></td>
+<td>⚠️ duplicated, currently aligned (B3).</td>
+</tr>
+<tr>
+<td>Frame-index encoding ↔ feature-store importer</td>
+<td>✅ <code>&lt;stem&gt;_frame_&lt;idx&gt;</code> written by <code>video_utils.py:498,521</code> and parsed by <code>importers.parse_labeller_uri</code> (<code>importers.py:93</code>).</td>
+</tr>
+<tr>
+<td>Time conventions (ContinuousTime/GameTime)</td>
+<td>➖ labeller works in raw frame indices only; no GameTime mapping. Fine for GT marking, but the exported JSON has no period/clock info — downstream must derive it. Worth noting for the broadcast→pitch→tagging vision.</td>
+</tr>
+<tr>
+<td><code>provenance</code> (<code>PROV_*</code>) ↔ <code>ObjectDetection.model</code></td>
+<td>✅ provenance is stored in the <code>model</code> field (<code>server.py:56</code>, <code>:167</code>). Slight semantic overload — <code>model</code> doubles as "which model produced this" and "is this ground truth" — but documented.</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="6-recommendations-prioritised-each-a-candidate-bead">6. Recommendations (prioritised — each a candidate bead)<a class="headerlink" href="#6-recommendations-prioritised-each-a-candidate-bead" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>Priority</th>
+<th>Recommendation</th>
+<th>Why</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>R1</td>
+<td><strong>P0</strong></td>
+<td>Add a <code>/session/export</code> endpoint to <code>server.py</code> that writes <code>Session.timeline</code> via <code>export_frames_json</code></td>
+<td>B1 — unblocks all GT marking; nothing downstream works without it</td>
+</tr>
+<tr>
+<td>R2</td>
+<td><strong>P0</strong></td>
+<td>Fix <code>web/index.html:54</code> default-model caption (<code>sam3.1_multiplex.pt</code> → <code>sam3.pt</code>)</td>
+<td>B2 — one-line fix preventing whole-frame-mask garbage GT</td>
+</tr>
+<tr>
+<td>R3</td>
+<td><strong>P1</strong></td>
+<td>Decide the canonical front-end; deprecate <code>app.py</code> (Streamlit) in favour of <code>server.py</code>+<code>web/</code></td>
+<td>§2a — stop maintaining two drifting UIs before marking begins</td>
+</tr>
+<tr>
+<td>R4</td>
+<td><strong>P1</strong></td>
+<td>Serve classes+colours from a <code>/classes</code> endpoint; delete JS duplication</td>
+<td>B3 — prevents silent label/colour corruption</td>
+</tr>
+<tr>
+<td>R5</td>
+<td><strong>P1</strong></td>
+<td>Persist seeding-mode edits in web (include <code>"idle"</code> in <code>saveCurrentEdits</code> or save-on-change)</td>
+<td>B4 — data-loss footgun during marking</td>
+</tr>
+<tr>
+<td>R6</td>
+<td><strong>P2</strong></td>
+<td>Guard <code>_result_to_frame</code> when SAM3 mask count ≠ seed count (pause + warn instead of silent label shift)</td>
+<td>B5 — protects GT label integrity</td>
+</tr>
+<tr>
+<td>R7</td>
+<td><strong>P2</strong></td>
+<td>Add unit tests for <code>merge_propagated</code>, <code>_track_anomaly_reason</code>, <code>export_frames_json</code></td>
+<td>B9 — GT correctness rides on these pure functions</td>
+</tr>
+<tr>
+<td>R8</td>
+<td><strong>P2</strong></td>
+<td>Add an LRU frame cache in <code>Session</code> to make scrubbing responsive</td>
+<td>§2e — UX during correct-and-restart</td>
+</tr>
+<tr>
+<td>R9</td>
+<td><strong>P2</strong></td>
+<td>If <code>app.py</code> retired: delete <code>_canvas_compat.py</code>, the duplicated <code>yolo_seed_objects</code>/<code>_nms_filter</code>, and drop <code>streamlit-drawable-canvas</code></td>
+<td>B8, §2b — dead-code removal</td>
+</tr>
+<tr>
+<td>R10</td>
+<td><strong>P3</strong></td>
+<td>Scaffold <code>ball_eval/</code>: consume exported GT JSON + N method outputs, compute IoU/precision metrics; register methods at the <code>/autodetect</code> seam</td>
+<td>§4 — the actual bake-off, after R1 lands</td>
+</tr>
+<tr>
+<td>R11</td>
+<td><strong>P3</strong></td>
+<td>Synchronize cross-thread reads of <code>BackgroundLabeller</code> anomaly state</td>
+<td>B6 — correctness hardening</td>
+</tr>
+</tbody>
+</table>
+<p><strong>If only two things ship before the morning's marking: R1 and R2.</strong> They are the
+difference between "can produce ground truth" and "cannot."</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      <script id="__config" type="application/json">{"base": "../..", "features": [], "search": "../../assets/javascripts/workers/search.973d3a69.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.f55a23d4.min.js"></script>
+      
+    
+  </body>
+</html>
