@@ -430,12 +430,13 @@ async function loadTimelineFrame(idx, editable){
 
 async function gotoFrame(idx){
   await saveCurrentEdits();     // persist edits on the frame we're leaving
+  clearBoxes();
   await showFrame(idx);
-  if (mode==="paused" || mode==="idle_results") {
+  if (mode==="running") {
+    // read-only live frames handled by WS; just show image
+  } else {
     await loadTimelineFrame(idx, true);
     if (mode==="paused") $("restartBtn").textContent = `▶️ Restart from frame ${idx}`;
-  } else if (mode==="running") {
-    // read-only live frames handled by WS; just show image
   }
 }
 
