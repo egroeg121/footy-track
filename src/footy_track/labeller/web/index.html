@@ -60,7 +60,7 @@
   <span id="status">no video</span>
 </div>
 <div class="row" style="padding:0 16px 8px;">
-  <input type="text" id="modelPath" placeholder="SAM3 checkpoint path (blank = default sam3.1_multiplex.pt)" />
+  <input type="text" id="modelPath" placeholder="SAM3 checkpoint path (blank = default sam3.pt)" />
   <span class="muted">leave blank for default</span>
 </div>
 
@@ -304,13 +304,33 @@ window.addEventListener("keydown",(e)=>{
     return;
   }
 
-  if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+  if (e.key === "ArrowLeft" || e.key === "ArrowRight" || e.key === "a" || e.key === "d" || e.key === "f" || e.key === "F") {
     if (meta === null) return;
-    let delta = e.key === "ArrowLeft" ? -1 : 1;
+    e.preventDefault();
+    const isBack = e.key === "ArrowLeft" || e.key === "a";
+    const isFwdF = e.key === "f" || e.key === "F";
+    if (isFwdF) {
+      const now = Date.now();
+      const fps = meta.fps || 25;
+      const half = Math.round(fps * 0.5);
+      if (!window._fTapTime) window._fTapTime = 0;
+      if (!window._fTapCount) window._fTapCount = 0;
+      if (!window._fTapTimer) window._fTapTimer = null;
+      const elapsed = now - window._fTapTime;
+      if (elapsed < 350) { window._fTapCount++; } else { window._fTapCount = 1; }
+      window._fTapTime = now;
+      if (window._fTapTimer) clearTimeout(window._fTapTimer);
+      window._fTapTimer = setTimeout(() => {
+        const taps = window._fTapCount; window._fTapCount = 0;
+        let delta = taps === 1 ? half : taps === 2 ? half * 2 : half * 8;
+        navigateDelta(delta);
+      }, 350);
+      return;
+    }
+    let delta = isBack ? -1 : 1;
     if (e.shiftKey) delta *= 10;
     else if (e.ctrlKey || e.metaKey) delta *= 50;
-    const next = Math.max(0, Math.min(meta.total_frames - 1, viewFrame + delta));
-    if (next !== viewFrame) { e.preventDefault(); gotoFrame(next); }
+    navigateDelta(delta);
     return;
   }
 
@@ -332,10 +352,13 @@ async function loadClipList() {
     list.innerHTML = '<span class="muted">No clips found</span>';
     return;
   }
-  data.clips.forEach(name => {
+  data.clips.forEach(clip => {
+    const name = typeof clip === "string" ? clip : clip.name;
+    const marked = clip.marked || false;
     const el = document.createElement("div");
     el.className = "clip-item";
-    el.textContent = name;
+    el.textContent = name + (marked ? " ✓" : "");
+    if (marked) el.style.color = "var(--green)";
     el.title = name;
     el.onclick = () => loadClip(name, el);
     list.appendChild(el);
