@@ -1,0 +1,1072 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Tracking players, actions, and events in football matches.">
+      
+      
+      
+        <link rel="canonical" href="https://egroeg121.github.io/footy-track/design/bidirectional_tracking_research/">
+      
+      
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.6.20">
+    
+    
+      
+        <title>Research: Bidirectional + Trajectory-Aware Ball Tracking for Offline Autolabelling - Footy Scan</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.e53b48f4.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+    
+  </head>
+  
+  
+    <body dir="ltr">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#research-bidirectional-trajectory-aware-ball-tracking-for-offline-autolabelling" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="Footy Scan" class="md-header__button md-logo" aria-label="Footy Scan" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Footy Scan
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Research: Bidirectional + Trajectory-Aware Ball Tracking for Offline Autolabelling
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="Footy Scan" class="md-nav__button md-logo" aria-label="Footy Scan" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Footy Scan
+  </label>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Home
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    Development
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            Development
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../system_design/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    System Design
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../system_overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    System Overview
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Getting Started
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../pipeline_architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Pipeline Architecture
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../timings/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Time Formats
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../data_formats/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Data Formats
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../training/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Training
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../training/notable_runs/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Notable Training Runs
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    Contributing
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            Contributing
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../agent_guidelines/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Agent Guidelines
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-why-bidirectionality-matters-here-specifically" class="md-nav__link">
+    <span class="md-ellipsis">
+      1. Why bidirectionality matters here specifically
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-angle-1-models-with-native-bidirectional-tracking" class="md-nav__link">
+    <span class="md-ellipsis">
+      2. Angle 1 — Models with native bidirectional tracking
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-angle-2-sam2-backward-propagation-confirmed-and-trivial" class="md-nav__link">
+    <span class="md-ellipsis">
+      3. Angle 2 — SAM2 backward propagation: confirmed and trivial
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-angle-3-trajectory-interpolation-with-ball-physics" class="md-nav__link">
+    <span class="md-ellipsis">
+      4. Angle 3 — Trajectory interpolation with ball physics
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-angle-4-prior-work-on-football-ball-tracking-bidirectional-smoothing" class="md-nav__link">
+    <span class="md-ellipsis">
+      5. Angle 4 — Prior work on football ball tracking (bidirectional / smoothing)
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-angle-5-should-this-be-method-e-in-the-bake-off" class="md-nav__link">
+    <span class="md-ellipsis">
+      6. Angle 5 — Should this be "Method E" in the bake-off?
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="6. Angle 5 — Should this be &#34;Method E&#34; in the bake-off?">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-bake-off-protocol-is-strictly-causal" class="md-nav__link">
+    <span class="md-ellipsis">
+      The bake-off protocol is strictly causal
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-it-actually-is-a-fusion-post-processing-layer" class="md-nav__link">
+    <span class="md-ellipsis">
+      What it actually is: a fusion / post-processing layer
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#how-to-evaluate-it-instead" class="md-nav__link">
+    <span class="md-ellipsis">
+      How to evaluate it instead
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-recommendation" class="md-nav__link">
+    <span class="md-ellipsis">
+      7. Recommendation
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="7. Recommendation">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#one-line-summary" class="md-nav__link">
+    <span class="md-ellipsis">
+      One-line summary
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#appendix-source-grounding" class="md-nav__link">
+    <span class="md-ellipsis">
+      Appendix: source grounding
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+
+<h1 id="research-bidirectional-trajectory-aware-ball-tracking-for-offline-autolabelling">Research: Bidirectional + Trajectory-Aware Ball Tracking for Offline Autolabelling<a class="headerlink" href="#research-bidirectional-trajectory-aware-ball-tracking-for-offline-autolabelling" title="Permanent link">&para;</a></h1>
+<p><strong>Bead:</strong> ft-dva · <strong>Date:</strong> 2026-06-21 · <strong>Researcher:</strong> polecat flint
+<strong>Question:</strong> In offline video autolabelling for ball tracking, can we exploit
+<em>bidirectional</em> temporal information — track forward <strong>and</strong> backward from sparse
+human GT marks, then fuse with trajectory interpolation to fill difficult frames —
+and is it worth adding as <strong>Method E</strong> in the bake-off?</p>
+<blockquote>
+<p><strong>Headline.</strong> Yes, bidirectionality is real, native, and cheap to get — SAM2's
+video predictor already propagates backward (<code>propagate_in_video(reverse=True)</code>),
+and "fit a ball trajectory through sparse anchors + gated candidates" is a
+20-year-old, well-validated idea in broadcast-soccer tracking. <strong>But it is not a
+"Method E" in the current bake-off.</strong> It is a <em>different kind of thing</em>: the
+bake-off scores <strong>causal, per-frame</strong> trackers (<code>track(prev_bbox, frame)</code> called
+in forward order), and a bidirectional/trajectory method by definition needs the
+<em>whole clip and all anchors up front</em>. It does not fit the <code>BallTracker</code> protocol
+and should not be forced into it. The right move is to treat <strong>bidirectional +
+trajectory fusion as a post-processing / fusion layer that wraps the bake-off
+winner</strong>, not as a competitor inside it — and, given the
+<a href="../autolabelling_architecture_review/">architecture review</a>'s finding that
+<em>detection</em>, not tracking, is 100% of the failure, to build the cheapest version
+of it (SAM2 backward propagation from anchors) <strong>now</strong>, because it directly buys
+the thing we actually lack: filled-in GT between sparse human marks.</p>
+</blockquote>
+<hr />
+<h2 id="1-why-bidirectionality-matters-here-specifically">1. Why bidirectionality matters <em>here specifically</em><a class="headerlink" href="#1-why-bidirectionality-matters-here-specifically" title="Permanent link">&para;</a></h2>
+<p>The whole premise of this pipeline is <strong>sparse human GT every ~N frames</strong> (the
+architecture review argues N must be <em>measured</em>, not the assumed 5 — see §3 of
+that doc). A causal forward tracker seeded at anchor frame <code>k</code> tracks until it
+drifts, then waits for the next human mark at <code>k+N</code>. The frames just <em>before</em>
+<code>k+N</code> — where forward drift is worst — get the worst labels, even though there is
+a perfectly good human anchor sitting one or two frames ahead of them.</p>
+<p>Bidirectional tracking is the obvious fix and it is <em>only available offline</em>,
+which is exactly our regime:</p>
+<div class="highlight"><pre><span></span><code>anchor k                                                    anchor k+N
+  ●───────────────────────────────────────────────────────────●
+  ├──▶ forward track (good near k, drifts toward k+N)
+                                          backward track ◀──────┤
+                                          (good near k+N, drifts toward k)
+  └────────────── fuse the two estimates per frame ────────────┘
+       weight by distance-to-nearest-anchor / per-frame confidence
+</code></pre></div>
+<p>Every interior frame is now bracketed by <strong>two</strong> estimates, each most reliable at
+the end nearest its own anchor. Fusing them (confidence- or distance-weighted)
+strictly dominates a single forward pass, and the residual gaps (mutual
+low-confidence = occlusion) are exactly where a <strong>trajectory prior</strong> (parabolic /
+constant-velocity) should interpolate. This is the single highest-value temporal
+trick available to an <em>offline</em> autolabeller, and the current design uses none of
+it.</p>
+<hr />
+<h2 id="2-angle-1-models-with-native-bidirectional-tracking">2. Angle 1 — Models with native bidirectional tracking<a class="headerlink" href="#2-angle-1-models-with-native-bidirectional-tracking" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Model</th>
+<th>Bidirectional?</th>
+<th>Mechanism</th>
+<th>Fit for us</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>SAM2 (video predictor)</strong></td>
+<td><strong>Yes, native</strong></td>
+<td><code>propagate_in_video(reverse=True)</code> walks frames <code>range(start_frame_idx, end, -1)</code>; memory bank is acausal in offline mode</td>
+<td><strong>Best fit</strong> — already promptable from a box, already a bake-off candidate (Method B/D family). Backward pass is one extra call.</td>
+</tr>
+<tr>
+<td><strong>DEVA</strong> (Tracking-Anything w/ Decoupled VOS, ICCV'23)</td>
+<td><strong>Yes — bidirectional by design</strong></td>
+<td>"task-agnostic <em>bi-directional</em> temporal propagation" + in-clip consensus over a short future window; XMem as the propagation core</td>
+<td>Strong, but built around dense mask propagation of <em>generic</em> objects; heavier than we need for one tiny ball. Good source of the <em>fusion</em> idea.</td>
+</tr>
+<tr>
+<td><strong>XMem</strong></td>
+<td>Online/causal core, but used bidirectionally <em>inside</em> DEVA</td>
+<td>Feature-memory propagation</td>
+<td>Only bidirectional when wrapped (DEVA does the wrapping).</td>
+</tr>
+<tr>
+<td><strong>SAM3</strong> (incumbent)</td>
+<td>Same video-predictor lineage as SAM2</td>
+<td>Expected to expose the same <code>reverse</code> propagation</td>
+<td>Already the control/ceiling (Method D); a backward pass should be ~free to add.</td>
+</tr>
+<tr>
+<td><strong>TrackNet / WASB</strong> (heatmap, multi-frame)</td>
+<td>Symmetric multi-frame, not "bidirectional" per se</td>
+<td>Consumes a <em>window</em> of consecutive frames (e.g. 3) and outputs a center heatmap; learns the flying pattern, not just appearance</td>
+<td>Different paradigm — a <em>detector</em> that already uses local temporal context. Relevant as a candidate-generator (§5), not as the bidirectional engine.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Takeaway:</strong> we do not need to adopt a new model to get bidirectionality. The
+segmenter family we are <em>already benchmarking</em> (SAM2/SAM3) provides it natively.
+DEVA is the reference design for <em>how to fuse</em> the two directions, not a model we
+must run.</p>
+<p>Sources: <a href="https://github.com/facebookresearch/sam2/issues/253">SAM2 issue #253 — "prompts from the future"</a>,
+<a href="https://github.com/facebookresearch/sam2">SAM2 video predictor source</a>,
+<a href="https://arxiv.org/abs/2309.03903">DEVA (ICCV 2023)</a>,
+<a href="https://github.com/hkchengrex/Tracking-Anything-with-DEVA">DEVA GitHub</a>.</p>
+<hr />
+<h2 id="3-angle-2-sam2-backward-propagation-confirmed-and-trivial">3. Angle 2 — SAM2 backward propagation: confirmed and trivial<a class="headerlink" href="#3-angle-2-sam2-backward-propagation-confirmed-and-trivial" title="Permanent link">&para;</a></h2>
+<p>This is the load-bearing fact, so it is worth nailing precisely. From the SAM2
+<code>sam2_video_predictor.py</code> source, the propagation entry point is:</p>
+<div class="highlight"><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">propagate_in_video</span><span class="p">(</span>
+    <span class="bp">self</span><span class="p">,</span>
+    <span class="n">inference_state</span><span class="p">,</span>
+    <span class="n">start_frame_idx</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>      <span class="c1"># defaults to earliest frame with input points</span>
+    <span class="n">max_frame_num_to_track</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+    <span class="n">reverse</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>             <span class="c1"># ← the bidirectional switch</span>
+<span class="p">):</span>
+    <span class="o">...</span>
+    <span class="c1"># reverse=True  →  end = max(start_frame_idx - max_frame_num_to_track, 0)</span>
+    <span class="c1">#                  for f in range(start_frame_idx, end - 1, -1):  ...</span>
+</code></pre></div>
+<p>So the recipe to fill the interval <code>[k, k+N]</code> from a single human box at frame <code>k</code>
+is exactly two calls:</p>
+<div class="highlight"><pre><span></span><code><span class="n">state</span> <span class="o">=</span> <span class="n">predictor</span><span class="o">.</span><span class="n">init_state</span><span class="p">(</span><span class="n">clip_frames</span><span class="p">)</span>
+<span class="n">predictor</span><span class="o">.</span><span class="n">add_new_points_or_box</span><span class="p">(</span><span class="n">state</span><span class="p">,</span> <span class="n">frame_idx</span><span class="o">=</span><span class="n">k</span><span class="p">,</span> <span class="n">box</span><span class="o">=</span><span class="n">human_gt_box</span><span class="p">,</span> <span class="n">obj_id</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+<span class="n">predictor</span><span class="o">.</span><span class="n">propagate_in_video</span><span class="p">(</span><span class="n">state</span><span class="p">,</span> <span class="n">start_frame_idx</span><span class="o">=</span><span class="n">k</span><span class="p">,</span> <span class="n">reverse</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>  <span class="c1"># k → k+N</span>
+<span class="n">predictor</span><span class="o">.</span><span class="n">propagate_in_video</span><span class="p">(</span><span class="n">state</span><span class="p">,</span> <span class="n">start_frame_idx</span><span class="o">=</span><span class="n">k</span><span class="p">,</span> <span class="n">reverse</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>   <span class="c1"># k → k-N</span>
+</code></pre></div>
+<p>Two practical notes from the source / issue thread:</p>
+<ol>
+<li><strong>Backward from frame 0 is skipped</strong> ("skip reverse tracking if starting from
+   frame 0") — irrelevant for us, anchors are interior.</li>
+<li>The community-recommended pattern (issue #253) is precisely ours: <strong>seed on the
+   frame where the ball is biggest / least occluded</strong>, then propagate <em>both ways</em>.
+   This is the right anchor-selection heuristic — the human should be nudged to
+   mark clean frames, and the labeller can then bracket each anchor in both
+   directions.</li>
+</ol>
+<p>The memory bank carries object identity in both temporal directions in offline
+mode, so the backward pass is not a hack — it is a supported, documented mode.</p>
+<p><strong>Cost:</strong> one extra propagation pass per anchor interval. For an offline batch
+labeller (no real-time constraint) this is negligible, and it <em>halves</em> the worst-
+case drift distance (each frame is now at most <code>N/2</code> frames from its nearest
+anchor, not <code>N</code>).</p>
+<hr />
+<h2 id="4-angle-3-trajectory-interpolation-with-ball-physics">4. Angle 3 — Trajectory interpolation with ball physics<a class="headerlink" href="#4-angle-3-trajectory-interpolation-with-ball-physics" title="Permanent link">&para;</a></h2>
+<p>Two regimes, and they want different priors:</p>
+<ul>
+<li><strong>Ball in free flight</strong> (pass, shot, clearance): disregarding air friction, the
+  ground-plane velocity is constant and the ball follows a <strong>single parabola</strong>.
+  In <em>image</em> space a 3D parabola projects to a smooth conic-ish arc; a low-order
+  polynomial / spline fit per flight segment is the standard, well-validated model.</li>
+<li><strong>Ball rolling / dribbled / in a ruck</strong>: motion is near-linear and slow; a
+  constant-velocity Kalman prior (already in the design — <code>KalmanBoxState</code>) is the
+  right model.</li>
+</ul>
+<p>The classic broadcast-soccer literature does exactly this fusion:</p>
+<ul>
+<li><strong>Trajectory-based ball detection &amp; tracking (Yu et al., and the broadcast-video
+  line of work):</strong> generate <em>many</em> ball <strong>candidates</strong> per frame (not one
+  detection), build a <strong>candidate graph across frames</strong>, and find the trajectory
+  as the smoothest physically-plausible path through that graph. Occlusion gaps
+  are bridged by <strong>interpolation between contiguous trajectory fragments</strong>. This
+  is structurally a <strong>global, offline, bidirectional</strong> optimisation — it uses
+  future <em>and</em> past candidates to disambiguate the present. It directly handles
+  our two hard cases: false positives (other white/round objects are pruned
+  because they don't lie on a smooth trajectory) and occlusion (interpolated
+  through).</li>
+<li><strong>Physics-based 3D position</strong> work fits a parabola to the 2D trajectory to
+  recover depth — over-kill for 2D autolabelling, but it confirms the parabola is
+  the right interior model for flight.</li>
+<li><strong>Modern multi-mode state models</strong> (real-time 3D reconstruction papers) keep
+  centimetre accuracy through <em>severe</em> occlusion by switching between motion modes
+  (flight vs. ground) — the practical lesson is <strong>use a mode-switched motion model,
+  not one global parabola</strong>, because a match is a sequence of short flights and
+  rolls, not one ballistic arc.</li>
+</ul>
+<p><strong>For us this means:</strong> after bidirectional propagation, the remaining holes (both
+directions low-confidence ⇒ occluded) are filled by a <strong>piecewise</strong> trajectory
+fit — parabolic within a detected flight segment, linear/CV otherwise — anchored
+on both the human GT boxes <em>and</em> the high-confidence propagated boxes on either
+side of the hole. The two human anchors that bracket an interval already give the
+interpolation its endpoints; bidirectional propagation densifies the interior; the
+trajectory fit only has to cover the genuinely-occluded residue.</p>
+<p>Sources: <a href="https://www.researchgate.net/publication/221572343">Trajectory-based ball detection &amp; tracking in broadcast soccer</a>,
+<a href="https://www.researchgate.net/publication/3766301">Physics-based 3D ball position from monocular sequences</a>,
+<a href="https://strathprints.strath.ac.uk/29273/1/1237_all.pdf">Real-time 3D soccer ball trajectory reconstruction (multi-mode state model)</a>,
+<a href="https://arxiv.org/pdf/2306.08206">Ball trajectory inference w/ Set Transformer + Bi-LSTM</a>.</p>
+<hr />
+<h2 id="5-angle-4-prior-work-on-football-ball-tracking-bidirectional-smoothing">5. Angle 4 — Prior work on football ball tracking (bidirectional / smoothing)<a class="headerlink" href="#5-angle-4-prior-work-on-football-ball-tracking-bidirectional-smoothing" title="Permanent link">&para;</a></h2>
+<p>The field has converged on a clear pattern for <em>broadcast</em> soccer/sports ball
+tracking, and it is <strong>not</strong> "one detector per frame":</p>
+<ol>
+<li><strong>Over-generate candidates, then resolve globally.</strong> Broadcast ball tracking
+   has been candidate-graph + trajectory-fitting since the mid-2000s precisely
+   because per-frame detection of a tiny, blurred, occluded ball is unreliable —
+   <em>the exact failure our <a href="../../ball_tracker_failure_analysis/">failure analysis</a>
+   reports (detection = 100% of misses, 21.6% recall)</em>. The trajectory layer is
+   what makes an unreliable detector usable. This is strong external corroboration
+   that <strong>temporal/trajectory reasoning is the right lever for our bottleneck</strong>,
+   not just a nicety.</li>
+<li><strong>Heatmap multi-frame detectors (TrackNet / WASB).</strong> Instead of a box detector,
+   regress a Gaussian heatmap of the ball centre from a <em>window</em> of consecutive
+   frames, learning the flying pattern. TrackNet reports F1 ≈ 98.5% on tennis;
+   WASB is the current SOTA heatmap family across several sports. These are
+   <em>detectors that bake in short-range temporal context</em> — a far better
+   candidate-generator for the trajectory layer than our single-frame YOLO, and a
+   plausible answer to the detection bottleneck independent of the bake-off.</li>
+<li><strong>Bidirectional sequence models.</strong> Recent work (Set Transformer + hierarchical
+   <strong>Bi-LSTM</strong>) <em>infers</em> ball position from multi-agent (player) context when the
+   ball is unobservable — i.e. when even the trajectory is broken, players'
+   trajectories constrain where the ball must be. This is the long-occlusion
+   backstop, and it is inherently bidirectional (Bi-LSTM reads the sequence both
+   ways).</li>
+</ol>
+<p><strong>Takeaway:</strong> every mature broadcast-ball system uses <em>more</em> temporal information
+than we currently do, and the bidirectional/trajectory direction is the
+mainstream, validated approach — not a speculative add-on.</p>
+<p>Sources: <a href="https://arxiv.org/abs/1907.03698">TrackNet (arXiv 1907.03698)</a>,
+<a href="https://arxiv.org/pdf/2306.08206">Ball trajectory inference (Set Transformer + Bi-LSTM)</a>,
+<a href="https://arxiv.org/html/2506.07981v1">Real-time localization of a soccer ball from a single camera</a>,
+<a href="https://aws.amazon.com/blogs/media/ball-trajectory-tracking-in-sports-broadcast-videos-using-aws-machine-learning/">AWS ball-trajectory tracking in broadcast sports</a>.</p>
+<hr />
+<h2 id="6-angle-5-should-this-be-method-e-in-the-bake-off">6. Angle 5 — Should this be "Method E" in the bake-off?<a class="headerlink" href="#6-angle-5-should-this-be-method-e-in-the-bake-off" title="Permanent link">&para;</a></h2>
+<p><strong>No — and forcing it to be one would corrupt the bake-off.</strong> Here is the precise
+reason, grounded in our own code.</p>
+<h3 id="the-bake-off-protocol-is-strictly-causal">The bake-off protocol is strictly causal<a class="headerlink" href="#the-bake-off-protocol-is-strictly-causal" title="Permanent link">&para;</a></h3>
+<p><code>ball_eval/interface.py</code> defines the contract every method must meet:</p>
+<blockquote>
+<p><em>"One BallTracker instance is created per eval clip. The harness calls <code>track()</code>
+once per frame in </em><em>forward temporal order</em><em>."</em></p>
+</blockquote>
+<div class="highlight"><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">track</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">prev_bbox</span><span class="p">:</span> <span class="n">BBox</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span> <span class="n">frame</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">BBox</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span> <span class="o">...</span>
+</code></pre></div>
+<p>A method only ever sees the <strong>current frame and the previous box</strong>. It has <strong>no
+access to future frames, to the full clip, or to the downstream anchors</strong>. This is
+correct and deliberate: it measures <em>forward tracking quality</em>, which is what an
+interactive labeller needs.</p>
+<p>A bidirectional / trajectory-fusion method <strong>fundamentally violates this</strong>:</p>
+<ul>
+<li>It needs the <strong>entire clip</strong> (to propagate backward and fit trajectories).</li>
+<li>It needs <strong>all the GT anchors at once</strong> (the brackets it interpolates between).</li>
+<li>It cannot produce frame <code>f</code>'s label from <code>(prev_bbox, frame)</code> alone — its whole
+  value comes from using frames <code>&gt;f</code> and the anchor at <code>k+N</code>.</li>
+</ul>
+<p>You cannot honestly score it on the per-frame, forward-only <code>frames_held</code> /
+<code>center_distance</code> metrics, because it isn't doing per-frame forward tracking. If
+you shoehorned it in (e.g. by pre-running both passes and replaying the fused
+result through <code>track()</code>), it would post near-perfect numbers <strong>by construction</strong>
+— it has <em>seen the answer at the next anchor</em> — and would not be comparable to the
+honestly-causal A/C/D methods. It would not win a fair fight; it would refuse to
+fight fair.</p>
+<h3 id="what-it-actually-is-a-fusion-post-processing-layer">What it actually is: a fusion / post-processing layer<a class="headerlink" href="#what-it-actually-is-a-fusion-post-processing-layer" title="Permanent link">&para;</a></h3>
+<p>Bidirectional + trajectory fusion is <strong>orthogonal</strong> to the per-frame runner
+choice. It <em>wraps</em> whatever per-frame tracker the bake-off crowns:</p>
+<div class="highlight"><pre><span></span><code>        ┌─────────────────── bake-off scope (causal, per-frame) ───────────────────┐
+        │  Method A/C/D runner: track(prev_bbox, frame) → box, in FORWARD order     │
+        └──────────────────────────────────────────────────────────────────────────┘
+                                          │  winner = best per-frame runner
+                                          ▼
+        ┌─────────────── Method E scope (offline, whole-clip) ──────────────────────┐
+        │  for each anchor interval [k, k+N]:                                        │
+        │     fwd  = run winner forward  from anchor k                               │
+        │     bwd  = run winner backward from anchor k+N   (SAM2 reverse=True)       │
+        │     fuse fwd/bwd per frame  (distance-to-anchor / confidence weighted)     │
+        │     fit piecewise trajectory through residual occlusion holes              │
+        └──────────────────────────────────────────────────────────────────────────┘
+</code></pre></div>
+<p>So "is it Method E?" is the wrong question. <strong>The bake-off picks the per-frame
+engine; bidirectional fusion is the offline harness that runs that engine twice
+and stitches the results.</strong> Adding it as a peer competitor would be a category
+error.</p>
+<h3 id="how-to-evaluate-it-instead">How to evaluate it instead<a class="headerlink" href="#how-to-evaluate-it-instead" title="Permanent link">&para;</a></h3>
+<p>It needs its <em>own</em> metric, scored against held-out human GT it did <strong>not</strong> receive
+as anchors:
+- Hold back a subset of human-marked frames as hidden test points.
+- Give the fusion layer only the <em>other</em> anchors.
+- Measure centre-distance / IoU at the held-out frames → this is the <strong>true
+  autolabel quality between marks</strong>, which is the number that actually matters for
+  the <a href="../autolabelling_architecture_review/#6-q4">flywheel</a> (label quality →
+  retrain set → recall lift).</p>
+<p>This is a <em>leave-anchors-out</em> evaluation, not a forward-tracking race.</p>
+<hr />
+<h2 id="7-recommendation">7. Recommendation<a class="headerlink" href="#7-recommendation" title="Permanent link">&para;</a></h2>
+<p><strong>Build the cheap version now; do not add it to the bake-off.</strong> Ordered by
+leverage:</p>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>Priority</th>
+<th>Action</th>
+<th>Why</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>E1</td>
+<td><strong>P0</strong></td>
+<td>Add a <strong>backward propagation pass</strong> to the SAM2/SAM3 labelling backend: for each anchor, call <code>propagate_in_video(reverse=True)</code> as well as forward, and <strong>fuse</strong> the two estimates per frame (weight by distance-to-nearest-anchor, break ties by confidence).</td>
+<td>Native, ~free, halves worst-case drift. This is the single biggest offline win and uses a model already in the bake-off. Directly densifies GT between sparse marks — the thing we lack.</td>
+</tr>
+<tr>
+<td>E2</td>
+<td><strong>P0</strong></td>
+<td>Treat bidirectional fusion as a <strong>post-processing layer wrapping the bake-off winner</strong>, <em>not</em> a <code>BallTracker</code>. Keep the bake-off protocol strictly causal (do <strong>not</strong> add Method E to <code>interface.py</code>).</td>
+<td>The protocol is forward-only by design; a whole-clip method can't be scored on it honestly (§6). Preserves the integrity of the A/C/D comparison.</td>
+</tr>
+<tr>
+<td>E3</td>
+<td><strong>P1</strong></td>
+<td>Add a <strong>piecewise trajectory fit</strong> (parabolic in flight segments, constant-velocity otherwise) to interpolate the residual holes where <em>both</em> directions are low-confidence (= occlusion). Anchor the fit on human GT <strong>and</strong> high-confidence propagated boxes either side of each hole.</td>
+<td>Standard, validated broadcast-soccer technique (§4). Mode-switching beats one global parabola. Fills exactly the frames bidirectional propagation can't.</td>
+</tr>
+<tr>
+<td>E4</td>
+<td><strong>P1</strong></td>
+<td>Evaluate the fusion layer by <strong>leave-anchors-out</strong>: hide a subset of human marks, feed the rest, measure centre-distance at the hidden frames. Report this as <em>autolabel-quality-between-marks</em>.</td>
+<td>This is the honest metric for a non-causal method, and it is the number the flywheel depends on — not a forward-tracking score.</td>
+</tr>
+<tr>
+<td>E5</td>
+<td><strong>P2</strong></td>
+<td>Evaluate a <strong>multi-frame heatmap detector (TrackNet/WASB-style)</strong> as a <em>candidate-generator</em> feeding the trajectory layer, independent of the bake-off.</td>
+<td>Attacks the actual bottleneck — detection recall (failure analysis: 100% of misses). A temporal detector is a far better candidate source than single-frame YOLO. Separate track from the tracking bake-off.</td>
+</tr>
+<tr>
+<td>E6</td>
+<td><strong>P2</strong></td>
+<td>Backstop for long occlusions: a <strong>bidirectional sequence model conditioned on player trajectories</strong> (Bi-LSTM / Set-Transformer style) to <em>infer</em> ball position when even the trajectory is broken.</td>
+<td>Only worth it once E1–E3 are in and long occlusions are the residual failure mode. Highest effort, narrowest payoff — defer.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="one-line-summary">One-line summary<a class="headerlink" href="#one-line-summary" title="Permanent link">&para;</a></h3>
+<p><strong>Bidirectionality is real, native (SAM2 <code>reverse=True</code>), and the mainstream
+broadcast-ball approach — but it's a whole-clip <em>fusion layer that wraps the
+bake-off winner</em>, not a Method E inside the forward-only bake-off.</strong> Ship the
+backward-pass + fuse step now (it directly densifies the sparse GT we're short
+on), add piecewise-trajectory interpolation for occlusion holes, and score it
+leave-anchors-out — keeping the causal A/C/D bake-off uncontaminated.</p>
+<hr />
+<h2 id="appendix-source-grounding">Appendix: source grounding<a class="headerlink" href="#appendix-source-grounding" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>SAM2 native backward propagation</strong> — <a href="https://github.com/facebookresearch/sam2"><code>propagate_in_video(reverse=True)</code> source</a>, <a href="https://github.com/facebookresearch/sam2/issues/253">issue #253 "prompts from the future"</a></li>
+<li><strong>Bidirectional VOS design</strong> — <a href="https://arxiv.org/abs/2309.03903">DEVA, ICCV 2023</a> / <a href="https://github.com/hkchengrex/Tracking-Anything-with-DEVA">GitHub</a></li>
+<li><strong>Trajectory-based broadcast-soccer ball tracking</strong> — <a href="https://www.researchgate.net/publication/221572343">Trajectory-based ball detection &amp; tracking</a>, <a href="https://strathprints.strath.ac.uk/29273/1/1237_all.pdf">Real-time 3D multi-mode reconstruction</a>, <a href="https://www.researchgate.net/publication/3766301">Physics-based 3D position</a></li>
+<li><strong>Multi-frame heatmap detectors</strong> — <a href="https://arxiv.org/abs/1907.03698">TrackNet (arXiv 1907.03698)</a></li>
+<li><strong>Player-conditioned bidirectional inference</strong> — <a href="https://arxiv.org/pdf/2306.08206">Set Transformer + Bi-LSTM ball inference</a></li>
+<li><strong>Project context</strong> — <a href="../autolabelling_architecture_review/">autolabelling architecture review</a>, <a href="../sam3_ball_labelling_gpu/">SAM3 motion-guided design</a>, <a href="../../ball_tracker_failure_analysis/">ball tracker failure analysis</a></li>
+<li><strong>Bake-off protocol (causal, forward-only)</strong> — <code>src/footy_track/ball_eval/interface.py</code>, <code>src/footy_track/ball_eval/runner.py</code></li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      <script id="__config" type="application/json">{"base": "../..", "features": [], "search": "../../assets/javascripts/workers/search.973d3a69.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.f55a23d4.min.js"></script>
+      
+    
+  </body>
+</html>
