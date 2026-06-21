@@ -12,6 +12,7 @@ Tests cover:
 
 from __future__ import annotations
 
+import inspect
 import json
 import pathlib
 
@@ -34,6 +35,7 @@ from footy_track.ball_eval.metrics import (
     compute_clip_metrics,
 )
 from footy_track.ball_eval.runner import compare_methods, run_benchmark
+from footy_track.ball_trackers.roi_yolo import RoiYoloTracker, _compute_roi
 
 # --------------------------------------------------------------------------- #
 # Helpers                                                                      #
@@ -587,3 +589,137 @@ def test_write_labels_center_field(tmp_path):
     assert restored[0].bbox is None
     assert restored[1].center is None
     assert restored[1].bbox is not None
+
+
+# --------------------------------------------------------------------------- #
+# GT-seeding tests (ft-019)                                                   #
+# --------------------------------------------------------------------------- #
+
+
+class _RecordingTracker:
+    """Tracker that records what prev_bbox it received and optionally fails."""
+
+    def __init__(self, bbox: BBox, fail_on_frames: set[int] | None = None) -> None:
+        self._bbox = bbox
+        self._fail_on_frames = fail_on_frames or set()
+        self._last_crop_height = None
+        self.calls: list[
+            tuple[int, BBox | None]
+        ] = []  # (frame_idx, received_prev_bbox)
+        self._call_count = 0
+
+    def track(self, prev_bbox: BBox | None, frame: np.ndarray) -> BBox | None:
+        self._last_crop_height = frame.shape[0]
+        idx = self._call_count
+        self.calls.append((idx, prev_bbox))
+        self._call_count += 1
+        return None if idx in self._fail_on_frames else self._bbox
+
+    def reset(self) -> None:
+        self._call_count = 0
+        self.calls.clear()
+
+
+def test_runner_seeds_from_gt_on_first_frame(tmp_path):
+    """Harness must inject GT bbox as prev_bbox on frame 0."""
+    bbox: BBox = (0.4, 0.3, 0.05, 0.05)
+    clip = _synthetic_clip(tmp_path, num_frames=4)
+    frames = [_make_frame() for _ in range(4)]
+    dataset = _SyntheticEvalDataset(clip, frames)
+
+    tracker = _RecordingTracker(bbox)
+    run_benchmark(tracker, dataset, method_name="seed_test", verbose=False)
+
+    # Frame 0: tracker should have received GT bbox (not None)
+    _, received = tracker.calls[0]
+    assert received is not None, "Frame 0 prev_bbox must be seeded from GT"
+    assert received == pytest.approx(bbox)
+
+
+def test_runner_reseeds_after_failure(tmp_path):
+    """After tracker returns None, next frame with GT must re-seed."""
+    bbox: BBox = (0.4, 0.3, 0.05, 0.05)
+    clip = _synthetic_clip(tmp_path, num_frames=5)
+    frames = [_make_frame() for _ in range(5)]
+    dataset = _SyntheticEvalDataset(clip, frames)
+
+    # Tracker fails on frame 1 (returns None)
+    tracker = _RecordingTracker(bbox, fail_on_frames={1})
+    run_benchmark(tracker, dataset, method_name="reseed_test", verbose=False)
+
+    # Frame 2 must receive GT seed because frame 1 produced None
+    _, frame2_prev = tracker.calls[2]
+    assert frame2_prev is not None, (
+        "Frame 2 must be re-seeded from GT after failure on frame 1"
+    )
+
+
+def test_runner_no_seed_when_tracking_succeeds(tmp_path):
+    """When tracking is continuous, only frame 0 should receive a GT seed."""
+    bbox: BBox = (0.4, 0.3, 0.05, 0.05)
+    clip = _synthetic_clip(tmp_path, num_frames=5)
+    frames = [_make_frame() for _ in range(5)]
+    dataset = _SyntheticEvalDataset(clip, frames)
+
+    tracker = _RecordingTracker(bbox)
+    run_benchmark(tracker, dataset, method_name="noseed_test", verbose=False)
+
+    # Frames 1-4 should receive tracker's own previous output (the fixed bbox), not GT
+    for call_idx in range(1, 5):
+        _, received = tracker.calls[call_idx]
+        assert received == pytest.approx(bbox), (
+            f"Frame {call_idx} should have received tracker output, not a GT seed"
+        )
+
+
+def test_seeded_frame_flag_set_on_seed_frames(tmp_path):
+    """FramePrediction.seeded_from_gt must be True only on seeded frames."""
+    bbox: BBox = (0.4, 0.3, 0.05, 0.05)
+    clip = _synthetic_clip(tmp_path, num_frames=4)
+    frames = [_make_frame() for _ in range(4)]
+    dataset = _SyntheticEvalDataset(clip, frames)
+
+    tracker = _RecordingTracker(bbox, fail_on_frames={1})
+    result = run_benchmark(tracker, dataset, method_name="flag_test", verbose=False)
+
+    preds = result.clip_metrics[0].frame_predictions
+    # Frame 0: seeded (initial seed)
+    assert preds[0].seeded_from_gt is True
+    # Frame 1: NOT seeded (prev_bbox was available from frame 0's output)
+    assert preds[1].seeded_from_gt is False
+    # Frame 2: seeded (re-seed after frame 1 failure)
+    assert preds[2].seeded_from_gt is True
+    # Frame 3: NOT seeded (frame 2 produced tracker output)
+    assert preds[3].seeded_from_gt is False
+
+
+# --------------------------------------------------------------------------- #
+# ROI crop sizing tests (ft-019)                                              #
+# --------------------------------------------------------------------------- #
+
+
+def test_roi_yolo_default_min_crop_is_512():
+    """RoiYoloTracker must default to min_roi_px=512."""
+    # Check via signature — does not instantiate the model
+    sig = inspect.signature(RoiYoloTracker.__init__)
+    default = sig.parameters["min_roi_px"].default
+    assert default == 512, f"min_roi_px default must be 512, got {default}"
+
+
+def test_roi_yolo_compute_roi_respects_absolute_min():
+    """_compute_roi must enforce min_roi_px floor regardless of bbox size."""
+    # Small bbox, 1080p frame, roi_scale=3.0, min_roi_frac=0.0 (no frac floor),
+    # min_roi_px=512 — ROI side must be >= 512 even if bbox diagonal is tiny
+    tiny_bbox: BBox = (0.5, 0.5, 0.005, 0.005)  # ~5x5 px ball
+    x0, y0, x1, y1 = _compute_roi(
+        prev_bbox=tiny_bbox,
+        pred_cx=0.5,
+        pred_cy=0.5,
+        H=1080,
+        W=1920,
+        roi_scale=3.0,
+        min_roi_frac=0.0,
+        min_roi_px=512,
+    )
+    roi_side = max(x1 - x0, y1 - y0)
+    assert roi_side >= 512, f"ROI side {roi_side} must be >= 512 when min_roi_px=512"

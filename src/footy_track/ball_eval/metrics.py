@@ -50,6 +50,8 @@ class FramePrediction:
     gt_center_norm: tuple[float, float] | None = None
     pred_center_norm: tuple[float, float] | None = None
     center_dist_px: float | None = None  # pixel distance at frame resolution
+    # True when prev_bbox was seeded from GT for this frame
+    seeded_from_gt: bool = False
 
 
 @dataclasses.dataclass
@@ -86,6 +88,12 @@ class ClipMetrics:
         float  # % of occlusion events where tracking resumed ≤3 frames later
     )
 
+    # GT-seeding statistics (how often the harness had to inject GT)
+    seeded_frames: int  # frames where tracker was given GT seed as prev_bbox
+    reseed_count: (
+        int  # number of distinct reseed events (first seed + re-seeds after failure)
+    )
+
     # Speed / resource
     fps: float
     peak_vram_mb: float
@@ -116,6 +124,8 @@ class ClipMetrics:
             "fps": round(self.fps, 1),
             "peak_vram_mb": round(self.peak_vram_mb, 1),
             "effective_resolution_px": self.effective_resolution_px,
+            "seeded_frames": self.seeded_frames,
+            "reseed_count": self.reseed_count,
         }
 
 
@@ -296,6 +306,8 @@ def compute_clip_metrics(  # noqa: PLR0912, PLR0915
     peak_vram_mb: float,
     occlusion_frame_indices: list[int],
     frame_size: tuple[int, int] = (1080, 1920),  # (height, width) for pixel metrics
+    seeded_frames: int = 0,
+    reseed_count: int = 0,
 ) -> ClipMetrics:
     """Aggregate FramePredictions into ClipMetrics.
 
@@ -437,6 +449,8 @@ def compute_clip_metrics(  # noqa: PLR0912, PLR0915
         max_track_streak=max_streak,
         catastrophic_failure_rate=catastrophic_rate,
         occlusion_recovery_rate=recovery_rate,
+        seeded_frames=seeded_frames,
+        reseed_count=reseed_count,
         fps=fps,
         peak_vram_mb=peak_vram_mb,
         effective_resolution_px=effective_res,

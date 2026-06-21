@@ -131,9 +131,10 @@ def _compute_roi(
     W: int,
     roi_scale: float,
     min_roi_frac: float,
+    min_roi_px: int = 512,
 ) -> tuple[int, int, int, int]:
     """Return (x0, y0, x1, y1) pixel ROI for the current frame."""
-    roi_side_min = int(H * min_roi_frac)
+    roi_side_min = max(int(H * min_roi_frac), min_roi_px)
 
     if prev_bbox is None:
         return 0, 0, W, H
@@ -182,8 +183,12 @@ class RoiYoloTracker:
     roi_scale:
         ROI side length as a multiple of the ball's bounding-box diagonal from
         the previous frame.  3.0 → 3× diagonal padding around the predicted centre.
+    min_roi_px:
+        Minimum ROI side in pixels. Defaults to 512 — empirically 512px crops yield
+        11.6% detection vs 0% at 160px on broadcast footage (ft-019 bake-off finding).
     min_roi_frac:
-        Minimum ROI size as a fraction of frame height.
+        Minimum ROI size as a fraction of frame height (secondary floor). The actual
+        minimum is max(min_roi_px, frame_height * min_roi_frac).
     min_confidence:
         Detection confidence threshold.
     process_noise / measurement_noise:
@@ -195,6 +200,7 @@ class RoiYoloTracker:
         model_path: str = _DEFAULT_MODEL_PATH,
         ball_classes: list[int] | None = None,
         roi_scale: float = 3.0,
+        min_roi_px: int = 512,
         min_roi_frac: float = 0.10,
         min_confidence: float = 0.20,
         process_noise: float = 5e-5,
@@ -204,6 +210,7 @@ class RoiYoloTracker:
         self._ball_classes = ball_classes if ball_classes is not None else _BALL_CLASSES
         self._device = _pick_device()
         self._roi_scale = roi_scale
+        self._min_roi_px = min_roi_px
         self._min_roi_frac = min_roi_frac
         self._min_confidence = min_confidence
         self._q = process_noise
@@ -234,7 +241,14 @@ class RoiYoloTracker:
         )
 
         x0, y0, x1, y1 = _compute_roi(
-            prev_bbox, pred_cx, pred_cy, H, W, self._roi_scale, self._min_roi_frac
+            prev_bbox,
+            pred_cx,
+            pred_cy,
+            H,
+            W,
+            self._roi_scale,
+            self._min_roi_frac,
+            self._min_roi_px,
         )
         crop = frame[y0:y1, x0:x1]
         self._last_crop_height = crop.shape[0]

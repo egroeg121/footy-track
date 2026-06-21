@@ -78,13 +78,29 @@ def run_benchmark(
 def _score_clip(
     tracker: BallTracker, clip: EvalClip, verbose: bool = False
 ) -> ClipMetrics:
-    """Run the tracker through one clip and return metrics."""
+    """Run the tracker through one clip and return GT-seeded metrics.
+
+    GT-seeding protocol:
+    - When prev_bbox is None (start of clip or after tracking loss) and a GT bbox
+      is available, the harness injects the GT bbox as prev_bbox before calling
+      tracker.track(). This measures "tracking-from-seed" (the intended use case)
+      rather than cold re-detection ability.
+    - After a tracking failure (tracker returned None), the harness re-seeds from
+      the next available GT bbox so that a single occlusion/loss does not zero out
+      the rest of the clip.
+    - seeded_from_gt is recorded per-frame; seeded_frames and reseed_count are
+      returned in ClipMetrics so callers know how many times seeding occurred.
+    """
     frame_preds: list[FramePrediction] = []
     prev_bbox: BBox | None = None
     total_inference_s = 0.0
     peak_vram_mb = 0.0
     frame_h: int = 1080
     frame_w: int = 1920
+
+    # GT-seeding tracking
+    seeded_frames = 0
+    reseed_count = 0
 
     _reset_vram_counter()
 
@@ -94,6 +110,15 @@ def _score_clip(
         gt_bbox = gt_label.bbox if gt_label is not None else None
         # Use explicit center if available, derive from bbox if not
         gt_center = gt_label.ball_center() if gt_label is not None else None
+
+        # GT-seed: inject GT bbox as prev_bbox when tracker has no prior output
+        # and GT is available. This measures tracking-from-seed, not cold detection.
+        seeded_this_frame = False
+        if prev_bbox is None and gt_bbox is not None:
+            prev_bbox = gt_bbox
+            seeded_this_frame = True
+            seeded_frames += 1
+            reseed_count += 1
 
         t0 = time.perf_counter()
         pred_bbox = tracker.track(prev_bbox, frame_rgb)
@@ -117,13 +142,12 @@ def _score_clip(
                 inference_time_s=elapsed,
                 crop_height=crop_height,
                 gt_center_norm=gt_center,
+                seeded_from_gt=seeded_this_frame,
             )
         )
 
-        # Feed prediction back as next frame's prev_bbox (simulates real tracking).
-        # If tracker lost the ball, keep prev_bbox so it can re-seed from last known.
-        if pred_bbox is not None:
-            prev_bbox = pred_bbox
+        # Feed prediction back; on loss, clear so next GT triggers a re-seed.
+        prev_bbox = pred_bbox
 
     occlusion_indices = clip.frames_with_tag("occlusion")
 
@@ -136,6 +160,8 @@ def _score_clip(
         peak_vram_mb=peak_vram_mb,
         occlusion_frame_indices=occlusion_indices,
         frame_size=(frame_h, frame_w),
+        seeded_frames=seeded_frames,
+        reseed_count=reseed_count,
     )
 
 
