@@ -59,6 +59,7 @@ PROV_SAM3 = "sam3"
 # Ball-class labels that appear in the JSONL sidecar.
 _BALL_LABELS = {"ball", "in_play_ball", "out_of_play_ball"}
 _NO_BALL_TAG = "no_ball"
+_NOT_BROADCAST_TAG = "not_broadcast"
 
 
 class Session:
@@ -81,6 +82,7 @@ class Session:
         self._tl_lock = threading.Lock()
         # no-ball frame set: frames explicitly marked as no-ball-visible
         self.no_ball_frames: set[int] = set()
+        self.not_broadcast_frames: set[int] = set()
         # debounced JSONL flush
         self._flush_timer: threading.Timer | None = None
         self._flush_lock = threading.Lock()
@@ -106,6 +108,7 @@ class Session:
                 self._flush_timer.cancel()
                 self._flush_timer = None
         self.no_ball_frames = set()
+        self.not_broadcast_frames = set()
         return {
             "fps": self.fps,
             "total_frames": self.total_frames,
@@ -187,8 +190,12 @@ class Session:
             with self._tl_lock:
                 timeline_snapshot = list(self.timeline)
             no_ball_snapshot = set(self.no_ball_frames)
+            not_broadcast_snapshot = set(self.not_broadcast_frames)
             lines: list[str] = []
             for idx, boxes in enumerate(timeline_snapshot):
+                if idx in not_broadcast_snapshot:
+                    lines.append(json.dumps({"frame_index": idx, "bbox": None, "center": None, "tags": [_NOT_BROADCAST_TAG]}))
+                    continue
                 # no-ball frame
                 if idx in no_ball_snapshot:
                     lines.append(
@@ -372,6 +379,22 @@ async def mark_no_ball(body: dict) -> dict:
             ]
     SESSION.schedule_flush()
     return {"idx": idx, "no_ball": True}
+
+
+@app.post("/not-broadcast")
+async def mark_not_broadcast(body: dict) -> dict:
+    idx = int(body["idx"])
+    SESSION.not_broadcast_frames.add(idx)
+    SESSION.schedule_flush()
+    return {"idx": idx, "not_broadcast": True}
+
+
+@app.post("/not-broadcast/clear")
+async def clear_not_broadcast(body: dict) -> dict:
+    idx = int(body["idx"])
+    SESSION.not_broadcast_frames.discard(idx)
+    SESSION.schedule_flush()
+    return {"idx": idx, "not_broadcast": False}
 
 
 @app.post("/propagate")

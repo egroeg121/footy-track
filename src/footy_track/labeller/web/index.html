@@ -80,6 +80,7 @@
       <select id="classSel"></select>
       <button id="autoBtn">🤖 Auto-detect</button>
       <button id="noBallBtn" title="Mark frame as no-ball-visible (N)">🚫 No ball (N)</button>
+      <button id="notBroadcastBtn" title="Mark frame as not broadcast (B)">📺 Not broadcast (B)</button>
       <label class="muted" style="margin-left:8px;">res
         <select id="imgszSel" title="SAM3 inference resolution — higher tracks small objects (ball) better but is slower">
           <option value="512">512</option>
@@ -128,7 +129,8 @@ let mode = "idle";          // idle | running | paused
 let lastCompleted = -1;
 let ws = null;
 let clipsDir = "";          // resolved server-side clips directory
-const noBallFrames = new Set();  // frames marked no-ball locally for UI display
+const noBallFrames = new Set();
+const notBroadcastFrames = new Set();
 
 // --- Konva setup ---
 const stage = new Konva.Stage({ container: "stageWrap", width: 100, height: 100 });
@@ -202,6 +204,22 @@ function renderList(){
   const rects = boxLayer.find(".box");
   $("objHdr").textContent = `Detected objects (${rects.length})`;
   const list = $("objList"); list.innerHTML = "";
+  if (viewFrame !== null && noBallFrames.has(viewFrame)) {
+    const row = document.createElement("div"); row.className = "objrow"; row.style.color="#f85149";
+    const icon = document.createElement("span"); icon.textContent="🚫"; icon.style.marginRight="4px";
+    const lbl = document.createElement("span"); lbl.textContent="No ball visible"; lbl.style.flex="1";
+    const x = document.createElement("span"); x.className="x"; x.textContent="✕";
+    x.onclick=(e)=>{e.stopPropagation(); markNoBall();};
+    row.appendChild(icon); row.appendChild(lbl); row.appendChild(x); list.appendChild(row);
+  }
+  if (viewFrame !== null && notBroadcastFrames.has(viewFrame)) {
+    const row = document.createElement("div"); row.className = "objrow"; row.style.color="var(--accent)";
+    const icon = document.createElement("span"); icon.textContent="📺"; icon.style.marginRight="4px";
+    const lbl = document.createElement("span"); lbl.textContent="Not broadcast"; lbl.style.flex="1";
+    const x = document.createElement("span"); x.className="x"; x.textContent="✕";
+    x.onclick=(e)=>{e.stopPropagation(); markNotBroadcast();};
+    row.appendChild(icon); row.appendChild(lbl); row.appendChild(x); list.appendChild(row);
+  }
   const selected = tr.nodes()[0];
   rects.forEach((r,i)=>{
     const row = document.createElement("div");
@@ -295,6 +313,24 @@ async function markNoBall() {
 
 $("noBallBtn").onclick = markNoBall;
 
+async function markNotBroadcast() {
+  if (mode === "running" || meta === null) return;
+  const already = notBroadcastFrames.has(viewFrame);
+  if (already) {
+    notBroadcastFrames.delete(viewFrame);
+    await fetch("/not-broadcast/clear", {method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({idx: viewFrame})});
+    setStatus(`Frame ${viewFrame} not-broadcast cleared`);
+  } else {
+    notBroadcastFrames.add(viewFrame);
+    await fetch("/not-broadcast", {method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({idx: viewFrame})});
+    setStatus(`📺 Frame ${viewFrame} marked not-broadcast`);
+  }
+  renderList();
+}
+$("notBroadcastBtn").onclick = markNotBroadcast;
+
 // keyboard shortcuts
 window.addEventListener("keydown",(e)=>{
   // Ignore when typing in an input or select
@@ -335,10 +371,8 @@ window.addEventListener("keydown",(e)=>{
     return;
   }
 
-  if (e.key === "n" || e.key === "N") {
-    markNoBall();
-    return;
-  }
+  if (e.key === "n" || e.key === "N") { markNoBall(); return; }
+  if (e.key === "b" || e.key === "B") { markNotBroadcast(); return; }
 });
 
 // ---------- clip picker ----------
