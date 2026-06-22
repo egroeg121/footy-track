@@ -17,6 +17,9 @@ import collections
 import contextlib
 import json
 import os
+import subprocess
+import sys
+import tempfile
 import threading
 from pathlib import Path
 
@@ -27,8 +30,8 @@ os.environ.setdefault(
 )
 
 import cv2  # noqa: E402
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect  # noqa: E402
-from fastapi.responses import HTMLResponse, Response  # noqa: E402
+from fastapi import FastAPI, File, UploadFile, WebSocket, WebSocketDisconnect  # noqa: E402
+from fastapi.responses import HTMLResponse, Response, StreamingResponse  # noqa: E402
 from fastapi.staticfiles import StaticFiles  # noqa: E402
 
 from footy_track.ball_eval.metrics import bbox_iou  # noqa: E402
@@ -333,24 +336,34 @@ async def labeller_page() -> HTMLResponse:
 
 
 def _clip_completion(stem: str, video_path: Path) -> dict:
-    """Return {marked, complete, label_count} for a clip."""
+    """Return {marked, complete, label_count} for a clip.
+
+    complete = reached near the last frame AND has at least one player mark.
+    Ball-only clips (no player labels) are treated as in-progress.
+    """
     jsonl = _GT_MARKS_DIR / f"{stem}.jsonl"
     if not jsonl.exists():
         return {"marked": False, "complete": False, "label_count": 0}
     try:
         frame_indices = []
+        has_player = False
         with jsonl.open() as f:
             for line in f:
                 line = line.strip()
-                if line:
-                    d = json.loads(line)
-                    frame_indices.append(int(d.get("frame_index", 0)))
+                if not line:
+                    continue
+                d = json.loads(line)
+                frame_indices.append(int(d.get("frame_index", 0)))
+                tags = d.get("tags") or []
+                if any(t in _PLAYER_LABELS for t in tags):
+                    has_player = True
         if not frame_indices:
             return {"marked": False, "complete": False, "label_count": 0}
         cap = cv2.VideoCapture(str(video_path))
         total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
         cap.release()
-        complete = total > 0 and max(frame_indices) >= total - 15
+        reached_end = total > 0 and max(frame_indices) >= total - 15
+        complete = reached_end and has_player
         return {"marked": True, "complete": complete, "label_count": len(frame_indices)}
     except Exception:
         return {"marked": True, "complete": False, "label_count": 0}
@@ -952,6 +965,69 @@ async def review_delete(body: dict) -> dict:
     jsonl_path.write_text("\n".join(lines) + "\n")
     _CROP_CACHE.pop((clip, frame_index, box_index), None)
     return {"ok": True}
+
+
+# ----------------------------------------------------------------------------
+# Ingest: upload a match video → split_broadcast_segments → eval_data/clips
+# ----------------------------------------------------------------------------
+
+_INGEST_UPLOADS = Path(tempfile.gettempdir()) / "footy_ingest_uploads"
+_INGEST_UPLOADS.mkdir(parents=True, exist_ok=True)
+
+
+@app.get("/ingest", response_class=HTMLResponse)
+async def ingest_page() -> HTMLResponse:
+    return HTMLResponse((_STATIC_DIR / "ingest.html").read_text())
+
+
+@app.post("/ingest/upload")
+async def ingest_upload(file: UploadFile = File(...)) -> dict:
+    """Save uploaded video to a temp location and return the path."""
+    dest = _INGEST_UPLOADS / (file.filename or "upload.mp4")
+    data = await file.read()
+    dest.write_bytes(data)
+    return {"path": str(dest), "name": dest.name, "size": len(data)}
+
+
+@app.get("/ingest/run")
+async def ingest_run(path: str, sample: int = 5, merge_gap_s: float = 0.5, min_seg_s: float = 2.0) -> StreamingResponse:
+    """Stream split_broadcast_segments output as SSE."""
+    video_path = Path(path).expanduser()
+
+    async def event_stream():
+        if not video_path.exists():
+            yield f"data: ERROR: file not found: {video_path}\n\n"
+            yield "data: [DONE]\n\n"
+            return
+
+        cmd = [
+            sys.executable, "-m", "footy_track.scripts.split_broadcast_segments",
+            str(video_path),
+            "--outdir", str(_CLIPS_DIR),
+            "--sample", str(sample),
+            "--merge-gap-s", str(merge_gap_s),
+            "--min-seg-s", str(min_seg_s),
+        ]
+        yield f"data: Running: {' '.join(cmd)}\n\n"
+
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+            env={**os.environ, "PYTHONUNBUFFERED": "1"},
+        )
+        assert proc.stdout is not None
+        async for raw in proc.stdout:
+            line = raw.decode(errors="replace").rstrip()
+            if line:
+                yield f"data: {line}\n\n"
+
+        rc = await proc.wait()
+        yield f"data: [EXIT {rc}]\n\n"
+        yield "data: [DONE]\n\n"
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
 # ----------------------------------------------------------------------------
