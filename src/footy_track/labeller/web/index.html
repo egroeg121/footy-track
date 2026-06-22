@@ -130,6 +130,7 @@ let mode = "idle";          // idle | running | paused
 let lastCompleted = -1;
 let ws = null;
 let clipsDir = "";          // resolved server-side clips directory
+let frameDirty = false;     // true only if user has edited the current frame
 const noBallFrames = new Set();
 const notBroadcastFrames = new Set();
 
@@ -168,7 +169,7 @@ function addRect(label, x, y, w, h, editable) {
   r.setAttr("label", label);
   if (editable) {
     r.on("click", () => selectRect(r));
-    r.on("transformend dragend", () => { normalizeScale(r); renderList(); });
+    r.on("transformend dragend", () => { normalizeScale(r); frameDirty=true; renderList(); });
   }
   boxLayer.add(r);
   // number label
@@ -240,10 +241,10 @@ function renderList(){
     } else {
       const sel=document.createElement("select");
       CLASSES.forEach(c=>{const o=document.createElement("option");o.value=c;o.textContent=c;if(c===r.getAttr("label"))o.selected=true;sel.appendChild(o);});
-      sel.onchange=()=>{ r.setAttr("label",sel.value); r.stroke(colorOf(sel.value)); refreshNumbers(); boxLayer.draw(); renderList(); };
+      sel.onchange=()=>{ r.setAttr("label",sel.value); r.stroke(colorOf(sel.value)); frameDirty=true; refreshNumbers(); boxLayer.draw(); renderList(); };
       row.appendChild(sel);
       const x=document.createElement("span"); x.className="x"; x.textContent="✕";
-      x.onclick=()=>{ const t=r.getAttr("numText"); if(t)t.destroy(); r.destroy(); tr.nodes([]); boxLayer.draw(); renderList(); };
+      x.onclick=()=>{ const t=r.getAttr("numText"); if(t)t.destroy(); r.destroy(); tr.nodes([]); frameDirty=true; boxLayer.draw(); renderList(); };
       row.appendChild(x);
       row.onclick=(e)=>{ if(e.target===x||e.target===sel)return; selectRect(r); };
     }
@@ -349,7 +350,7 @@ stage.on("mousemove", ()=>{
   drawing.x(Math.min(p.x,drawStart.x)); drawing.y(Math.min(p.y,drawStart.y));
   refreshNumbers(); boxLayer.draw();
 });
-stage.on("mouseup", ()=>{ if(drawing){ if(drawing.width()<4||drawing.height()<4){const t=drawing.getAttr("numText");if(t)t.destroy();drawing.destroy();} drawing=null; renderList(); }});
+stage.on("mouseup", ()=>{ if(drawing){ if(drawing.width()<4||drawing.height()<4){const t=drawing.getAttr("numText");if(t)t.destroy();drawing.destroy();} else { frameDirty=true; } drawing=null; renderList(); }});
 
 // no-ball mark
 async function markNoBall() {
@@ -395,7 +396,7 @@ window.addEventListener("keydown",(e)=>{
   if (e.target.tagName === "INPUT" || e.target.tagName === "SELECT") return;
 
   if((e.key==="Delete"||e.key==="Backspace") && tool==="edit"){
-    const n=tr.nodes()[0]; if(n){ const t=n.getAttr("numText"); if(t)t.destroy(); n.destroy(); tr.nodes([]); boxLayer.draw(); renderList(); }
+    const n=tr.nodes()[0]; if(n){ const t=n.getAttr("numText"); if(t)t.destroy(); n.destroy(); tr.nodes([]); frameDirty=true; boxLayer.draw(); renderList(); }
     return;
   }
 
@@ -542,9 +543,10 @@ $("nextBtn").onclick = ()=>navigateDelta(1);
 // frame we POST the current boxes to /edit (labeller ground truth); when
 // entering a frame we GET /timeline/{idx} and render it.
 async function saveCurrentEdits(){
-  if (mode!=="running" && viewFrame!=null){
+  if (mode!=="running" && viewFrame!=null && frameDirty){
     await fetch("/edit",{method:"POST",headers:{"Content-Type":"application/json"},
       body:JSON.stringify({idx:viewFrame, objects:boxesNorm()})});
+    frameDirty = false;
   }
 }
 
@@ -555,6 +557,7 @@ async function loadTimelineFrame(idx, editable){
 
 async function gotoFrame(idx){
   await saveCurrentEdits();     // persist edits on the frame we're leaving
+  frameDirty = false;
   clearBoxes();
   await showFrame(idx);
   if (mode==="running") {
