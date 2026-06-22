@@ -418,7 +418,15 @@ async def autodetect(body: dict) -> dict:
         for o in seeds
         if o.bbox_xyxy_abs is not None
     ]
-    SESSION.set_frame(idx, current + yolo_boxes)
+    # Suppress YOLO boxes that overlap heavily with existing labeller boxes.
+    def _xywh(b: ObjectDetection) -> tuple:
+        return (b.x, b.y, b.w, b.h)
+
+    filtered_yolo = [
+        yb for yb in yolo_boxes
+        if not any(bbox_iou(_xywh(yb), _xywh(cb)) > 0.3 for cb in current)
+    ]
+    SESSION.set_frame(idx, current + filtered_yolo)
     return {"idx": idx, "boxes": _boxes_payload(SESSION.get_frame(idx))}
 
 
