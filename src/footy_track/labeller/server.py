@@ -326,6 +326,7 @@ def _boxes_payload(boxes: list[ObjectDetection]) -> list[dict]:
 
 
 @app.get("/", response_class=HTMLResponse)
+@app.get("/main", response_class=HTMLResponse)
 async def root() -> HTMLResponse:
     return HTMLResponse((_STATIC_DIR / "main.html").read_text())
 
