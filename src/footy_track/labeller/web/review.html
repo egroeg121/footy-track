@@ -137,7 +137,7 @@
       <button class="btn" id="modal-tool-draw" title="Draw mode (W)">✏️ Draw</button>
       <button class="btn" id="modal-tool-edit" title="Edit mode (E)">✋ Edit</button>
       <button class="btn warn" id="modal-btn-yolo">🤖 YOLO</button>
-      <button class="btn" onclick="closeModal()" style="margin-left:auto;">✕ Close [Esc]</button>
+      <button class="btn" onclick="autoSaveModal().then(closeModal)" style="margin-left:auto;">✕ Close [Esc]</button>
     </div>
     <div id="modal-body">
       <!-- Left: Konva canvas on crop (main review + edit area) -->
@@ -175,6 +175,7 @@
     <button class="pick-btn" data-label="coach"><span class="pick-key">5</span> Coach</button>
     <button class="pick-btn" data-label="player_sub"><span class="pick-key">6</span> Player (sub)</button>
     <button class="pick-btn" data-label="ball"><span class="pick-key">7</span> Ball (generic)</button>
+    <button class="pick-btn" data-label="person"><span class="pick-key">8</span> Person</button>
     <br>
     <button class="pick-btn" id="picker-cancel" style="color:var(--muted)"><span class="pick-key">Esc</span> Cancel</button>
   </div>
@@ -188,7 +189,7 @@ const CLASS_COLORS = {
 };
 const CLASSES = ['player','in_play_ball','out_of_play_ball','referee','coach','player_sub','ball','person'];
 const CLASS_KEYS = {'1':'player','2':'in_play_ball','3':'out_of_play_ball',
-                    '4':'referee','5':'coach','6':'player_sub','7':'ball'};
+                    '4':'referee','5':'coach','6':'player_sub','7':'ball','8':'person'};
 const BATCH_SIZE = 100;
 
 let allItems = [];       // full queue from server
@@ -309,12 +310,19 @@ function renderGrid() {
   batch.forEach((item, i) => drawGtOnCard(i, item));
 }
 
-// ── "Seen" tracking ────────────────────────────────────────────────────────────
-const _seenKeys = new Set(); // clip:frame:box
+// ── "Seen" tracking (persisted in localStorage) ────────────────────────────────
+const _SEEN_KEY = 'review_seen_v1';
+const _seenKeys = new Set(JSON.parse(localStorage.getItem(_SEEN_KEY) || '[]'));
+
+function _persistSeen() {
+  localStorage.setItem(_SEEN_KEY, JSON.stringify([..._seenKeys]));
+}
 
 function markSeen(item) {
   const key = `${item.clip}:${item.frame_index}:${item.box_index}`;
+  if (_seenKeys.has(key)) return;
   _seenKeys.add(key);
+  _persistSeen();
   // Green border on the grid card
   const batch = currentBatch();
   const i = batch.findIndex(it => `${it.clip}:${it.frame_index}:${it.box_index}` === key);
@@ -468,6 +476,20 @@ function closeModal() {
   document.getElementById('modal').classList.remove('open');
   if (modalStage) { modalStage.destroy(); modalStage=null; }
   modalItem = null;
+}
+
+async function autoSaveModal() {
+  if (!modalItem) return;
+  const bboxChanged = JSON.stringify(modalBbox) !== JSON.stringify(modalItem.bbox);
+  const labelChanged = modalItem._pendingLabel && modalItem._pendingLabel !== modalItem.label;
+  if (bboxChanged || labelChanged) {
+    const label = labelChanged ? modalItem._pendingLabel : modalItem.label;
+    await fetch('/review/correct', {method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({clip:modalItem.clip, frame_index:modalItem.frame_index,
+        box_index:modalItem.box_index, label, bbox:modalBbox})});
+    modalItem.bbox = {...modalBbox};
+    if (labelChanged) { modalItem.label = label; delete modalItem._pendingLabel; }
+  }
 }
 
 function updateModalBbox() {
@@ -755,11 +777,11 @@ document.addEventListener('keydown', e => {
 
   // Modal open
   if (document.getElementById('modal').classList.contains('open')) {
-    if (e.key==='Escape') { closeModal(); return; }
-    if (e.key==='ArrowRight') { e.preventDefault(); navigateGrid(1); return; }
-    if (e.key==='ArrowLeft') { e.preventDefault(); navigateGrid(-1); return; }
+    if (e.key==='Escape') { autoSaveModal().then(closeModal); return; }
+    if (e.key==='ArrowRight'||e.key==='d'||e.key==='D') { e.preventDefault(); navigateGrid(1); return; }
+    if (e.key==='ArrowLeft'||e.key==='a'||e.key==='A') { e.preventDefault(); navigateGrid(-1); return; }
     if (e.key===' ') { e.preventDefault(); document.getElementById('modal-btn-accept').click(); }
-    else if (e.key==='d'||e.key==='D') document.getElementById('modal-btn-delete').click();
+    else if (e.key==='Backspace'||e.key==='Delete') document.getElementById('modal-btn-delete').click();
     else if (e.key==='w'||e.key==='W') { pickerTarget='modal'; openPicker(); }
     else if (e.key==='e'||e.key==='E') setModalTool('edit');
     else if (e.key==='r'||e.key==='R') document.getElementById('modal-btn-yolo').click();
@@ -779,7 +801,8 @@ document.addEventListener('keydown', e => {
 // ── Grid keyboard navigation ───────────────────────────────────────────────────
 let gridCursor = -1; // index into currentBatch()
 
-function navigateGrid(delta) {
+async function navigateGrid(delta) {
+  await autoSaveModal();
   const batch = currentBatch();
   if (!batch.length) return;
   gridCursor = Math.max(0, Math.min(batch.length - 1, gridCursor + delta));
