@@ -170,10 +170,8 @@ function addRect(label, x, y, w, h, editable) {
     draggable: editable, name:"box",
   });
   r.setAttr("label", label);
-  if (editable) {
-    r.on("click", () => selectRect(r));
-    r.on("transformend dragend", () => { normalizeScale(r); pushUndo(); frameDirty=true; renderList(); });
-  }
+  r.on("click", () => selectRect(r));
+  r.on("transformend dragend", () => { normalizeScale(r); pushUndo(); frameDirty=true; renderList(); });
   boxLayer.add(r);
   // number label
   const t = new Konva.Text({ x:x+2, y:Math.max(0,y-16), text:"", fontSize:13,
