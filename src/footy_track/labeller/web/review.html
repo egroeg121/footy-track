@@ -61,17 +61,23 @@
            z-index:200; align-items:center; justify-content:center; }
   #modal.open { display:flex; }
   #modal-inner { background:var(--panel); border:1px solid var(--border);
-                 border-radius:12px; width:min(700px,96vw); max-height:92vh;
+                 border-radius:12px; width:min(1100px,98vw); max-height:94vh;
                  overflow:auto; display:flex; flex-direction:column; }
-  #modal-header { padding:12px 16px; border-bottom:1px solid var(--border);
-                  display:flex; align-items:center; gap:10px; }
-  #modal-header h3 { margin:0; font-size:15px; flex:1; }
-  #modal-canvas-wrap { position:relative; background:#000; }
+  #modal-header { padding:10px 16px; border-bottom:1px solid var(--border);
+                  display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+  #modal-header h3 { margin:0; font-size:14px; flex:1; }
+  #modal-body { display:flex; gap:0; min-height:0; }
+  #modal-crop-panel { width:280px; flex:none; border-right:1px solid var(--border);
+                      display:flex; flex-direction:column; align-items:center;
+                      padding:12px; gap:8px; background:#000; }
+  #modal-crop-img { width:100%; border-radius:6px; display:block; }
+  #modal-crop-label { font-size:11px; color:var(--muted); text-align:center; }
+  #modal-canvas-wrap { flex:1; position:relative; background:#111; min-width:0; }
   #modal-konva { display:block; }
-  #modal-actions { padding:12px 16px; display:flex; gap:8px; flex-wrap:wrap;
+  #modal-actions { padding:10px 16px; display:flex; gap:8px; flex-wrap:wrap;
                    align-items:center; border-top:1px solid var(--border); }
   #modal-bbox { font-size:12px; color:var(--muted); margin-left:auto; }
-  #modal-info { padding:4px 16px 8px; font-size:11px; color:var(--muted); }
+  #modal-info { padding:3px 16px 6px; font-size:11px; color:var(--muted); }
 
   /* Picker */
   #picker { display:none; position:fixed; inset:0; background:rgba(0,0,0,.7);
@@ -127,8 +133,16 @@
       <button class="btn warn" id="modal-btn-yolo">🤖 YOLO</button>
       <button class="btn" onclick="closeModal()" style="margin-left:auto;">✕ Close [Esc]</button>
     </div>
-    <div id="modal-canvas-wrap">
-      <div id="modal-konva"></div>
+    <div id="modal-body">
+      <!-- Left: zoomed crop -->
+      <div id="modal-crop-panel">
+        <img id="modal-crop-img" src="" alt="crop" />
+        <div id="modal-crop-label"></div>
+      </div>
+      <!-- Right: full frame with Konva overlay -->
+      <div id="modal-canvas-wrap">
+        <div id="modal-konva"></div>
+      </div>
     </div>
     <div id="yolo-results"></div>
     <div id="modal-info"></div>
@@ -355,10 +369,19 @@ function openModal(item, batchIdx) {
   modalTool = 'draw';
 
   document.getElementById('modal').classList.add('open');
-  document.getElementById('modal-title').textContent = `${item.label} — ${item.clip} frame ${item.frame_index} box ${item.box_index}`;
+  document.getElementById('modal-title').textContent = `${item.label} — ${item.clip} fr.${item.frame_index} box ${item.box_index}`;
   document.getElementById('modal-info').textContent =
-    `${item.clip} · frame ${item.frame_index} · box ${item.box_index} · ${item.provenance}`;
+    `${item.clip} · frame ${item.frame_index} · box ${item.box_index} · ${item.provenance} · conf ${Math.round(item.confidence*100)}%`;
   document.getElementById('yolo-results').textContent = '';
+
+  // Left panel: zoomed crop
+  const cropImg = document.getElementById('modal-crop-img');
+  cropImg.src = item.image_url + '?t=' + Date.now();
+  const color = CLASS_COLORS[item.label] || '#f00';
+  const b = item.bbox;
+  document.getElementById('modal-crop-label').innerHTML =
+    `<span style="color:${color};font-weight:700">${item.label}</span> &nbsp; x:${b.x.toFixed(3)} y:${b.y.toFixed(3)} w:${b.w.toFixed(3)} h:${b.h.toFixed(3)}`;
+
   updateModalBbox();
   setupModalKonva(item);
 }
@@ -379,7 +402,9 @@ function updateModalBbox() {
 function setupModalKonva(item) {
   const wrap = document.getElementById('modal-canvas-wrap');
   wrap.innerHTML = '<div id="modal-konva"></div>';
-  const W = Math.min(700, window.innerWidth - 32);
+  // Right panel takes remaining width after 280px crop panel
+  const totalW = Math.min(1100, window.innerWidth - 16);
+  const W = Math.max(400, totalW - 280 - 1);
   const H = Math.round(W * 9/16);
 
   if (modalStage) modalStage.destroy();
@@ -450,20 +475,38 @@ function drawModalBox(bbox, label) {
   if (!modalStage) return;
   const W = modalStage.width(), H = modalStage.height();
   modalBoxLayer.find('.box').forEach(n=>n.destroy());
+  modalBoxLayer.find('.box-lbl').forEach(n=>n.destroy());
   modalTr.nodes([]);
   const color = CLASS_COLORS[label] || '#f00';
+  const px = bbox.x*W, py = bbox.y*H, pw = bbox.w*W, ph = bbox.h*H;
+  // Solid filled rect with semi-transparent fill so tiny boxes are visible
   const r = new Konva.Rect({
-    x:bbox.x*W, y:bbox.y*H, width:bbox.w*W, height:bbox.h*H,
-    stroke:color, strokeWidth:2, draggable:modalTool==='edit', name:'box',
+    x:px, y:py, width:pw, height:ph,
+    stroke:color, strokeWidth:3,
+    fill: color.replace('#','') ? hexToRgba(color, 0.15) : 'rgba(255,0,0,0.15)',
+    draggable:modalTool==='edit', name:'box',
+  });
+  // Label text above the box
+  const t = new Konva.Text({
+    x:px, y:Math.max(0, py-18), text:label,
+    fontSize:13, fontStyle:'bold', fill:color, name:'box-lbl',
+    padding:2,
   });
   r.on('click', () => { if(modalTool==='edit'){ modalTr.nodes([r]); modalBoxLayer.draw(); }});
   r.on('transformend dragend', () => {
-    const s = r.scaleX(); r.width(r.width()*s); r.height(r.height()*r.scaleY());
+    r.width(Math.max(2, r.width()*r.scaleX())); r.height(Math.max(2, r.height()*r.scaleY()));
     r.scaleX(1); r.scaleY(1);
     modalBbox = {x:r.x()/W, y:r.y()/H, w:r.width()/W, h:r.height()/H};
+    t.x(r.x()); t.y(Math.max(0, r.y()-18));
     updateModalBbox();
   });
-  modalBoxLayer.add(r); modalBoxLayer.draw();
+  modalBoxLayer.add(r); modalBoxLayer.add(t); modalBoxLayer.draw();
+}
+
+function hexToRgba(hex, alpha) {
+  const h = hex.replace('#','');
+  const r = parseInt(h.slice(0,2),16), g = parseInt(h.slice(2,4),16), b = parseInt(h.slice(4,6),16);
+  return `rgba(${r},${g},${b},${alpha})`;
 }
 
 function setModalTool(t) {
