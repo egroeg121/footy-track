@@ -885,7 +885,10 @@ async def review_correct(body: dict) -> dict:
         return {"ok": False, "error": "box_index out of range"}
 
     line_idx, _ = frame_lines[box_index]
-    bx, by, bw, bh = bbox["x"], bbox["y"], bbox["w"], bbox["h"]
+    bx = max(0.0, min(1.0, float(bbox["x"])))
+    by = max(0.0, min(1.0, float(bbox["y"])))
+    bw = max(0.0, min(1.0 - bx, float(bbox["w"])))
+    bh = max(0.0, min(1.0 - by, float(bbox["h"])))
     cx, cy = bx + bw / 2, by + bh / 2
     new_record = json.dumps({
         "frame_index": frame_index,
