@@ -78,7 +78,7 @@
         <button id="toolDraw">✏️ Draw</button>
       </span>
       <select id="classSel"></select>
-      <button id="autoBtn">🤖 Auto-detect</button>
+      <button id="autoBtn" title="Auto-detect objects on this frame (R)">🤖 Auto-detect (R)</button>
       <button id="noBallBtn" title="Mark frame as no-ball-visible (N)">🚫 No ball (N)</button>
       <button id="notBroadcastBtn" title="Mark frame as not broadcast (B)">📺 Not broadcast (B)</button>
       <label class="muted" style="margin-left:8px;">res
@@ -412,6 +412,7 @@ window.addEventListener("keydown",(e)=>{
 
   if (e.key === "n" || e.key === "N") { markNoBall(); return; }
   if (e.key === "b" || e.key === "B") { markNotBroadcast(); return; }
+  if (e.key === "r" || e.key === "R") { autodetect(viewFrame); return; }
 });
 
 // ---------- clip picker ----------
