@@ -113,6 +113,9 @@
 
 <div id="batch-bar">
   <div id="class-pills"></div>
+  <label style="font-size:12px;color:var(--muted);display:flex;align-items:center;gap:5px;cursor:pointer;margin-left:12px;">
+    <input type="checkbox" id="hide-seen-toggle"> Hide reviewed
+  </label>
   <span id="batch-info"></span>
 </div>
 
@@ -252,7 +255,11 @@ function switchClass(cls) {
 }
 
 function currentBatch() {
-  return itemsForClass(activeClass).slice(batchOffset, batchOffset + BATCH_SIZE);
+  let items = itemsForClass(activeClass);
+  if (document.getElementById('hide-seen-toggle')?.checked) {
+    items = items.filter(it => !isSeenKey(it));
+  }
+  return items.slice(batchOffset, batchOffset + BATCH_SIZE);
 }
 
 function renderGrid() {
@@ -765,7 +772,7 @@ document.querySelectorAll('.pick-btn[data-label]').forEach(btn => {
 document.getElementById('picker-cancel').onclick = closePicker;
 
 // ── Keyboard ───────────────────────────────────────────────────────────────────
-document.addEventListener('keydown', e => {
+document.addEventListener('keydown', async e => {
   if (e.target.tagName==='INPUT'||e.target.tagName==='SELECT') return;
 
   // Picker open
@@ -778,8 +785,8 @@ document.addEventListener('keydown', e => {
   // Modal open
   if (document.getElementById('modal').classList.contains('open')) {
     if (e.key==='Escape') { autoSaveModal().then(closeModal); return; }
-    if (e.key==='ArrowRight'||e.key==='d'||e.key==='D') { e.preventDefault(); navigateGrid(1); return; }
-    if (e.key==='ArrowLeft'||e.key==='a'||e.key==='A') { e.preventDefault(); navigateGrid(-1); return; }
+    if (e.key==='ArrowRight'||e.key==='d'||e.key==='D') { e.preventDefault(); await navigateGrid(1); return; }
+    if (e.key==='ArrowLeft'||e.key==='a'||e.key==='A') { e.preventDefault(); await navigateGrid(-1); return; }
     if (e.key===' ') { e.preventDefault(); document.getElementById('modal-btn-accept').click(); }
     else if (e.key==='Backspace'||e.key==='Delete') document.getElementById('modal-btn-delete').click();
     else if (e.key==='w'||e.key==='W') { pickerTarget='modal'; openPicker(); }
@@ -812,6 +819,11 @@ async function navigateGrid(delta) {
 // ── Full frame endpoint check ──────────────────────────────────────────────────
 // We need a /review/frame/<clip>/<idx>.jpg endpoint on the server.
 // Falls back to crop image if not available (handled in setupModalKonva).
+
+document.getElementById('hide-seen-toggle').addEventListener('change', () => {
+  gridCursor = -1;
+  renderGrid();
+});
 
 loadQueue();
 </script>
