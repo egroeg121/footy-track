@@ -747,7 +747,7 @@ def _build_review_queue(records: list[dict]) -> list[dict]:
     CLASS_WEIGHT = {"ball": 3, "in_play_ball": 3, "out_of_play_ball": 3, "referee": 2, "coach": 2, "player_sub": 2}
 
     def sort_key(r: dict) -> tuple:
-        prov_order = 0 if r["provenance"] == PROV_YOLO else 1
+        prov_order = 0 if r["provenance"] != PROV_LABELLER else 1
         weight = -CLASS_WEIGHT.get(r["label"], 1)
         conf = r["confidence"]
         return (prov_order, conf, weight)
