@@ -502,6 +502,7 @@ async function loadClip(name, el) {
 }
 
 loadClipList();
+setInterval(loadClipList, 20000); // refresh clip ticks periodically
 
 $("addClipBtn").onclick = async () => {
   const name = prompt("Clip filename (must be in clips dir):");
