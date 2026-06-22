@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 
 from footy_track.feature_store import (
+    ClipRow,
     DetectionRow,
     FeatureStore,
     FrameRow,
@@ -21,9 +22,10 @@ from footy_track.feature_store import (
 
 @pytest.fixture()
 def store() -> FeatureStore:
-    """In-memory store with one game, one run, and a handful of frames."""
+    """In-memory store with one game, one clip, one run, and a handful of frames."""
     s = FeatureStore.open(":memory:")
-    s.upsert_games([GameRow(game_id="g1", fps=25.0)])
+    s.upsert_games([GameRow(game_id="g1")])
+    s.upsert_clips([ClipRow(clip_id="g1_clip0", game_id="g1", fps=25.0)])
     s.upsert_runs(
         [
             RunRow(
@@ -41,6 +43,7 @@ def _frame(store: FeatureStore, frame_index: int) -> None:
     store.upsert_frames(
         [
             FrameRow(
+                clip_id="g1_clip0",
                 game_id="g1",
                 frame_index=frame_index,
                 frame_uri=f"f{frame_index}.jpg",
@@ -66,6 +69,7 @@ def _det(
     run_id: str = "run1",
 ) -> DetectionRow:
     return DetectionRow(
+        clip_id="g1_clip0",
         game_id="g1",
         frame_index=frame_index,
         continuous_time_s=float(frame_index) / 25.0,

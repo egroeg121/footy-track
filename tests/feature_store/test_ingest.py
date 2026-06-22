@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 
 from footy_track.feature_store import (
+    ClipRow,
     FeatureStore,
     GameRow,
     detector_run,
@@ -44,6 +45,7 @@ def _frame_detections(uri: str = "f0.jpg", n: int = 2) -> FrameDetections:
 def store() -> FeatureStore:
     s = FeatureStore.open(":memory:")
     s.upsert_games([GameRow(game_id="g1")])
+    s.upsert_clips([ClipRow(clip_id="g1_clip0", game_id="g1")])
     s.upsert_runs(
         [detector_run("yolo_v3", "yolo11n.pt", source="yolo", model_version="v3")]
     )
@@ -53,6 +55,7 @@ def store() -> FeatureStore:
 def test_to_detection_rows_uses_per_frame_index() -> None:
     rows = to_detection_rows(
         _frame_detections(n=3),
+        clip_id="g1_clip0",
         game_id="g1",
         frame_index=5,
         continuous_time_s=0.2,
@@ -68,6 +71,7 @@ def test_to_detection_rows_uses_per_frame_index() -> None:
 def test_to_detection_rows_with_track_ids() -> None:
     rows = to_detection_rows(
         _frame_detections(n=2),
+        clip_id="g1_clip0",
         game_id="g1",
         frame_index=0,
         continuous_time_s=0.0,
@@ -82,6 +86,7 @@ def test_to_detection_rows_track_id_length_mismatch() -> None:
     with pytest.raises(ValueError, match="track_ids length"):
         to_detection_rows(
             _frame_detections(n=2),
+            clip_id="g1_clip0",
             game_id="g1",
             frame_index=0,
             continuous_time_s=0.0,
@@ -93,6 +98,7 @@ def test_to_detection_rows_track_id_length_mismatch() -> None:
 
 def test_to_frame_row_maps_broadcast_yes_no() -> None:
     yes = to_frame_row(
+        clip_id="g1_clip0",
         game_id="g1",
         frame_index=0,
         frame_uri="f0.jpg",
@@ -109,6 +115,7 @@ def test_to_frame_row_maps_broadcast_yes_no() -> None:
     assert yes.broadcast_model_version == "cls_1"
 
     no = to_frame_row(
+        clip_id="g1_clip0",
         game_id="g1",
         frame_index=1,
         frame_uri="f1.jpg",
@@ -124,6 +131,7 @@ def test_to_frame_row_maps_broadcast_yes_no() -> None:
 
 def test_to_frame_row_without_classification_leaves_broadcast_null() -> None:
     row = to_frame_row(
+        clip_id="g1_clip0",
         game_id="g1",
         frame_index=0,
         frame_uri="f0.jpg",
@@ -138,6 +146,7 @@ def test_to_frame_row_without_classification_leaves_broadcast_null() -> None:
 def test_ingest_frame_writes_frame_and_detections(store: FeatureStore) -> None:
     n = ingest_frame(
         store,
+        clip_id="g1_clip0",
         game_id="g1",
         frame_index=0,
         frame_uri="f0.jpg",
@@ -165,6 +174,7 @@ def test_ingest_frame_is_idempotent(store: FeatureStore) -> None:
     for _ in range(2):
         ingest_frame(
             store,
+            clip_id="g1_clip0",
             game_id="g1",
             frame_index=0,
             frame_uri="f0.jpg",
@@ -182,6 +192,7 @@ def test_ingest_frame_is_idempotent(store: FeatureStore) -> None:
 def test_ingest_frame_without_detections(store: FeatureStore) -> None:
     n = ingest_frame(
         store,
+        clip_id="g1_clip0",
         game_id="g1",
         frame_index=2,
         frame_uri="f2.jpg",
@@ -198,6 +209,7 @@ def test_ingest_frame_requires_source_with_detections(store: FeatureStore) -> No
     with pytest.raises(ValueError, match="detection_source and detection_run_id"):
         ingest_frame(
             store,
+            clip_id="g1_clip0",
             game_id="g1",
             frame_index=0,
             frame_uri="f0.jpg",

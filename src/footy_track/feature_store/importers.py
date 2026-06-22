@@ -32,6 +32,7 @@ from typing import TYPE_CHECKING
 import yaml
 
 from footy_track.feature_store.schema import (
+    ClipRow,
     DetectionRow,
     FrameRow,
     GameRow,
@@ -137,6 +138,7 @@ def import_roboflow(
     dataset_dir: str | Path,
     *,
     game_id: str | None = None,
+    clip_id: str | None = None,
     run_id: str | None = None,
     fps: float = 1.0,
     time_offset: float = 0.0,
@@ -171,6 +173,7 @@ def import_roboflow(
 
     report = ImportReport(sources={"hand_label"})
     games_seen: set[str] = set()
+    clips_seen: set[str] = set()
 
     for split in splits:
         labels_dir = dataset_dir / split / "labels"
@@ -180,6 +183,7 @@ def import_roboflow(
         for label_path in sorted(labels_dir.glob("*.txt")):
             stem, frame_index = parse_roboflow_stem(label_path.name)
             gid = game_id or stem
+            cid = clip_id or gid
 
             # locate the matching image to read dims / record a uri
             image_path = (
@@ -196,12 +200,16 @@ def import_roboflow(
 
             ct = _continuous_time(frame_index, fps, time_offset)
             if gid not in games_seen:
-                store.upsert_games([GameRow(game_id=gid, fps=fps)])
+                store.upsert_games([GameRow(game_id=gid)])
                 games_seen.add(gid)
+            if cid not in clips_seen:
+                store.upsert_clips([ClipRow(clip_id=cid, game_id=gid)])
+                clips_seen.add(cid)
 
             store.upsert_frames(
                 [
                     FrameRow(
+                        clip_id=cid,
                         game_id=gid,
                         frame_index=frame_index,
                         frame_uri=str(image_path) if image_path else label_path.name,
@@ -222,6 +230,7 @@ def import_roboflow(
                 x, y, bw, bh = _yolo_centre_to_topleft(cx, cy, w, h)
                 rows.append(
                     DetectionRow(
+                        clip_id=cid,
                         game_id=gid,
                         frame_index=frame_index,
                         continuous_time_s=ct,
@@ -253,6 +262,7 @@ def import_labeller_json(
     *,
     run_id: str,
     game_id: str | None = None,
+    clip_id: str | None = None,
     source: str = "sam3",
     model_name: str = "sam3",
     model_version: str | None = None,
@@ -281,19 +291,25 @@ def import_labeller_json(
 
     report = ImportReport(sources={source})
     games_seen: set[str] = set()
+    clips_seen: set[str] = set()
 
     for rec in records:
         stem, frame_index = parse_labeller_uri(rec["uri"])
         gid = game_id or stem
+        cid = clip_id or gid
         ct = _continuous_time(frame_index, fps, time_offset)
 
         if gid not in games_seen:
-            store.upsert_games([GameRow(game_id=gid, fps=fps)])
+            store.upsert_games([GameRow(game_id=gid)])
             games_seen.add(gid)
+        if cid not in clips_seen:
+            store.upsert_clips([ClipRow(clip_id=cid, game_id=gid)])
+            clips_seen.add(cid)
 
         store.upsert_frames(
             [
                 FrameRow(
+                    clip_id=cid,
                     game_id=gid,
                     frame_index=frame_index,
                     frame_uri=rec["uri"],
@@ -309,6 +325,7 @@ def import_labeller_json(
         for i, det in enumerate(rec.get("detections", [])):
             rows.append(
                 DetectionRow(
+                    clip_id=cid,
                     game_id=gid,
                     frame_index=frame_index,
                     continuous_time_s=ct,
@@ -343,13 +360,14 @@ def source_overlap(store: FeatureStore):
     """
     return store.query(
         """
-        SELECT game_id,
+        SELECT clip_id,
+               game_id,
                frame_index,
                count(DISTINCT source) AS n_sources,
                string_agg(DISTINCT source, ',' ORDER BY source) AS sources,
                count(*) AS n_detections
         FROM detection
-        GROUP BY game_id, frame_index
-        ORDER BY n_sources DESC, game_id, frame_index
+        GROUP BY clip_id, game_id, frame_index
+        ORDER BY n_sources DESC, clip_id, frame_index
         """
     )

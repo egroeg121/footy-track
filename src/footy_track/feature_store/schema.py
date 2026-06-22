@@ -6,9 +6,10 @@ consolidates every per-frame fact and every object detection for a match. See
 
 Grains:
   - ``game``       — one row per match (metadata + GameTime->ContinuousTime map)
-  - ``frame``      — one row per (game, frame): path, resolution, clock,
+  - ``clip``       — one row per video segment belonging to a game
+  - ``frame``      — one row per (clip, frame): path, resolution, clock,
                      broadcast flag, pitch segmentation, calibration
-  - ``detection``  — one row per (game, frame, source, run, object)
+  - ``detection``  — one row per (clip, frame, source, run, object)
   - ``track_meta`` — one row per track (post-hoc identity / span)
   - ``run``        — provenance for every produced artifact
 
@@ -69,20 +70,36 @@ class GameRow(_Row):
     home_team: str | None = None
     away_team: str | None = None
     match_date: date | None = None
+    competition: str | None = None
     venue: str | None = None
     source_video_uri: str | None = None
-    fps: float | None = None
-    width: int | None = None
-    height: int | None = None
     half1_start_continuous_s: float = 0.0
     half2_start_continuous_s: float | None = None
     game_start_wallclock: datetime | None = None
     schema_version: str = SCHEMA_VERSION
 
 
-class FrameRow(_Row):
-    """The per-frame spine: one row per (game, frame), broadcast or not."""
+class ClipRow(_Row):
+    """One video segment belonging to a game.
 
+    A game is composed of one or more clips (e.g. 10-second segments split from
+    the source video). Each clip owns its frames and detections.
+    """
+
+    clip_id: str
+    game_id: str
+    local_path: str | None = None
+    segment_index: int | None = Field(None, ge=0)
+    fps: float | None = None
+    width: int | None = None
+    height: int | None = None
+    frame_count: int | None = Field(None, ge=0)
+
+
+class FrameRow(_Row):
+    """The per-frame spine: one row per (clip, frame), broadcast or not."""
+
+    clip_id: str
     game_id: str
     frame_index: int = Field(..., ge=0)
     frame_uri: str
@@ -109,6 +126,7 @@ class FrameRow(_Row):
 class DetectionRow(_Row):
     """One detected object from one source/run. The high-volume table."""
 
+    clip_id: str
     game_id: str
     frame_index: int = Field(..., ge=0)
     continuous_time_s: float
@@ -175,15 +193,25 @@ DDL: tuple[str, ...] = (
         home_team                 VARCHAR,
         away_team                 VARCHAR,
         match_date                DATE,
+        competition               VARCHAR,
         venue                     VARCHAR,
         source_video_uri          VARCHAR,
-        fps                       DOUBLE,
-        width                     INTEGER,
-        height                    INTEGER,
         half1_start_continuous_s  DOUBLE,
         half2_start_continuous_s  DOUBLE,
         game_start_wallclock      TIMESTAMP,
         schema_version            VARCHAR
+    );
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS clip (
+        clip_id        VARCHAR PRIMARY KEY,
+        game_id        VARCHAR,
+        local_path     VARCHAR,
+        segment_index  INTEGER,
+        fps            DOUBLE,
+        width          INTEGER,
+        height         INTEGER,
+        frame_count    INTEGER
     );
     """,
     """
@@ -201,6 +229,7 @@ DDL: tuple[str, ...] = (
     """,
     """
     CREATE TABLE IF NOT EXISTS frame (
+        clip_id                     VARCHAR,
         game_id                     VARCHAR,
         frame_index                 INTEGER,
         frame_uri                   VARCHAR,
@@ -219,11 +248,12 @@ DDL: tuple[str, ...] = (
         homography                  DOUBLE[],
         calibration_quality         FLOAT,
         calibration_model_version   VARCHAR,
-        PRIMARY KEY (game_id, frame_index)
+        PRIMARY KEY (clip_id, frame_index)
     );
     """,
     """
     CREATE TABLE IF NOT EXISTS detection (
+        clip_id            VARCHAR,
         game_id            VARCHAR,
         frame_index        INTEGER,
         continuous_time_s  DOUBLE,
@@ -240,7 +270,7 @@ DDL: tuple[str, ...] = (
         track_id           INTEGER,
         is_interpolated    BOOLEAN,
         needs_review       BOOLEAN DEFAULT FALSE,
-        PRIMARY KEY (game_id, source, run_id, frame_index, detection_id)
+        PRIMARY KEY (clip_id, source, run_id, frame_index, detection_id)
     );
     """,
     """
@@ -268,11 +298,12 @@ VIEWS: tuple[str, ...] = (
     """
     CREATE OR REPLACE VIEW frame_features AS
         SELECT f.*,
-               g.home_team, g.away_team, g.match_date, g.venue,
-               g.fps AS game_fps,
-               g.half2_start_continuous_s
+               g.home_team, g.away_team, g.match_date, g.competition, g.venue,
+               g.half2_start_continuous_s,
+               c.fps AS clip_fps, c.segment_index
         FROM frame f
-        JOIN game g USING (game_id);
+        JOIN clip c ON f.clip_id = c.clip_id
+        JOIN game g ON f.game_id = g.game_id;
     """,
     """
     CREATE OR REPLACE VIEW detections_enriched AS
@@ -280,8 +311,8 @@ VIEWS: tuple[str, ...] = (
                f.frame_uri, f.is_broadcast, f.half, f.game_time_s,
                r.stage, r.model_name, r.model_version
         FROM detection d
-        JOIN frame f USING (game_id, frame_index)
-        LEFT JOIN run r USING (run_id);
+        JOIN frame f ON d.clip_id = f.clip_id AND d.frame_index = f.frame_index
+        LEFT JOIN run r ON d.run_id = r.run_id;
     """,
     """
     CREATE OR REPLACE VIEW tracks_enriched AS
@@ -298,4 +329,4 @@ VIEWS: tuple[str, ...] = (
 )
 
 # Logical order in which tables are exported/imported as Parquet partitions.
-TABLES: tuple[str, ...] = ("game", "run", "frame", "detection", "track_meta")
+TABLES: tuple[str, ...] = ("game", "clip", "run", "frame", "detection", "track_meta")

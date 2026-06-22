@@ -31,6 +31,7 @@ if TYPE_CHECKING:
 def to_detection_rows(
     frame_detections: FrameDetections,
     *,
+    clip_id: str,
     game_id: str,
     frame_index: int,
     continuous_time_s: float,
@@ -54,6 +55,7 @@ def to_detection_rows(
     for i, det in enumerate(dets):
         rows.append(
             DetectionRow(
+                clip_id=clip_id,
                 game_id=game_id,
                 frame_index=frame_index,
                 continuous_time_s=continuous_time_s,
@@ -74,6 +76,7 @@ def to_detection_rows(
 
 def to_frame_row(
     *,
+    clip_id: str,
     game_id: str,
     frame_index: int,
     frame_uri: str,
@@ -95,6 +98,7 @@ def to_frame_row(
         broadcast_confidence = classification.confidence
 
     return FrameRow(
+        clip_id=clip_id,
         game_id=game_id,
         frame_index=frame_index,
         frame_uri=frame_uri,
@@ -138,6 +142,7 @@ def classifier_run(
 def ingest_frame(
     store: FeatureStore,
     *,
+    clip_id: str,
     game_id: str,
     frame_index: int,
     frame_uri: str,
@@ -157,11 +162,12 @@ def ingest_frame(
 
     Idempotent: re-ingesting the same frame/run upserts in place. Returns the
     number of detection rows written. The frame spine is written first so the
-    detections satisfy the (game_id, frame_index) relationship.
+    detections satisfy the (clip_id, frame_index) relationship.
     """
     store.upsert_frames(
         [
             to_frame_row(
+                clip_id=clip_id,
                 game_id=game_id,
                 frame_index=frame_index,
                 frame_uri=frame_uri,
@@ -185,6 +191,7 @@ def ingest_frame(
 
     rows = to_detection_rows(
         detections,
+        clip_id=clip_id,
         game_id=game_id,
         frame_index=frame_index,
         continuous_time_s=continuous_time_s,

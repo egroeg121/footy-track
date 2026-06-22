@@ -54,15 +54,18 @@ def _image_dims(path: Path) -> tuple[int, int] | None:
         return None
 
 
-def _setup_store(store_path: Path, game_id: str, fps: float, model_path: str) -> tuple:
-    """Open feature store, register game + run, return (store, run_id)."""
+def _setup_store(
+    store_path: Path, game_id: str, clip_id: str, fps: float, model_path: str
+) -> tuple:
+    """Open feature store, register game + clip + run, return (store, run_id)."""
     from footy_track.feature_store import FeatureStore  # noqa: PLC0415
     from footy_track.feature_store.ingest import detector_run  # noqa: PLC0415
-    from footy_track.feature_store.schema import GameRow  # noqa: PLC0415
+    from footy_track.feature_store.schema import ClipRow, GameRow  # noqa: PLC0415
 
     store = FeatureStore.open(store_path)
     run_id = f"sam3_{datetime.now():%Y%m%d_%H%M%S}_{uuid.uuid4().hex[:8]}"
-    store.upsert_games([GameRow(game_id=game_id, fps=fps)])
+    store.upsert_games([GameRow(game_id=game_id)])
+    store.upsert_clips([ClipRow(clip_id=clip_id, game_id=game_id, fps=fps)])
     store.upsert_runs([detector_run(run_id, model_name=model_path, source="sam3")])
     return store, run_id
 
@@ -70,6 +73,7 @@ def _setup_store(store_path: Path, game_id: str, fps: float, model_path: str) ->
 def _push_frame_to_store(
     store,
     run_id: str,
+    clip_id: str,
     game_id: str,
     frame: Path,
     fd,
@@ -95,6 +99,7 @@ def _push_frame_to_store(
 
     ingest_frame(
         store,
+        clip_id=clip_id,
         game_id=game_id,
         frame_index=frame_index,
         frame_uri=str(frame),
@@ -187,14 +192,15 @@ def main():
     save_root.mkdir(parents=True, exist_ok=True)
 
     game_id = args.game_id or args.frames_folder.name
+    clip_id = game_id  # single-clip mode: clip_id == game_id
     store = None
     run_id: str | None = None
     if args.store_path is not None:
         store, run_id = _setup_store(
-            args.store_path, game_id, args.fps, args.model_path
+            args.store_path, game_id, clip_id, args.fps, args.model_path
         )
         logging.info(
-            f"Feature store: {args.store_path} | game={game_id!r} | run={run_id!r}"
+            f"Feature store: {args.store_path} | game={game_id!r} | clip={clip_id!r} | run={run_id!r}"
         )
 
     total_detections = 0
@@ -214,7 +220,7 @@ def main():
 
         if store is not None and run_id is not None:
             _push_frame_to_store(
-                store, run_id, game_id, frame, fd, args.fps, args.width, args.height
+                store, run_id, clip_id, game_id, frame, fd, args.fps, args.width, args.height
             )
 
     if store is not None:

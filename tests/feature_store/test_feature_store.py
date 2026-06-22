@@ -28,6 +28,18 @@ def store() -> FeatureStore:
             )
         ]
     )
+    from footy_track.feature_store import ClipRow
+
+    s.upsert_clips(
+        [
+            ClipRow(
+                clip_id="g1_clip0",
+                game_id="g1",
+                segment_index=0,
+                fps=25.0,
+            )
+        ]
+    )
     s.upsert_runs(
         [
             RunRow(
@@ -54,6 +66,7 @@ def store() -> FeatureStore:
     s.upsert_frames(
         [
             FrameRow(
+                clip_id="g1_clip0",
                 game_id="g1",
                 frame_index=0,
                 frame_uri="f0.jpg",
@@ -72,6 +85,7 @@ def store() -> FeatureStore:
                 homography=[1, 0, 0, 0, 1, 0, 0, 0, 1],
             ),
             FrameRow(
+                clip_id="g1_clip0",
                 game_id="g1",
                 frame_index=1,
                 frame_uri="f1.jpg",
@@ -96,6 +110,7 @@ def _det(
     conf: float = 0.9,
 ) -> DetectionRow:
     return DetectionRow(
+        clip_id="g1_clip0",
         game_id="g1",
         frame_index=frame,
         continuous_time_s=frame * 0.04,
@@ -227,7 +242,7 @@ def test_parquet_export_and_rebuild(store: FeatureStore, tmp_path) -> None:
     )
     out = tmp_path / "export"
     written = store.export_parquet(out)
-    assert set(written) == {"game", "run", "frame", "detection"}
+    assert set(written) == {"game", "clip", "run", "frame", "detection"}
 
     rebuilt = FeatureStore.from_parquet(out)
     assert rebuilt.count("detection") == store.count("detection")
@@ -241,7 +256,8 @@ def test_parquet_export_and_rebuild(store: FeatureStore, tmp_path) -> None:
 
 def test_frame_features_joins_game_metadata(store: FeatureStore) -> None:
     df = store.query(
-        "SELECT home_team, half2_start_continuous_s FROM frame_features WHERE frame_index = 0"
+        "SELECT home_team, half2_start_continuous_s, clip_fps FROM frame_features WHERE frame_index = 0"
     )
     assert df["home_team"][0] == "Arsenal"
     assert df["half2_start_continuous_s"][0] == pytest.approx(2910.0)
+    assert df["clip_fps"][0] == pytest.approx(25.0)

@@ -35,6 +35,7 @@ from footy_track.feature_store.schema import (
     DDL,
     TABLES,
     VIEWS,
+    ClipRow,
     DetectionRow,
     FrameRow,
     GameRow,
@@ -54,15 +55,23 @@ _COLUMNS: dict[str, tuple[str, ...]] = {
         "home_team",
         "away_team",
         "match_date",
+        "competition",
         "venue",
         "source_video_uri",
-        "fps",
-        "width",
-        "height",
         "half1_start_continuous_s",
         "half2_start_continuous_s",
         "game_start_wallclock",
         "schema_version",
+    ),
+    "clip": (
+        "clip_id",
+        "game_id",
+        "local_path",
+        "segment_index",
+        "fps",
+        "width",
+        "height",
+        "frame_count",
     ),
     "run": (
         "run_id",
@@ -76,6 +85,7 @@ _COLUMNS: dict[str, tuple[str, ...]] = {
         "schema_version",
     ),
     "frame": (
+        "clip_id",
         "game_id",
         "frame_index",
         "frame_uri",
@@ -96,6 +106,7 @@ _COLUMNS: dict[str, tuple[str, ...]] = {
         "calibration_model_version",
     ),
     "detection": (
+        "clip_id",
         "game_id",
         "frame_index",
         "continuous_time_s",
@@ -133,9 +144,10 @@ _COLUMNS: dict[str, tuple[str, ...]] = {
 # Primary-key columns per table — the ON CONFLICT target.
 _PK: dict[str, tuple[str, ...]] = {
     "game": ("game_id",),
+    "clip": ("clip_id",),
     "run": ("run_id",),
-    "frame": ("game_id", "frame_index"),
-    "detection": ("game_id", "source", "run_id", "frame_index", "detection_id"),
+    "frame": ("clip_id", "frame_index"),
+    "detection": ("clip_id", "source", "run_id", "frame_index", "detection_id"),
     "track_meta": ("game_id", "source", "run_id", "track_id"),
 }
 
@@ -220,6 +232,9 @@ class FeatureStore:
     def upsert_games(self, rows: Sequence[GameRow]) -> int:
         return self._upsert("game", rows)
 
+    def upsert_clips(self, rows: Sequence[ClipRow]) -> int:
+        return self._upsert("clip", rows)
+
     def upsert_runs(self, rows: Sequence[RunRow]) -> int:
         return self._upsert("run", rows)
 
@@ -280,7 +295,7 @@ class FeatureStore:
         for table in TABLES:
             if self.count(table) == 0:
                 continue
-            if table in ("game", "run"):
+            if table in ("game", "clip", "run"):
                 target = out_dir / table / "part.parquet"
                 target.parent.mkdir(parents=True, exist_ok=True)
                 self._conn.execute(
