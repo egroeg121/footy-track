@@ -41,7 +41,7 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from footy_track.feature_store.schema import (
@@ -189,6 +189,122 @@ def _parse_mark(
 # --------------------------------------------------------------------------- #
 
 
+def _collect_provenances(records: list[dict]) -> set[str]:
+    """Return the set of provenance labels seen in *records*."""
+    provenances: set[str] = set()
+    for rec in records:
+        tags = set(rec.get("tags", []))
+        prov_tags = tags & _PROV_TAGS
+        label_tags = tags - _PROV_TAGS - _MODIFIER_TAGS
+        if not (label_tags or (prov_tags and not (tags & _MODIFIER_TAGS))):
+            continue
+        if "labeller" in prov_tags:
+            provenances.add("labeller")
+        elif prov_tags:
+            provenances.update(prov_tags)
+        else:
+            provenances.add("labeller")
+    return provenances
+
+
+def _resolve_video_meta(
+    game_id: str, video_dir: Path | None, fps_override: float | None
+) -> tuple[int, int, float, str]:
+    """Return (width, height, fps, video_uri_prefix) for a clip."""
+    width, height, fps = 1920, 1080, 25.0
+    video_uri_prefix = game_id
+    if video_dir is not None:
+        video_path = _find_video(video_dir, game_id)
+        if video_path:
+            width, height, fps, _ = _video_meta(video_path)
+            video_uri_prefix = str(video_path)
+        else:
+            log.warning("No video found for clip %s under %s", game_id, video_dir)
+    if fps_override is not None:
+        fps = fps_override
+    return width, height, fps, video_uri_prefix
+
+
+def _write_clip(
+    store,
+    game_id: str,
+    records: list[dict],
+    provenances: set[str],
+    video_dir: Path | None,
+    fps_override: float | None,
+    now: datetime,
+) -> GtImportReport:
+    """Write one clip's rows to the store and return a partial report."""
+    report = GtImportReport()
+    run_ids: dict[str, str] = {prov: f"gt_import_{prov}" for prov in provenances}
+    width, height, fps, video_uri_prefix = _resolve_video_meta(game_id, video_dir, fps_override)
+    frame_indices: set[int] = {rec["frame_index"] for rec in records}
+
+    run_rows = [
+        RunRow(
+            run_id=run_ids[prov],
+            stage=Stage.DETECTION,
+            source=_PROV_TO_SOURCE[prov],
+            model_name="human" if prov == "labeller" else prov,
+            model_version=None,
+            created_at=now,
+        )
+        for prov in sorted(provenances)
+    ]
+    store.upsert_runs(run_rows)
+    report.runs_written += len(run_rows)
+
+    store.upsert_games([
+        GameRow(
+            game_id=game_id,
+            fps=fps,
+            width=width,
+            height=height,
+            source_video_uri=video_uri_prefix if video_dir else None,
+        )
+    ])
+    report.games_written += 1
+
+    frame_rows = [
+        FrameRow(
+            game_id=game_id,
+            frame_index=fi,
+            frame_uri=f"{video_uri_prefix}_frame_{fi:06d}",
+            width=width,
+            height=height,
+            continuous_time_s=fi / fps,
+        )
+        for fi in sorted(frame_indices)
+    ]
+    store.upsert_frames(frame_rows)
+    report.frames_written += len(frame_rows)
+
+    detection_counters: dict[tuple, int] = {}
+    det_rows: list[DetectionRow] = []
+    for rec in records:
+        row = _parse_mark(
+            rec,
+            game_id=game_id,
+            continuous_time_s=rec["frame_index"] / fps,
+            run_ids=run_ids,
+            detection_counters=detection_counters,
+            now=now,
+        )
+        if row is None:
+            report.modifier_rows_skipped += 1
+            continue
+        det_rows.append(row)
+
+    store.upsert_detections(det_rows)
+    report.detections_written += len(det_rows)
+
+    log.info(
+        "Ingested %s: %d detections, %d frames, provenances=%s",
+        game_id, len(det_rows), len(frame_rows), sorted(provenances),
+    )
+    return report
+
+
 def ingest_gt_file(
     store,
     jsonl_path: Path,
@@ -204,139 +320,44 @@ def ingest_gt_file(
     """
     report = GtImportReport()
     game_id = jsonl_path.stem
-    now = datetime.now(tz=timezone.utc)
+    now = datetime.now(tz=UTC)
 
     records = [json.loads(line) for line in jsonl_path.read_text().splitlines() if line.strip()]
     if not records:
         log.info("Empty GT file: %s", jsonl_path.name)
         return report
 
-    # Discover which provenances appear in this file.
-    provenances: set[str] = set()
-    for rec in records:
-        tags = set(rec.get("tags", []))
-        prov_tags = tags & _PROV_TAGS
-        label_tags = tags - _PROV_TAGS - _MODIFIER_TAGS
-        if label_tags or (prov_tags and not (tags & _MODIFIER_TAGS)):
-            if "labeller" in prov_tags:
-                provenances.add("labeller")
-            elif prov_tags:
-                provenances.update(prov_tags)
-            else:
-                provenances.add("labeller")
-
+    provenances = _collect_provenances(records)
     if not provenances:
         log.info("No actionable records in %s", jsonl_path.name)
         return report
-
-    # Build run_id per provenance: "gt_import_<prov>"
-    run_ids: dict[str, str] = {prov: f"gt_import_{prov}" for prov in provenances}
-
-    # Collect frame indices from records.
-    frame_indices: set[int] = {rec["frame_index"] for rec in records}
-
-    # Video metadata for frame spine.
-    width, height, fps, _total = 1920, 1080, 25.0, 0
-    video_uri_prefix = game_id
-    if video_dir is not None:
-        video_path = _find_video(video_dir, game_id)
-        if video_path:
-            width, height, fps, _total = _video_meta(video_path)
-            video_uri_prefix = str(video_path)
-        else:
-            log.warning("No video found for clip %s under %s", game_id, video_dir)
-    if fps_override is not None:
-        fps = fps_override
 
     report.games.add(game_id)
     report.clips_processed += 1
 
     if dry_run:
-        # Count what we would write.
-        detection_counters: dict[tuple, int] = {}
         for rec in records:
             tags = set(rec.get("tags", []))
-            modifier_only = (tags & _MODIFIER_TAGS) and not (tags - _PROV_TAGS - _MODIFIER_TAGS) and not (tags & _PROV_TAGS)
-            if modifier_only:
+            is_modifier_only = (
+                bool(tags & _MODIFIER_TAGS)
+                and not (tags - _PROV_TAGS - _MODIFIER_TAGS)
+                and not (tags & _PROV_TAGS)
+            )
+            if is_modifier_only:
                 report.modifier_rows_skipped += 1
-                continue
-            report.frames_written += 1  # approximation
-            report.detections_written += 1
+            else:
+                report.frames_written += 1
+                report.detections_written += 1
         report.games_written += 1
         report.runs_written += len(provenances)
         return report
 
-    # Write run rows (idempotent — same run_id each import).
-    run_rows = [
-        RunRow(
-            run_id=run_ids[prov],
-            stage=Stage.DETECTION,
-            source=_PROV_TO_SOURCE[prov],
-            model_name="human" if prov == "labeller" else prov,
-            model_version=None,
-            created_at=now,
-        )
-        for prov in sorted(provenances)
-    ]
-    store.upsert_runs(run_rows)
-    report.runs_written += len(run_rows)
-
-    # Write game row (idempotent).
-    store.upsert_games(
-        [
-            GameRow(
-                game_id=game_id,
-                fps=fps,
-                width=width,
-                height=height,
-                source_video_uri=video_uri_prefix if video_dir else None,
-            )
-        ]
-    )
-    report.games_written += 1
-
-    # Write frame spine for every frame_index seen in this file.
-    frame_rows = [
-        FrameRow(
-            game_id=game_id,
-            frame_index=fi,
-            frame_uri=f"{video_uri_prefix}_frame_{fi:06d}",
-            width=width,
-            height=height,
-            continuous_time_s=fi / fps,
-        )
-        for fi in sorted(frame_indices)
-    ]
-    store.upsert_frames(frame_rows)
-    report.frames_written += len(frame_rows)
-
-    # Parse and write detection rows.
-    detection_counters_map: dict[tuple, int] = {}
-    det_rows: list[DetectionRow] = []
-    for rec in records:
-        row = _parse_mark(
-            rec,
-            game_id=game_id,
-            continuous_time_s=rec["frame_index"] / fps,
-            run_ids=run_ids,
-            detection_counters=detection_counters_map,
-            now=now,
-        )
-        if row is None:
-            report.modifier_rows_skipped += 1
-            continue
-        det_rows.append(row)
-
-    store.upsert_detections(det_rows)
-    report.detections_written += len(det_rows)
-
-    log.info(
-        "Ingested %s: %d detections, %d frames, provenances=%s",
-        game_id,
-        len(det_rows),
-        len(frame_rows),
-        sorted(provenances),
-    )
+    partial = _write_clip(store, game_id, records, provenances, video_dir, fps_override, now)
+    report.games_written += partial.games_written
+    report.frames_written += partial.frames_written
+    report.detections_written += partial.detections_written
+    report.runs_written += partial.runs_written
+    report.modifier_rows_skipped += partial.modifier_rows_skipped
     return report
 
 
