@@ -379,14 +379,21 @@ async def get_marks() -> dict:
 
 @app.post("/autodetect")
 async def autodetect(body: dict) -> dict:
-    """Run YOLO on a frame, WRITE the boxes (yolo provenance) into the timeline.
+    """Run YOLO on a frame and merge with what the client currently shows.
 
-    Keeps any existing labeller boxes on that frame (merge rule). Returns the
-    frame's full box set so the client can render it.
+    The client sends its current canvas boxes as `current_boxes`. These become
+    the labeller ground truth for this frame; YOLO detections are added on top.
+    This means autodetect only adds to what you can see — it never pulls in
+    stale boxes from earlier sessions.
     """
     if SESSION.video_path is None:
         return {"idx": 0, "boxes": []}
     idx = int(body.get("frame_idx", 0))
+
+    # Treat whatever the client currently shows as the labeller ground truth.
+    current = _boxes_from_payload(body.get("current_boxes", []), PROV_LABELLER)
+    SESSION.set_frame(idx, current)
+
     seeds = await asyncio.to_thread(
         yolo_seed_objects,
         SESSION.video_path,
@@ -411,10 +418,7 @@ async def autodetect(body: dict) -> dict:
         for o in seeds
         if o.bbox_xyxy_abs is not None
     ]
-    # Replace this frame's non-labeller boxes with the fresh YOLO set.
-    existing = SESSION.get_frame(idx)
-    kept = [b for b in existing if b.model == PROV_LABELLER]
-    SESSION.set_frame(idx, kept + yolo_boxes)
+    SESSION.set_frame(idx, current + yolo_boxes)
     return {"idx": idx, "boxes": _boxes_payload(SESSION.get_frame(idx))}
 
 

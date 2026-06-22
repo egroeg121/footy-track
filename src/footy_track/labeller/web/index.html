@@ -512,6 +512,7 @@ $("loadBtn").onclick = async ()=>{
     (marks.ball || []).forEach(i => markedBallFrames.add(i));
     (marks.player || []).forEach(i => markedPlayerFrames.add(i));
   }
+  renderTimelineBar();
   await autodetect(0);
   connectWS();
 };
@@ -519,7 +520,7 @@ $("loadBtn").onclick = async ()=>{
 async function autodetect(frameIdx){
   setStatus("auto-detecting…");
   const res = await fetch("/autodetect",{method:"POST",headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({frame_idx:frameIdx, conf:0.35, iou:0.5})});
+    body:JSON.stringify({frame_idx:frameIdx, conf:0.35, iou:0.5, current_boxes:boxesNorm()})});
   const data = await res.json();   // writes to timeline server-side
   drawBoxes(data.boxes, true);
   setStatus(`auto-detected ${data.boxes.length} objects`);
