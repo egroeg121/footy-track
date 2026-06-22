@@ -2,116 +2,147 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<title>Review — SAM3 Video Labeller</title>
+<title>Object Review — Footy Track</title>
+<script src="https://unpkg.com/konva@9/konva.min.js"></script>
 <style>
   :root { --bg:#0f1419; --panel:#1a2129; --ink:#e6edf3; --muted:#9bb0c0;
           --accent:#1e90ff; --green:#3fb950; --red:#f85149; --border:#2d3742;
           --yellow:#e3b341; --purple:#a371f7; }
   * { box-sizing:border-box; }
   body { margin:0; background:var(--bg); color:var(--ink);
-         font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
-         user-select:none; }
+         font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
   header { padding:10px 16px; border-bottom:1px solid var(--border);
            display:flex; align-items:center; gap:16px; }
   header h1 { margin:0; font-size:18px; }
   header a { color:var(--accent); font-size:13px; text-decoration:none; }
-  #main { display:flex; flex-direction:column; align-items:center;
-          padding:24px 16px; min-height:calc(100vh - 49px); }
-  #progress-bar-wrap { width:100%; max-width:600px; height:6px;
-                       background:var(--border); border-radius:3px; margin-bottom:12px; }
-  #progress-bar { height:100%; background:var(--accent); border-radius:3px;
-                  transition:width 0.2s; }
-  #progress-text { font-size:12px; color:var(--muted); margin-bottom:16px; }
-  #card { position:relative; width:100%; max-width:600px; background:var(--panel);
-          border:1px solid var(--border); border-radius:12px; overflow:hidden;
-          box-shadow:0 8px 32px rgba(0,0,0,0.4); }
-  #crop-img { width:100%; display:block; background:#000;
-              min-height:300px; object-fit:contain; }
-  #label-badge { position:absolute; top:10px; left:10px;
-                 font-size:12px; font-weight:700; padding:3px 8px;
-                 border-radius:4px; text-transform:uppercase; letter-spacing:.05em; }
-  #conf-badge { position:absolute; top:10px; right:10px;
-                font-size:12px; color:var(--muted); background:rgba(0,0,0,.6);
-                padding:3px 8px; border-radius:4px; }
-  #clip-info { position:absolute; bottom:10px; left:10px; right:10px;
-               font-size:11px; color:var(--muted); background:rgba(0,0,0,.6);
-               padding:3px 8px; border-radius:4px; text-align:center; }
-  #actions { display:flex; gap:10px; margin-top:14px; flex-wrap:wrap; justify-content:center; }
-  .action-btn { padding:8px 18px; border:1px solid var(--border); border-radius:8px;
-                background:#0d1620; color:var(--ink); font-size:13px; cursor:pointer; }
-  .action-btn:hover { border-color:var(--accent); }
-  .action-btn.accept { border-color:var(--green); color:var(--green); }
-  .action-btn.delete { border-color:var(--red); color:var(--red); }
-  .action-btn.relabel { border-color:var(--yellow); color:var(--yellow); }
-  .action-btn.back { border-color:var(--muted); color:var(--muted); }
-  #hotkeys { margin-top:12px; font-size:11px; color:var(--muted); text-align:center; }
-  /* Class picker overlay */
-  #picker-overlay { display:none; position:fixed; inset:0;
-                    background:rgba(0,0,0,.7); z-index:100;
-                    align-items:center; justify-content:center; }
-  #picker-overlay.open { display:flex; }
+
+  /* Batch header */
+  #batch-bar { display:flex; align-items:center; gap:12px; padding:10px 16px;
+               border-bottom:1px solid var(--border); flex-wrap:wrap; }
+  .class-pill { padding:4px 12px; border-radius:20px; font-size:12px; font-weight:700;
+                cursor:pointer; border:2px solid transparent; opacity:.55; }
+  .class-pill.active { opacity:1; border-color:#fff; }
+  #batch-info { font-size:12px; color:var(--muted); margin-left:auto; }
+
+  /* Grid */
+  #grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(160px,1fr));
+          gap:10px; padding:14px 16px; }
+  .crop-card { position:relative; background:var(--panel); border:2px solid var(--border);
+               border-radius:8px; overflow:hidden; cursor:pointer; }
+  .crop-card:hover { border-color:var(--accent); }
+  .crop-card.selected { border-color:var(--green); }
+  .crop-card img { width:100%; display:block; aspect-ratio:1; object-fit:cover; background:#000; }
+  .crop-card .card-label { font-size:10px; font-weight:700; padding:2px 6px;
+                            position:absolute; top:4px; left:4px; border-radius:3px;
+                            text-transform:uppercase; color:#000; }
+  .crop-card .card-prov { font-size:9px; position:absolute; top:4px; right:4px;
+                           background:rgba(0,0,0,.6); color:var(--muted);
+                           padding:1px 4px; border-radius:3px; }
+  .crop-card .card-bbox { font-size:9px; color:var(--muted); padding:3px 5px;
+                           background:var(--bg); text-align:center; white-space:nowrap;
+                           overflow:hidden; text-overflow:ellipsis; }
+
+  /* Batch actions */
+  #batch-actions { position:sticky; bottom:0; background:rgba(15,20,25,.95);
+                   border-top:1px solid var(--border); padding:10px 16px;
+                   display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+  .btn { padding:7px 16px; border:1px solid var(--border); border-radius:7px;
+         background:#0d1620; color:var(--ink); font-size:13px; cursor:pointer; }
+  .btn:hover { border-color:var(--accent); }
+  .btn.accept { border-color:var(--green); color:var(--green); }
+  .btn.danger { border-color:var(--red); color:var(--red); }
+  .btn.warn { border-color:var(--yellow); color:var(--yellow); }
+  #sel-count { font-size:12px; color:var(--muted); }
+  #loading { text-align:center; padding:60px; color:var(--muted); font-size:16px; }
+  #done { text-align:center; padding:60px; color:var(--muted); font-size:22px; display:none; }
+
+  /* Detail modal */
+  #modal { display:none; position:fixed; inset:0; background:rgba(0,0,0,.8);
+           z-index:200; align-items:center; justify-content:center; }
+  #modal.open { display:flex; }
+  #modal-inner { background:var(--panel); border:1px solid var(--border);
+                 border-radius:12px; width:min(700px,96vw); max-height:92vh;
+                 overflow:auto; display:flex; flex-direction:column; }
+  #modal-header { padding:12px 16px; border-bottom:1px solid var(--border);
+                  display:flex; align-items:center; gap:10px; }
+  #modal-header h3 { margin:0; font-size:15px; flex:1; }
+  #modal-canvas-wrap { position:relative; background:#000; }
+  #modal-konva { display:block; }
+  #modal-actions { padding:12px 16px; display:flex; gap:8px; flex-wrap:wrap;
+                   align-items:center; border-top:1px solid var(--border); }
+  #modal-bbox { font-size:12px; color:var(--muted); margin-left:auto; }
+  #modal-info { padding:4px 16px 8px; font-size:11px; color:var(--muted); }
+
+  /* Picker */
+  #picker { display:none; position:fixed; inset:0; background:rgba(0,0,0,.7);
+            z-index:300; align-items:center; justify-content:center; }
+  #picker.open { display:flex; }
   #picker-box { background:var(--panel); border:1px solid var(--border);
-                border-radius:12px; padding:20px 28px; min-width:280px; }
-  #picker-box h3 { margin:0 0 14px; font-size:16px; }
-  .pick-btn { display:flex; align-items:center; gap:10px;
-              width:100%; padding:8px 12px; margin-bottom:6px;
-              background:#0d1620; border:1px solid var(--border);
-              border-radius:6px; color:var(--ink); font-size:13px; cursor:pointer; }
+                border-radius:12px; padding:20px 28px; min-width:260px; }
+  #picker-box h3 { margin:0 0 12px; font-size:15px; }
+  .pick-btn { display:flex; align-items:center; gap:10px; width:100%;
+              padding:7px 12px; margin-bottom:5px; background:#0d1620;
+              border:1px solid var(--border); border-radius:6px;
+              color:var(--ink); font-size:13px; cursor:pointer; }
   .pick-btn:hover { border-color:var(--accent); }
-  .pick-key { font-size:11px; color:var(--muted); background:var(--border);
-              border-radius:3px; padding:2px 6px; font-family:monospace; }
-  #box-resize { display:flex; gap:8px; margin-top:14px; align-items:center; font-size:12px; color:var(--muted); }
-  #done-state { font-size:22px; text-align:center; padding:48px 0; color:var(--muted); }
-  #loading-state { font-size:16px; text-align:center; padding:48px 0; color:var(--muted); }
+  .pick-key { font-size:10px; color:var(--muted); background:var(--border);
+              border-radius:3px; padding:1px 5px; font-family:monospace; }
+
+  /* Yolo results */
+  #yolo-results { padding:8px 16px; font-size:12px; color:var(--muted); }
 </style>
 </head>
 <body>
 <header>
-  <h1>🃏 Review</h1>
+  <h1>🃏 Object Review</h1>
   <a href="/">← Home</a>
   <a href="/labeller">🏷️ Labeller</a>
 </header>
 
-<div id="main">
-  <div id="progress-bar-wrap"><div id="progress-bar" style="width:0%"></div></div>
-  <div id="progress-text">Loading…</div>
+<div id="batch-bar">
+  <div id="class-pills"></div>
+  <span id="batch-info"></span>
+</div>
 
-  <div id="loading-state">Loading review queue…</div>
-  <div id="done-state" style="display:none">
-    ✅ All done! Queue is empty.
-    <br><br>
-    <button class="action-btn" onclick="location.reload()">Reload</button>
-  </div>
+<div id="loading">Loading queue…</div>
+<div id="done">✅ All done! <br><br><button class="btn" onclick="location.reload()">Reload</button></div>
+<div id="grid"></div>
 
-  <div id="card" style="display:none">
-    <img id="crop-img" src="" alt="crop" />
-    <div id="label-badge"></div>
-    <div id="conf-badge"></div>
-    <div id="clip-info"></div>
-  </div>
+<div id="batch-actions" style="display:none">
+  <span id="sel-count">0 selected</span>
+  <button class="btn accept" id="btn-accept-sel">✓ Accept selected [A]</button>
+  <button class="btn warn" id="btn-relabel-sel">W Relabel selected</button>
+  <button class="btn danger" id="btn-delete-sel">D Delete selected</button>
+  <button class="btn" id="btn-select-all">Select all [S]</button>
+  <button class="btn" id="btn-clear-sel">Clear [Esc]</button>
+</div>
 
-  <div id="actions" style="display:none">
-    <button class="action-btn back" id="btn-back">← Back</button>
-    <button class="action-btn accept" id="btn-accept">✓ Correct  [Space/→]</button>
-    <button class="action-btn relabel" id="btn-relabel">W Wrong class</button>
-    <button class="action-btn delete" id="btn-delete">D Delete</button>
-  </div>
-
-  <div id="box-resize" style="display:none">
-    <span>Box:</span>
-    <button class="action-btn" id="btn-shrink">[ Shrink</button>
-    <button class="action-btn" id="btn-grow">] Grow</button>
-    <span id="bbox-display"></span>
-  </div>
-
-  <div id="hotkeys" style="display:none">
-    Space / → accept &nbsp;|&nbsp; D delete &nbsp;|&nbsp; W wrong class &nbsp;|&nbsp; [ / ] resize box &nbsp;|&nbsp;
-    B open in labeller &nbsp;|&nbsp; ← back
+<!-- Detail modal -->
+<div id="modal">
+  <div id="modal-inner">
+    <div id="modal-header">
+      <h3 id="modal-title">Detail</h3>
+      <button class="btn" id="modal-tool-draw" title="Draw mode (W)">✏️ Draw</button>
+      <button class="btn" id="modal-tool-edit" title="Edit mode (E)">✋ Edit</button>
+      <button class="btn warn" id="modal-btn-yolo">🤖 YOLO</button>
+      <button class="btn" onclick="closeModal()" style="margin-left:auto;">✕ Close [Esc]</button>
+    </div>
+    <div id="modal-canvas-wrap">
+      <div id="modal-konva"></div>
+    </div>
+    <div id="yolo-results"></div>
+    <div id="modal-info"></div>
+    <div id="modal-actions">
+      <button class="btn accept" id="modal-btn-accept">✓ Correct [Space]</button>
+      <button class="btn warn" id="modal-btn-relabel">W Wrong class</button>
+      <button class="btn danger" id="modal-btn-delete">D Delete</button>
+      <span id="modal-bbox" class="modal-bbox"></span>
+    </div>
   </div>
 </div>
 
-<!-- Class picker overlay -->
-<div id="picker-overlay">
+<!-- Class picker -->
+<div id="picker">
   <div id="picker-box">
     <h3>Choose class</h3>
     <button class="pick-btn" data-label="player"><span class="pick-key">1</span> Player</button>
@@ -122,226 +153,438 @@
     <button class="pick-btn" data-label="player_sub"><span class="pick-key">6</span> Player (sub)</button>
     <button class="pick-btn" data-label="ball"><span class="pick-key">7</span> Ball (generic)</button>
     <br>
-    <button class="pick-btn" style="color:var(--muted);" id="picker-cancel"><span class="pick-key">Esc</span> Cancel</button>
+    <button class="pick-btn" id="picker-cancel" style="color:var(--muted)"><span class="pick-key">Esc</span> Cancel</button>
   </div>
 </div>
 
 <script>
 const CLASS_COLORS = {
-  player: '#1e90ff',
-  in_play_ball: '#3fb950',
-  out_of_play_ball: '#e3b341',
-  referee: '#a371f7',
-  coach: '#f85149',
-  player_sub: '#58a6ff',
-  ball: '#3fb950',
-  person: '#9bb0c0',
+  player:'#1e90ff', in_play_ball:'#ffd700', out_of_play_ball:'#ff8c00',
+  referee:'#a371f7', coach:'#00c2a8', player_sub:'#58a6ff',
+  ball:'#ffc800', person:'#9bb0c0',
+};
+const CLASSES = ['player','in_play_ball','out_of_play_ball','referee','coach','player_sub','ball','person'];
+const CLASS_KEYS = {'1':'player','2':'in_play_ball','3':'out_of_play_ball',
+                    '4':'referee','5':'coach','6':'player_sub','7':'ball'};
+const BATCH_SIZE = 100;
+
+let allItems = [];       // full queue from server
+let activeClass = null;  // currently shown class
+let batchOffset = 0;     // offset within current class
+let selected = new Set(); // indices into current batch
+
+// Modal state
+let modalItem = null;
+let modalBbox = null;
+let modalTool = 'draw';
+let modalStage = null, modalBoxLayer = null, modalBgLayer = null, modalTr = null;
+let modalDrawing = null, modalDrawStart = null;
+let pickerTarget = null; // 'batch' or 'modal'
+
+// ── Queue loading ──────────────────────────────────────────────────────────────
+async function loadQueue() {
+  const r = await fetch('/review/queue');
+  const data = await r.json();
+  allItems = data.items;
+  document.getElementById('loading').style.display = 'none';
+  if (!allItems.length) { document.getElementById('done').style.display = 'block'; return; }
+  buildClassPills();
+  const firstClass = getClasses()[0];
+  switchClass(firstClass);
+  document.getElementById('batch-actions').style.display = 'flex';
+}
+
+function getClasses() {
+  const seen = new Set(), order = [];
+  for (const it of allItems) { if (!seen.has(it.label)) { seen.add(it.label); order.push(it.label); } }
+  return order;
+}
+
+function itemsForClass(cls) { return allItems.filter(it => it.label === cls); }
+
+function buildClassPills() {
+  const wrap = document.getElementById('class-pills');
+  wrap.innerHTML = '';
+  for (const cls of getClasses()) {
+    const n = itemsForClass(cls).length;
+    const pill = document.createElement('span');
+    pill.className = 'class-pill';
+    pill.textContent = `${cls} (${n})`;
+    pill.style.background = CLASS_COLORS[cls] || '#555';
+    pill.style.color = '#000';
+    pill.onclick = () => switchClass(cls);
+    pill.dataset.cls = cls;
+    wrap.appendChild(pill);
+  }
+}
+
+function switchClass(cls) {
+  activeClass = cls;
+  batchOffset = 0;
+  selected.clear();
+  document.querySelectorAll('.class-pill').forEach(p => p.classList.toggle('active', p.dataset.cls === cls));
+  renderGrid();
+}
+
+function currentBatch() {
+  return itemsForClass(activeClass).slice(batchOffset, batchOffset + BATCH_SIZE);
+}
+
+function renderGrid() {
+  const batch = currentBatch();
+  const total = itemsForClass(activeClass).length;
+  document.getElementById('batch-info').textContent =
+    `${activeClass} — showing ${batchOffset+1}–${Math.min(batchOffset+BATCH_SIZE, total)} of ${total}`;
+  updateSelCount();
+
+  const grid = document.getElementById('grid');
+  grid.innerHTML = '';
+  batch.forEach((item, i) => {
+    const card = document.createElement('div');
+    card.className = 'crop-card' + (selected.has(i) ? ' selected' : '');
+    card.dataset.idx = i;
+
+    const img = document.createElement('img');
+    img.src = item.image_url + '?t=' + item.frame_index;
+    img.loading = 'lazy';
+    card.appendChild(img);
+
+    const lbl = document.createElement('div');
+    lbl.className = 'card-label';
+    lbl.textContent = item.label;
+    lbl.style.background = CLASS_COLORS[item.label] || '#555';
+    card.appendChild(lbl);
+
+    if (item.provenance !== 'labeller') {
+      const prov = document.createElement('div');
+      prov.className = 'card-prov';
+      prov.textContent = `${Math.round(item.confidence*100)}% ${item.provenance}`;
+      card.appendChild(prov);
+    }
+
+    const bbox = document.createElement('div');
+    bbox.className = 'card-bbox';
+    const b = item.bbox;
+    bbox.textContent = `x:${b.x.toFixed(3)} y:${b.y.toFixed(3)} w:${b.w.toFixed(3)} h:${b.h.toFixed(3)}`;
+    card.appendChild(bbox);
+
+    card.addEventListener('click', (e) => {
+      if (e.shiftKey || e.metaKey || e.ctrlKey) {
+        toggleSelect(i, card);
+      } else {
+        openModal(item, i);
+      }
+    });
+    card.addEventListener('dblclick', () => toggleSelect(i, card));
+
+    grid.appendChild(card);
+  });
+}
+
+function toggleSelect(i, card) {
+  if (selected.has(i)) { selected.delete(i); card.classList.remove('selected'); }
+  else { selected.add(i); card.classList.add('selected'); }
+  updateSelCount();
+}
+
+function updateSelCount() {
+  document.getElementById('sel-count').textContent = `${selected.size} selected`;
+}
+
+// ── Batch actions ──────────────────────────────────────────────────────────────
+async function acceptSelected() {
+  const batch = currentBatch();
+  // Accept = no-op (marks are already saved); just remove from allItems
+  const toRemove = [...selected].map(i => batch[i]);
+  removeItems(toRemove);
+}
+
+async function deleteSelected() {
+  const batch = currentBatch();
+  const toRemove = [...selected].map(i => batch[i]);
+  await Promise.all(toRemove.map(item => fetch('/review/delete', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({clip:item.clip, frame_index:item.frame_index, box_index:item.box_index}),
+  })));
+  removeItems(toRemove);
+}
+
+async function relabelSelected(newLabel) {
+  closePicker();
+  const batch = currentBatch();
+  const toRelabel = [...selected].map(i => batch[i]);
+  await Promise.all(toRelabel.map(item => fetch('/review/correct', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({clip:item.clip, frame_index:item.frame_index, box_index:item.box_index,
+                          label:newLabel, bbox:item.bbox}),
+  })));
+  // Update labels in allItems
+  toRelabel.forEach(item => { item.label = newLabel; });
+  removeItems(toRelabel);
+}
+
+function removeItems(items) {
+  const keys = new Set(items.map(it => `${it.clip}:${it.frame_index}:${it.box_index}`));
+  allItems = allItems.filter(it => !keys.has(`${it.clip}:${it.frame_index}:${it.box_index}`));
+  selected.clear();
+  buildClassPills();
+  const classes = getClasses();
+  if (!classes.includes(activeClass)) activeClass = classes[0] || null;
+  if (activeClass) { switchClass(activeClass); } else { document.getElementById('grid').innerHTML=''; document.getElementById('done').style.display='block'; }
+}
+
+document.getElementById('btn-accept-sel').onclick = acceptSelected;
+document.getElementById('btn-delete-sel').onclick = deleteSelected;
+document.getElementById('btn-relabel-sel').onclick = () => { pickerTarget='batch'; openPicker(); };
+document.getElementById('btn-select-all').onclick = () => {
+  const n = currentBatch().length;
+  for (let i=0;i<n;i++) selected.add(i);
+  document.querySelectorAll('.crop-card').forEach(c => c.classList.add('selected'));
+  updateSelCount();
+};
+document.getElementById('btn-clear-sel').onclick = () => {
+  selected.clear();
+  document.querySelectorAll('.crop-card').forEach(c => c.classList.remove('selected'));
+  updateSelCount();
 };
 
-let queue = [];
-let pos = 0;         // current index
-let history = [];    // stack of completed positions for back nav
-let pendingBbox = null; // current item's bbox, potentially modified by resize
+// ── Modal (detail + edit) ───────────────────────────────────────────────────────
+function openModal(item, batchIdx) {
+  modalItem = item;
+  modalBbox = {...item.bbox};
+  modalTool = 'draw';
 
-async function loadQueue() {
-  const resp = await fetch('/review/queue');
-  const data = await resp.json();
-  queue = data.items;
-  if (queue.length === 0) {
-    showDone();
-  } else {
-    showCard(0);
-  }
+  document.getElementById('modal').classList.add('open');
+  document.getElementById('modal-title').textContent = `${item.label} — ${item.clip} frame ${item.frame_index} box ${item.box_index}`;
+  document.getElementById('modal-info').textContent =
+    `${item.clip} · frame ${item.frame_index} · box ${item.box_index} · ${item.provenance}`;
+  document.getElementById('yolo-results').textContent = '';
+  updateModalBbox();
+  setupModalKonva(item);
 }
 
-function showDone() {
-  document.getElementById('loading-state').style.display = 'none';
-  document.getElementById('card').style.display = 'none';
-  document.getElementById('actions').style.display = 'none';
-  document.getElementById('box-resize').style.display = 'none';
-  document.getElementById('hotkeys').style.display = 'none';
-  document.getElementById('done-state').style.display = 'block';
-  document.getElementById('progress-text').textContent = `${queue.length} / ${queue.length} reviewed`;
-  document.getElementById('progress-bar').style.width = '100%';
+function closeModal() {
+  document.getElementById('modal').classList.remove('open');
+  if (modalStage) { modalStage.destroy(); modalStage=null; }
+  modalItem = null;
 }
 
-function showCard(idx) {
-  if (idx >= queue.length) { showDone(); return; }
-  pos = idx;
-  const item = queue[idx];
-  pendingBbox = {...item.bbox};
-
-  document.getElementById('loading-state').style.display = 'none';
-  document.getElementById('done-state').style.display = 'none';
-  document.getElementById('card').style.display = 'block';
-  document.getElementById('actions').style.display = 'flex';
-  document.getElementById('box-resize').style.display = 'flex';
-  document.getElementById('hotkeys').style.display = 'block';
-
-  const total = queue.length;
-  const reviewed = idx;
-  document.getElementById('progress-bar').style.width = `${(reviewed/total)*100}%`;
-  document.getElementById('progress-text').textContent = `${reviewed} / ${total} reviewed`;
-
-  const img = document.getElementById('crop-img');
-  img.src = item.image_url + '?t=' + Date.now();
-
-  const badge = document.getElementById('label-badge');
-  badge.textContent = item.label;
-  badge.style.background = CLASS_COLORS[item.label] || '#555';
-  badge.style.color = '#000';
-
-  const confBadge = document.getElementById('conf-badge');
-  if (item.provenance === 'yolo' || item.provenance === 'sam3') {
-    confBadge.textContent = `${Math.round(item.confidence * 100)}% ${item.provenance}`;
-    confBadge.style.display = 'block';
-  } else {
-    confBadge.style.display = 'none';
-  }
-
-  document.getElementById('clip-info').textContent =
-    `${item.clip}  ·  frame ${item.frame_index}  ·  box ${item.box_index}`;
-
-  updateBboxDisplay();
-  preloadNext(idx + 1);
-}
-
-function updateBboxDisplay() {
-  if (!pendingBbox) return;
-  const b = pendingBbox;
-  document.getElementById('bbox-display').textContent =
+function updateModalBbox() {
+  if (!modalBbox) return;
+  const b = modalBbox;
+  document.getElementById('modal-bbox').textContent =
     `x:${b.x.toFixed(3)} y:${b.y.toFixed(3)} w:${b.w.toFixed(3)} h:${b.h.toFixed(3)}`;
 }
 
-function preloadNext(idx) {
-  if (idx >= queue.length) return;
+function setupModalKonva(item) {
+  const wrap = document.getElementById('modal-canvas-wrap');
+  wrap.innerHTML = '<div id="modal-konva"></div>';
+  const W = Math.min(700, window.innerWidth - 32);
+  const H = Math.round(W * 9/16);
+
+  if (modalStage) modalStage.destroy();
+  modalStage = new Konva.Stage({container:'modal-konva', width:W, height:H});
+  modalBgLayer = new Konva.Layer();
+  modalBoxLayer = new Konva.Layer();
+  modalStage.add(modalBgLayer); modalStage.add(modalBoxLayer);
+  modalTr = new Konva.Transformer({rotateEnabled:false, borderStroke:'#fff'});
+  modalBoxLayer.add(modalTr);
+
+  // Load full frame image (use the crop endpoint but we want the full frame)
+  const fullFrameUrl = `/review/frame/${item.clip}/${item.frame_index}.jpg`;
   const img = new Image();
-  img.src = queue[idx].image_url;
-}
-
-async function accept() {
-  const item = queue[pos];
-  // If bbox was modified, write correction with current label + new bbox
-  const bboxChanged = JSON.stringify(pendingBbox) !== JSON.stringify(item.bbox);
-  if (bboxChanged) {
-    await fetch('/review/correct', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({
-        clip: item.clip,
-        frame_index: item.frame_index,
-        box_index: item.box_index,
-        label: item.label,
-        bbox: pendingBbox,
-      }),
-    });
-  }
-  history.push(pos);
-  showCard(pos + 1);
-}
-
-async function deleteBox() {
-  const item = queue[pos];
-  await fetch('/review/delete', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({
-      clip: item.clip,
-      frame_index: item.frame_index,
-      box_index: item.box_index,
-    }),
-  });
-  queue.splice(pos, 1);
-  showCard(pos);
-}
-
-async function relabel(newLabel) {
-  closePicker();
-  const item = queue[pos];
-  await fetch('/review/correct', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({
-      clip: item.clip,
-      frame_index: item.frame_index,
-      box_index: item.box_index,
-      label: newLabel,
-      bbox: pendingBbox,
-    }),
-  });
-  // Update queue item so badge updates
-  queue[pos] = {...item, label: newLabel};
-  history.push(pos);
-  showCard(pos + 1);
-}
-
-function goBack() {
-  if (history.length === 0) return;
-  pos = history.pop();
-  showCard(pos);
-}
-
-function resizeBox(factor) {
-  if (!pendingBbox) return;
-  const b = pendingBbox;
-  const dw = b.w * factor / 2;
-  const dh = b.h * factor / 2;
-  const newX = Math.max(0, b.x - dw);
-  const newY = Math.max(0, b.y - dh);
-  pendingBbox = {
-    x: newX,
-    y: newY,
-    w: Math.min(1 - newX, b.w + dw * 2),
-    h: Math.min(1 - newY, b.h + dh * 2),
+  img.onload = () => {
+    const bg = new Konva.Image({image:img, width:W, height:H});
+    modalBgLayer.add(bg); bg.moveToBottom(); modalBgLayer.draw();
+    // Draw the current bbox
+    drawModalBox(modalBbox, item.label);
   };
-  updateBboxDisplay();
+  img.onerror = () => {
+    // Fall back to crop image
+    const img2 = new Image();
+    img2.onload = () => {
+      const bg = new Konva.Image({image:img2, width:W, height:H});
+      modalBgLayer.add(bg); bg.moveToBottom(); modalBgLayer.draw();
+      drawModalBox(modalBbox, item.label);
+    };
+    img2.src = item.image_url + '?t=' + Date.now();
+  };
+  img.src = fullFrameUrl;
+
+  // Draw mode
+  modalStage.on('mousedown', (e) => {
+    if (modalTool !== 'draw') return;
+    const p = modalStage.getPointerPosition();
+    modalDrawStart = p;
+    const color = CLASS_COLORS[item.label] || '#f00';
+    modalDrawing = new Konva.Rect({x:p.x,y:p.y,width:1,height:1,
+      stroke:color,strokeWidth:2,draggable:false,name:'box'});
+    modalBoxLayer.add(modalDrawing); modalBoxLayer.draw();
+  });
+  modalStage.on('mousemove', () => {
+    if (!modalDrawing) return;
+    const p = modalStage.getPointerPosition();
+    modalDrawing.width(Math.abs(p.x-modalDrawStart.x));
+    modalDrawing.height(Math.abs(p.y-modalDrawStart.y));
+    modalDrawing.x(Math.min(p.x,modalDrawStart.x));
+    modalDrawing.y(Math.min(p.y,modalDrawStart.y));
+    modalBoxLayer.draw();
+  });
+  modalStage.on('mouseup', () => {
+    if (!modalDrawing) return;
+    if (modalDrawing.width() < 4 || modalDrawing.height() < 4) {
+      modalDrawing.destroy(); modalDrawing=null; modalBoxLayer.draw(); return;
+    }
+    // Update modalBbox from drawn rect
+    modalBbox = {
+      x: modalDrawing.x()/W, y: modalDrawing.y()/H,
+      w: modalDrawing.width()/W, h: modalDrawing.height()/H,
+    };
+    modalDrawing = null;
+    updateModalBbox();
+    modalBoxLayer.draw();
+  });
 }
 
-function openPicker() {
-  document.getElementById('picker-overlay').classList.add('open');
+function drawModalBox(bbox, label) {
+  if (!modalStage) return;
+  const W = modalStage.width(), H = modalStage.height();
+  modalBoxLayer.find('.box').forEach(n=>n.destroy());
+  modalTr.nodes([]);
+  const color = CLASS_COLORS[label] || '#f00';
+  const r = new Konva.Rect({
+    x:bbox.x*W, y:bbox.y*H, width:bbox.w*W, height:bbox.h*H,
+    stroke:color, strokeWidth:2, draggable:modalTool==='edit', name:'box',
+  });
+  r.on('click', () => { if(modalTool==='edit'){ modalTr.nodes([r]); modalBoxLayer.draw(); }});
+  r.on('transformend dragend', () => {
+    const s = r.scaleX(); r.width(r.width()*s); r.height(r.height()*r.scaleY());
+    r.scaleX(1); r.scaleY(1);
+    modalBbox = {x:r.x()/W, y:r.y()/H, w:r.width()/W, h:r.height()/H};
+    updateModalBbox();
+  });
+  modalBoxLayer.add(r); modalBoxLayer.draw();
 }
 
-function closePicker() {
-  document.getElementById('picker-overlay').classList.remove('open');
+function setModalTool(t) {
+  modalTool = t;
+  document.getElementById('modal-tool-draw').style.borderColor = t==='draw' ? 'var(--accent)' : '';
+  document.getElementById('modal-tool-edit').style.borderColor = t==='edit' ? 'var(--accent)' : '';
+  if (modalBoxLayer) {
+    modalBoxLayer.find('.box').forEach(r => r.draggable(t==='edit'));
+    if (t!=='edit') modalTr && modalTr.nodes([]);
+    modalBoxLayer.draw();
+  }
 }
 
-function openInLabeller() {
-  const item = queue[pos];
-  // Open main labeller at the clip's frame. Pass clip stem as hint.
-  const url = `/?clip=${encodeURIComponent(item.clip)}&frame=${item.frame_index}`;
-  window.open(url, '_blank');
-}
+document.getElementById('modal-tool-draw').onclick = () => setModalTool('draw');
+document.getElementById('modal-tool-edit').onclick = () => setModalTool('edit');
 
-// Button wiring
-document.getElementById('btn-accept').addEventListener('click', accept);
-document.getElementById('btn-delete').addEventListener('click', deleteBox);
-document.getElementById('btn-relabel').addEventListener('click', openPicker);
-document.getElementById('btn-back').addEventListener('click', goBack);
-document.getElementById('btn-shrink').addEventListener('click', () => resizeBox(-0.05));
-document.getElementById('btn-grow').addEventListener('click', () => resizeBox(0.05));
-document.getElementById('picker-cancel').addEventListener('click', closePicker);
+document.getElementById('modal-btn-accept').onclick = async () => {
+  if (!modalItem) return;
+  const bboxChanged = JSON.stringify(modalBbox) !== JSON.stringify(modalItem.bbox);
+  if (bboxChanged) {
+    await fetch('/review/correct', {method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({clip:modalItem.clip,frame_index:modalItem.frame_index,
+        box_index:modalItem.box_index,label:modalItem.label,bbox:modalBbox})});
+    modalItem.bbox = {...modalBbox};
+  }
+  closeModal();
+  removeItems([modalItem]);
+};
+
+document.getElementById('modal-btn-delete').onclick = async () => {
+  if (!modalItem) return;
+  await fetch('/review/delete', {method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({clip:modalItem.clip,frame_index:modalItem.frame_index,box_index:modalItem.box_index})});
+  closeModal(); removeItems([modalItem]);
+};
+
+document.getElementById('modal-btn-relabel').onclick = () => { pickerTarget='modal'; openPicker(); };
+
+document.getElementById('modal-btn-yolo').onclick = async () => {
+  if (!modalItem) return;
+  const el = document.getElementById('yolo-results');
+  el.textContent = 'Running YOLO…';
+  const r = await fetch('/review/yolo', {method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({clip:modalItem.clip,frame_index:modalItem.frame_index})});
+  const data = await r.json();
+  if (!data.ok) { el.textContent = 'YOLO failed: ' + data.error; return; }
+  if (!data.boxes.length) { el.textContent = 'YOLO: no detections'; return; }
+  // Draw YOLO boxes on canvas
+  if (modalStage) {
+    const W = modalStage.width(), H = modalStage.height();
+    // Remove existing YOLO boxes
+    modalBoxLayer.find('.yolo-box').forEach(n=>n.destroy());
+    data.boxes.forEach(b => {
+      const color = CLASS_COLORS[b.label] || '#f00';
+      const r = new Konva.Rect({x:b.x*W,y:b.y*H,width:b.w*W,height:b.h*H,
+        stroke:color,strokeWidth:1.5,dash:[4,3],name:'yolo-box',listening:false});
+      modalBoxLayer.add(r);
+      const t = new Konva.Text({x:b.x*W+2,y:b.y*H-14,text:`${b.label} ${Math.round(b.confidence*100)}%`,
+        fontSize:11,fill:color,name:'yolo-box'});
+      modalBoxLayer.add(t);
+    });
+    modalBoxLayer.draw();
+  }
+  el.textContent = `YOLO: ${data.boxes.length} box(es) — ${data.boxes.map(b=>`${b.label} ${Math.round(b.confidence*100)}%`).join(', ')}`;
+};
+
+// ── Picker ─────────────────────────────────────────────────────────────────────
+function openPicker() { document.getElementById('picker').classList.add('open'); }
+function closePicker() { document.getElementById('picker').classList.remove('open'); }
 
 document.querySelectorAll('.pick-btn[data-label]').forEach(btn => {
-  btn.addEventListener('click', () => relabel(btn.dataset.label));
+  btn.onclick = async () => {
+    const label = btn.dataset.label;
+    closePicker();
+    if (pickerTarget === 'modal') {
+      if (!modalItem) return;
+      await fetch('/review/correct', {method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({clip:modalItem.clip,frame_index:modalItem.frame_index,
+          box_index:modalItem.box_index,label,bbox:modalBbox})});
+      modalItem.label = label;
+      closeModal(); removeItems([modalItem]);
+    } else {
+      await relabelSelected(label);
+    }
+  };
 });
+document.getElementById('picker-cancel').onclick = closePicker;
 
-// Hotkeys
+// ── Keyboard ───────────────────────────────────────────────────────────────────
 document.addEventListener('keydown', e => {
-  if (document.getElementById('picker-overlay').classList.contains('open')) {
-    if (e.key === 'Escape') { closePicker(); return; }
-    const keyMap = {'1':'player','2':'in_play_ball','3':'out_of_play_ball',
-                    '4':'referee','5':'coach','6':'player_sub','7':'ball'};
-    if (keyMap[e.key]) { relabel(keyMap[e.key]); return; }
+  if (e.target.tagName==='INPUT'||e.target.tagName==='SELECT') return;
+
+  // Picker open
+  if (document.getElementById('picker').classList.contains('open')) {
+    if (e.key==='Escape') { closePicker(); return; }
+    if (CLASS_KEYS[e.key]) { document.querySelector(`.pick-btn[data-label="${CLASS_KEYS[e.key]}"]`)?.click(); }
     return;
   }
-  if (e.key === ' ' || e.key === 'ArrowRight') { e.preventDefault(); accept(); }
-  else if (e.key === 'ArrowLeft') { goBack(); }
-  else if (e.key === 'd' || e.key === 'D') { deleteBox(); }
-  else if (e.key === 'w' || e.key === 'W') { openPicker(); }
-  else if (e.key === '[') { resizeBox(-0.05); }
-  else if (e.key === ']') { resizeBox(0.05); }
-  else if (e.key === 'b' || e.key === 'B') { openInLabeller(); }
+
+  // Modal open
+  if (document.getElementById('modal').classList.contains('open')) {
+    if (e.key==='Escape') { closeModal(); return; }
+    if (e.key===' ') { e.preventDefault(); document.getElementById('modal-btn-accept').click(); }
+    else if (e.key==='d'||e.key==='D') document.getElementById('modal-btn-delete').click();
+    else if (e.key==='w'||e.key==='W') { pickerTarget='modal'; openPicker(); }
+    else if (e.key==='e'||e.key==='E') setModalTool('edit');
+    else if (e.key==='r'||e.key==='R') document.getElementById('modal-btn-yolo').click();
+    return;
+  }
+
+  // Grid
+  if (e.key==='Escape') { selected.clear(); document.querySelectorAll('.crop-card').forEach(c=>c.classList.remove('selected')); updateSelCount(); }
+  else if (e.key==='a'||e.key==='A') document.getElementById('btn-accept-sel').click();
+  else if (e.key==='s'||e.key==='S') document.getElementById('btn-select-all').click();
+  else if (e.key==='d'||e.key==='D') document.getElementById('btn-delete-sel').click();
+  else if (e.key==='w'||e.key==='W') { pickerTarget='batch'; openPicker(); }
 });
+
+// ── Full frame endpoint check ──────────────────────────────────────────────────
+// We need a /review/frame/<clip>/<idx>.jpg endpoint on the server.
+// Falls back to crop image if not available (handled in setupModalKonva).
 
 loadQueue();
 </script>

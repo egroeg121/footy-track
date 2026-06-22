@@ -858,7 +858,7 @@ async def review_crop(clip_stem: str, frame_idx: int, box_idx: int) -> Response:
         if not ok:
             return None
         h_px, w_px = frame.shape[:2]
-        pad = 0.20
+        pad = 2.0  # large context around box; grid cards will display at small size
         x1 = max(0, int((bx - bw * pad) * w_px))
         y1 = max(0, int((by - bh * pad) * h_px))
         x2 = min(w_px, int((bx + bw + bw * pad) * w_px))
@@ -966,6 +966,58 @@ async def review_delete(body: dict) -> dict:
     jsonl_path.write_text("\n".join(lines) + "\n")
     _CROP_CACHE.pop((clip, frame_index, box_index), None)
     return {"ok": True}
+
+
+@app.get("/review/frame/{clip_stem}/{frame_idx}.jpg")
+async def review_full_frame(clip_stem: str, frame_idx: int) -> Response:
+    """Return the full JPEG frame (no crop) for the modal canvas."""
+    video_path = _find_video(clip_stem)
+    if video_path is None:
+        return Response(status_code=404)
+
+    def _read_frame() -> bytes | None:
+        cap = cv2.VideoCapture(str(video_path))
+        try:
+            cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
+            ok, frame = cap.read()
+        finally:
+            cap.release()
+        if not ok:
+            return None
+        ok2, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
+        return buf.tobytes() if ok2 else None
+
+    data = await asyncio.to_thread(_read_frame)
+    if data is None:
+        return Response(status_code=404)
+    return Response(content=data, media_type="image/jpeg")
+
+
+@app.post("/review/yolo")
+async def review_yolo(body: dict) -> dict:
+    """Re-run YOLO on a specific frame and return detections."""
+    clip_stem = body["clip"]
+    frame_idx = int(body["frame_index"])
+    video_path = _find_video(clip_stem)
+    if video_path is None:
+        return {"ok": False, "error": "video not found", "boxes": []}
+
+    def _run_yolo() -> list[dict]:
+        cap = cv2.VideoCapture(str(video_path))
+        try:
+            cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
+            ok, frame = cap.read()
+        finally:
+            cap.release()
+        if not ok:
+            return []
+        boxes = yolo_seed_objects(frame, conf=0.25, iou=0.5)
+        return [{"label": b.label, "confidence": round(b.confidence, 3),
+                 "x": round(b.x, 4), "y": round(b.y, 4),
+                 "w": round(b.w, 4), "h": round(b.h, 4)} for b in boxes]
+
+    boxes = await asyncio.to_thread(_run_yolo)
+    return {"ok": True, "boxes": boxes}
 
 
 # ----------------------------------------------------------------------------
