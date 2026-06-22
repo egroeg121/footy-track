@@ -74,8 +74,8 @@
   <div>
     <div class="toolbar">
       <span class="seg">
-        <button id="toolEdit">✋ Edit</button>
-        <button id="toolDraw" class="on">✏️ Draw</button>
+        <button id="toolEdit">✋ Edit (E)</button>
+        <button id="toolDraw" class="on">✏️ Draw (W)</button>
       </span>
       <select id="classSel"></select>
       <button id="autoBtn" title="Auto-detect objects on this frame (R)">🤖 Auto-detect (R)</button>
@@ -429,6 +429,8 @@ window.addEventListener("keydown",(e)=>{
     return;
   }
 
+  if (e.key === "e" || e.key === "E") { setTool("edit"); return; }
+  if (e.key === "w" || e.key === "W") { setTool("draw"); return; }
   if (e.key === "n" || e.key === "N") { markNoBall(); return; }
   if (e.key === "b" || e.key === "B") { markNotBroadcast(); return; }
   if (e.key === "r" || e.key === "R") { autodetect(viewFrame); return; }
