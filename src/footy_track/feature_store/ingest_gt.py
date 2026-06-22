@@ -237,7 +237,9 @@ def _write_clip(
     """Write one clip's rows to the store and return a partial report."""
     report = GtImportReport()
     run_ids: dict[str, str] = {prov: f"gt_import_{prov}" for prov in provenances}
-    width, height, fps, video_uri_prefix = _resolve_video_meta(game_id, video_dir, fps_override)
+    width, height, fps, video_uri_prefix = _resolve_video_meta(
+        game_id, video_dir, fps_override
+    )
     frame_indices: set[int] = {rec["frame_index"] for rec in records}
 
     run_rows = [
@@ -254,15 +256,17 @@ def _write_clip(
     store.upsert_runs(run_rows)
     report.runs_written += len(run_rows)
 
-    store.upsert_games([
-        GameRow(
-            game_id=game_id,
-            fps=fps,
-            width=width,
-            height=height,
-            source_video_uri=video_uri_prefix if video_dir else None,
-        )
-    ])
+    store.upsert_games(
+        [
+            GameRow(
+                game_id=game_id,
+                fps=fps,
+                width=width,
+                height=height,
+                source_video_uri=video_uri_prefix if video_dir else None,
+            )
+        ]
+    )
     report.games_written += 1
 
     frame_rows = [
@@ -300,7 +304,10 @@ def _write_clip(
 
     log.info(
         "Ingested %s: %d detections, %d frames, provenances=%s",
-        game_id, len(det_rows), len(frame_rows), sorted(provenances),
+        game_id,
+        len(det_rows),
+        len(frame_rows),
+        sorted(provenances),
     )
     return report
 
@@ -322,7 +329,9 @@ def ingest_gt_file(
     game_id = jsonl_path.stem
     now = datetime.now(tz=UTC)
 
-    records = [json.loads(line) for line in jsonl_path.read_text().splitlines() if line.strip()]
+    records = [
+        json.loads(line) for line in jsonl_path.read_text().splitlines() if line.strip()
+    ]
     if not records:
         log.info("Empty GT file: %s", jsonl_path.name)
         return report
@@ -352,7 +361,9 @@ def ingest_gt_file(
         report.runs_written += len(provenances)
         return report
 
-    partial = _write_clip(store, game_id, records, provenances, video_dir, fps_override, now)
+    partial = _write_clip(
+        store, game_id, records, provenances, video_dir, fps_override, now
+    )
     report.games_written += partial.games_written
     report.frames_written += partial.frames_written
     report.detections_written += partial.detections_written
@@ -491,7 +502,8 @@ def _build_parser():
         help="Print counts without writing to the database.",
     )
     p.add_argument(
-        "-v", "--verbose",
+        "-v",
+        "--verbose",
         action="store_true",
         help="Enable DEBUG logging.",
     )
