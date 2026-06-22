@@ -1,13 +1,11 @@
-"""Bake-off: run cheap ball-tracking methods on the user's real GT marks.
+"""Bake-off: run ball-tracking methods on the user's real GT marks.
 
-Runs ROI-YOLO (trained model) and SOT-VitTrack on the 5 marked clips.
+Runs ROI-YOLO (trained model), SOT-VitTrack, and optionally SAM2 ROI.
 Results are persisted to docs/bakeoff_results.json and printed as a table.
 
 Usage:
     uv run python scripts/run_bakeoff.py [--clips-dir PATH] [--output PATH]
-
-Compute note: heavy methods (SAM3/SAM2) are NOT run here — they must be
-serialized and run separately. This script covers the cheap methods only.
+    uv run python scripts/run_bakeoff.py --sam2 [--sam2-model sam2_b.pt]
 """
 
 from __future__ import annotations
@@ -54,6 +52,16 @@ def main() -> None:
         action="store_true",
         help="Skip VitTrack SOT (saves time if only testing ROI-YOLO)",
     )
+    parser.add_argument(
+        "--sam2",
+        action="store_true",
+        help="Also run SAM2 ROI tracker (Method B; slow — pre-download model first)",
+    )
+    parser.add_argument(
+        "--sam2-model",
+        default="sam2_b.pt",
+        help="Ultralytics SAM2 model tag (default: sam2_b.pt)",
+    )
     args = parser.parse_args()
 
     if not args.clips_dir.exists():
@@ -99,6 +107,22 @@ def main() -> None:
             results.append(sot_result)
         except Exception as e:
             print(f"  VitTrack SOT failed: {e}")
+
+    # --- Method 3: SAM2 ROI (optional, slow) ---
+    if args.sam2:
+        print(f"\n--- Running SAM2 ROI ({args.sam2_model}) ---")
+        try:
+            from footy_track.ball_trackers.sam2_roi import Sam2RoiTracker  # noqa: PLC0415
+
+            t0 = time.perf_counter()
+            sam2_tracker = Sam2RoiTracker(model_name=args.sam2_model)
+            sam2_result = run_benchmark(
+                sam2_tracker, dataset, method_name=f"sam2-roi ({args.sam2_model})"
+            )
+            print(f"  done in {time.perf_counter() - t0:.1f}s")
+            results.append(sam2_result)
+        except Exception as e:
+            print(f"  SAM2 ROI failed: {e}")
 
     # --- Comparison table ---
     print("\n=== Bake-off Results ===")
