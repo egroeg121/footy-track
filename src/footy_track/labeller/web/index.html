@@ -74,8 +74,8 @@
   <div>
     <div class="toolbar">
       <span class="seg">
-        <button id="toolEdit" class="on">✋ Edit</button>
-        <button id="toolDraw">✏️ Draw</button>
+        <button id="toolEdit">✋ Edit</button>
+        <button id="toolDraw" class="on">✏️ Draw</button>
       </span>
       <select id="classSel"></select>
       <button id="autoBtn" title="Auto-detect objects on this frame (R)">🤖 Auto-detect (R)</button>
@@ -124,7 +124,7 @@ const colorOf = l => COLORS[l] || "#ff0000";
 let meta = null;            // {fps,total_frames,width,height}
 let scale = 1;              // display px / video px
 let dispW = 0, dispH = 0;
-let tool = "edit";          // edit | draw
+let tool = "draw";          // edit | draw
 let viewFrame = 0;          // currently shown frame index
 let mode = "idle";          // idle | running | paused
 let lastCompleted = -1;
@@ -145,7 +145,7 @@ let bgImage = null;
 // class dropdown
 const classSel = document.getElementById("classSel");
 CLASSES.forEach(c => { const o=document.createElement("option"); o.value=c; o.textContent=c; classSel.appendChild(o); });
-classSel.value = "ball";
+classSel.value = "in_play_ball";
 
 // ---------- helpers ----------
 function $(id){ return document.getElementById(id); }
@@ -193,9 +193,11 @@ function drawBoxes(objs, editable){
   clearBoxes();
   objs.forEach(o => addRect(o.label, o.x*dispW, o.y*dispH, o.w*dispW, o.h*dispH, editable));
   refreshNumbers(); boxLayer.draw(); renderList();
-  // Update markedBallFrames for current frame based on what's on canvas
-  const hasBall = objs.some(o => ["ball","in_play_ball","out_of_play_ball"].includes(o.label));
+  // Update frame tracking sets based on what's on canvas
+  const hasBall = objs.some(o => BALL_LABELS.has(o.label));
+  const hasPlayer = objs.some(o => PLAYER_LABELS.has(o.label));
   if (hasBall) markedBallFrames.add(viewFrame); else markedBallFrames.delete(viewFrame);
+  if (hasPlayer) markedPlayerFrames.add(viewFrame); else markedPlayerFrames.delete(viewFrame);
   renderTimelineBar();
 }
 
@@ -258,31 +260,48 @@ function renderTimelineBar(){
   const ctx = canvas.getContext("2d");
   ctx.clearRect(0, 0, W, 12);
   const total = meta.total_frames;
-  // draw ball-marked frames (yellow) and no-ball (red) and not-broadcast (blue)
+  const pw = Math.max(2, Math.ceil(W / total));
+
   for (const idx of noBallFrames) {
-    const x = Math.floor((idx / total) * W);
     ctx.fillStyle = "#f85149";
-    ctx.fillRect(x, 0, Math.max(2, Math.ceil(W/total)), 12);
+    ctx.fillRect(Math.floor((idx / total) * W), 0, pw, 12);
   }
   for (const idx of notBroadcastFrames) {
-    const x = Math.floor((idx / total) * W);
     ctx.fillStyle = "#1e90ff";
-    ctx.fillRect(x, 0, Math.max(2, Math.ceil(W/total)), 12);
+    ctx.fillRect(Math.floor((idx / total) * W), 0, pw, 12);
   }
-  // draw labelled ball frames from server timeline — fetched lazily via a Set
   for (const idx of markedBallFrames) {
     const x = Math.floor((idx / total) * W);
-    ctx.fillStyle = "#ffd700";
-    ctx.fillRect(x, 0, Math.max(2, Math.ceil(W/total)), 12);
+    const hasPlayer = markedPlayerFrames.has(idx);
+    if (hasPlayer) {
+      // top half yellow (ball), bottom half green (player)
+      ctx.fillStyle = "#ffd700";
+      ctx.fillRect(x, 0, pw, 6);
+      ctx.fillStyle = "#3fb950";
+      ctx.fillRect(x, 6, pw, 6);
+    } else {
+      // full yellow — ball only
+      ctx.fillStyle = "#ffd700";
+      ctx.fillRect(x, 0, pw, 12);
+    }
+  }
+  // player-only frames (no ball marked) — full green
+  for (const idx of markedPlayerFrames) {
+    if (!markedBallFrames.has(idx)) {
+      ctx.fillStyle = "#3fb950";
+      ctx.fillRect(Math.floor((idx / total) * W), 0, pw, 12);
+    }
   }
   // current frame cursor
-  const cx = Math.floor((viewFrame / total) * W);
   ctx.fillStyle = "#fff";
-  ctx.fillRect(cx, 0, 2, 12);
+  ctx.fillRect(Math.floor((viewFrame / total) * W), 0, 2, 12);
 }
 
-// Track which frames have ball boxes (populated on load from server marks endpoint)
+// Track which frames have ball/player boxes (populated on load from server marks endpoint)
 const markedBallFrames = new Set();
+const markedPlayerFrames = new Set();
+const BALL_LABELS = new Set(["ball","in_play_ball","out_of_play_ball"]);
+const PLAYER_LABELS = new Set(["player","player_sub","referee","coach","person"]);
 
 // ---------- background frame ----------
 async function showFrame(idx){
@@ -479,13 +498,14 @@ $("loadBtn").onclick = async ()=>{
   $("runBtn").disabled=false; $("prevBtn").disabled=false; $("nextBtn").disabled=false;
   setStatus(`loaded · ${meta.total_frames} frames @ ${meta.fps.toFixed(1)}fps`);
   // Restore no-ball and not-broadcast marks from the server (loaded from JSONL sidecar).
-  noBallFrames.clear(); notBroadcastFrames.clear(); markedBallFrames.clear();
+  noBallFrames.clear(); notBroadcastFrames.clear(); markedBallFrames.clear(); markedPlayerFrames.clear();
   const marksRes = await fetch("/marks");
   if (marksRes.ok) {
     const marks = await marksRes.json();
     (marks.no_ball || []).forEach(i => noBallFrames.add(i));
     (marks.not_broadcast || []).forEach(i => notBroadcastFrames.add(i));
     (marks.ball || []).forEach(i => markedBallFrames.add(i));
+    (marks.player || []).forEach(i => markedPlayerFrames.add(i));
   }
   await autodetect(0);
   connectWS();

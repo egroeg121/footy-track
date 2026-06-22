@@ -352,18 +352,28 @@ async def get_frame(idx: int) -> Response:
     return Response(content=data, media_type="image/jpeg")
 
 
+_PLAYER_LABELS = {"player", "player_sub", "referee", "coach", "person"}
+
 @app.get("/marks")
 async def get_marks() -> dict:
-    """Return no_ball, not_broadcast, and ball frame sets for the current session."""
+    """Return no_ball, not_broadcast, ball, and player frame sets for the current session."""
     with SESSION._tl_lock:
-        ball_frames = [
-            idx for idx, boxes in enumerate(SESSION.timeline)
-            if boxes and any(b.label in _BALL_LABELS for b in boxes)
-        ]
+        ball_frames = []
+        player_frames = []
+        for idx, boxes in enumerate(SESSION.timeline):
+            if not boxes:
+                continue
+            has_ball = any(b.label in _BALL_LABELS for b in boxes)
+            has_player = any(b.label in _PLAYER_LABELS for b in boxes)
+            if has_ball:
+                ball_frames.append(idx)
+            if has_player:
+                player_frames.append(idx)
     return {
         "no_ball": sorted(SESSION.no_ball_frames),
         "not_broadcast": sorted(SESSION.not_broadcast_frames),
         "ball": ball_frames,
+        "player": player_frames,
     }
 
 
