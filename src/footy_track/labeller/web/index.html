@@ -106,6 +106,7 @@
       <button id="nextBtn" disabled>Next ➡️</button>
       <span id="frameLbl" class="muted">—</span>
     </div>
+    <canvas id="timelineBar" height="12" style="width:100%;display:block;border-radius:3px;background:#1a2129;margin-top:2px;"></canvas>
   </div>
 
   <div class="side">
@@ -192,6 +193,10 @@ function drawBoxes(objs, editable){
   clearBoxes();
   objs.forEach(o => addRect(o.label, o.x*dispW, o.y*dispH, o.w*dispW, o.h*dispH, editable));
   refreshNumbers(); boxLayer.draw(); renderList();
+  // Update markedBallFrames for current frame based on what's on canvas
+  const hasBall = objs.some(o => ["ball","in_play_ball","out_of_play_ball"].includes(o.label));
+  if (hasBall) markedBallFrames.add(viewFrame); else markedBallFrames.delete(viewFrame);
+  renderTimelineBar();
 }
 
 function refreshNumbers(){
@@ -243,6 +248,41 @@ function renderList(){
     list.appendChild(row);
   });
 }
+
+// ---------- timeline bar ----------
+function renderTimelineBar(){
+  if (!meta) return;
+  const canvas = $("timelineBar");
+  const W = canvas.offsetWidth || 900;
+  canvas.width = W;
+  const ctx = canvas.getContext("2d");
+  ctx.clearRect(0, 0, W, 12);
+  const total = meta.total_frames;
+  // draw ball-marked frames (yellow) and no-ball (red) and not-broadcast (blue)
+  for (const idx of noBallFrames) {
+    const x = Math.floor((idx / total) * W);
+    ctx.fillStyle = "#f85149";
+    ctx.fillRect(x, 0, Math.max(2, Math.ceil(W/total)), 12);
+  }
+  for (const idx of notBroadcastFrames) {
+    const x = Math.floor((idx / total) * W);
+    ctx.fillStyle = "#1e90ff";
+    ctx.fillRect(x, 0, Math.max(2, Math.ceil(W/total)), 12);
+  }
+  // draw labelled ball frames from server timeline — fetched lazily via a Set
+  for (const idx of markedBallFrames) {
+    const x = Math.floor((idx / total) * W);
+    ctx.fillStyle = "#ffd700";
+    ctx.fillRect(x, 0, Math.max(2, Math.ceil(W/total)), 12);
+  }
+  // current frame cursor
+  const cx = Math.floor((viewFrame / total) * W);
+  ctx.fillStyle = "#fff";
+  ctx.fillRect(cx, 0, 2, 12);
+}
+
+// Track which frames have ball boxes (populated on load from server marks endpoint)
+const markedBallFrames = new Set();
 
 // ---------- background frame ----------
 async function showFrame(idx){
@@ -439,12 +479,13 @@ $("loadBtn").onclick = async ()=>{
   $("runBtn").disabled=false; $("prevBtn").disabled=false; $("nextBtn").disabled=false;
   setStatus(`loaded · ${meta.total_frames} frames @ ${meta.fps.toFixed(1)}fps`);
   // Restore no-ball and not-broadcast marks from the server (loaded from JSONL sidecar).
-  noBallFrames.clear(); notBroadcastFrames.clear();
+  noBallFrames.clear(); notBroadcastFrames.clear(); markedBallFrames.clear();
   const marksRes = await fetch("/marks");
   if (marksRes.ok) {
     const marks = await marksRes.json();
     (marks.no_ball || []).forEach(i => noBallFrames.add(i));
     (marks.not_broadcast || []).forEach(i => notBroadcastFrames.add(i));
+    (marks.ball || []).forEach(i => markedBallFrames.add(i));
   }
   await autodetect(0);
   connectWS();
@@ -460,10 +501,18 @@ async function autodetect(frameIdx){
 }
 $("autoBtn").onclick = ()=>autodetect(viewFrame);
 
+// Call renderTimelineBar after navigating to a frame
+const _origShowFrame = showFrame;
+showFrame = async function(idx){ await _origShowFrame(idx); renderTimelineBar(); };
+
 // ---------- scrubbing ----------
+function navigateDelta(delta){
+  if (meta === null) return;
+  gotoFrame(Math.max(0, Math.min(meta.total_frames-1, viewFrame+delta)));
+}
 $("scrub").oninput = (e)=>gotoFrame(parseInt(e.target.value));
-$("prevBtn").onclick = ()=>gotoFrame(Math.max(0, viewFrame-1));
-$("nextBtn").onclick = ()=>gotoFrame(Math.min(meta.total_frames-1, viewFrame+1));
+$("prevBtn").onclick = ()=>navigateDelta(-1);
+$("nextBtn").onclick = ()=>navigateDelta(1);
 
 // The server timeline is the single source of truth. When leaving an editable
 // frame we POST the current boxes to /edit (labeller ground truth); when

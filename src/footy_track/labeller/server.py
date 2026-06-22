@@ -354,10 +354,16 @@ async def get_frame(idx: int) -> Response:
 
 @app.get("/marks")
 async def get_marks() -> dict:
-    """Return no_ball and not_broadcast frame sets for the current session."""
+    """Return no_ball, not_broadcast, and ball frame sets for the current session."""
+    with SESSION._tl_lock:
+        ball_frames = [
+            idx for idx, boxes in enumerate(SESSION.timeline)
+            if boxes and any(b.label in _BALL_LABELS for b in boxes)
+        ]
     return {
         "no_ball": sorted(SESSION.no_ball_frames),
         "not_broadcast": sorted(SESSION.not_broadcast_frames),
+        "ball": ball_frames,
     }
 
 
