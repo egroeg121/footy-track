@@ -463,6 +463,8 @@ async function loadClipList() {
 
 async function loadClip(name, el) {
   if (!clipsDir) return;
+  // Save current frame before switching clips
+  await saveCurrentEdits();
   const path = clipsDir + "/" + name;
   $("videoPath").value = path;
   // Highlight active clip

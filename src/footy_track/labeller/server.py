@@ -90,6 +90,12 @@ class Session:
     def load(self, video_path: str) -> dict:
         self.bg.pause()
         self.bg = BackgroundLabeller()
+        # Flush any pending edits for the previous clip before wiping state.
+        self._do_flush()
+        with self._flush_lock:
+            if self._flush_timer:
+                self._flush_timer.cancel()
+                self._flush_timer = None
         self.video_path = Path(video_path).expanduser()
         if not self.video_path.exists():
             raise FileNotFoundError(self.video_path)
@@ -103,10 +109,6 @@ class Session:
             cap.release()
         with self._tl_lock:
             self.timeline = [None] * self.total_frames
-        with self._flush_lock:
-            if self._flush_timer:
-                self._flush_timer.cancel()
-                self._flush_timer = None
         self.no_ball_frames = set()
         self.not_broadcast_frames = set()
         self._load_existing_marks()
