@@ -32,6 +32,8 @@
   .crop-card:hover { border-color:var(--accent); }
   .crop-card.selected { border-color:var(--green); }
   .crop-card img { width:100%; display:block; aspect-ratio:1; object-fit:cover; background:#000; }
+  .crop-card .card-yolo-svg { position:absolute; top:0; left:0; width:100%; aspect-ratio:1;
+                               pointer-events:none; overflow:visible; }
   .crop-card .card-label { font-size:10px; font-weight:700; padding:2px 6px;
                             position:absolute; top:4px; left:4px; border-radius:3px;
                             text-transform:uppercase; color:#000; }
@@ -67,13 +69,13 @@
                   display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
   #modal-header h3 { margin:0; font-size:14px; flex:1; }
   #modal-body { display:flex; gap:0; min-height:0; }
-  #modal-crop-panel { width:280px; flex:none; border-right:1px solid var(--border);
-                      display:flex; flex-direction:column; align-items:center;
-                      padding:12px; gap:8px; background:#000; }
-  #modal-crop-img { width:100%; border-radius:6px; display:block; }
-  #modal-crop-label { font-size:11px; color:var(--muted); text-align:center; }
-  #modal-canvas-wrap { flex:1; position:relative; background:#111; min-width:0; }
+  /* Left: Konva canvas on the crop (main review area) */
+  #modal-canvas-wrap { flex:none; position:relative; background:#000; border-right:1px solid var(--border); }
   #modal-konva { display:block; }
+  /* Right: full frame context */
+  #modal-context-panel { flex:1; display:flex; flex-direction:column; min-width:0; background:#111; }
+  #modal-context-img { width:100%; display:block; object-fit:contain; flex:1; }
+  #modal-crop-label { font-size:11px; color:var(--muted); padding:6px 10px; border-top:1px solid var(--border); }
   #modal-actions { padding:10px 16px; display:flex; gap:8px; flex-wrap:wrap;
                    align-items:center; border-top:1px solid var(--border); }
   #modal-bbox { font-size:12px; color:var(--muted); margin-left:auto; }
@@ -134,14 +136,14 @@
       <button class="btn" onclick="closeModal()" style="margin-left:auto;">✕ Close [Esc]</button>
     </div>
     <div id="modal-body">
-      <!-- Left: zoomed crop -->
-      <div id="modal-crop-panel">
-        <img id="modal-crop-img" src="" alt="crop" />
-        <div id="modal-crop-label"></div>
-      </div>
-      <!-- Right: full frame with Konva overlay -->
+      <!-- Left: Konva canvas on crop (main review + edit area) -->
       <div id="modal-canvas-wrap">
         <div id="modal-konva"></div>
+      </div>
+      <!-- Right: full frame context image -->
+      <div id="modal-context-panel">
+        <img id="modal-context-img" src="" alt="full frame" />
+        <div id="modal-crop-label"></div>
       </div>
     </div>
     <div id="yolo-results"></div>
@@ -236,6 +238,7 @@ function switchClass(cls) {
   activeClass = cls;
   batchOffset = 0;
   selected.clear();
+  gridCursor = -1;
   document.querySelectorAll('.class-pill').forEach(p => p.classList.toggle('active', p.dataset.cls === cls));
   renderGrid();
 }
@@ -286,6 +289,7 @@ function renderGrid() {
       if (e.shiftKey || e.metaKey || e.ctrlKey) {
         toggleSelect(i, card);
       } else {
+        gridCursor = i;
         openModal(item, i);
       }
     });
@@ -293,6 +297,93 @@ function renderGrid() {
 
     grid.appendChild(card);
   });
+
+  // Kick off background YOLO scan for this batch
+  _yoloQueue = [];
+  enqueueYoloForGrid(batch);
+}
+
+// ── YOLO background scan for grid ─────────────────────────────────────────────
+const _yoloCache = new Map(); // key → boxes[]
+let _yoloQueue = [];
+let _yoloRunning = 0;
+const _YOLO_CONCURRENCY = 3;
+
+function enqueueYoloForGrid(batch) {
+  // Draw GT boxes immediately (no async needed)
+  batch.forEach((item, i) => drawYoloOnCard(i, item, null));
+  _yoloQueue = batch.map((item, i) => ({item, i}));
+  drainYoloQueue();
+}
+
+function drainYoloQueue() {
+  while (_yoloRunning < _YOLO_CONCURRENCY && _yoloQueue.length) {
+    const {item, i} = _yoloQueue.shift();
+    const key = `${item.clip}:${item.frame_index}`;
+    if (_yoloCache.has(key)) {
+      drawYoloOnCard(i, item, _yoloCache.get(key));
+    } else {
+      _yoloRunning++;
+      fetch('/review/yolo', {method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({clip:item.clip, frame_index:item.frame_index})})
+        .then(r => r.json())
+        .then(data => {
+          const boxes = data.ok ? data.boxes : [];
+          _yoloCache.set(key, boxes);
+          drawYoloOnCard(i, item, boxes);
+        })
+        .catch(() => {})
+        .finally(() => { _yoloRunning--; drainYoloQueue(); });
+    }
+  }
+}
+
+function drawYoloOnCard(cardIdx, item, boxes) {
+  const card = document.querySelector(`.crop-card[data-idx="${cardIdx}"]`);
+  if (!card) return;
+  card.querySelector('.card-yolo-svg')?.remove();
+
+  const fb = item.bbox;
+  const cropX = fb.x - fb.w * 2, cropY = fb.y - fb.h * 2;
+  const cropW = fb.w * 5, cropH = fb.h * 5;
+
+  const NS = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(NS, 'svg');
+  svg.setAttribute('viewBox', '0 0 1 1');
+  svg.setAttribute('preserveAspectRatio', 'none');
+  svg.classList.add('card-yolo-svg');
+
+  // GT box: solid, always at crop-relative 0.4,0.4,0.2,0.2 (pad=2.0)
+  const gtColor = CLASS_COLORS[item.label] || '#f00';
+  const gtRect = document.createElementNS(NS, 'rect');
+  gtRect.setAttribute('x', '0.4'); gtRect.setAttribute('y', '0.4');
+  gtRect.setAttribute('width', '0.2'); gtRect.setAttribute('height', '0.2');
+  gtRect.setAttribute('fill', 'none');
+  gtRect.setAttribute('stroke', gtColor);
+  gtRect.setAttribute('stroke-width', '0.022');
+  svg.appendChild(gtRect);
+
+  // YOLO boxes: dashed, mapped from frame-relative → crop-relative
+  if (boxes && boxes.length) {
+    boxes.forEach(b => {
+      const cx = (b.x - cropX) / cropW;
+      const cy = (b.y - cropY) / cropH;
+      const cw = b.w / cropW;
+      const ch = b.h / cropH;
+      const color = CLASS_COLORS[b.label] || '#f00';
+      const rect = document.createElementNS(NS, 'rect');
+      rect.setAttribute('x', cx); rect.setAttribute('y', cy);
+      rect.setAttribute('width', cw); rect.setAttribute('height', ch);
+      rect.setAttribute('fill', 'none');
+      rect.setAttribute('stroke', color);
+      rect.setAttribute('stroke-width', '0.016');
+      rect.setAttribute('stroke-dasharray', '0.04 0.02');
+      svg.appendChild(rect);
+    });
+  }
+
+  const img = card.querySelector('img');
+  img.after(svg);
 }
 
 function toggleSelect(i, card) {
@@ -374,9 +465,9 @@ function openModal(item, batchIdx) {
     `${item.clip} · frame ${item.frame_index} · box ${item.box_index} · ${item.provenance} · conf ${Math.round(item.confidence*100)}%`;
   document.getElementById('yolo-results').textContent = '';
 
-  // Left panel: zoomed crop
-  const cropImg = document.getElementById('modal-crop-img');
-  cropImg.src = item.image_url + '?t=' + Date.now();
+  // Right panel: full frame context
+  const ctxImg = document.getElementById('modal-context-img');
+  ctxImg.src = `/review/frame/${item.clip}/${item.frame_index}.jpg`;
   const color = CLASS_COLORS[item.label] || '#f00';
   const b = item.bbox;
   document.getElementById('modal-crop-label').innerHTML =
@@ -384,6 +475,8 @@ function openModal(item, batchIdx) {
 
   updateModalBbox();
   setupModalKonva(item);
+  // Auto-run YOLO after canvas loads (slight delay for image to load)
+  setTimeout(() => document.getElementById('modal-btn-yolo').click(), 600);
 }
 
 function closeModal() {
@@ -402,10 +495,8 @@ function updateModalBbox() {
 function setupModalKonva(item) {
   const wrap = document.getElementById('modal-canvas-wrap');
   wrap.innerHTML = '<div id="modal-konva"></div>';
-  // Right panel takes remaining width after 280px crop panel
-  const totalW = Math.min(1100, window.innerWidth - 16);
-  const W = Math.max(400, totalW - 280 - 1);
-  const H = Math.round(W * 9/16);
+  // Left panel: crop canvas — fixed 420px square
+  const W = 420, H = 420;
 
   if (modalStage) modalStage.destroy();
   modalStage = new Konva.Stage({container:'modal-konva', width:W, height:H});
@@ -415,26 +506,15 @@ function setupModalKonva(item) {
   modalTr = new Konva.Transformer({rotateEnabled:false, borderStroke:'#fff'});
   modalBoxLayer.add(modalTr);
 
-  // Load full frame image (use the crop endpoint but we want the full frame)
-  const fullFrameUrl = `/review/frame/${item.clip}/${item.frame_index}.jpg`;
+  // Load crop image as background (pad=2.0 → box always at 0.4,0.4,0.2,0.2 in crop coords)
   const img = new Image();
   img.onload = () => {
     const bg = new Konva.Image({image:img, width:W, height:H});
     modalBgLayer.add(bg); bg.moveToBottom(); modalBgLayer.draw();
-    // Draw the current bbox
-    drawModalBox(modalBbox, item.label);
+    // Draw prediction box in crop-space (always at relative 0.4,0.4,0.2,0.2 due to pad=2.0)
+    drawModalBox({x:0.4, y:0.4, w:0.2, h:0.2}, item.label);
   };
-  img.onerror = () => {
-    // Fall back to crop image
-    const img2 = new Image();
-    img2.onload = () => {
-      const bg = new Konva.Image({image:img2, width:W, height:H});
-      modalBgLayer.add(bg); bg.moveToBottom(); modalBgLayer.draw();
-      drawModalBox(modalBbox, item.label);
-    };
-    img2.src = item.image_url + '?t=' + Date.now();
-  };
-  img.src = fullFrameUrl;
+  img.src = item.image_url + '?t=' + Date.now();
 
   // Draw mode
   modalStage.on('mousedown', (e) => {
@@ -460,15 +540,28 @@ function setupModalKonva(item) {
     if (modalDrawing.width() < 4 || modalDrawing.height() < 4) {
       modalDrawing.destroy(); modalDrawing=null; modalBoxLayer.draw(); return;
     }
-    // Update modalBbox from drawn rect
-    modalBbox = {
+    // Store crop-relative coords; convert to frame-relative for saving
+    const cropRel = {
       x: modalDrawing.x()/W, y: modalDrawing.y()/H,
       w: modalDrawing.width()/W, h: modalDrawing.height()/H,
     };
+    modalBbox = cropRelToFrameRel(cropRel, modalItem.bbox);
     modalDrawing = null;
     updateModalBbox();
     modalBoxLayer.draw();
   });
+}
+
+// Convert crop-relative bbox → frame-relative, given original frame bbox (pad=2.0)
+function cropRelToFrameRel(cropRel, fb) {
+  const cropX = fb.x - fb.w * 2, cropY = fb.y - fb.h * 2;
+  const cropW = fb.w * 5, cropH = fb.h * 5;
+  return {
+    x: cropX + cropRel.x * cropW,
+    y: cropY + cropRel.y * cropH,
+    w: cropRel.w * cropW,
+    h: cropRel.h * cropH,
+  };
 }
 
 function drawModalBox(bbox, label) {
@@ -496,7 +589,8 @@ function drawModalBox(bbox, label) {
   r.on('transformend dragend', () => {
     r.width(Math.max(2, r.width()*r.scaleX())); r.height(Math.max(2, r.height()*r.scaleY()));
     r.scaleX(1); r.scaleY(1);
-    modalBbox = {x:r.x()/W, y:r.y()/H, w:r.width()/W, h:r.height()/H};
+    const cropRel = {x:r.x()/W, y:r.y()/H, w:r.width()/W, h:r.height()/H};
+    modalBbox = modalItem ? cropRelToFrameRel(cropRel, modalItem.bbox) : cropRel;
     t.x(r.x()); t.y(Math.max(0, r.y()-18));
     updateModalBbox();
   });
@@ -554,17 +648,26 @@ document.getElementById('modal-btn-yolo').onclick = async () => {
   const data = await r.json();
   if (!data.ok) { el.textContent = 'YOLO failed: ' + data.error; return; }
   if (!data.boxes.length) { el.textContent = 'YOLO: no detections'; return; }
-  // Draw YOLO boxes on canvas
-  if (modalStage) {
+  // Draw YOLO boxes on crop canvas (map frame-relative → crop-space)
+  if (modalStage && modalItem) {
     const W = modalStage.width(), H = modalStage.height();
+    // Crop origin and size in frame-relative coords (pad=2.0)
+    const fb = modalItem.bbox;
+    const cropX = fb.x - fb.w * 2, cropY = fb.y - fb.h * 2;
+    const cropW = fb.w * 5, cropH = fb.h * 5;
     // Remove existing YOLO boxes
     modalBoxLayer.find('.yolo-box').forEach(n=>n.destroy());
     data.boxes.forEach(b => {
+      // Map frame-relative bbox → crop-relative
+      const cx = (b.x - cropX) / cropW;
+      const cy = (b.y - cropY) / cropH;
+      const cw = b.w / cropW;
+      const ch = b.h / cropH;
       const color = CLASS_COLORS[b.label] || '#f00';
-      const r = new Konva.Rect({x:b.x*W,y:b.y*H,width:b.w*W,height:b.h*H,
+      const r = new Konva.Rect({x:cx*W,y:cy*H,width:cw*W,height:ch*H,
         stroke:color,strokeWidth:1.5,dash:[4,3],name:'yolo-box',listening:false});
       modalBoxLayer.add(r);
-      const t = new Konva.Text({x:b.x*W+2,y:b.y*H-14,text:`${b.label} ${Math.round(b.confidence*100)}%`,
+      const t = new Konva.Text({x:cx*W+2,y:Math.max(0,cy*H-14),text:`${b.label} ${Math.round(b.confidence*100)}%`,
         fontSize:11,fill:color,name:'yolo-box'});
       modalBoxLayer.add(t);
     });
@@ -609,6 +712,8 @@ document.addEventListener('keydown', e => {
   // Modal open
   if (document.getElementById('modal').classList.contains('open')) {
     if (e.key==='Escape') { closeModal(); return; }
+    if (e.key==='ArrowRight') { e.preventDefault(); navigateGrid(1); return; }
+    if (e.key==='ArrowLeft') { e.preventDefault(); navigateGrid(-1); return; }
     if (e.key===' ') { e.preventDefault(); document.getElementById('modal-btn-accept').click(); }
     else if (e.key==='d'||e.key==='D') document.getElementById('modal-btn-delete').click();
     else if (e.key==='w'||e.key==='W') { pickerTarget='modal'; openPicker(); }
@@ -619,11 +724,22 @@ document.addEventListener('keydown', e => {
 
   // Grid
   if (e.key==='Escape') { selected.clear(); document.querySelectorAll('.crop-card').forEach(c=>c.classList.remove('selected')); updateSelCount(); }
+  else if (e.key==='ArrowRight'||e.key==='ArrowLeft') { e.preventDefault(); navigateGrid(e.key==='ArrowRight' ? 1 : -1); }
   else if (e.key==='a'||e.key==='A') document.getElementById('btn-accept-sel').click();
   else if (e.key==='s'||e.key==='S') document.getElementById('btn-select-all').click();
   else if (e.key==='d'||e.key==='D') document.getElementById('btn-delete-sel').click();
   else if (e.key==='w'||e.key==='W') { pickerTarget='batch'; openPicker(); }
 });
+
+// ── Grid keyboard navigation ───────────────────────────────────────────────────
+let gridCursor = -1; // index into currentBatch()
+
+function navigateGrid(delta) {
+  const batch = currentBatch();
+  if (!batch.length) return;
+  gridCursor = Math.max(0, Math.min(batch.length - 1, gridCursor + delta));
+  openModal(batch[gridCursor], gridCursor);
+}
 
 // ── Full frame endpoint check ──────────────────────────────────────────────────
 // We need a /review/frame/<clip>/<idx>.jpg endpoint on the server.
