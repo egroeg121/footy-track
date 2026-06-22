@@ -305,56 +305,40 @@ function renderGrid() {
     grid.appendChild(card);
   });
 
-  // Kick off background YOLO scan for this batch
-  _yoloQueue = [];
-  enqueueYoloForGrid(batch);
+  // Draw GT boxes on all cards as images load
+  batch.forEach((item, i) => drawGtOnCard(i, item));
 }
 
-// ── YOLO background scan for grid ─────────────────────────────────────────────
-const _yoloCache = new Map(); // key → boxes[]
-let _yoloQueue = [];
-let _yoloRunning = 0;
-const _YOLO_CONCURRENCY = 3;
+// ── "Seen" tracking ────────────────────────────────────────────────────────────
+const _seenKeys = new Set(); // clip:frame:box
 
-function enqueueYoloForGrid(batch) {
-  // Draw GT boxes immediately (no async needed)
-  batch.forEach((item, i) => drawYoloOnCard(i, item, null));
-  _yoloQueue = batch.map((item, i) => ({item, i}));
-  drainYoloQueue();
-}
-
-function drainYoloQueue() {
-  while (_yoloRunning < _YOLO_CONCURRENCY && _yoloQueue.length) {
-    const {item, i} = _yoloQueue.shift();
-    const key = `${item.clip}:${item.frame_index}`;
-    if (_yoloCache.has(key)) {
-      drawYoloOnCard(i, item, _yoloCache.get(key));
-    } else {
-      _yoloRunning++;
-      fetch('/review/yolo', {method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({clip:item.clip, frame_index:item.frame_index})})
-        .then(r => r.json())
-        .then(data => {
-          const boxes = data.ok ? data.boxes : [];
-          _yoloCache.set(key, boxes);
-          drawYoloOnCard(i, item, boxes);
-        })
-        .catch(() => {})
-        .finally(() => { _yoloRunning--; drainYoloQueue(); });
-    }
+function markSeen(item) {
+  const key = `${item.clip}:${item.frame_index}:${item.box_index}`;
+  _seenKeys.add(key);
+  // Green border on the grid card
+  const batch = currentBatch();
+  const i = batch.findIndex(it => `${it.clip}:${it.frame_index}:${it.box_index}` === key);
+  if (i >= 0) {
+    const card = document.querySelector(`.crop-card[data-idx="${i}"]`);
+    if (card) card.style.borderColor = 'var(--green)';
   }
 }
 
-function drawYoloOnCard(cardIdx, item, boxes) {
+function isSeenKey(item) {
+  return _seenKeys.has(`${item.clip}:${item.frame_index}:${item.box_index}`);
+}
+
+// ── GT box overlay on grid cards ───────────────────────────────────────────────
+function drawGtOnCard(cardIdx, item) {
   const card = document.querySelector(`.crop-card[data-idx="${cardIdx}"]`);
   if (!card) return;
+  // Restore seen border if already reviewed
+  if (isSeenKey(item)) card.style.borderColor = 'var(--green)';
 
   const img = card.querySelector('img');
   const doRender = () => {
     card.querySelector('canvas.card-overlay')?.remove();
-    card.querySelector('.card-yolo-tick')?.remove();
 
-    // Canvas sized to the card's image area (aspect-ratio:1 square)
     const W = img.clientWidth, H = img.clientHeight || W;
     const canvas = document.createElement('canvas');
     canvas.width = W; canvas.height = H;
@@ -362,59 +346,25 @@ function drawYoloOnCard(cardIdx, item, boxes) {
     img.after(canvas);
     const ctx = canvas.getContext('2d');
 
-    // Compute letterbox offset (object-fit:contain inside 1:1 square)
+    // Letterbox offset (object-fit:contain in 1:1 square)
     const iW = img.naturalWidth || 1, iH = img.naturalHeight || 1;
     const scale = Math.min(W / iW, H / iH);
     const rW = iW * scale, rH = iH * scale;
     const offX = (W - rW) / 2, offY = (H - rH) / 2;
 
-    // Helper: draw a box in crop-relative coords
-    const drawBox = (cx, cy, cw, ch, color, dashed) => {
-      ctx.strokeStyle = color;
-      ctx.lineWidth = 2;
-      if (dashed) ctx.setLineDash([4, 3]); else ctx.setLineDash([]);
-      ctx.strokeRect(offX + cx * rW, offY + cy * rH, cw * rW, ch * rH);
-      ctx.setLineDash([]);
-    };
+    // GT box: map frame-relative → crop-relative (edge-clamped, pad=2.0)
+    const fb = item.bbox, pad = 2.0;
+    const cropX0 = Math.max(0, fb.x - fb.w*pad), cropY0 = Math.max(0, fb.y - fb.h*pad);
+    const cropX1 = Math.min(1, fb.x + fb.w + fb.w*pad), cropY1 = Math.min(1, fb.y + fb.h + fb.h*pad);
+    const cW = cropX1 - cropX0, cH = cropY1 - cropY0;
+    const gcx = (fb.x - cropX0) / cW, gcy = (fb.y - cropY0) / cH;
+    const gcw = fb.w / cW, gch = fb.h / cH;
 
-    // GT box: map frame-relative bbox → crop-relative (accounting for edge clamping)
-    const fb = item.bbox;
-    const pad = 2.0;
-    // Crop extents in frame-relative coords (mirroring server clamping logic)
-    const cropX0 = Math.max(0, fb.x - fb.w * pad);
-    const cropY0 = Math.max(0, fb.y - fb.h * pad);
-    const cropX1 = Math.min(1, fb.x + fb.w + fb.w * pad);
-    const cropY1 = Math.min(1, fb.y + fb.h + fb.h * pad);
-    const cropW_f = cropX1 - cropX0, cropH_f = cropY1 - cropY0;
-    const gcx = (fb.x - cropX0) / cropW_f;
-    const gcy = (fb.y - cropY0) / cropH_f;
-    const gcw = fb.w / cropW_f;
-    const gch = fb.h / cropH_f;
-    drawBox(gcx, gcy, gcw, gch, CLASS_COLORS[item.label] || '#f00', false);
+    ctx.strokeStyle = CLASS_COLORS[item.label] || '#f00';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([]);
+    ctx.strokeRect(offX + gcx*rW, offY + gcy*rH, gcw*rW, gch*rH);
 
-    // YOLO boxes: map frame-relative → crop-relative (edge-clamped)
-    if (boxes && boxes.length) {
-      const fb = item.bbox, pad = 2.0;
-      const cropX = Math.max(0, fb.x - fb.w*pad), cropY = Math.max(0, fb.y - fb.h*pad);
-      const cropW = Math.min(1, fb.x + fb.w + fb.w*pad) - cropX;
-      const cropH = Math.min(1, fb.y + fb.h + fb.h*pad) - cropY;
-      boxes.forEach(b => {
-        const cx = (b.x - cropX) / cropW;
-        const cy = (b.y - cropY) / cropH;
-        const cw = b.w / cropW;
-        const ch = b.h / cropH;
-        drawBox(cx, cy, cw, ch, CLASS_COLORS[b.label] || '#888', true);
-      });
-    }
-
-    // Tick
-    if (boxes !== null) {
-      const tick = document.createElement('div');
-      tick.className = 'card-yolo-tick';
-      tick.textContent = boxes.length ? '🤖✓' : '🤖∅';
-      tick.title = boxes.length ? `YOLO: ${boxes.length} box(es)` : 'YOLO: no detections';
-      card.appendChild(tick);
-    }
   };
 
   if (img.complete && img.naturalWidth) { doRender(); }
@@ -511,8 +461,7 @@ function openModal(item, batchIdx) {
 
   updateModalBbox();
   setupModalKonva(item);
-  // Auto-run YOLO after canvas loads (slight delay for image to load)
-  setTimeout(() => document.getElementById('modal-btn-yolo').click(), 600);
+  markSeen(item);
 }
 
 function closeModal() {
@@ -748,7 +697,7 @@ document.getElementById('modal-btn-yolo').onclick = async () => {
     const cropH = Math.min(1, fb.y + fb.h + fb.h*pad2) - cropY;
     // Remove existing YOLO boxes
     modalBoxLayer.find('.yolo-box').forEach(n=>n.destroy());
-    data.boxes.forEach(b => {
+    data.boxes.filter(b => b.label === modalItem.label).forEach(b => {
       // Map frame-relative bbox → crop-relative
       const cx = (b.x - cropX) / cropW;
       const cy = (b.y - cropY) / cropH;
@@ -781,7 +730,11 @@ document.querySelectorAll('.pick-btn[data-label]').forEach(btn => {
         body:JSON.stringify({clip:modalItem.clip,frame_index:modalItem.frame_index,
           box_index:modalItem.box_index,label,bbox:modalBbox})});
       modalItem.label = label;
-      closeModal(); removeItems([modalItem]);
+      // Stay in modal — update title and info so user can continue reviewing
+      document.getElementById('modal-title').textContent =
+        `${label} — ${modalItem.clip} fr.${modalItem.frame_index} box ${modalItem.box_index}`;
+      document.getElementById('modal-info').textContent =
+        `${modalItem.clip} · frame ${modalItem.frame_index} · box ${modalItem.box_index} · relabelled → ${label}`;
     } else {
       await relabelSelected(label);
     }
