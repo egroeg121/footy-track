@@ -117,7 +117,8 @@
 </div>
 
 <script>
-const CLASSES = ["person","ball","out_of_play_ball","in_play_ball","player","player_sub","referee","coach"];
+const CLASSES = ["in_play_ball","ball","referee","player","person","coach","out_of_play_ball","player_sub"];
+const CLASS_KEYS = {"in_play_ball":"1","ball":"2","referee":"3","player":"4","person":"5","coach":"6"};
 const COLORS = {player:"#1e90ff",person:"#b48246",referee:"#9b30ff",coach:"#00c2a8",
   ball:"#ffc800",in_play_ball:"#ffd700",out_of_play_ball:"#ff8c00",player_sub:"#b48246"};
 const colorOf = l => COLORS[l] || "#ff0000";
@@ -147,7 +148,7 @@ let bgImage = null;
 
 // class dropdown
 const classSel = document.getElementById("classSel");
-CLASSES.forEach(c => { const o=document.createElement("option"); o.value=c; o.textContent=c; classSel.appendChild(o); });
+CLASSES.forEach(c => { const o=document.createElement("option"); o.value=c; o.textContent=CLASS_KEYS[c] ? `[${CLASS_KEYS[c]}] ${c}` : c; classSel.appendChild(o); });
 classSel.value = "in_play_ball";
 
 // ---------- helpers ----------
@@ -242,7 +243,7 @@ function renderList(){
       row.appendChild(lbl);
     } else {
       const sel=document.createElement("select");
-      CLASSES.forEach(c=>{const o=document.createElement("option");o.value=c;o.textContent=c;if(c===r.getAttr("label"))o.selected=true;sel.appendChild(o);});
+      CLASSES.forEach(c=>{const o=document.createElement("option");o.value=c;o.textContent=CLASS_KEYS[c]?`[${CLASS_KEYS[c]}] ${c}`:c;if(c===r.getAttr("label"))o.selected=true;sel.appendChild(o);});
       sel.onchange=()=>{ r.setAttr("label",sel.value); r.stroke(colorOf(sel.value)); frameDirty=true; refreshNumbers(); boxLayer.draw(); renderList(); };
       row.appendChild(sel);
       const x=document.createElement("span"); x.className="x"; x.textContent="✕";
