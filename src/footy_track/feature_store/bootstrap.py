@@ -26,7 +26,10 @@ from tqdm import tqdm
 from footy_track.feature_store.schema import FrameRow, GameRow
 from footy_track.feature_store.store import FeatureStore
 
-_DEFAULT_DB = Path.home() / "Library/Mobile Documents/com~apple~CloudDocs/footy_data/feature_store.duckdb"
+_DEFAULT_DB = (
+    Path.home()
+    / "Library/Mobile Documents/com~apple~CloudDocs/footy_data/feature_store.duckdb"
+)
 _VIDEO_SUFFIXES = {".mp4", ".mov"}
 _FRAME_BATCH = 5000  # rows per executemany call to keep memory bounded
 
@@ -48,7 +51,9 @@ def _video_meta(cap: cv2.VideoCapture) -> tuple[float, int, int, int]:
 
 
 def bootstrap(video_dir: Path, store: FeatureStore) -> None:
-    videos = sorted(p for p in video_dir.iterdir() if p.suffix.lower() in _VIDEO_SUFFIXES)
+    videos = sorted(
+        p for p in video_dir.iterdir() if p.suffix.lower() in _VIDEO_SUFFIXES
+    )
     if not videos:
         print(f"No video files found in {video_dir}", file=sys.stderr)
         return
@@ -62,10 +67,15 @@ def bootstrap(video_dir: Path, store: FeatureStore) -> None:
             cap.release()
 
         if fps <= 0:
-            print(f"  Warning: {video_path.name} has fps={fps}, skipping", file=sys.stderr)
+            print(
+                f"  Warning: {video_path.name} has fps={fps}, skipping", file=sys.stderr
+            )
             continue
         if frame_count <= 0:
-            print(f"  Warning: {video_path.name} has frame_count={frame_count}, skipping", file=sys.stderr)
+            print(
+                f"  Warning: {video_path.name} has frame_count={frame_count}, skipping",
+                file=sys.stderr,
+            )
             continue
 
         game_row = GameRow(
@@ -79,7 +89,9 @@ def bootstrap(video_dir: Path, store: FeatureStore) -> None:
 
         frame_uri_base = str(video_path)
         batch: list[FrameRow] = []
-        for frame_index in tqdm(range(frame_count), desc=f"  {game_id}", unit="frame", leave=False):
+        for frame_index in tqdm(
+            range(frame_count), desc=f"  {game_id}", unit="frame", leave=False
+        ):
             frame_uri = f"{frame_uri_base}?frame={frame_index}"
             continuous_time_s = frame_index / fps
             batch.append(
@@ -113,15 +125,27 @@ def verify(store: FeatureStore) -> None:
     print(f"Frames: {total_frames} total  (avg {avg_frames:.0f} per clip)")
     print("Clips:")
     for game_id in game_df["game_id"].tolist():
-        n = int(frame_df.loc[frame_df["game_id"] == game_id, "n"].iloc[0]) if not frame_df.empty else 0
+        n = (
+            int(frame_df.loc[frame_df["game_id"] == game_id, "n"].iloc[0])
+            if not frame_df.empty
+            else 0
+        )
         print(f"  {game_id}  ({n} frames)")
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Bootstrap the feature store from local video clips.")
-    parser.add_argument("--video-dir", type=Path, help="Directory containing .mp4 / .mov clips")
-    parser.add_argument("--db", type=Path, default=_DEFAULT_DB, help="Path to DuckDB feature store")
-    parser.add_argument("--verify", action="store_true", help="Print a summary instead of populating")
+    parser = argparse.ArgumentParser(
+        description="Bootstrap the feature store from local video clips."
+    )
+    parser.add_argument(
+        "--video-dir", type=Path, help="Directory containing .mp4 / .mov clips"
+    )
+    parser.add_argument(
+        "--db", type=Path, default=_DEFAULT_DB, help="Path to DuckDB feature store"
+    )
+    parser.add_argument(
+        "--verify", action="store_true", help="Print a summary instead of populating"
+    )
     args = parser.parse_args()
 
     if not args.verify and args.video_dir is None:
