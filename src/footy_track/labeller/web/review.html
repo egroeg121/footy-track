@@ -31,15 +31,17 @@
                border-radius:8px; overflow:hidden; cursor:pointer; }
   .crop-card:hover { border-color:var(--accent); }
   .crop-card.selected { border-color:var(--green); }
-  .crop-card img { width:100%; display:block; aspect-ratio:1; object-fit:cover; background:#000; }
-  .crop-card .card-yolo-svg { position:absolute; top:0; left:0; width:100%; aspect-ratio:1;
-                               pointer-events:none; overflow:visible; }
+  .crop-card img { width:100%; display:block; aspect-ratio:1; object-fit:contain; background:#000; }
+  .crop-card canvas.card-overlay { position:absolute; top:0; left:0; width:100%; aspect-ratio:1;
+                                    pointer-events:none; }
   .crop-card .card-label { font-size:10px; font-weight:700; padding:2px 6px;
                             position:absolute; top:4px; left:4px; border-radius:3px;
                             text-transform:uppercase; color:#000; }
   .crop-card .card-prov { font-size:9px; position:absolute; top:4px; right:4px;
                            background:rgba(0,0,0,.6); color:var(--muted);
                            padding:1px 4px; border-radius:3px; }
+  .crop-card .card-yolo-tick { position:absolute; bottom:24px; right:4px; font-size:11px;
+                                opacity:.7; pointer-events:none; }
   .crop-card .card-bbox { font-size:9px; color:var(--muted); padding:3px 5px;
                            background:var(--bg); text-align:center; white-space:nowrap;
                            overflow:hidden; text-overflow:ellipsis; }
@@ -68,13 +70,15 @@
   #modal-header { padding:10px 16px; border-bottom:1px solid var(--border);
                   display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
   #modal-header h3 { margin:0; font-size:14px; flex:1; }
-  #modal-body { display:flex; gap:0; min-height:0; }
+  #modal-body { display:flex; gap:0; min-height:400px; }
   /* Left: Konva canvas on the crop (main review area) */
-  #modal-canvas-wrap { flex:none; position:relative; background:#000; border-right:1px solid var(--border); }
+  #modal-canvas-wrap { flex:none; width:420px; position:relative; background:#000; border-right:1px solid var(--border); display:flex; align-items:center; justify-content:center; }
   #modal-konva { display:block; }
   /* Right: full frame context */
   #modal-context-panel { flex:1; display:flex; flex-direction:column; min-width:0; background:#111; }
-  #modal-context-img { width:100%; display:block; object-fit:contain; flex:1; }
+  #modal-context-wrap { position:relative; flex:1; min-height:0; }
+  #modal-context-img { width:100%; height:100%; display:block; object-fit:contain; }
+  #modal-context-svg { position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none; }
   #modal-crop-label { font-size:11px; color:var(--muted); padding:6px 10px; border-top:1px solid var(--border); }
   #modal-actions { padding:10px 16px; display:flex; gap:8px; flex-wrap:wrap;
                    align-items:center; border-top:1px solid var(--border); }
@@ -142,7 +146,10 @@
       </div>
       <!-- Right: full frame context image -->
       <div id="modal-context-panel">
-        <img id="modal-context-img" src="" alt="full frame" />
+        <div id="modal-context-wrap">
+          <img id="modal-context-img" src="" alt="full frame" />
+          <svg id="modal-context-svg" preserveAspectRatio="none"></svg>
+        </div>
         <div id="modal-crop-label"></div>
       </div>
     </div>
@@ -341,49 +348,77 @@ function drainYoloQueue() {
 function drawYoloOnCard(cardIdx, item, boxes) {
   const card = document.querySelector(`.crop-card[data-idx="${cardIdx}"]`);
   if (!card) return;
-  card.querySelector('.card-yolo-svg')?.remove();
-
-  const fb = item.bbox;
-  const cropX = fb.x - fb.w * 2, cropY = fb.y - fb.h * 2;
-  const cropW = fb.w * 5, cropH = fb.h * 5;
-
-  const NS = 'http://www.w3.org/2000/svg';
-  const svg = document.createElementNS(NS, 'svg');
-  svg.setAttribute('viewBox', '0 0 1 1');
-  svg.setAttribute('preserveAspectRatio', 'none');
-  svg.classList.add('card-yolo-svg');
-
-  // GT box: solid, always at crop-relative 0.4,0.4,0.2,0.2 (pad=2.0)
-  const gtColor = CLASS_COLORS[item.label] || '#f00';
-  const gtRect = document.createElementNS(NS, 'rect');
-  gtRect.setAttribute('x', '0.4'); gtRect.setAttribute('y', '0.4');
-  gtRect.setAttribute('width', '0.2'); gtRect.setAttribute('height', '0.2');
-  gtRect.setAttribute('fill', 'none');
-  gtRect.setAttribute('stroke', gtColor);
-  gtRect.setAttribute('stroke-width', '0.022');
-  svg.appendChild(gtRect);
-
-  // YOLO boxes: dashed, mapped from frame-relative → crop-relative
-  if (boxes && boxes.length) {
-    boxes.forEach(b => {
-      const cx = (b.x - cropX) / cropW;
-      const cy = (b.y - cropY) / cropH;
-      const cw = b.w / cropW;
-      const ch = b.h / cropH;
-      const color = CLASS_COLORS[b.label] || '#f00';
-      const rect = document.createElementNS(NS, 'rect');
-      rect.setAttribute('x', cx); rect.setAttribute('y', cy);
-      rect.setAttribute('width', cw); rect.setAttribute('height', ch);
-      rect.setAttribute('fill', 'none');
-      rect.setAttribute('stroke', color);
-      rect.setAttribute('stroke-width', '0.016');
-      rect.setAttribute('stroke-dasharray', '0.04 0.02');
-      svg.appendChild(rect);
-    });
-  }
 
   const img = card.querySelector('img');
-  img.after(svg);
+  const doRender = () => {
+    card.querySelector('canvas.card-overlay')?.remove();
+    card.querySelector('.card-yolo-tick')?.remove();
+
+    // Canvas sized to the card's image area (aspect-ratio:1 square)
+    const W = img.clientWidth, H = img.clientHeight || W;
+    const canvas = document.createElement('canvas');
+    canvas.width = W; canvas.height = H;
+    canvas.className = 'card-overlay';
+    img.after(canvas);
+    const ctx = canvas.getContext('2d');
+
+    // Compute letterbox offset (object-fit:contain inside 1:1 square)
+    const iW = img.naturalWidth || 1, iH = img.naturalHeight || 1;
+    const scale = Math.min(W / iW, H / iH);
+    const rW = iW * scale, rH = iH * scale;
+    const offX = (W - rW) / 2, offY = (H - rH) / 2;
+
+    // Helper: draw a box in crop-relative coords
+    const drawBox = (cx, cy, cw, ch, color, dashed) => {
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2;
+      if (dashed) ctx.setLineDash([4, 3]); else ctx.setLineDash([]);
+      ctx.strokeRect(offX + cx * rW, offY + cy * rH, cw * rW, ch * rH);
+      ctx.setLineDash([]);
+    };
+
+    // GT box: map frame-relative bbox → crop-relative (accounting for edge clamping)
+    const fb = item.bbox;
+    const pad = 2.0;
+    // Crop extents in frame-relative coords (mirroring server clamping logic)
+    const cropX0 = Math.max(0, fb.x - fb.w * pad);
+    const cropY0 = Math.max(0, fb.y - fb.h * pad);
+    const cropX1 = Math.min(1, fb.x + fb.w + fb.w * pad);
+    const cropY1 = Math.min(1, fb.y + fb.h + fb.h * pad);
+    const cropW_f = cropX1 - cropX0, cropH_f = cropY1 - cropY0;
+    const gcx = (fb.x - cropX0) / cropW_f;
+    const gcy = (fb.y - cropY0) / cropH_f;
+    const gcw = fb.w / cropW_f;
+    const gch = fb.h / cropH_f;
+    drawBox(gcx, gcy, gcw, gch, CLASS_COLORS[item.label] || '#f00', false);
+
+    // YOLO boxes: map frame-relative → crop-relative (edge-clamped)
+    if (boxes && boxes.length) {
+      const fb = item.bbox, pad = 2.0;
+      const cropX = Math.max(0, fb.x - fb.w*pad), cropY = Math.max(0, fb.y - fb.h*pad);
+      const cropW = Math.min(1, fb.x + fb.w + fb.w*pad) - cropX;
+      const cropH = Math.min(1, fb.y + fb.h + fb.h*pad) - cropY;
+      boxes.forEach(b => {
+        const cx = (b.x - cropX) / cropW;
+        const cy = (b.y - cropY) / cropH;
+        const cw = b.w / cropW;
+        const ch = b.h / cropH;
+        drawBox(cx, cy, cw, ch, CLASS_COLORS[b.label] || '#888', true);
+      });
+    }
+
+    // Tick
+    if (boxes !== null) {
+      const tick = document.createElement('div');
+      tick.className = 'card-yolo-tick';
+      tick.textContent = boxes.length ? '🤖✓' : '🤖∅';
+      tick.title = boxes.length ? `YOLO: ${boxes.length} box(es)` : 'YOLO: no detections';
+      card.appendChild(tick);
+    }
+  };
+
+  if (img.complete && img.naturalWidth) { doRender(); }
+  else { img.addEventListener('load', doRender, {once: true}); }
 }
 
 function toggleSelect(i, card) {
@@ -465,9 +500,10 @@ function openModal(item, batchIdx) {
     `${item.clip} · frame ${item.frame_index} · box ${item.box_index} · ${item.provenance} · conf ${Math.round(item.confidence*100)}%`;
   document.getElementById('yolo-results').textContent = '';
 
-  // Right panel: full frame context
+  // Right panel: full frame context with GT box overlay
   const ctxImg = document.getElementById('modal-context-img');
   ctxImg.src = `/review/frame/${item.clip}/${item.frame_index}.jpg`;
+  drawContextBox(item.bbox, item.label);
   const color = CLASS_COLORS[item.label] || '#f00';
   const b = item.bbox;
   document.getElementById('modal-crop-label').innerHTML =
@@ -492,27 +528,78 @@ function updateModalBbox() {
     `x:${b.x.toFixed(3)} y:${b.y.toFixed(3)} w:${b.w.toFixed(3)} h:${b.h.toFixed(3)}`;
 }
 
+function drawContextBox(bbox, label) {
+  const img = document.getElementById('modal-context-img');
+  const svg = document.getElementById('modal-context-svg');
+  const doRender = () => {
+    const NS = 'http://www.w3.org/2000/svg';
+    svg.innerHTML = '';
+    const color = CLASS_COLORS[label] || '#f00';
+
+    // Compute rendered image rect inside the container (object-fit:contain letterboxing)
+    const cW = img.clientWidth, cH = img.clientHeight;
+    const iW = img.naturalWidth || cW, iH = img.naturalHeight || cH;
+    const scale = Math.min(cW / iW, cH / iH);
+    const rW = iW * scale, rH = iH * scale;
+    const offX = (cW - rW) / 2, offY = (cH - rH) / 2;
+
+    // SVG viewBox = pixel coords of the rendered image area
+    svg.setAttribute('viewBox', `${offX} ${offY} ${rW} ${rH}`);
+
+    const {x, y, w, h} = bbox;
+    const px = x * rW, py = y * rH, pw = w * rW, ph = h * rH;
+
+    const rect = document.createElementNS(NS, 'rect');
+    rect.setAttribute('x', offX + px); rect.setAttribute('y', offY + py);
+    rect.setAttribute('width', pw); rect.setAttribute('height', ph);
+    rect.setAttribute('fill', 'none');
+    rect.setAttribute('stroke', color);
+    rect.setAttribute('stroke-width', '2');
+    rect.setAttribute('vector-effect', 'non-scaling-stroke');
+    svg.appendChild(rect);
+
+    const txt = document.createElementNS(NS, 'text');
+    txt.setAttribute('x', offX + px + 2); txt.setAttribute('y', offY + py - 4);
+    txt.setAttribute('font-size', '13');
+    txt.setAttribute('fill', color);
+    txt.setAttribute('font-weight', 'bold');
+    txt.setAttribute('vector-effect', 'non-scaling-stroke');
+    txt.textContent = label;
+    svg.appendChild(txt);
+  };
+  if (img.naturalWidth) { doRender(); }
+  else { img.onload = doRender; }
+}
+
 function setupModalKonva(item) {
   const wrap = document.getElementById('modal-canvas-wrap');
   wrap.innerHTML = '<div id="modal-konva"></div>';
-  // Left panel: crop canvas — fixed 420px square
-  const W = 420, H = 420;
-
+  // Left panel: crop canvas — sized to match image aspect ratio on load
   if (modalStage) modalStage.destroy();
-  modalStage = new Konva.Stage({container:'modal-konva', width:W, height:H});
+  modalStage = new Konva.Stage({container:'modal-konva', width:420, height:420});
   modalBgLayer = new Konva.Layer();
   modalBoxLayer = new Konva.Layer();
   modalStage.add(modalBgLayer); modalStage.add(modalBoxLayer);
   modalTr = new Konva.Transformer({rotateEnabled:false, borderStroke:'#fff'});
   modalBoxLayer.add(modalTr);
 
-  // Load crop image as background (pad=2.0 → box always at 0.4,0.4,0.2,0.2 in crop coords)
+  // Load crop image — resize canvas to match actual image aspect ratio (no stretching)
   const img = new Image();
   img.onload = () => {
-    const bg = new Konva.Image({image:img, width:W, height:H});
+    const maxDim = 420;
+    const aspect = img.naturalWidth / img.naturalHeight;
+    const cW = aspect >= 1 ? maxDim : Math.round(maxDim * aspect);
+    const cH = aspect >= 1 ? Math.round(maxDim / aspect) : maxDim;
+    modalStage.width(cW); modalStage.height(cH);
+    const bg = new Konva.Image({image:img, width:cW, height:cH});
     modalBgLayer.add(bg); bg.moveToBottom(); modalBgLayer.draw();
-    // Draw prediction box in crop-space (always at relative 0.4,0.4,0.2,0.2 due to pad=2.0)
-    drawModalBox({x:0.4, y:0.4, w:0.2, h:0.2}, item.label);
+    // Draw GT box in crop-space, accounting for edge clamping
+    const fb = item.bbox, pad = 2.0;
+    const cx0 = Math.max(0, fb.x - fb.w*pad), cy0 = Math.max(0, fb.y - fb.h*pad);
+    const cx1 = Math.min(1, fb.x + fb.w + fb.w*pad), cy1 = Math.min(1, fb.y + fb.h + fb.h*pad);
+    const cW_f = cx1-cx0, cH_f = cy1-cy0;
+    const gtCropBox = {x:(fb.x-cx0)/cW_f, y:(fb.y-cy0)/cH_f, w:fb.w/cW_f, h:fb.h/cH_f};
+    drawModalBox(gtCropBox, item.label);
   };
   img.src = item.image_url + '?t=' + Date.now();
 
@@ -541,9 +628,10 @@ function setupModalKonva(item) {
       modalDrawing.destroy(); modalDrawing=null; modalBoxLayer.draw(); return;
     }
     // Store crop-relative coords; convert to frame-relative for saving
+    const cW = modalStage.width(), cH = modalStage.height();
     const cropRel = {
-      x: modalDrawing.x()/W, y: modalDrawing.y()/H,
-      w: modalDrawing.width()/W, h: modalDrawing.height()/H,
+      x: modalDrawing.x()/cW, y: modalDrawing.y()/cH,
+      w: modalDrawing.width()/cW, h: modalDrawing.height()/cH,
     };
     modalBbox = cropRelToFrameRel(cropRel, modalItem.bbox);
     modalDrawing = null;
@@ -552,10 +640,12 @@ function setupModalKonva(item) {
   });
 }
 
-// Convert crop-relative bbox → frame-relative, given original frame bbox (pad=2.0)
+// Convert crop-relative bbox → frame-relative, given original frame bbox (pad=2.0, edge-clamped)
 function cropRelToFrameRel(cropRel, fb) {
-  const cropX = fb.x - fb.w * 2, cropY = fb.y - fb.h * 2;
-  const cropW = fb.w * 5, cropH = fb.h * 5;
+  const pad = 2.0;
+  const cropX = Math.max(0, fb.x - fb.w*pad), cropY = Math.max(0, fb.y - fb.h*pad);
+  const cropW = Math.min(1, fb.x + fb.w + fb.w*pad) - cropX;
+  const cropH = Math.min(1, fb.y + fb.h + fb.h*pad) - cropY;
   return {
     x: cropX + cropRel.x * cropW,
     y: cropY + cropRel.y * cropH,
@@ -651,10 +741,11 @@ document.getElementById('modal-btn-yolo').onclick = async () => {
   // Draw YOLO boxes on crop canvas (map frame-relative → crop-space)
   if (modalStage && modalItem) {
     const W = modalStage.width(), H = modalStage.height();
-    // Crop origin and size in frame-relative coords (pad=2.0)
-    const fb = modalItem.bbox;
-    const cropX = fb.x - fb.w * 2, cropY = fb.y - fb.h * 2;
-    const cropW = fb.w * 5, cropH = fb.h * 5;
+    // Crop extents in frame-relative coords (pad=2.0, edge-clamped)
+    const fb = modalItem.bbox, pad2 = 2.0;
+    const cropX = Math.max(0, fb.x - fb.w*pad2), cropY = Math.max(0, fb.y - fb.h*pad2);
+    const cropW = Math.min(1, fb.x + fb.w + fb.w*pad2) - cropX;
+    const cropH = Math.min(1, fb.y + fb.h + fb.h*pad2) - cropY;
     // Remove existing YOLO boxes
     modalBoxLayer.find('.yolo-box').forEach(n=>n.destroy());
     data.boxes.forEach(b => {
@@ -725,6 +816,7 @@ document.addEventListener('keydown', e => {
   // Grid
   if (e.key==='Escape') { selected.clear(); document.querySelectorAll('.crop-card').forEach(c=>c.classList.remove('selected')); updateSelCount(); }
   else if (e.key==='ArrowRight'||e.key==='ArrowLeft') { e.preventDefault(); navigateGrid(e.key==='ArrowRight' ? 1 : -1); }
+  else if (e.key==='Backspace'||e.key==='Delete') document.getElementById('btn-delete-sel').click();
   else if (e.key==='a'||e.key==='A') document.getElementById('btn-accept-sel').click();
   else if (e.key==='s'||e.key==='S') document.getElementById('btn-select-all').click();
   else if (e.key==='d'||e.key==='D') document.getElementById('btn-delete-sel').click();

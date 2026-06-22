@@ -1002,7 +1002,9 @@ async def review_yolo(body: dict) -> dict:
     if video_path is None:
         return {"ok": False, "error": "video not found", "boxes": []}
 
-    def _run_yolo() -> list[dict]:
+    def _run() -> list[dict]:
+        from footy_track.detectors.ultralytics import get_current_best_detector  # noqa: PLC0415
+        import tempfile as _tf  # noqa: PLC0415
         cap = cv2.VideoCapture(str(video_path))
         try:
             cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
@@ -1011,12 +1013,20 @@ async def review_yolo(body: dict) -> dict:
             cap.release()
         if not ok:
             return []
-        boxes = yolo_seed_objects(frame, conf=0.25, iou=0.5)
-        return [{"label": b.label, "confidence": round(b.confidence, 3),
-                 "x": round(b.x, 4), "y": round(b.y, 4),
-                 "w": round(b.w, 4), "h": round(b.h, 4)} for b in boxes]
+        h_px, w_px = frame.shape[:2]
+        with _tf.NamedTemporaryFile(suffix=".jpg", delete=False) as f:
+            tmp = Path(f.name)
+        cv2.imwrite(str(tmp), frame)
+        try:
+            detector = get_current_best_detector(min_confidence=0.25)
+            fd = detector.predict_from_path(tmp)
+        finally:
+            tmp.unlink(missing_ok=True)
+        return [{"label": d.label, "confidence": round(float(d.confidence), 3),
+                 "x": round(d.x, 4), "y": round(d.y, 4),
+                 "w": round(d.w, 4), "h": round(d.h, 4)} for d in fd.detections]
 
-    boxes = await asyncio.to_thread(_run_yolo)
+    boxes = await asyncio.to_thread(_run)
     return {"ok": True, "boxes": boxes}
 
 
