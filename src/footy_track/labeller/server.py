@@ -523,6 +523,14 @@ async def mark_not_broadcast(body: dict) -> dict:
     return {"idx": idx, "not_broadcast": True}
 
 
+@app.post("/no-ball/clear")
+async def clear_no_ball(body: dict) -> dict:
+    idx = int(body["idx"])
+    SESSION.no_ball_frames.discard(idx)
+    SESSION.schedule_flush()
+    return {"idx": idx, "no_ball": False}
+
+
 @app.post("/not-broadcast/clear")
 async def clear_not_broadcast(body: dict) -> dict:
     idx = int(body["idx"])
