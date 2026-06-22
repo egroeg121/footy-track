@@ -285,11 +285,13 @@ function resizeBox(factor) {
   const b = pendingBbox;
   const dw = b.w * factor / 2;
   const dh = b.h * factor / 2;
+  const newX = Math.max(0, b.x - dw);
+  const newY = Math.max(0, b.y - dh);
   pendingBbox = {
-    x: Math.max(0, b.x - dw),
-    y: Math.max(0, b.y - dh),
-    w: Math.min(1 - b.x + dw, b.w + dw * 2),
-    h: Math.min(1 - b.y + dh, b.h + dh * 2),
+    x: newX,
+    y: newY,
+    w: Math.min(1 - newX, b.w + dw * 2),
+    h: Math.min(1 - newY, b.h + dh * 2),
   };
   updateBboxDisplay();
 }
