@@ -26,6 +26,7 @@ dependencies = [
   "mkdocs>=1.5.3",
   "mkdocs-material>=9.4.6",
   "numpy>=1.26",
+  "onnxruntime>=1.17",
   "openai>=2.6.1",
   "opencv-python>=4.8",
   "piexif>=1.1.3",
