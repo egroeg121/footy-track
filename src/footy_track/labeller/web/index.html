@@ -361,7 +361,14 @@ stage.on("mouseup", ()=>{ if(drawing){ if(drawing.width()<4||drawing.height()<4)
 // no-ball mark
 async function markNoBall() {
   if (mode === "running" || meta === null) return;
-  // Save canvas edits (saveCurrentEdits only covers paused/idle_results, handle idle too)
+  if (noBallFrames.has(viewFrame)) {
+    noBallFrames.delete(viewFrame);
+    await fetch("/no-ball/clear", {method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({idx: viewFrame})});
+    setStatus(`Frame ${viewFrame} no-ball cleared`);
+    renderList(); renderTimelineBar();
+    return;
+  }
   if (mode === "idle") {
     await fetch("/edit", {method:"POST", headers:{"Content-Type":"application/json"},
       body: JSON.stringify({idx: viewFrame, objects: boxesNorm()})});
@@ -371,7 +378,6 @@ async function markNoBall() {
   noBallFrames.add(viewFrame);
   await fetch("/no-ball", {method:"POST", headers:{"Content-Type":"application/json"},
     body: JSON.stringify({idx: viewFrame})});
-  // Clear ball boxes from canvas (server already stripped them)
   await loadTimelineFrame(viewFrame, mode !== "running");
   setStatus(`🚫 Frame ${viewFrame} marked no-ball`);
 }
