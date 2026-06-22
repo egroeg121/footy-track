@@ -289,11 +289,13 @@ function renderTimelineBar(){
       ctx.fillRect(x, 0, pw, 12);
     }
   }
-  // player-only frames (no ball marked) — full green
+  // player-only frames (no ball marked) — bottom green + tiny red top to flag ball not yet decided
   for (const idx of markedPlayerFrames) {
-    if (!markedBallFrames.has(idx)) {
+    if (!markedBallFrames.has(idx) && !noBallFrames.has(idx) && !notBroadcastFrames.has(idx)) {
       ctx.fillStyle = "#3fb950";
-      ctx.fillRect(Math.floor((idx / total) * W), 0, pw, 12);
+      ctx.fillRect(Math.floor((idx / total) * W), 2, pw, 10);
+      ctx.fillStyle = "#f85149";
+      ctx.fillRect(Math.floor((idx / total) * W), 0, pw, 2);
     }
   }
   // current frame cursor
