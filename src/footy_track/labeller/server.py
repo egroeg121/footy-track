@@ -255,8 +255,6 @@ class Session:
                 if boxes is None:
                     continue
                 for b in boxes:
-                    if b.label not in _BALL_LABELS:
-                        continue
                     cx = b.x + b.w / 2
                     cy = b.y + b.h / 2
                     lines.append(
