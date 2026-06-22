@@ -352,13 +352,25 @@ def _clip_completion(stem: str, video_path: Path) -> dict:
 
 @app.get("/clips")
 async def list_clips() -> dict:
-    """Return sorted list of clip filenames from eval_data/clips/."""
+    """Return sorted list of clips immediately — no completion check."""
+    if not _CLIPS_DIR.exists():
+        return {"clips": []}
+    video_suffixes = {".mp4", ".mov", ".avi", ".mkv"}
+    paths = sorted(p for p in _CLIPS_DIR.iterdir() if p.suffix.lower() in video_suffixes)
+    # Return names fast; completion checked lazily via /clips/status
+    clips = [{"name": p.name, "marked": (_GT_MARKS_DIR / f"{p.stem}.jsonl").exists()} for p in paths]
+    return {"clips": clips, "dir": str(_CLIPS_DIR)}
+
+
+@app.get("/clips/status")
+async def clips_status() -> dict:
+    """Return completion status for all clips — may be slow (reads video metadata)."""
     if not _CLIPS_DIR.exists():
         return {"clips": []}
     video_suffixes = {".mp4", ".mov", ".avi", ".mkv"}
     paths = sorted(p for p in _CLIPS_DIR.iterdir() if p.suffix.lower() in video_suffixes)
     clips = [{"name": p.name, **_clip_completion(p.stem, p)} for p in paths]
-    return {"clips": clips, "dir": str(_CLIPS_DIR)}
+    return {"clips": clips}
 
 
 @app.post("/session/load")

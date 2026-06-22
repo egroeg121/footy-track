@@ -456,19 +456,35 @@ async function loadClipList() {
     list.innerHTML = '<span class="muted">No clips found</span>';
     return;
   }
+  // Render immediately with basic marked state
+  const elMap = {};
   data.clips.forEach(clip => {
     const name = typeof clip === "string" ? clip : clip.name;
     const marked = clip.marked || false;
-    const complete = clip.complete || false;
     const el = document.createElement("div");
     el.className = "clip-item";
-    const badge = complete ? " ✅" : marked ? " ✓" : "";
-    el.textContent = name + badge;
-    if (complete) el.style.color = "var(--green)";
-    else if (marked) el.style.color = "var(--muted)";
-    el.title = complete ? `${name} — fully labelled (${clip.label_count} marks)` : name;
+    el.textContent = name + (marked ? " ✓" : "");
+    if (marked) el.style.color = "var(--muted)";
+    el.title = name;
     el.onclick = () => loadClip(name, el);
     list.appendChild(el);
+    elMap[name] = el;
+  });
+  // Lazy-load completion status in background
+  fetch("/clips/status").then(r => r.ok ? r.json() : null).then(status => {
+    if (!status) return;
+    status.clips.forEach(clip => {
+      const el = elMap[clip.name];
+      if (!el) return;
+      if (clip.complete) {
+        el.textContent = clip.name + " ✅";
+        el.style.color = "var(--green)";
+        el.title = `${clip.name} — fully labelled (${clip.label_count} marks)`;
+      } else if (clip.marked) {
+        el.textContent = clip.name + " ✓";
+        el.style.color = "var(--muted)";
+      }
+    });
   });
 }
 
