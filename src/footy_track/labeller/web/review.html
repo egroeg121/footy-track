@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Review — SAM3 Video Labeller</title>
+<style>
+  :root { --bg:#0f1419; --panel:#1a2129; --ink:#e6edf3; --muted:#9bb0c0;
+          --accent:#1e90ff; --green:#3fb950; --red:#f85149; --border:#2d3742;
+          --yellow:#e3b341; --purple:#a371f7; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink);
+         font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+         user-select:none; }
+  header { padding:10px 16px; border-bottom:1px solid var(--border);
+           display:flex; align-items:center; gap:16px; }
+  header h1 { margin:0; font-size:18px; }
+  header a { color:var(--accent); font-size:13px; text-decoration:none; }
+  #main { display:flex; flex-direction:column; align-items:center;
+          padding:24px 16px; min-height:calc(100vh - 49px); }
+  #progress-bar-wrap { width:100%; max-width:600px; height:6px;
+                       background:var(--border); border-radius:3px; margin-bottom:12px; }
+  #progress-bar { height:100%; background:var(--accent); border-radius:3px;
+                  transition:width 0.2s; }
+  #progress-text { font-size:12px; color:var(--muted); margin-bottom:16px; }
+  #card { position:relative; width:100%; max-width:600px; background:var(--panel);
+          border:1px solid var(--border); border-radius:12px; overflow:hidden;
+          box-shadow:0 8px 32px rgba(0,0,0,0.4); }
+  #crop-img { width:100%; display:block; background:#000;
+              min-height:300px; object-fit:contain; }
+  #label-badge { position:absolute; top:10px; left:10px;
+                 font-size:12px; font-weight:700; padding:3px 8px;
+                 border-radius:4px; text-transform:uppercase; letter-spacing:.05em; }
+  #conf-badge { position:absolute; top:10px; right:10px;
+                font-size:12px; color:var(--muted); background:rgba(0,0,0,.6);
+                padding:3px 8px; border-radius:4px; }
+  #clip-info { position:absolute; bottom:10px; left:10px; right:10px;
+               font-size:11px; color:var(--muted); background:rgba(0,0,0,.6);
+               padding:3px 8px; border-radius:4px; text-align:center; }
+  #actions { display:flex; gap:10px; margin-top:14px; flex-wrap:wrap; justify-content:center; }
+  .action-btn { padding:8px 18px; border:1px solid var(--border); border-radius:8px;
+                background:#0d1620; color:var(--ink); font-size:13px; cursor:pointer; }
+  .action-btn:hover { border-color:var(--accent); }
+  .action-btn.accept { border-color:var(--green); color:var(--green); }
+  .action-btn.delete { border-color:var(--red); color:var(--red); }
+  .action-btn.relabel { border-color:var(--yellow); color:var(--yellow); }
+  .action-btn.back { border-color:var(--muted); color:var(--muted); }
+  #hotkeys { margin-top:12px; font-size:11px; color:var(--muted); text-align:center; }
+  /* Class picker overlay */
+  #picker-overlay { display:none; position:fixed; inset:0;
+                    background:rgba(0,0,0,.7); z-index:100;
+                    align-items:center; justify-content:center; }
+  #picker-overlay.open { display:flex; }
+  #picker-box { background:var(--panel); border:1px solid var(--border);
+                border-radius:12px; padding:20px 28px; min-width:280px; }
+  #picker-box h3 { margin:0 0 14px; font-size:16px; }
+  .pick-btn { display:flex; align-items:center; gap:10px;
+              width:100%; padding:8px 12px; margin-bottom:6px;
+              background:#0d1620; border:1px solid var(--border);
+              border-radius:6px; color:var(--ink); font-size:13px; cursor:pointer; }
+  .pick-btn:hover { border-color:var(--accent); }
+  .pick-key { font-size:11px; color:var(--muted); background:var(--border);
+              border-radius:3px; padding:2px 6px; font-family:monospace; }
+  #box-resize { display:flex; gap:8px; margin-top:14px; align-items:center; font-size:12px; color:var(--muted); }
+  #done-state { font-size:22px; text-align:center; padding:48px 0; color:var(--muted); }
+  #loading-state { font-size:16px; text-align:center; padding:48px 0; color:var(--muted); }
+</style>
+</head>
+<body>
+<header>
+  <h1>🃏 Review</h1>
+  <a href="/">← Labeller</a>
+</header>
+
+<div id="main">
+  <div id="progress-bar-wrap"><div id="progress-bar" style="width:0%"></div></div>
+  <div id="progress-text">Loading…</div>
+
+  <div id="loading-state">Loading review queue…</div>
+  <div id="done-state" style="display:none">
+    ✅ All done! Queue is empty.
+    <br><br>
+    <button class="action-btn" onclick="location.reload()">Reload</button>
+  </div>
+
+  <div id="card" style="display:none">
+    <img id="crop-img" src="" alt="crop" />
+    <div id="label-badge"></div>
+    <div id="conf-badge"></div>
+    <div id="clip-info"></div>
+  </div>
+
+  <div id="actions" style="display:none">
+    <button class="action-btn back" id="btn-back">← Back</button>
+    <button class="action-btn accept" id="btn-accept">✓ Correct  [Space/→]</button>
+    <button class="action-btn relabel" id="btn-relabel">W Wrong class</button>
+    <button class="action-btn delete" id="btn-delete">D Delete</button>
+  </div>
+
+  <div id="box-resize" style="display:none">
+    <span>Box:</span>
+    <button class="action-btn" id="btn-shrink">[ Shrink</button>
+    <button class="action-btn" id="btn-grow">] Grow</button>
+    <span id="bbox-display"></span>
+  </div>
+
+  <div id="hotkeys" style="display:none">
+    Space / → accept &nbsp;|&nbsp; D delete &nbsp;|&nbsp; W wrong class &nbsp;|&nbsp; [ / ] resize box &nbsp;|&nbsp;
+    B open in labeller &nbsp;|&nbsp; ← back
+  </div>
+</div>
+
+<!-- Class picker overlay -->
+<div id="picker-overlay">
+  <div id="picker-box">
+    <h3>Choose class</h3>
+    <button class="pick-btn" data-label="player"><span class="pick-key">1</span> Player</button>
+    <button class="pick-btn" data-label="in_play_ball"><span class="pick-key">2</span> Ball (in play)</button>
+    <button class="pick-btn" data-label="out_of_play_ball"><span class="pick-key">3</span> Ball (out of play)</button>
+    <button class="pick-btn" data-label="referee"><span class="pick-key">4</span> Referee</button>
+    <button class="pick-btn" data-label="coach"><span class="pick-key">5</span> Coach</button>
+    <button class="pick-btn" data-label="player_sub"><span class="pick-key">6</span> Player (sub)</button>
+    <button class="pick-btn" data-label="ball"><span class="pick-key">7</span> Ball (generic)</button>
+    <br>
+    <button class="pick-btn" style="color:var(--muted);" id="picker-cancel"><span class="pick-key">Esc</span> Cancel</button>
+  </div>
+</div>
+
+<script>
+const CLASS_COLORS = {
+  player: '#1e90ff',
+  in_play_ball: '#3fb950',
+  out_of_play_ball: '#e3b341',
+  referee: '#a371f7',
+  coach: '#f85149',
+  player_sub: '#58a6ff',
+  ball: '#3fb950',
+  person: '#9bb0c0',
+};
+
+let queue = [];
+let pos = 0;         // current index
+let history = [];    // stack of completed positions for back nav
+let pendingBbox = null; // current item's bbox, potentially modified by resize
+
+async function loadQueue() {
+  const resp = await fetch('/review/queue');
+  const data = await resp.json();
+  queue = data.items;
+  if (queue.length === 0) {
+    showDone();
+  } else {
+    showCard(0);
+  }
+}
+
+function showDone() {
+  document.getElementById('loading-state').style.display = 'none';
+  document.getElementById('card').style.display = 'none';
+  document.getElementById('actions').style.display = 'none';
+  document.getElementById('box-resize').style.display = 'none';
+  document.getElementById('hotkeys').style.display = 'none';
+  document.getElementById('done-state').style.display = 'block';
+  document.getElementById('progress-text').textContent = `${queue.length} / ${queue.length} reviewed`;
+  document.getElementById('progress-bar').style.width = '100%';
+}
+
+function showCard(idx) {
+  if (idx >= queue.length) { showDone(); return; }
+  pos = idx;
+  const item = queue[idx];
+  pendingBbox = {...item.bbox};
+
+  document.getElementById('loading-state').style.display = 'none';
+  document.getElementById('done-state').style.display = 'none';
+  document.getElementById('card').style.display = 'block';
+  document.getElementById('actions').style.display = 'flex';
+  document.getElementById('box-resize').style.display = 'flex';
+  document.getElementById('hotkeys').style.display = 'block';
+
+  const total = queue.length;
+  const reviewed = idx;
+  document.getElementById('progress-bar').style.width = `${(reviewed/total)*100}%`;
+  document.getElementById('progress-text').textContent = `${reviewed} / ${total} reviewed`;
+
+  const img = document.getElementById('crop-img');
+  img.src = item.image_url + '?t=' + Date.now();
+
+  const badge = document.getElementById('label-badge');
+  badge.textContent = item.label;
+  badge.style.background = CLASS_COLORS[item.label] || '#555';
+  badge.style.color = '#000';
+
+  const confBadge = document.getElementById('conf-badge');
+  if (item.provenance === 'yolo' || item.provenance === 'sam3') {
+    confBadge.textContent = `${Math.round(item.confidence * 100)}% ${item.provenance}`;
+    confBadge.style.display = 'block';
+  } else {
+    confBadge.style.display = 'none';
+  }
+
+  document.getElementById('clip-info').textContent =
+    `${item.clip}  ·  frame ${item.frame_index}  ·  box ${item.box_index}`;
+
+  updateBboxDisplay();
+  preloadNext(idx + 1);
+}
+
+function updateBboxDisplay() {
+  if (!pendingBbox) return;
+  const b = pendingBbox;
+  document.getElementById('bbox-display').textContent =
+    `x:${b.x.toFixed(3)} y:${b.y.toFixed(3)} w:${b.w.toFixed(3)} h:${b.h.toFixed(3)}`;
+}
+
+function preloadNext(idx) {
+  if (idx >= queue.length) return;
+  const img = new Image();
+  img.src = queue[idx].image_url;
+}
+
+async function accept() {
+  const item = queue[pos];
+  // If bbox was modified, write correction with current label + new bbox
+  const bboxChanged = JSON.stringify(pendingBbox) !== JSON.stringify(item.bbox);
+  if (bboxChanged) {
+    await fetch('/review/correct', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        clip: item.clip,
+        frame_index: item.frame_index,
+        box_index: item.box_index,
+        label: item.label,
+        bbox: pendingBbox,
+      }),
+    });
+  }
+  history.push(pos);
+  showCard(pos + 1);
+}
+
+async function deleteBox() {
+  const item = queue[pos];
+  await fetch('/review/delete', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({
+      clip: item.clip,
+      frame_index: item.frame_index,
+      box_index: item.box_index,
+    }),
+  });
+  queue.splice(pos, 1);
+  showCard(pos);
+}
+
+async function relabel(newLabel) {
+  closePicker();
+  const item = queue[pos];
+  await fetch('/review/correct', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({
+      clip: item.clip,
+      frame_index: item.frame_index,
+      box_index: item.box_index,
+      label: newLabel,
+      bbox: pendingBbox,
+    }),
+  });
+  // Update queue item so badge updates
+  queue[pos] = {...item, label: newLabel};
+  history.push(pos);
+  showCard(pos + 1);
+}
+
+function goBack() {
+  if (history.length === 0) return;
+  pos = history.pop();
+  showCard(pos);
+}
+
+function resizeBox(factor) {
+  if (!pendingBbox) return;
+  const b = pendingBbox;
+  const dw = b.w * factor / 2;
+  const dh = b.h * factor / 2;
+  pendingBbox = {
+    x: Math.max(0, b.x - dw),
+    y: Math.max(0, b.y - dh),
+    w: Math.min(1 - b.x + dw, b.w + dw * 2),
+    h: Math.min(1 - b.y + dh, b.h + dh * 2),
+  };
+  updateBboxDisplay();
+}
+
+function openPicker() {
+  document.getElementById('picker-overlay').classList.add('open');
+}
+
+function closePicker() {
+  document.getElementById('picker-overlay').classList.remove('open');
+}
+
+function openInLabeller() {
+  const item = queue[pos];
+  // Open main labeller at the clip's frame. Pass clip stem as hint.
+  const url = `/?clip=${encodeURIComponent(item.clip)}&frame=${item.frame_index}`;
+  window.open(url, '_blank');
+}
+
+// Button wiring
+document.getElementById('btn-accept').addEventListener('click', accept);
+document.getElementById('btn-delete').addEventListener('click', deleteBox);
+document.getElementById('btn-relabel').addEventListener('click', openPicker);
+document.getElementById('btn-back').addEventListener('click', goBack);
+document.getElementById('btn-shrink').addEventListener('click', () => resizeBox(-0.05));
+document.getElementById('btn-grow').addEventListener('click', () => resizeBox(0.05));
+document.getElementById('picker-cancel').addEventListener('click', closePicker);
+
+document.querySelectorAll('.pick-btn[data-label]').forEach(btn => {
+  btn.addEventListener('click', () => relabel(btn.dataset.label));
+});
+
+// Hotkeys
+document.addEventListener('keydown', e => {
+  if (document.getElementById('picker-overlay').classList.contains('open')) {
+    if (e.key === 'Escape') { closePicker(); return; }
+    const keyMap = {'1':'player','2':'in_play_ball','3':'out_of_play_ball',
+                    '4':'referee','5':'coach','6':'player_sub','7':'ball'};
+    if (keyMap[e.key]) { relabel(keyMap[e.key]); return; }
+    return;
+  }
+  if (e.key === ' ' || e.key === 'ArrowRight') { e.preventDefault(); accept(); }
+  else if (e.key === 'ArrowLeft') { goBack(); }
+  else if (e.key === 'd' || e.key === 'D') { deleteBox(); }
+  else if (e.key === 'w' || e.key === 'W') { openPicker(); }
+  else if (e.key === '[') { resizeBox(-0.05); }
+  else if (e.key === ']') { resizeBox(0.05); }
+  else if (e.key === 'b' || e.key === 'B') { openInLabeller(); }
+});
+
+loadQueue();
+</script>
+</body>
+</html>
