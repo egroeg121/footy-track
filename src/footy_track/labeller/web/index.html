@@ -432,6 +432,8 @@ window.addEventListener("keydown",(e)=>{
 
   if (e.key === "e" || e.key === "E") { setTool("edit"); return; }
   if (e.key === "w" || e.key === "W") { setTool("draw"); return; }
+  const classKeys = {"1":"in_play_ball","2":"ball","3":"referee","4":"player","5":"person","6":"coach"};
+  if (classKeys[e.key]) { classSel.value = classKeys[e.key]; setTool("draw"); return; }
   if (e.key === "n" || e.key === "N") { markNoBall(); return; }
   if (e.key === "b" || e.key === "B") { markNotBroadcast(); return; }
   if (e.key === "r" || e.key === "R") { autodetect(viewFrame); return; }
