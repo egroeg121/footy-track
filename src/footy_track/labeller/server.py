@@ -487,6 +487,9 @@ async def edit_frame(body: dict) -> dict:
     idx = int(body["idx"])
     boxes = _boxes_from_payload(body.get("objects", []), PROV_LABELLER)
     SESSION.set_frame(idx, boxes)
+    if boxes:
+        SESSION.no_ball_frames.discard(idx)
+        SESSION.not_broadcast_frames.discard(idx)
     SESSION.schedule_flush()
     return {"idx": idx, "boxes": _boxes_payload(SESSION.get_frame(idx))}
 

@@ -345,7 +345,7 @@ let drawing=null, drawStart=null;
 stage.on("mousedown", (e)=>{
   if (tool!=="draw" || mode==="running") return;
   const p=stage.getPointerPosition(); drawStart=p;
-  drawing=addRect(classSel.value, p.x, p.y, 1, 1, true);
+  drawing=addRect(classSel.value, p.x, p.y, 1, 1, false);
 });
 stage.on("mousemove", ()=>{
   if(!drawing) return; const p=stage.getPointerPosition();
@@ -572,7 +572,7 @@ function undoLast(){
   if(!undoStack.length){ setStatus("Nothing to undo"); return; }
   const snapshot = undoStack.pop();
   clearBoxes();
-  snapshot.forEach(o => addRect(o.label, o.x*dispW, o.y*dispH, o.w*dispW, o.h*dispH, true));
+  snapshot.forEach(o => addRect(o.label, o.x*dispW, o.y*dispH, o.w*dispW, o.h*dispH, tool==="edit"));
   refreshNumbers(); boxLayer.draw(); renderList();
   frameDirty = true;
 }
