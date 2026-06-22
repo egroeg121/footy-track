@@ -459,11 +459,14 @@ async function loadClipList() {
   data.clips.forEach(clip => {
     const name = typeof clip === "string" ? clip : clip.name;
     const marked = clip.marked || false;
+    const complete = clip.complete || false;
     const el = document.createElement("div");
     el.className = "clip-item";
-    el.textContent = name + (marked ? " ✓" : "");
-    if (marked) el.style.color = "var(--green)";
-    el.title = name;
+    const badge = complete ? " ✅" : marked ? " ✓" : "";
+    el.textContent = name + badge;
+    if (complete) el.style.color = "var(--green)";
+    else if (marked) el.style.color = "var(--muted)";
+    el.title = complete ? `${name} — fully labelled (${clip.label_count} marks)` : name;
     el.onclick = () => loadClip(name, el);
     list.appendChild(el);
   });
@@ -471,8 +474,9 @@ async function loadClipList() {
 
 async function loadClip(name, el) {
   if (!clipsDir) return;
-  // Save current frame before switching clips
+  // Save current frame then clear canvas before switching clips
   await saveCurrentEdits();
+  clearBoxes(); boxLayer.draw(); renderList();
   const path = clipsDir + "/" + name;
   $("videoPath").value = path;
   // Highlight active clip
@@ -519,6 +523,7 @@ $("loadBtn").onclick = async ()=>{
     (marks.ball || []).forEach(i => markedBallFrames.add(i));
     (marks.player || []).forEach(i => markedPlayerFrames.add(i));
   }
+  loadClipList(); // refresh ticks after switching clips
   // Defer bar render until after browser layout so offsetWidth is correct.
   requestAnimationFrame(() => renderTimelineBar());
   await autodetect(0);

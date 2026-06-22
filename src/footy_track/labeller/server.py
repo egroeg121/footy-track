@@ -326,16 +326,38 @@ async def index() -> HTMLResponse:
     return HTMLResponse((_STATIC_DIR / "index.html").read_text())
 
 
+def _clip_completion(stem: str, video_path: Path) -> dict:
+    """Return {marked, complete, label_count} for a clip."""
+    jsonl = _GT_MARKS_DIR / f"{stem}.jsonl"
+    if not jsonl.exists():
+        return {"marked": False, "complete": False, "label_count": 0}
+    try:
+        frame_indices = []
+        with jsonl.open() as f:
+            for line in f:
+                line = line.strip()
+                if line:
+                    d = json.loads(line)
+                    frame_indices.append(int(d.get("frame_index", 0)))
+        if not frame_indices:
+            return {"marked": False, "complete": False, "label_count": 0}
+        cap = cv2.VideoCapture(str(video_path))
+        total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        cap.release()
+        complete = total > 0 and max(frame_indices) >= total - 15
+        return {"marked": True, "complete": complete, "label_count": len(frame_indices)}
+    except Exception:
+        return {"marked": True, "complete": False, "label_count": 0}
+
+
 @app.get("/clips")
 async def list_clips() -> dict:
     """Return sorted list of clip filenames from eval_data/clips/."""
     if not _CLIPS_DIR.exists():
         return {"clips": []}
-    clips = sorted(
-        p.name
-        for p in _CLIPS_DIR.iterdir()
-        if p.suffix.lower() in {".mp4", ".mov", ".avi", ".mkv"}
-    )
+    video_suffixes = {".mp4", ".mov", ".avi", ".mkv"}
+    paths = sorted(p for p in _CLIPS_DIR.iterdir() if p.suffix.lower() in video_suffixes)
+    clips = [{"name": p.name, **_clip_completion(p.stem, p)} for p in paths]
     return {"clips": clips, "dir": str(_CLIPS_DIR)}
 
 
