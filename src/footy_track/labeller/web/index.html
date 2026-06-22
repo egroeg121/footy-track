@@ -540,7 +540,7 @@ $("nextBtn").onclick = ()=>navigateDelta(1);
 // frame we POST the current boxes to /edit (labeller ground truth); when
 // entering a frame we GET /timeline/{idx} and render it.
 async function saveCurrentEdits(){
-  if ((mode==="paused"||mode==="idle_results") && viewFrame!=null){
+  if (mode!=="running" && viewFrame!=null){
     await fetch("/edit",{method:"POST",headers:{"Content-Type":"application/json"},
       body:JSON.stringify({idx:viewFrame, objects:boxesNorm()})});
   }
