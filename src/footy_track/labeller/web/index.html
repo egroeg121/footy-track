@@ -259,7 +259,7 @@ function renderList(){
 function renderTimelineBar(){
   if (!meta) return;
   const canvas = $("timelineBar");
-  const W = canvas.offsetWidth || 900;
+  const W = $("scrub").offsetWidth || canvas.offsetWidth || 900;
   canvas.width = W;
   const ctx = canvas.getContext("2d");
   ctx.clearRect(0, 0, W, 12);
@@ -519,7 +519,8 @@ $("loadBtn").onclick = async ()=>{
     (marks.ball || []).forEach(i => markedBallFrames.add(i));
     (marks.player || []).forEach(i => markedPlayerFrames.add(i));
   }
-  renderTimelineBar();
+  // Defer bar render until after browser layout so offsetWidth is correct.
+  requestAnimationFrame(() => renderTimelineBar());
   await autodetect(0);
   connectWS();
 };
@@ -538,6 +539,7 @@ $("nextDetBtn").onclick = ()=>gotoNextDetection();
 // Call renderTimelineBar after navigating to a frame
 const _origShowFrame = showFrame;
 showFrame = async function(idx){ await _origShowFrame(idx); renderTimelineBar(); };
+window.addEventListener("resize", () => renderTimelineBar());
 
 // ---------- scrubbing ----------
 function navigateDelta(delta){
