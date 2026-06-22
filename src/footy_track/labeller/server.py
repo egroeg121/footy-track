@@ -323,7 +323,12 @@ def _boxes_payload(boxes: list[ObjectDetection]) -> list[dict]:
 
 
 @app.get("/", response_class=HTMLResponse)
-async def index() -> HTMLResponse:
+async def root() -> HTMLResponse:
+    return HTMLResponse((_STATIC_DIR / "main.html").read_text())
+
+
+@app.get("/labeller", response_class=HTMLResponse)
+async def labeller_page() -> HTMLResponse:
     return HTMLResponse((_STATIC_DIR / "index.html").read_text())
 
 
@@ -748,10 +753,9 @@ def _build_review_queue(records: list[dict]) -> list[dict]:
     return result
 
 
-@app.get("/review", response_class=HTMLResponse)
+@app.get("/object_review", response_class=HTMLResponse)
 async def review_page() -> HTMLResponse:
-    review_html = _STATIC_DIR / "review.html"
-    return HTMLResponse(review_html.read_text())
+    return HTMLResponse((_STATIC_DIR / "review.html").read_text())
 
 
 @app.get("/review/queue")
