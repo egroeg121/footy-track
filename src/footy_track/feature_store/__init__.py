@@ -13,6 +13,7 @@ from footy_track.feature_store.importers import (
     import_roboflow,
     source_overlap,
 )
+from footy_track.feature_store.ingest_gt import GtImportReport, ingest_gt_dir, ingest_gt_file
 from footy_track.feature_store.ingest import (
     classifier_run,
     detector_run,
@@ -40,6 +41,7 @@ __all__ = [
     "FeatureStore",
     "FrameRow",
     "GameRow",
+    "GtImportReport",
     "ImportReport",
     "Point",
     "RunRow",
@@ -52,6 +54,8 @@ __all__ = [
     "import_labeller_json",
     "import_roboflow",
     "ingest_frame",
+    "ingest_gt_dir",
+    "ingest_gt_file",
     "score_detections",
     "source_overlap",
     "to_detection_rows",
