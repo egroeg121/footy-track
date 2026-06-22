@@ -321,7 +321,6 @@ $("toolDraw").onclick=()=>setTool("draw");
 let drawing=null, drawStart=null;
 stage.on("mousedown", (e)=>{
   if (tool!=="draw" || mode==="running") return;
-  if (e.target!==stage && e.target!==bgImage) return;
   const p=stage.getPointerPosition(); drawStart=p;
   drawing=addRect(classSel.value, p.x, p.y, 1, 1, true);
 });
