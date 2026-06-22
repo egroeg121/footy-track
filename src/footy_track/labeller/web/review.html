@@ -310,6 +310,9 @@ function renderGrid() {
     });
     card.addEventListener('dblclick', () => toggleSelect(i, card));
 
+    // Apply seen border immediately (synchronous, before image load)
+    if (isSeenKey(item)) card.style.borderColor = 'var(--green)';
+
     grid.appendChild(card);
   });
 
@@ -347,8 +350,6 @@ function isSeenKey(item) {
 function drawGtOnCard(cardIdx, item) {
   const card = document.querySelector(`.crop-card[data-idx="${cardIdx}"]`);
   if (!card) return;
-  // Restore seen border if already reviewed
-  if (isSeenKey(item)) card.style.borderColor = 'var(--green)';
 
   const img = card.querySelector('img');
   const doRender = () => {
