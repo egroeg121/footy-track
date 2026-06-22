@@ -197,9 +197,12 @@ function drawBoxes(objs, editable){
   clearBoxes();
   objs.forEach(o => addRect(o.label, o.x*dispW, o.y*dispH, o.w*dispW, o.h*dispH, editable));
   refreshNumbers(); boxLayer.draw(); renderList();
-  // Update frame tracking sets based on what's on canvas
-  const hasBall = objs.some(o => BALL_LABELS.has(o.label));
-  const hasPlayer = objs.some(o => PLAYER_LABELS.has(o.label));
+}
+
+function syncTimelineSets(){
+  const boxes = boxesNorm();
+  const hasBall = boxes.some(o => BALL_LABELS.has(o.label));
+  const hasPlayer = boxes.some(o => PLAYER_LABELS.has(o.label));
   if (hasBall) markedBallFrames.add(viewFrame); else markedBallFrames.delete(viewFrame);
   if (hasPlayer) markedPlayerFrames.add(viewFrame); else markedPlayerFrames.delete(viewFrame);
   renderTimelineBar();
@@ -244,10 +247,10 @@ function renderList(){
     } else {
       const sel=document.createElement("select");
       CLASSES.forEach(c=>{const o=document.createElement("option");o.value=c;o.textContent=CLASS_KEYS[c]?`[${CLASS_KEYS[c]}] ${c}`:c;if(c===r.getAttr("label"))o.selected=true;sel.appendChild(o);});
-      sel.onchange=()=>{ r.setAttr("label",sel.value); r.stroke(colorOf(sel.value)); frameDirty=true; refreshNumbers(); boxLayer.draw(); renderList(); };
+      sel.onchange=()=>{ r.setAttr("label",sel.value); r.stroke(colorOf(sel.value)); frameDirty=true; refreshNumbers(); boxLayer.draw(); renderList(); syncTimelineSets(); };
       row.appendChild(sel);
       const x=document.createElement("span"); x.className="x"; x.textContent="✕";
-      x.onclick=()=>{ pushUndo(); const t=r.getAttr("numText"); if(t)t.destroy(); r.destroy(); tr.nodes([]); frameDirty=true; boxLayer.draw(); renderList(); };
+      x.onclick=()=>{ pushUndo(); const t=r.getAttr("numText"); if(t)t.destroy(); r.destroy(); tr.nodes([]); frameDirty=true; boxLayer.draw(); renderList(); syncTimelineSets(); };
       row.appendChild(x);
       row.onclick=(e)=>{ if(e.target===x||e.target===sel)return; selectRect(r); };
     }
@@ -355,7 +358,7 @@ stage.on("mousemove", ()=>{
   drawing.x(Math.min(p.x,drawStart.x)); drawing.y(Math.min(p.y,drawStart.y));
   refreshNumbers(); boxLayer.draw();
 });
-stage.on("mouseup", ()=>{ if(drawing){ if(drawing.width()<4||drawing.height()<4){const t=drawing.getAttr("numText");if(t)t.destroy();drawing.destroy();} else { pushUndo(); frameDirty=true; } drawing=null; renderList(); }});
+stage.on("mouseup", ()=>{ if(drawing){ if(drawing.width()<4||drawing.height()<4){const t=drawing.getAttr("numText");if(t)t.destroy();drawing.destroy();} else { pushUndo(); frameDirty=true; syncTimelineSets(); } drawing=null; renderList(); }});
 
 // no-ball mark
 async function markNoBall() {
@@ -401,7 +404,7 @@ window.addEventListener("keydown",(e)=>{
   if (e.target.tagName === "INPUT" || e.target.tagName === "SELECT") return;
 
   if((e.key==="Delete"||e.key==="Backspace") && tool==="edit"){
-    const n=tr.nodes()[0]; if(n){ pushUndo(); const t=n.getAttr("numText"); if(t)t.destroy(); n.destroy(); tr.nodes([]); frameDirty=true; boxLayer.draw(); renderList(); }
+    const n=tr.nodes()[0]; if(n){ pushUndo(); const t=n.getAttr("numText"); if(t)t.destroy(); n.destroy(); tr.nodes([]); frameDirty=true; boxLayer.draw(); renderList(); syncTimelineSets(); }
     return;
   }
 
@@ -555,6 +558,7 @@ async function autodetect(frameIdx){
     body:JSON.stringify({frame_idx:frameIdx, conf:0.35, iou:0.5, current_boxes:boxesNorm()})});
   const data = await res.json();   // writes to timeline server-side
   drawBoxes(data.boxes, true);
+  syncTimelineSets();
   setStatus(`auto-detected ${data.boxes.length} objects`);
 }
 $("autoBtn").onclick = ()=>autodetect(viewFrame);
@@ -578,6 +582,7 @@ function undoLast(){
   snapshot.forEach(o => addRect(o.label, o.x*dispW, o.y*dispH, o.w*dispW, o.h*dispH, tool==="edit"));
   refreshNumbers(); boxLayer.draw(); renderList();
   frameDirty = true;
+  syncTimelineSets();
 }
 async function gotoNextDetection(){
   if (meta === null) return;
