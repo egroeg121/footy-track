@@ -79,6 +79,7 @@
       </span>
       <select id="classSel"></select>
       <button id="autoBtn" title="Auto-detect objects on this frame (R)">🤖 Auto-detect (R)</button>
+      <button id="nextDetBtn" title="Skip to next frame with detections (G)">⏭ Next detection (G)</button>
       <button id="noBallBtn" title="Mark frame as no-ball-visible (N)">🚫 No ball (N)</button>
       <button id="notBroadcastBtn" title="Mark frame as not broadcast (B)">📺 Not broadcast (B)</button>
       <label class="muted" style="margin-left:8px;">res
@@ -131,6 +132,7 @@ let lastCompleted = -1;
 let ws = null;
 let clipsDir = "";          // resolved server-side clips directory
 let frameDirty = false;     // true only if user has edited the current frame
+let undoStack = [];         // stack of box snapshots for current frame
 const noBallFrames = new Set();
 const notBroadcastFrames = new Set();
 
@@ -169,7 +171,7 @@ function addRect(label, x, y, w, h, editable) {
   r.setAttr("label", label);
   if (editable) {
     r.on("click", () => selectRect(r));
-    r.on("transformend dragend", () => { normalizeScale(r); frameDirty=true; renderList(); });
+    r.on("transformend dragend", () => { normalizeScale(r); pushUndo(); frameDirty=true; renderList(); });
   }
   boxLayer.add(r);
   // number label
@@ -244,7 +246,7 @@ function renderList(){
       sel.onchange=()=>{ r.setAttr("label",sel.value); r.stroke(colorOf(sel.value)); frameDirty=true; refreshNumbers(); boxLayer.draw(); renderList(); };
       row.appendChild(sel);
       const x=document.createElement("span"); x.className="x"; x.textContent="✕";
-      x.onclick=()=>{ const t=r.getAttr("numText"); if(t)t.destroy(); r.destroy(); tr.nodes([]); frameDirty=true; boxLayer.draw(); renderList(); };
+      x.onclick=()=>{ pushUndo(); const t=r.getAttr("numText"); if(t)t.destroy(); r.destroy(); tr.nodes([]); frameDirty=true; boxLayer.draw(); renderList(); };
       row.appendChild(x);
       row.onclick=(e)=>{ if(e.target===x||e.target===sel)return; selectRect(r); };
     }
@@ -350,7 +352,7 @@ stage.on("mousemove", ()=>{
   drawing.x(Math.min(p.x,drawStart.x)); drawing.y(Math.min(p.y,drawStart.y));
   refreshNumbers(); boxLayer.draw();
 });
-stage.on("mouseup", ()=>{ if(drawing){ if(drawing.width()<4||drawing.height()<4){const t=drawing.getAttr("numText");if(t)t.destroy();drawing.destroy();} else { frameDirty=true; } drawing=null; renderList(); }});
+stage.on("mouseup", ()=>{ if(drawing){ if(drawing.width()<4||drawing.height()<4){const t=drawing.getAttr("numText");if(t)t.destroy();drawing.destroy();} else { pushUndo(); frameDirty=true; } drawing=null; renderList(); }});
 
 // no-ball mark
 async function markNoBall() {
@@ -396,7 +398,7 @@ window.addEventListener("keydown",(e)=>{
   if (e.target.tagName === "INPUT" || e.target.tagName === "SELECT") return;
 
   if((e.key==="Delete"||e.key==="Backspace") && tool==="edit"){
-    const n=tr.nodes()[0]; if(n){ const t=n.getAttr("numText"); if(t)t.destroy(); n.destroy(); tr.nodes([]); frameDirty=true; boxLayer.draw(); renderList(); }
+    const n=tr.nodes()[0]; if(n){ pushUndo(); const t=n.getAttr("numText"); if(t)t.destroy(); n.destroy(); tr.nodes([]); frameDirty=true; boxLayer.draw(); renderList(); }
     return;
   }
 
@@ -434,6 +436,8 @@ window.addEventListener("keydown",(e)=>{
   if (e.key === "w" || e.key === "W") { setTool("draw"); return; }
   const classKeys = {"1":"in_play_ball","2":"ball","3":"referee","4":"player","5":"person","6":"coach"};
   if (classKeys[e.key]) { classSel.value = classKeys[e.key]; setTool("draw"); return; }
+  if ((e.key === "z" || e.key === "Z") && !e.shiftKey) { undoLast(); return; }
+  if (e.key === "g" || e.key === "G") { gotoNextDetection(); return; }
   if (e.key === "n" || e.key === "N") { markNoBall(); return; }
   if (e.key === "b" || e.key === "B") { markNotBroadcast(); return; }
   if (e.key === "r" || e.key === "R") { autodetect(viewFrame); return; }
@@ -528,6 +532,7 @@ async function autodetect(frameIdx){
   setStatus(`auto-detected ${data.boxes.length} objects`);
 }
 $("autoBtn").onclick = ()=>autodetect(viewFrame);
+$("nextDetBtn").onclick = ()=>gotoNextDetection();
 
 // Call renderTimelineBar after navigating to a frame
 const _origShowFrame = showFrame;
@@ -537,6 +542,22 @@ showFrame = async function(idx){ await _origShowFrame(idx); renderTimelineBar();
 function navigateDelta(delta){
   if (meta === null) return;
   gotoFrame(Math.max(0, Math.min(meta.total_frames-1, viewFrame+delta)));
+}
+function pushUndo(){ undoStack.push(boxesNorm()); if(undoStack.length>20) undoStack.shift(); }
+function undoLast(){
+  if(!undoStack.length){ setStatus("Nothing to undo"); return; }
+  const snapshot = undoStack.pop();
+  clearBoxes();
+  snapshot.forEach(o => addRect(o.label, o.x*dispW, o.y*dispH, o.w*dispW, o.h*dispH, true));
+  refreshNumbers(); boxLayer.draw(); renderList();
+  frameDirty = true;
+}
+async function gotoNextDetection(){
+  if (meta === null) return;
+  const res = await fetch(`/next-detection/${viewFrame}`);
+  const data = await res.json();
+  if (data.idx !== null) gotoFrame(data.idx);
+  else setStatus("No more frames with detections");
 }
 $("scrub").oninput = (e)=>gotoFrame(parseInt(e.target.value));
 $("prevBtn").onclick = ()=>navigateDelta(-1);
@@ -561,6 +582,7 @@ async function loadTimelineFrame(idx, editable){
 async function gotoFrame(idx){
   await saveCurrentEdits();     // persist edits on the frame we're leaving
   frameDirty = false;
+  undoStack = [];
   clearBoxes();
   await showFrame(idx);
   if (mode==="running") {

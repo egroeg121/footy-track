@@ -428,6 +428,17 @@ async def get_timeline(idx: int) -> dict:
     return {"idx": idx, "boxes": _boxes_payload(SESSION.get_frame(idx))}
 
 
+@app.get("/next-detection/{from_idx}")
+async def next_detection(from_idx: int) -> dict:
+    """Return the next frame after from_idx that has at least one box."""
+    with SESSION._tl_lock:
+        tl = list(SESSION.timeline)
+    for idx in range(from_idx + 1, len(tl)):
+        if tl[idx]:
+            return {"idx": idx}
+    return {"idx": None}
+
+
 @app.post("/edit")
 async def edit_frame(body: dict) -> dict:
     """Overwrite a frame with the user's boxes (labeller provenance = ground truth)."""
