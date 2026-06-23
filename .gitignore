@@ -32,6 +32,9 @@ CLAUDE.md
 tests/data/tmp_extracted_frames
 tests/data/split_videos/
 yolo11n.pt
+sam2_b.pt
+sam2_t.pt
+sam2_l.pt
 
 # Training/Inference folders
 runs/
