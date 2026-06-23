@@ -24,6 +24,9 @@ from footy_track.schema import (
     FrameDetections,
 )
 
+# Normalised (x, y, w, h) top-left — same convention as ball_eval.dataset.BBox.
+_BBox = tuple[float, float, float, float]
+
 if TYPE_CHECKING:
     from footy_track.feature_store.store import FeatureStore
 
@@ -132,6 +135,66 @@ def classifier_run(
         source="broadcast_classifier",
         model_name=model_name,
         model_version=model_version,
+    )
+
+
+def ball_tracker_run(
+    run_id: str, model_name: str, *, source: str, model_version: str | None = None
+) -> RunRow:
+    """Convenience: a detection-stage ``RunRow`` for a ball tracker.
+
+    ``source`` should name the tracker variant, e.g. ``"roi_yolo"`` or
+    ``"vittrack"``.  ``run_id`` uniquely identifies this tracker run so
+    multiple runs on the same game coexist in the detection table.
+    """
+    return RunRow(
+        run_id=run_id,
+        stage=Stage.DETECTION,
+        source=source,
+        model_name=model_name,
+        model_version=model_version,
+    )
+
+
+def to_ball_detection_row(
+    bbox: _BBox | None,
+    *,
+    game_id: str,
+    frame_index: int,
+    continuous_time_s: float,
+    detection_id: int,
+    source: str,
+    run_id: str,
+    label: str = "ball",
+    confidence: float | None = None,
+    is_interpolated: bool = False,
+) -> DetectionRow | None:
+    """Convert a single ball-tracker bbox into a ``DetectionRow``.
+
+    Returns ``None`` when *bbox* is ``None`` (ball not detected that frame),
+    so callers can filter with ``[r for r in rows if r is not None]``.
+
+    ``detection_id`` is the per-frame object index; for a single-ball tracker
+    this is always 0.  ``label`` defaults to ``"ball"``; pass ``"in_play_ball"``
+    or ``"out_of_play_ball"`` when the tracker distinguishes play state.
+    """
+    if bbox is None:
+        return None
+    x, y, w, h = bbox
+    return DetectionRow(
+        game_id=game_id,
+        frame_index=frame_index,
+        continuous_time_s=continuous_time_s,
+        detection_id=detection_id,
+        source=source,
+        run_id=run_id,
+        label=label,
+        confidence=confidence,
+        bbox_x=x,
+        bbox_y=y,
+        bbox_w=w,
+        bbox_h=h,
+        is_interpolated=is_interpolated,
     )
 
 

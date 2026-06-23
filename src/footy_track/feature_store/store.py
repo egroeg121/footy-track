@@ -263,6 +263,42 @@ class FeatureStore:
         sql += " ORDER BY continuous_time_s"
         return self.query(sql, params)
 
+    # Ball-specific label set used by ball_trajectory (matches constants.py).
+    _BALL_LABELS: tuple[str, ...] = ("ball", "in_play_ball", "out_of_play_ball")
+
+    def ball_trajectory(
+        self,
+        game_id: str,
+        *,
+        source: str,
+        run_id: str | None = None,
+        labels: tuple[str, ...] | None = None,
+    ) -> pd.DataFrame:
+        """Return all ball detections for a game, ordered by time.
+
+        Queries the detection table for rows whose label is one of the canonical
+        ball labels (``ball``, ``in_play_ball``, ``out_of_play_ball``).  Pass
+        ``labels`` to override; useful when a tracker uses a different label.
+
+        Returns columns: ``frame_index``, ``continuous_time_s``, ``bbox_x``,
+        ``bbox_y``, ``bbox_w``, ``bbox_h``, ``confidence``, ``label``,
+        ``is_interpolated``.
+        """
+        ball_labels = labels if labels is not None else self._BALL_LABELS
+        placeholders = ", ".join("?" for _ in ball_labels)
+        sql = (
+            "SELECT frame_index, continuous_time_s, bbox_x, bbox_y, bbox_w, bbox_h, "
+            "confidence, label, is_interpolated "
+            "FROM detection "
+            f"WHERE game_id = ? AND source = ? AND label IN ({placeholders})"
+        )
+        params: list[object] = [game_id, source, *ball_labels]
+        if run_id is not None:
+            sql += " AND run_id = ?"
+            params.append(run_id)
+        sql += " ORDER BY continuous_time_s"
+        return self.query(sql, params)
+
     # -- parquet export / import ------------------------------------------- #
 
     def export_parquet(self, out_dir: str | Path) -> dict[str, Path]:

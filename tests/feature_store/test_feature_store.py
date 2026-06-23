@@ -245,3 +245,101 @@ def test_frame_features_joins_game_metadata(store: FeatureStore) -> None:
     )
     assert df["home_team"][0] == "Arsenal"
     assert df["half2_start_continuous_s"][0] == pytest.approx(2910.0)
+
+
+def _ball_det(
+    frame: int,
+    source: str,
+    run: str,
+    *,
+    label: str = "ball",
+    conf: float = 0.8,
+) -> DetectionRow:
+    return DetectionRow(
+        game_id="g1",
+        frame_index=frame,
+        continuous_time_s=frame * 0.04,
+        detection_id=0,
+        source=source,
+        run_id=run,
+        label=label,
+        confidence=conf,
+        bbox_x=0.4,
+        bbox_y=0.4,
+        bbox_w=0.02,
+        bbox_h=0.02,
+    )
+
+
+def test_ball_trajectory_returns_ball_labels(store: FeatureStore) -> None:
+    store.upsert_runs(
+        [
+            RunRow(
+                run_id="roi_r1",
+                stage="detection",
+                source="roi_yolo",
+                model_name="yolo11s",
+            )
+        ]
+    )
+    store.upsert_detections(
+        [
+            _ball_det(0, "roi_yolo", "roi_r1", label="ball"),
+            _ball_det(1, "roi_yolo", "roi_r1", label="in_play_ball"),
+            # player on same run — must not appear in ball_trajectory
+            _det(0, 1, "roi_yolo", "roi_r1"),
+        ]
+    )
+    traj = store.ball_trajectory("g1", source="roi_yolo")
+    assert len(traj) == 2
+    assert set(traj["label"]) <= {"ball", "in_play_ball", "out_of_play_ball"}
+    assert list(traj["continuous_time_s"]) == [0.0, 0.04]
+
+
+def test_ball_trajectory_filters_by_run_id(store: FeatureStore) -> None:
+    store.upsert_runs(
+        [
+            RunRow(
+                run_id="roi_r1", stage="detection", source="roi_yolo", model_name="m"
+            ),
+            RunRow(
+                run_id="roi_r2", stage="detection", source="roi_yolo", model_name="m"
+            ),
+        ]
+    )
+    store.upsert_detections(
+        [
+            _ball_det(0, "roi_yolo", "roi_r1"),
+            _ball_det(1, "roi_yolo", "roi_r2"),
+        ]
+    )
+    traj = store.ball_trajectory("g1", source="roi_yolo", run_id="roi_r1")
+    assert len(traj) == 1
+    assert traj["frame_index"][0] == 0
+
+
+def test_ball_trajectory_custom_labels(store: FeatureStore) -> None:
+    store.upsert_runs(
+        [RunRow(run_id="roi_r1", stage="detection", source="roi_yolo", model_name="m")]
+    )
+    store.upsert_detections(
+        [
+            DetectionRow(
+                game_id="g1",
+                frame_index=0,
+                continuous_time_s=0.0,
+                detection_id=0,
+                source="roi_yolo",
+                run_id="roi_r1",
+                label="sports_ball",
+                confidence=0.7,
+                bbox_x=0.3,
+                bbox_y=0.3,
+                bbox_w=0.01,
+                bbox_h=0.01,
+            )
+        ]
+    )
+    traj = store.ball_trajectory("g1", source="roi_yolo", labels=("sports_ball",))
+    assert len(traj) == 1
+    assert traj["label"][0] == "sports_ball"

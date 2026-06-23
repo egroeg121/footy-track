@@ -7,8 +7,10 @@ import pytest
 from footy_track.feature_store import (
     FeatureStore,
     GameRow,
+    ball_tracker_run,
     detector_run,
     ingest_frame,
+    to_ball_detection_row,
     to_detection_rows,
     to_frame_row,
 )
@@ -206,3 +208,59 @@ def test_ingest_frame_requires_source_with_detections(store: FeatureStore) -> No
             continuous_time_s=0.0,
             detections=_frame_detections(n=1),
         )
+
+
+def test_ball_tracker_run_stage_and_source() -> None:
+    row = ball_tracker_run("roi_r1", "yolo11s", source="roi_yolo", model_version="v1")
+    assert row.stage == "detection"
+    assert row.source == "roi_yolo"
+    assert row.model_name == "yolo11s"
+    assert row.model_version == "v1"
+
+
+def test_to_ball_detection_row_with_bbox() -> None:
+    row = to_ball_detection_row(
+        (0.4, 0.4, 0.02, 0.02),
+        game_id="g1",
+        frame_index=5,
+        continuous_time_s=0.2,
+        detection_id=0,
+        source="roi_yolo",
+        run_id="roi_r1",
+        confidence=0.75,
+    )
+    assert row is not None
+    assert row.bbox_x == pytest.approx(0.4)
+    assert row.bbox_w == pytest.approx(0.02)
+    assert row.label == "ball"
+    assert row.confidence == pytest.approx(0.75)
+    assert row.detection_id == 0
+    assert row.frame_index == 5
+
+
+def test_to_ball_detection_row_none_returns_none() -> None:
+    row = to_ball_detection_row(
+        None,
+        game_id="g1",
+        frame_index=0,
+        continuous_time_s=0.0,
+        detection_id=0,
+        source="roi_yolo",
+        run_id="roi_r1",
+    )
+    assert row is None
+
+
+def test_to_ball_detection_row_custom_label() -> None:
+    row = to_ball_detection_row(
+        (0.5, 0.5, 0.01, 0.01),
+        game_id="g1",
+        frame_index=0,
+        continuous_time_s=0.0,
+        detection_id=0,
+        source="roi_yolo",
+        run_id="roi_r1",
+        label="in_play_ball",
+    )
+    assert row is not None
+    assert row.label == "in_play_ball"
