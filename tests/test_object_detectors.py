@@ -101,8 +101,12 @@ class TestUltralyticsYOLODetector:
         detections_custom = detector_custom.predict_from_path(test_image_path)
 
         # With higher person threshold, we should have fewer person detections
-        default_persons = [d for d in detections_default.detections if d.label == "person"]
-        custom_persons = [d for d in detections_custom.detections if d.label == "person"]
+        default_persons = [
+            d for d in detections_default.detections if d.label == "person"
+        ]
+        custom_persons = [
+            d for d in detections_custom.detections if d.label == "person"
+        ]
         assert len(custom_persons) <= len(default_persons)
 
         # All custom person detections should meet the higher threshold

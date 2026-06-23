@@ -139,9 +139,8 @@ class UltralyticsObjectDetector(ObjectDetector):
             detections = [
                 det
                 for det in detections
-                if det.confidence >= self.class_confidence_thresholds.get(
-                    det.label, self.min_confidence
-                )
+                if det.confidence
+                >= self.class_confidence_thresholds.get(det.label, self.min_confidence)
             ]
 
         return FrameDetections(
