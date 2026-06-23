@@ -8,9 +8,10 @@ Head-to-head comparison of ball tracking methods for the footy-track labeller lo
 |--------|-----------|-----|--------|-----|------|---------|
 | ROI-YOLO (trained) | 0.0% | 0.00 | 0.0% | 2.7 | 0 MB | ❌ (0% recall) |
 | VitTrack SOT (**winner**) | **79.8%** | **0.54** | **85.0%** | **10.2** | 0 MB | ✅ |
-| SAM2 ROI (sam2_b.pt) | TBD¹ | TBD¹ | TBD¹ | ~0.14 | — | ❌ (too slow) |
+| SAM2 ROI (sam2_b.pt) | N/A² | N/A² | N/A² | 0.04–0.14 | — | ❌ (too slow + needs seeding) |
 
-¹ Single-clip accuracy run in progress. FPS alone makes SAM2 not viable.
+² Accuracy unmeasurable: tracker never seeds itself without external bbox init;
+  cold-start path (~28s/frame) dominates and produces no ball detections.
 
 **Winner: VitTrack SOT** — 79.8% center-acc, 85% recall, 10.2 FPS, CPU-only.
 
@@ -52,20 +53,29 @@ blocking the 154MB `sam2_b.pt` download. The stall was network, not slow inferen
 
 | Test | Time | FPS |
 |------|------|-----|
-| ROI crop inference (200×300, MPS) | ~7s/frame | ~0.14 FPS |
-| Full-frame cold-start (1920×1080, MPS) | >28s/frame | <0.04 FPS |
+| ROI crop with box prompt (200×300, MPS) | ~7s/frame | ~0.14 FPS |
+| Full-frame cold-start / no prompt (1920×1080, MPS) | ~28s/frame | ~0.04 FPS |
 
-vs VitTrack baseline: **10.2 FPS**. SAM2 is **~70-100× too slow** on Apple MPS.
+vs VitTrack baseline: **10.2 FPS**. SAM2 is **~70-700× too slow** on Apple MPS.
 
-**Accuracy:** Single-clip run on `arsenal_example` (250 frames) was running at time of
-writing. Accuracy metrics to be added when run completes (not yet viable regardless).
+**Accuracy:** Full-clip run killed after 30 min (only ~25/250 frames processed). SAM2 without
+an external seed detection (no `prev_bbox`) cold-starts on EVERY frame — the full-frame
+promptless SAM2 call almost never finds the ball, so the tracker never warms up.
+Total estimated time for 250 frames: ~117 minutes. Not a viable measurement path.
+
+**Design limitation discovered:** The SAM2 tracker requires an external seed detection
+to warm up. The cold-start path (`_full_frame_search` without a box prompt) is both
+slow (~28s/frame) and ineffective on real football footage — SAM2 without prompting
+returns noise, keeping `prev_bbox = None` for the entire clip. The ROI+box path
+(~7s/frame, faster but still 70× too slow) is never reached in standalone evaluation.
 
 **Verdict: NOT VIABLE** for the labeller loop on Apple Silicon.
 
 SAM2 is a foundational segmentation model (80M params) — it's not designed for
 real-time tracking. The architecture requires running the full ViT backbone on each
-frame. Even with ROI cropping, inference takes ~7s/frame on MPS. A dedicated GPU
-(NVIDIA A10G or better) might achieve 1-5 FPS, but still below VitTrack's 10 FPS.
+frame. Even with ROI cropping AND a box prompt, inference takes ~7s/frame on MPS.
+A dedicated GPU (NVIDIA A10G or better) might achieve 1-5 FPS, but still below
+VitTrack's 10 FPS. Additionally, the tracker requires YOLO seeding to work at all.
 
 ### Method C: ROI-YOLO (trained model)
 
