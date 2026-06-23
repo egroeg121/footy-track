@@ -12,6 +12,7 @@ uv run python -m footy_track.scripts.track_objects <video_path> --model_path mod
 import argparse
 import logging
 import tempfile
+import uuid
 from collections import Counter
 from datetime import datetime
 from pathlib import Path
@@ -73,6 +74,73 @@ def _draw_tracked_frame(frame, tracked_detections) -> None:
         )
 
 
+def _setup_store(
+    store_path: Path, game_id: str, fps: float, model_path: str, tracker_name: str
+) -> tuple:
+    """Open feature store, register game + run, return (store, run_id)."""
+    from footy_track.feature_store import FeatureStore  # noqa: PLC0415
+    from footy_track.feature_store.ingest import detector_run  # noqa: PLC0415
+    from footy_track.feature_store.schema import GameRow  # noqa: PLC0415
+
+    store = FeatureStore.open(store_path)
+    run_id = f"{tracker_name}_{datetime.now():%Y%m%d_%H%M%S}_{uuid.uuid4().hex[:8]}"
+    store.upsert_games([GameRow(game_id=game_id, fps=fps)])
+    store.upsert_runs(
+        [detector_run(run_id, model_name=model_path, source=tracker_name)]
+    )
+    return store, run_id
+
+
+def _push_frame_to_store(
+    store,
+    run_id: str,
+    game_id: str,
+    frame_idx: int,
+    frame_t: float,
+    tracked,
+    vid_w: int,
+    vid_h: int,
+    tmp_path: Path,
+    tracker_name: str,
+) -> None:
+    """Write one tracked frame's detections into the feature store."""
+    from footy_track.feature_store.ingest import ingest_frame  # noqa: PLC0415
+    from footy_track.schema import FrameDetections, ObjectDetection  # noqa: PLC0415
+
+    frame_detections = FrameDetections(
+        uri=tmp_path,
+        width=vid_w,
+        height=vid_h,
+        detections=[
+            ObjectDetection(
+                label=td.label,
+                confidence=td.confidence,
+                x=td.x,
+                y=td.y,
+                w=td.w,
+                h=td.h,
+                model=td.model,
+            )
+            for td in tracked
+        ],
+    )
+    track_ids = [td.track_id for td in tracked]
+
+    ingest_frame(
+        store,
+        game_id=game_id,
+        frame_index=frame_idx,
+        frame_uri=str(tmp_path),
+        width=vid_w,
+        height=vid_h,
+        continuous_time_s=frame_t,
+        detections=frame_detections,
+        detection_source=tracker_name,
+        detection_run_id=run_id,
+        track_ids=track_ids,
+    )
+
+
 def _run_tracking(
     tracker: UltralyticsTracker,
     writer: TrackingWriter,
@@ -83,6 +151,10 @@ def _run_tracking(
     vid_w: int,
     vid_h: int,
     save_video: bool,
+    store=None,
+    run_id: str | None = None,
+    game_id: str | None = None,
+    tracker_name: str = "bytetrack",
 ) -> int:
     """Process video frames, annotate, and buffer detections. Returns frame count."""
     frames_dir = run_dir / "frames"
@@ -121,6 +193,20 @@ def _run_tracking(
             cv2.imwrite(str(frames_dir / f"frame_{frame_idx:06d}.jpg"), frame)
             if video_writer is not None:
                 video_writer.write(frame)
+
+            if store is not None and run_id is not None and game_id is not None:
+                _push_frame_to_store(
+                    store,
+                    run_id,
+                    game_id,
+                    frame_idx,
+                    frame_t,
+                    tracked,
+                    vid_w,
+                    vid_h,
+                    tmp_path,
+                    tracker_name,
+                )
 
             logging.info(
                 f"Frame {frame_idx:4d} | t={frame_t:.2f}s | "
@@ -179,6 +265,19 @@ def main() -> None:
         action="store_true",
         help="Also write an annotated output video (tracks_overlay.mp4).",
     )
+    # Feature store integration
+    parser.add_argument(
+        "--store_path",
+        type=Path,
+        default=None,
+        help="Path to the feature store DuckDB file. If given, push detections after each frame.",
+    )
+    parser.add_argument(
+        "--game_id",
+        type=str,
+        default=None,
+        help="Game identifier written to the feature store. Defaults to the video stem.",
+    )
     args = parser.parse_args()
 
     if not args.video_path.exists():
@@ -189,6 +288,7 @@ def main() -> None:
         return
 
     match_id = args.match_id or args.video_path.stem
+    game_id = args.game_id or args.video_path.stem
     run_dir = (
         Path("runs/track_objects")
         / f"{args.video_path.stem}_{datetime.now():%Y%m%d_%H%M%S}"
@@ -218,6 +318,16 @@ def main() -> None:
     vid_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     cap.release()
 
+    store = None
+    run_id: str | None = None
+    if args.store_path is not None:
+        store, run_id = _setup_store(
+            args.store_path, game_id, fps, str(args.model_path), args.tracker
+        )
+        logging.info(
+            f"Feature store: {args.store_path} | game={game_id!r} | run={run_id!r}"
+        )
+
     frame_count = _run_tracking(
         tracker,
         writer,
@@ -228,7 +338,15 @@ def main() -> None:
         vid_w,
         vid_h,
         args.save_video,
+        store=store,
+        run_id=run_id,
+        game_id=game_id,
+        tracker_name=args.tracker,
     )
+
+    if store is not None:
+        store.close()
+        logging.info(f"Feature store written: {args.store_path}")
 
     meta = tracker.finalise()
     parquet_path, meta_path = writer.finalise(
