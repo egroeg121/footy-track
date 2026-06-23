@@ -23,11 +23,18 @@ PROJECT_ROOT = pathlib.Path(__file__).parents[1]
 CLIPS_DIR_DEFAULT = pathlib.Path(
     "/Users/georgebarnett/code/footy/footy_track/refinery/rig/eval_data/clips"
 )
-GT_DIR_DEFAULT = pathlib.Path.home() / "Library" / "Mobile Documents" / "com~apple~CloudDocs" / "footy_data" / "ball_gt_marks"
+GT_DIR_DEFAULT = (
+    pathlib.Path.home()
+    / "Library"
+    / "Mobile Documents"
+    / "com~apple~CloudDocs"
+    / "footy_data"
+    / "ball_gt_marks"
+)
 OUTPUT_DEFAULT = PROJECT_ROOT / "docs" / "bakeoff_results.json"
 
 
-def main() -> None:
+def main() -> None:  # noqa: PLR0915
     parser = argparse.ArgumentParser(description="Run bake-off on real marks")
     parser.add_argument(
         "--clips-dir",
@@ -112,7 +119,7 @@ def main() -> None:
     if args.sam2:
         print(f"\n--- Running SAM2 ROI ({args.sam2_model}) ---")
         try:
-            from footy_track.ball_trackers.sam2_roi import Sam2RoiTracker  # noqa: PLC0415
+            from footy_track.ball_trackers.sam2_roi import Sam2RoiTracker  # noqa: PLC0415, I001
 
             t0 = time.perf_counter()
             sam2_tracker = Sam2RoiTracker(model_name=args.sam2_model)
