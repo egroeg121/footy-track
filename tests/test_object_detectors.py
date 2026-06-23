@@ -85,6 +85,35 @@ class TestUltralyticsYOLODetector:
         # Check if at least half the persons have an IoU of 0.5 or greater
         assert matches / len(gt_persons) >= 0.5
 
+    def test_ultralytics_object_detector_per_class_thresholds(self):
+        """Test that per-class confidence thresholds filter detections correctly."""
+        test_image_path = Path("tests/data/arsenal_mancity_test_detection.jpg")
+
+        # Get detections with default threshold
+        detector_default = UltralyticsObjectDetector(min_confidence=0.3)
+        detections_default = detector_default.predict_from_path(test_image_path)
+
+        # Get detections with per-class thresholds (ball lower, person higher)
+        detector_custom = UltralyticsObjectDetector(
+            min_confidence=0.3,
+            class_confidence_thresholds={"ball": 0.15, "person": 0.5},
+        )
+        detections_custom = detector_custom.predict_from_path(test_image_path)
+
+        # With higher person threshold, we should have fewer person detections
+        default_persons = [d for d in detections_default.detections if d.label == "person"]
+        custom_persons = [d for d in detections_custom.detections if d.label == "person"]
+        assert len(custom_persons) <= len(default_persons)
+
+        # All custom person detections should meet the higher threshold
+        for det in custom_persons:
+            assert det.confidence >= 0.5
+
+        # All custom ball detections should meet the lower threshold
+        custom_balls = [d for d in detections_custom.detections if d.label == "ball"]
+        for det in custom_balls:
+            assert det.confidence >= 0.15
+
 
 class TestUltralyticsSam3Detector:
     def test_ultralytics_sam3_detector_init(self):

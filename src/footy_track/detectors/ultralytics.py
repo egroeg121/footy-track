@@ -39,11 +39,18 @@ def get_current_best_detector(
     min_confidence: float = 0.3,
     iou_threshold: float = 0.90,
     verbose: bool = False,
+    class_confidence_thresholds: dict[str, float] | None = None,
 ) -> "UltralyticsObjectDetector":
     """Return the current best-guess object detector.
 
     Resolves CURRENT_BEST_DETECTOR_CHECKPOINT against the project root so the
     same constant works regardless of the caller's working directory.
+
+    Args:
+        min_confidence: Default confidence threshold for all classes.
+        iou_threshold: Non-maximum suppression IOU threshold.
+        verbose: Verbosity flag.
+        class_confidence_thresholds: Per-class confidence thresholds (e.g., {"ball": 0.2, "player": 0.4}).
     """
     model_uri = str(get_project_root() / CURRENT_BEST_DETECTOR_CHECKPOINT)
     return UltralyticsObjectDetector(
@@ -52,6 +59,7 @@ def get_current_best_detector(
         iou_threshold=iou_threshold,
         verbose=verbose,
         use_model_names=True,
+        class_confidence_thresholds=class_confidence_thresholds,
     )
 
 
@@ -59,7 +67,9 @@ class UltralyticsObjectDetector(ObjectDetector):
     """YOLO-based object detector returning Pydantic outputs.
 
     Uses the ultralytics YOLO models and returns a FrameDetections instance
-    with normalized [x, y, w, h] boxes in [0, 1].
+    with normalized [x, y, w, h] boxes in [0, 1]. Supports per-class confidence
+    thresholds to allow different classes (e.g., ball vs player) to use different
+    confidence cutoffs.
     """
 
     model_tag: str = "yolo"
@@ -72,6 +82,7 @@ class UltralyticsObjectDetector(ObjectDetector):
         min_confidence: float = 0.3,
         iou_threshold: float = 0.90,
         use_model_names: bool = False,
+        class_confidence_thresholds: dict[str, float] | None = None,
     ):
         # Use shared device selection util (prefers MPS on Apple, then CUDA, then CPU)
         dev = _available_device()
@@ -81,6 +92,8 @@ class UltralyticsObjectDetector(ObjectDetector):
         # When True, `classes` reflects the checkpoint's own label set rather than
         # the COCO person/ball subset used for stock weights.
         self.use_model_names = use_model_names
+        self.min_confidence = min_confidence
+        self.class_confidence_thresholds = class_confidence_thresholds or {}
         self.predict_kwargs = {
             "verbose": verbose,
             "compile": compile,
@@ -120,6 +133,16 @@ class UltralyticsObjectDetector(ObjectDetector):
 
         # Build detections via modular converter
         detections = ultralytics_result_to_detections(result, self.classes)
+
+        # Apply per-class confidence thresholds if configured
+        if self.class_confidence_thresholds:
+            detections = [
+                det
+                for det in detections
+                if det.confidence >= self.class_confidence_thresholds.get(
+                    det.label, self.min_confidence
+                )
+            ]
 
         return FrameDetections(
             uri=Path(image_path),
