@@ -141,9 +141,9 @@ Outputs the homography `H` (image → pitch) plus quality metrics.
 |---|---|
 | Input | Broadcast frames (gated by §2.2) |
 | Output | Per-frame `{H (3×3), inliers, quality}` |
-| Method (planned) | Field-line / circle / arc detection (Hough + learned segments), match against canonical pitch model, RANSAC for robust fit |
-| Status | **Planned** — described in [`pipelines.md` §Stage 5](pipelines.md) but no implementation yet |
-| Design link | TBD — should land at `docs/design/calibration.md` |
+| Method | v1: manual keypoint correspondences → `cv2.findHomography` + RANSAC against the canonical pitch model. Field-line / learned-keypoint detection (SoccerNet) is the follow-up front-end. |
+| Status | **Implemented** (manual-keypoint v1) — `projection/calibrator.py`; learned keypoints follow up |
+| Design link | [`design/calibration.md`](design/calibration.md) |
 
 Notes:
 
