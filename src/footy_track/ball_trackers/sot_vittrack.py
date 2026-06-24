@@ -223,12 +223,16 @@ class VitTrackSOT:
         self._last_bbox_px: tuple[float, float, float, float] | None = None
         # Exposed to harness via getattr — populated after each track() call
         self._last_crop_height: int | None = None
+        # Confidence of the most recent track() / track_with_score() call. The
+        # labeller reads this to decide when to hand back to the user.
+        self.last_score: float = 0.0
 
     def reset(self) -> None:
         """Reset all state. Called by the harness between clips."""
         self._template_blob = None
         self._last_bbox_px = None
         self._last_crop_height = None
+        self.last_score = 0.0
 
     def track(
         self,
@@ -244,12 +248,31 @@ class VitTrackSOT:
         Returns:
             Normalised (x, y, w, h) if ball located, else None.
         """
+        bbox, _ = self.track_with_score(prev_bbox, frame)
+        return bbox
+
+    def track_with_score(
+        self,
+        prev_bbox: tuple[float, float, float, float] | None,
+        frame: np.ndarray,
+    ) -> tuple[tuple[float, float, float, float] | None, float]:
+        """Like :meth:`track` but also returns the tracker's confidence score.
+
+        The labeller uses the score to decide when to hand control back to the
+        user (confidence drop). The score is also stored on ``self.last_score``.
+
+        Returns:
+            ``(bbox, score)`` where ``bbox`` is the normalised (x, y, w, h) if
+            the ball was located (score >= internal threshold), else ``None``.
+            ``score`` is the raw confidence in ``[0, 1]`` (0.0 on cold-start).
+        """
         fh, fw = frame.shape[:2]
 
         if prev_bbox is None:
             # No anchor — cannot initialize or track
             self._last_crop_height = None
-            return None
+            self.last_score = 0.0
+            return None, 0.0
 
         # Convert normalised to pixel coords
         bbox_px = (
@@ -278,10 +301,11 @@ class VitTrackSOT:
         )
 
         new_bbox_px, score = _decode_outputs(outputs, crop_sz, search_bbox_px)
+        self.last_score = score
 
         if score < _SCORE_THRESHOLD:
             # Ball lost — keep last known position but don't update state
-            return None
+            return None, score
 
         self._last_bbox_px = new_bbox_px
 
@@ -298,9 +322,9 @@ class VitTrackSOT:
         nh = max(0.0, min(1.0 - ny, nh))
 
         if nw <= 0 or nh <= 0:
-            return None
+            return None, score
 
-        return (nx, ny, nw, nh)
+        return (nx, ny, nw, nh), score
 
     def _init_template(
         self,

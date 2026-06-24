@@ -591,12 +591,10 @@ class BackgroundLabeller:
     ) -> None:
         """Stop any running job, then start propagation from ``start_frame``."""
         self.pause()
-        labeller = Sam3VideoLabeller(
+        labeller = VitTrackVideoLabeller(
             video_path=video_path,
             objects=objects,
-            model_uri=model_uri,
             min_confidence=min_confidence,
-            imgsz=imgsz,
         )
         total = labeller._total_frames()
         with self._lock:
@@ -640,7 +638,7 @@ class BackgroundLabeller:
                 out.append(fd)
             return out
 
-    def _worker(self, labeller: Sam3VideoLabeller, start_frame: int) -> None:
+    def _worker(self, labeller, start_frame: int) -> None:
         try:
             prev_fd: FrameDetections | None = None
             for fd in labeller.iter_frames_from(
@@ -669,6 +667,17 @@ class BackgroundLabeller:
                     self._stop_event.set()
                     break
                 prev_fd = fd
+
+            # Tracker-level handback: VitTrack stops iterating when its
+            # confidence drops, exposing the frame + reason on the labeller.
+            # Pick it up here unless a drift anomaly already fired above.
+            hb_frame = getattr(labeller, "handback_frame", None)
+            if hb_frame is not None and self.anomaly_frame is None:
+                with self._lock:
+                    self.anomaly_frame = hb_frame
+                    self.anomaly_reason = getattr(
+                        labeller, "handback_reason", None
+                    ) or "tracker confidence dropped"
         except Exception as exc:  # noqa: BLE001
             with self._lock:
                 self.error = exc
