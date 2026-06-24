@@ -223,12 +223,20 @@ class VitTrackSOT:
         self._last_bbox_px: tuple[float, float, float, float] | None = None
         # Exposed to harness via getattr — populated after each track() call
         self._last_crop_height: int | None = None
+        # Last confidence score from track(); accessible via last_score property
+        self._last_score: float = 0.0
+
+    @property
+    def last_score(self) -> float:
+        """Confidence score from the most recent track() call (0.0 if never called)."""
+        return self._last_score
 
     def reset(self) -> None:
         """Reset all state. Called by the harness between clips."""
         self._template_blob = None
         self._last_bbox_px = None
         self._last_crop_height = None
+        self._last_score = 0.0
 
     def track(
         self,
@@ -278,6 +286,7 @@ class VitTrackSOT:
         )
 
         new_bbox_px, score = _decode_outputs(outputs, crop_sz, search_bbox_px)
+        self._last_score = score
 
         if score < _SCORE_THRESHOLD:
             # Ball lost — keep last known position but don't update state
