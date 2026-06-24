@@ -26,11 +26,16 @@ os.environ.setdefault(
 )
 
 import cv2  # noqa: E402
+import numpy as np  # noqa: E402
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect  # noqa: E402
 from fastapi.responses import HTMLResponse, Response  # noqa: E402
 from fastapi.staticfiles import StaticFiles  # noqa: E402
 
 from footy_track.ball_eval.metrics import bbox_iou  # noqa: E402
+from footy_track.labeller.interpolation import (  # noqa: E402
+    HandbackConfig,
+    should_handback,
+)
 from footy_track.labeller.video_utils import (  # noqa: E402
     BackgroundLabeller,
     LabelledObject,
@@ -38,7 +43,7 @@ from footy_track.labeller.video_utils import (  # noqa: E402
 )
 from footy_track.schema import ObjectDetection  # noqa: E402
 
-app = FastAPI(title="SAM3 Video Labeller")
+app = FastAPI(title="Footy Track Labeller")
 
 _STATIC_DIR = Path(__file__).parent / "web"
 _CLIPS_DIR = Path(__file__).parents[3] / "eval_data" / "clips"
@@ -55,6 +60,7 @@ _GT_MARKS_DIR = (
 PROV_LABELLER = "labeller"  # manual edit — ground truth, never auto-overwritten
 PROV_YOLO = "yolo"
 PROV_SAM3 = "sam3"
+PROV_VITTRACK = "vittrack"  # VitTrack interpolation assist (ft-4e9) — never GT
 
 # Ball-class labels that appear in the JSONL sidecar.
 _BALL_LABELS = {"ball", "in_play_ball", "out_of_play_ball"}
@@ -214,6 +220,23 @@ class Session:
             return None
         ok, buf = cv2.imencode(".jpg", frame)
         return buf.tobytes() if ok else None
+
+    def frame_rgb(self, idx: int) -> np.ndarray | None:
+        """Return frame *idx* as a uint8 RGB array (H, W, 3), or None.
+
+        VitTrack expects RGB; cv2 reads BGR.
+        """
+        if self.video_path is None:
+            return None
+        cap = cv2.VideoCapture(str(self.video_path))
+        try:
+            cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
+            ok, frame = cap.read()
+        finally:
+            cap.release()
+        if not ok:
+            return None
+        return cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
     # --- JSONL sidecar flush (debounced, 2 s) ----------------------------
 
@@ -607,6 +630,107 @@ async def propagate_labels(body: dict) -> dict:
         "iou_threshold": iou_threshold,
         "propagated_frames": len(propagated),
         "propagated": {str(k): [b.model_dump() for b in v] for k, v in propagated.items()},
+    }
+
+
+@app.post("/interpolate")
+async def interpolate_labels(body: dict) -> dict:
+    """VitTrack visual interpolation from an anchor frame, with hand-back on failure.
+
+    Seeds a VitTrackSOT from each anchor box and tracks forward frame-by-frame.
+    Stops per-object when a hand-back trigger fires (lost, center jump, or size jump).
+    Writes accepted boxes into the timeline via merge_propagated (PROV_VITTRACK).
+
+    Request body:
+    - anchor_idx: frame index with the seed boxes (required)
+    - end_idx: last frame to track to (default: last frame)
+    - labels: list of anchor labels to track (default: all labels on anchor frame)
+    - min_score: hand-back if VitTrack confidence drops below this (default 0.30)
+    - max_center_jump_frac: hand-back on centre jump > this * frame diagonal (default 0.08)
+    - max_size_ratio: hand-back on area ratio outside [1/ratio, ratio] (default 2.5)
+
+    Returns:
+    - anchor_idx
+    - objects: per-object results with handback_idx, reason, last_good_idx, frames_tracked
+    - handback_idx: earliest stop across all objects (frame to jump to in the UI)
+    """
+    from footy_track.ball_trackers.sot_vittrack import VitTrackSOT  # noqa: PLC0415
+
+    anchor_idx = int(body["anchor_idx"])
+    end_idx = int(body.get("end_idx", SESSION.total_frames - 1))
+    label_filter: set[str] | None = set(body["labels"]) if body.get("labels") else None
+
+    cfg = HandbackConfig(
+        min_score=float(body.get("min_score", HandbackConfig.min_score)),
+        max_center_jump_frac=float(body.get("max_center_jump_frac", HandbackConfig.max_center_jump_frac)),
+        max_size_ratio=float(body.get("max_size_ratio", HandbackConfig.max_size_ratio)),
+    )
+
+    anchor_boxes = SESSION.get_frame(anchor_idx)
+    seed_boxes = [b for b in anchor_boxes if label_filter is None or b.label in label_filter]
+
+    if not seed_boxes:
+        return {"anchor_idx": anchor_idx, "objects": [], "handback_idx": None}
+
+    object_results = []
+
+    for seed_box in seed_boxes:
+        tracker = VitTrackSOT()
+        tracker.reset()
+
+        prev_bbox = (seed_box.x, seed_box.y, seed_box.w, seed_box.h)
+        last_good_idx = anchor_idx
+        handback_idx: int | None = None
+        handback_reason: str | None = None
+        frames_tracked = 0
+
+        for frame_idx in range(anchor_idx + 1, min(end_idx + 1, SESSION.total_frames)):
+            rgb = SESSION.frame_rgb(frame_idx)
+            if rgb is None:
+                break
+
+            new_bbox, score = tracker.track_with_score(prev_bbox, rgb)
+            result = should_handback(prev_bbox, new_bbox, score, cfg)
+
+            if result.stop:
+                handback_idx = frame_idx
+                handback_reason = result.reason
+                break
+
+            # Accept this frame's box
+            assert new_bbox is not None
+            box = ObjectDetection(
+                label=seed_box.label,
+                confidence=float(score),
+                x=new_bbox[0],
+                y=new_bbox[1],
+                w=new_bbox[2],
+                h=new_bbox[3],
+                model=PROV_VITTRACK,
+            )
+            SESSION.merge_propagated(frame_idx, [box])
+            prev_bbox = new_bbox
+            last_good_idx = frame_idx
+            frames_tracked += 1
+
+        object_results.append({
+            "label": seed_box.label,
+            "handback_idx": handback_idx,
+            "reason": handback_reason,
+            "last_good_idx": last_good_idx,
+            "frames_tracked": frames_tracked,
+        })
+
+    SESSION.schedule_flush()
+
+    # UI jumps to the earliest handback — the frame needing attention first
+    handback_idxs = [r["handback_idx"] for r in object_results if r["handback_idx"] is not None]
+    overall_handback = min(handback_idxs) if handback_idxs else None
+
+    return {
+        "anchor_idx": anchor_idx,
+        "objects": object_results,
+        "handback_idx": overall_handback,
     }
 
 
