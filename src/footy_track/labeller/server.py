@@ -1,8 +1,8 @@
-"""FastAPI server for the SAM3 video labeller (web-app replacement for app.py).
+"""FastAPI server for the Footy Track video labeller (web-app replacement for app.py).
 
-Owns the SAM3 model hot in one long-lived process and exposes the
-pause/correct/resume loop over HTTP + WebSocket, so the browser frontend can
-hold all interaction state client-side (no Streamlit reruns).
+Uses VitTrack SOT as the propagation backend behind the Run button.
+Exposes the pause/correct/resume loop over HTTP + WebSocket, so the browser
+frontend can hold all interaction state client-side (no Streamlit reruns).
 
 Run with:
     uv run uvicorn footy_track.labeller.server:app --reload
@@ -42,7 +42,7 @@ from footy_track.labeller.video_utils import (  # noqa: E402
 )
 from footy_track.schema import ObjectDetection  # noqa: E402
 
-app = FastAPI(title="SAM3 Video Labeller")
+app = FastAPI(title="Footy Track Labeller")
 
 _STATIC_DIR = Path(__file__).parent / "web"
 _CLIPS_DIR = Path(__file__).parents[3] / "eval_data" / "clips"
@@ -58,7 +58,8 @@ _GT_MARKS_DIR = (
 # Provenance tags stored in each box's ObjectDetection.model field.
 PROV_LABELLER = "labeller"  # manual edit — ground truth, never auto-overwritten
 PROV_YOLO = "yolo"
-PROV_SAM3 = "sam3"
+PROV_SAM3 = "sam3"  # kept for backwards compat with existing JSONL sidecars
+PROV_VITTRACK = "vittrack"
 
 # Ball-class labels that appear in the JSONL sidecar.
 _BALL_LABELS = {"ball", "in_play_ball", "out_of_play_ball"}
@@ -152,14 +153,32 @@ class Session:
                 bbox = d.get("bbox")
                 if bbox is not None:
                     if isinstance(bbox, dict):
-                        x, y, w, h = float(bbox["x"]), float(bbox["y"]), float(bbox["w"]), float(bbox["h"])
+                        x, y, w, h = (
+                            float(bbox["x"]),
+                            float(bbox["y"]),
+                            float(bbox["w"]),
+                            float(bbox["h"]),
+                        )
                     else:
                         x, y, w, h = (float(v) for v in bbox)
                     # Label is the first tag that is a ball class (flush writes [label, model]).
-                    ball_labels = _BALL_LABELS | {"person", "player", "referee", "coach", "player_sub"}
+                    ball_labels = _BALL_LABELS | {
+                        "person",
+                        "player",
+                        "referee",
+                        "coach",
+                        "player_sub",
+                    }
                     label = next((t for t in tags if t in ball_labels), "in_play_ball")
-                    box = ObjectDetection(label=label, confidence=1.0,
-                                         x=x, y=y, w=w, h=h, model=PROV_LABELLER)
+                    box = ObjectDetection(
+                        label=label,
+                        confidence=1.0,
+                        x=x,
+                        y=y,
+                        w=w,
+                        h=h,
+                        model=PROV_LABELLER,
+                    )
                     with self._tl_lock:
                         if self.timeline[idx] is None:
                             self.timeline[idx] = []
@@ -243,7 +262,16 @@ class Session:
             lines: list[str] = []
             for idx, boxes in enumerate(timeline_snapshot):
                 if idx in not_broadcast_snapshot:
-                    lines.append(json.dumps({"frame_index": idx, "bbox": None, "center": None, "tags": [_NOT_BROADCAST_TAG]}))
+                    lines.append(
+                        json.dumps(
+                            {
+                                "frame_index": idx,
+                                "bbox": None,
+                                "center": None,
+                                "tags": [_NOT_BROADCAST_TAG],
+                            }
+                        )
+                    )
                     continue
                 # no-ball frame
                 if idx in no_ball_snapshot:
@@ -376,9 +404,14 @@ async def list_clips() -> dict:
     if not _CLIPS_DIR.exists():
         return {"clips": []}
     video_suffixes = {".mp4", ".mov", ".avi", ".mkv"}
-    paths = sorted(p for p in _CLIPS_DIR.iterdir() if p.suffix.lower() in video_suffixes)
+    paths = sorted(
+        p for p in _CLIPS_DIR.iterdir() if p.suffix.lower() in video_suffixes
+    )
     # Return names fast; completion checked lazily via /clips/status
-    clips = [{"name": p.name, "marked": (_GT_MARKS_DIR / f"{p.stem}.jsonl").exists()} for p in paths]
+    clips = [
+        {"name": p.name, "marked": (_GT_MARKS_DIR / f"{p.stem}.jsonl").exists()}
+        for p in paths
+    ]
     return {"clips": clips, "dir": str(_CLIPS_DIR)}
 
 
@@ -388,7 +421,9 @@ async def clips_status() -> dict:
     if not _CLIPS_DIR.exists():
         return {"clips": []}
     video_suffixes = {".mp4", ".mov", ".avi", ".mkv"}
-    paths = sorted(p for p in _CLIPS_DIR.iterdir() if p.suffix.lower() in video_suffixes)
+    paths = sorted(
+        p for p in _CLIPS_DIR.iterdir() if p.suffix.lower() in video_suffixes
+    )
     clips = [{"name": p.name, **_clip_completion(p.stem, p)} for p in paths]
     return {"clips": clips}
 
@@ -407,6 +442,7 @@ async def get_frame(idx: int) -> Response:
 
 
 _PLAYER_LABELS = {"player", "player_sub", "referee", "coach", "person"}
+
 
 @app.get("/marks")
 async def get_marks() -> dict:
@@ -472,12 +508,14 @@ async def autodetect(body: dict) -> dict:
         for o in seeds
         if o.bbox_xyxy_abs is not None
     ]
+
     # Suppress YOLO boxes that overlap heavily with existing labeller boxes.
     def _xywh(b: ObjectDetection) -> tuple:
         return (b.x, b.y, b.w, b.h)
 
     filtered_yolo = [
-        yb for yb in yolo_boxes
+        yb
+        for yb in yolo_boxes
         if not any(bbox_iou(_xywh(yb), _xywh(cb)) > 0.3 for cb in current)
     ]
     SESSION.set_frame(idx, current + filtered_yolo)
@@ -637,7 +675,9 @@ async def propagate_labels(body: dict) -> dict:
         "end_idx": end_idx,
         "iou_threshold": iou_threshold,
         "propagated_frames": len(propagated),
-        "propagated": {str(k): [b.model_dump() for b in v] for k, v in propagated.items()},
+        "propagated": {
+            str(k): [b.model_dump() for b in v] for k, v in propagated.items()
+        },
     }
 
 
@@ -1107,7 +1147,7 @@ def _ingest_completed_frame(idx: int, fd, start_idx: int) -> list[ObjectDetectio
     """
     if idx == start_idx:
         return SESSION.get_frame(idx)
-    sam3_boxes = [
+    vittrack_boxes = [
         ObjectDetection(
             label=d.label,
             confidence=d.confidence,
@@ -1115,11 +1155,11 @@ def _ingest_completed_frame(idx: int, fd, start_idx: int) -> list[ObjectDetectio
             y=d.y,
             w=d.w,
             h=d.h,
-            model=PROV_SAM3,
+            model=PROV_VITTRACK,
         )
         for d in fd.detections
     ]
-    SESSION.merge_propagated(idx, sam3_boxes)
+    SESSION.merge_propagated(idx, vittrack_boxes)
     return SESSION.get_frame(idx)
 
 
