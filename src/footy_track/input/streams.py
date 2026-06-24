@@ -136,7 +136,9 @@ class FileFrameSource:
             raise ValueError(f"Could not determine FPS for {self.video_path}")
         return cap, fps
 
-    def _record_for(self, frame: np.ndarray, frame_index: int, fps: float) -> FrameRecord:
+    def _record_for(
+        self, frame: np.ndarray, frame_index: int, fps: float
+    ) -> FrameRecord:
         offset_s = frame_index / fps
         game_time = GameTime(
             half=self.kickoff.half,
@@ -173,7 +175,9 @@ class FileFrameSource:
         position in the video, not the offset from ``seek``'s start point.
         """
         if seconds_from_start < 0:
-            raise ValueError(f"seek requires non-negative offset, got {seconds_from_start}")
+            raise ValueError(
+                f"seek requires non-negative offset, got {seconds_from_start}"
+            )
         cap, fps = self._open()
         try:
             cap.set(cv2.CAP_PROP_POS_MSEC, seconds_from_start * 1000.0)
@@ -233,7 +237,9 @@ class LiveStreamFrameSource:
         self.reconnect = reconnect or ReconnectPolicy.exponential_backoff()
         self.backend = backend
         self.metadata = metadata or GameMetadata()
-        self._sleep: Callable[[float], None] = sleep if sleep is not None else (lambda _: None)
+        self._sleep: Callable[[float], None] = (
+            sleep if sleep is not None else (lambda _: None)
+        )
 
     def _record(
         self,

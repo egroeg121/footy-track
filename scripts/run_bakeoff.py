@@ -25,7 +25,14 @@ PROJECT_ROOT = pathlib.Path(__file__).parents[1]
 CLIPS_DIR_DEFAULT = pathlib.Path(
     "/Users/georgebarnett/code/footy/footy_track/refinery/rig/eval_data/clips"
 )
-GT_DIR_DEFAULT = pathlib.Path.home() / "Library" / "Mobile Documents" / "com~apple~CloudDocs" / "footy_data" / "ball_gt_marks"
+GT_DIR_DEFAULT = (
+    pathlib.Path.home()
+    / "Library"
+    / "Mobile Documents"
+    / "com~apple~CloudDocs"
+    / "footy_data"
+    / "ball_gt_marks"
+)
 OUTPUT_DEFAULT = PROJECT_ROOT / "docs" / "bakeoff_results.json"
 
 

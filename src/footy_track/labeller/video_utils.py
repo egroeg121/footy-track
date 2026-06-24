@@ -664,7 +664,10 @@ class VitTrackVideoLabeller:
                     break
                 rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
 
-                uri = self.video_path.parent / f"{self.video_path.stem}_frame_{frame_idx:06d}"
+                uri = (
+                    self.video_path.parent
+                    / f"{self.video_path.stem}_frame_{frame_idx:06d}"
+                )
                 detections: list[ObjectDetection] = []
 
                 for i, (label, _) in enumerate(seeds):

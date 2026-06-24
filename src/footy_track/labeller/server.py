@@ -154,14 +154,32 @@ class Session:
                 bbox = d.get("bbox")
                 if bbox is not None:
                     if isinstance(bbox, dict):
-                        x, y, w, h = float(bbox["x"]), float(bbox["y"]), float(bbox["w"]), float(bbox["h"])
+                        x, y, w, h = (
+                            float(bbox["x"]),
+                            float(bbox["y"]),
+                            float(bbox["w"]),
+                            float(bbox["h"]),
+                        )
                     else:
                         x, y, w, h = (float(v) for v in bbox)
                     # Label is the first tag that is a ball class (flush writes [label, model]).
-                    ball_labels = _BALL_LABELS | {"person", "player", "referee", "coach", "player_sub"}
+                    ball_labels = _BALL_LABELS | {
+                        "person",
+                        "player",
+                        "referee",
+                        "coach",
+                        "player_sub",
+                    }
                     label = next((t for t in tags if t in ball_labels), "in_play_ball")
-                    box = ObjectDetection(label=label, confidence=1.0,
-                                         x=x, y=y, w=w, h=h, model=PROV_LABELLER)
+                    box = ObjectDetection(
+                        label=label,
+                        confidence=1.0,
+                        x=x,
+                        y=y,
+                        w=w,
+                        h=h,
+                        model=PROV_LABELLER,
+                    )
                     with self._tl_lock:
                         if self.timeline[idx] is None:
                             self.timeline[idx] = []
@@ -262,7 +280,16 @@ class Session:
             lines: list[str] = []
             for idx, boxes in enumerate(timeline_snapshot):
                 if idx in not_broadcast_snapshot:
-                    lines.append(json.dumps({"frame_index": idx, "bbox": None, "center": None, "tags": [_NOT_BROADCAST_TAG]}))
+                    lines.append(
+                        json.dumps(
+                            {
+                                "frame_index": idx,
+                                "bbox": None,
+                                "center": None,
+                                "tags": [_NOT_BROADCAST_TAG],
+                            }
+                        )
+                    )
                     continue
                 # no-ball frame
                 if idx in no_ball_snapshot:
@@ -379,9 +406,14 @@ async def list_clips() -> dict:
     if not _CLIPS_DIR.exists():
         return {"clips": []}
     video_suffixes = {".mp4", ".mov", ".avi", ".mkv"}
-    paths = sorted(p for p in _CLIPS_DIR.iterdir() if p.suffix.lower() in video_suffixes)
+    paths = sorted(
+        p for p in _CLIPS_DIR.iterdir() if p.suffix.lower() in video_suffixes
+    )
     # Return names fast; completion checked lazily via /clips/status
-    clips = [{"name": p.name, "marked": (_GT_MARKS_DIR / f"{p.stem}.jsonl").exists()} for p in paths]
+    clips = [
+        {"name": p.name, "marked": (_GT_MARKS_DIR / f"{p.stem}.jsonl").exists()}
+        for p in paths
+    ]
     return {"clips": clips, "dir": str(_CLIPS_DIR)}
 
 
@@ -391,7 +423,9 @@ async def clips_status() -> dict:
     if not _CLIPS_DIR.exists():
         return {"clips": []}
     video_suffixes = {".mp4", ".mov", ".avi", ".mkv"}
-    paths = sorted(p for p in _CLIPS_DIR.iterdir() if p.suffix.lower() in video_suffixes)
+    paths = sorted(
+        p for p in _CLIPS_DIR.iterdir() if p.suffix.lower() in video_suffixes
+    )
     clips = [{"name": p.name, **_clip_completion(p.stem, p)} for p in paths]
     return {"clips": clips}
 
@@ -410,6 +444,7 @@ async def get_frame(idx: int) -> Response:
 
 
 _PLAYER_LABELS = {"player", "player_sub", "referee", "coach", "person"}
+
 
 @app.get("/marks")
 async def get_marks() -> dict:
@@ -475,12 +510,14 @@ async def autodetect(body: dict) -> dict:
         for o in seeds
         if o.bbox_xyxy_abs is not None
     ]
+
     # Suppress YOLO boxes that overlap heavily with existing labeller boxes.
     def _xywh(b: ObjectDetection) -> tuple:
         return (b.x, b.y, b.w, b.h)
 
     filtered_yolo = [
-        yb for yb in yolo_boxes
+        yb
+        for yb in yolo_boxes
         if not any(bbox_iou(_xywh(yb), _xywh(cb)) > 0.3 for cb in current)
     ]
     SESSION.set_frame(idx, current + filtered_yolo)
@@ -629,7 +666,9 @@ async def propagate_labels(body: dict) -> dict:
         "end_idx": end_idx,
         "iou_threshold": iou_threshold,
         "propagated_frames": len(propagated),
-        "propagated": {str(k): [b.model_dump() for b in v] for k, v in propagated.items()},
+        "propagated": {
+            str(k): [b.model_dump() for b in v] for k, v in propagated.items()
+        },
     }
 
 
@@ -662,12 +701,16 @@ async def interpolate_labels(body: dict) -> dict:
 
     cfg = HandbackConfig(
         min_score=float(body.get("min_score", HandbackConfig.min_score)),
-        max_center_jump_frac=float(body.get("max_center_jump_frac", HandbackConfig.max_center_jump_frac)),
+        max_center_jump_frac=float(
+            body.get("max_center_jump_frac", HandbackConfig.max_center_jump_frac)
+        ),
         max_size_ratio=float(body.get("max_size_ratio", HandbackConfig.max_size_ratio)),
     )
 
     anchor_boxes = SESSION.get_frame(anchor_idx)
-    seed_boxes = [b for b in anchor_boxes if label_filter is None or b.label in label_filter]
+    seed_boxes = [
+        b for b in anchor_boxes if label_filter is None or b.label in label_filter
+    ]
 
     if not seed_boxes:
         return {"anchor_idx": anchor_idx, "objects": [], "handback_idx": None}
@@ -713,18 +756,22 @@ async def interpolate_labels(body: dict) -> dict:
             last_good_idx = frame_idx
             frames_tracked += 1
 
-        object_results.append({
-            "label": seed_box.label,
-            "handback_idx": handback_idx,
-            "reason": handback_reason,
-            "last_good_idx": last_good_idx,
-            "frames_tracked": frames_tracked,
-        })
+        object_results.append(
+            {
+                "label": seed_box.label,
+                "handback_idx": handback_idx,
+                "reason": handback_reason,
+                "last_good_idx": last_good_idx,
+                "frames_tracked": frames_tracked,
+            }
+        )
 
     SESSION.schedule_flush()
 
     # UI jumps to the earliest handback — the frame needing attention first
-    handback_idxs = [r["handback_idx"] for r in object_results if r["handback_idx"] is not None]
+    handback_idxs = [
+        r["handback_idx"] for r in object_results if r["handback_idx"] is not None
+    ]
     overall_handback = min(handback_idxs) if handback_idxs else None
 
     return {
