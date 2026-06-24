@@ -108,4 +108,7 @@ markers = [
   "slow: tests that run models and may take longer",
 ]
 
+[tool.uv]
+link-mode = "hardlink"
+
 # Ruff configuration for linting and formatting
