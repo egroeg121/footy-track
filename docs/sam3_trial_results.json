@@ -1,0 +1,19 @@
+{
+  "clip": "mancity_seg010",
+  "video": "/Users/georgebarnett/Library/Mobile Documents/com~apple~CloudDocs/footy_data/arsenal_mancity/split_video_broadcast_frames/arsenal_mancity_20250925_seg010.mp4",
+  "gt_file": "/Users/georgebarnett/Library/Mobile Documents/com~apple~CloudDocs/footy_data/ball_gt_marks/mancity_seg010.jsonl",
+  "model": "/Users/georgebarnett/Library/Mobile Documents/com~apple~CloudDocs/footy_data/model_saves/sam3/sam3.pt",
+  "imgsz": 512,
+  "roi": {
+    "x0": 149,
+    "y0": 337,
+    "x1": 1226,
+    "y1": 820,
+    "crop_w": 1077,
+    "crop_h": 483
+  },
+  "seed_frame": 0,
+  "gt_marks_count": 89,
+  "status": "running_frame_50/595",
+  "centroids_so_far": 51
+}
