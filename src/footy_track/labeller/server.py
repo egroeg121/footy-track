@@ -26,11 +26,16 @@ os.environ.setdefault(
 )
 
 import cv2  # noqa: E402
+import numpy as np  # noqa: E402
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect  # noqa: E402
 from fastapi.responses import HTMLResponse, Response  # noqa: E402
 from fastapi.staticfiles import StaticFiles  # noqa: E402
 
 from footy_track.ball_eval.metrics import bbox_iou  # noqa: E402
+from footy_track.labeller.interpolation import (  # noqa: E402
+    HandbackConfig,
+    should_handback,
+)
 from footy_track.labeller.video_utils import (  # noqa: E402
     BackgroundLabeller,
     LabelledObject,
@@ -55,6 +60,7 @@ _GT_MARKS_DIR = (
 PROV_LABELLER = "labeller"  # manual edit — ground truth, never auto-overwritten
 PROV_YOLO = "yolo"
 PROV_SAM3 = "sam3"
+PROV_VITTRACK = "vittrack"  # VitTrack interpolation assist (ft-4e9) — never GT
 
 # Ball-class labels that appear in the JSONL sidecar.
 _BALL_LABELS = {"ball", "in_play_ball", "out_of_play_ball"}
@@ -214,6 +220,23 @@ class Session:
             return None
         ok, buf = cv2.imencode(".jpg", frame)
         return buf.tobytes() if ok else None
+
+    def frame_rgb(self, idx: int) -> np.ndarray | None:
+        """Return frame *idx* as a uint8 RGB array (H, W, 3), or None.
+
+        VitTrack (and the BallTracker protocol) expect RGB; cv2 reads BGR.
+        """
+        if self.video_path is None:
+            return None
+        cap = cv2.VideoCapture(str(self.video_path))
+        try:
+            cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
+            ok, frame = cap.read()
+        finally:
+            cap.release()
+        if not ok:
+            return None
+        return cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
     # --- JSONL sidecar flush (debounced, 2 s) ----------------------------
 

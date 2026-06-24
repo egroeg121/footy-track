@@ -244,12 +244,31 @@ class VitTrackSOT:
         Returns:
             Normalised (x, y, w, h) if ball located, else None.
         """
+        bbox, _ = self.track_with_score(prev_bbox, frame)
+        return bbox
+
+    def track_with_score(
+        self,
+        prev_bbox: tuple[float, float, float, float] | None,
+        frame: np.ndarray,
+    ) -> tuple[tuple[float, float, float, float] | None, float]:
+        """Like :meth:`track`, but also return VitTrack's confidence score.
+
+        The labeller interpolation endpoint (ft-4e9) needs the raw score to drive
+        its hand-back triggers. ``track()`` delegates here and drops the score so
+        the bake-off harness keeps its ``bbox | None`` contract.
+
+        Returns:
+            ``(bbox, score)``. ``bbox`` is the normalised box, or ``None`` if the
+            object was lost (cold-start, or score below threshold). ``score`` is
+            the model confidence for this frame (0.0 on cold-start).
+        """
         fh, fw = frame.shape[:2]
 
         if prev_bbox is None:
             # No anchor — cannot initialize or track
             self._last_crop_height = None
-            return None
+            return None, 0.0
 
         # Convert normalised to pixel coords
         bbox_px = (
@@ -281,7 +300,7 @@ class VitTrackSOT:
 
         if score < _SCORE_THRESHOLD:
             # Ball lost — keep last known position but don't update state
-            return None
+            return None, score
 
         self._last_bbox_px = new_bbox_px
 
@@ -298,9 +317,9 @@ class VitTrackSOT:
         nh = max(0.0, min(1.0 - ny, nh))
 
         if nw <= 0 or nh <= 0:
-            return None
+            return None, score
 
-        return (nx, ny, nw, nh)
+        return (nx, ny, nw, nh), score
 
     def _init_template(
         self,
