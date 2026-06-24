@@ -17,12 +17,12 @@ import numpy as np
 
 from footy_track.constants import BALL_TAG
 from footy_track.schema import FrameDetections, ObjectDetection
-from footy_track.trackers.base import TrackMeta, TrackedDetection
-
+from footy_track.trackers.base import TrackedDetection, TrackMeta
 
 # ---------------------------------------------------------------------------
 # Kalman filter helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_kalman(cx: float, cy: float, dt: float = 1.0 / 25.0) -> dict:
     """Initialise Kalman filter state for a ball track.
@@ -61,7 +61,6 @@ def _kalman_predict(kf: dict, dt: float) -> np.ndarray:
     F = kf["F"].copy()
     F[0, 2] = dt
     F[1, 3] = dt
-    kf["F"] = F
     kf["x"] = F @ kf["x"]
     kf["P"] = F @ kf["P"] @ F.T + kf["Q"]
     return kf["H"] @ kf["x"]
@@ -81,6 +80,7 @@ def _kalman_update(kf: dict, cx: float, cy: float) -> None:
 # Track dataclass
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class _BallTrack:
     track_id: int
@@ -91,13 +91,12 @@ class _BallTrack:
     last_time: float
     kf: dict = field(repr=False)
     age: int = 0  # frames since last matched detection
-    # accumulated interpolated detections to emit when ball reappears
-    gap_frames: list[tuple[int, float, ObjectDetection]] = field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
 # BallKalmanTracker
 # ---------------------------------------------------------------------------
+
 
 class BallKalmanTracker:
     """Kalman-filter tracker for the ball class.
@@ -171,7 +170,9 @@ class BallKalmanTracker:
     # Internal logic
     # ------------------------------------------------------------------
 
-    def _handle_no_detection(self, frame_idx: int, frame_t: float) -> list[TrackedDetection]:
+    def _handle_no_detection(
+        self, frame_idx: int, frame_t: float
+    ) -> list[TrackedDetection]:
         if self._ball_track is None:
             return []
 
@@ -203,8 +204,8 @@ class BallKalmanTracker:
             h=h,
             model=trk.last_det.model,
         )
+        # last_time updated each gap frame so the next predict step uses a one-frame dt
         trk.last_time = frame_t
-        trk.gap_frames.append((frame_idx, frame_t, interp_det))
 
         return [
             TrackedDetection(
@@ -250,7 +251,6 @@ class BallKalmanTracker:
                 trk.last_frame = frame_idx
                 trk.last_time = frame_t
                 trk.age = 0
-                trk.gap_frames.clear()
             else:
                 # Too far — finalise old track, spawn new one
                 self._finalised.append(self._to_meta(trk))
