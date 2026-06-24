@@ -574,8 +574,7 @@ class VitTrackVideoLabeller:
         self,
         video_path: str | Path,
         objects: list[LabelledObject],
-        min_confidence: float = 0.25,
-        **_kwargs,  # absorb model_uri / imgsz for API compat with Sam3VideoLabeller
+        **_kwargs,  # absorb model_uri / imgsz / min_confidence for API compat
     ) -> None:
         if not objects:
             raise ValueError("At least one labelled object is required.")
@@ -583,7 +582,6 @@ class VitTrackVideoLabeller:
         if not self.video_path.exists():
             raise FileNotFoundError(self.video_path)
         self.objects = objects
-        self.min_confidence = min_confidence
         self.width, self.height = video_dimensions(self.video_path)
 
     def _total_frames(self) -> int:
@@ -629,6 +627,28 @@ class VitTrackVideoLabeller:
             (x2 - x1) / self.width,
             (y2 - y1) / self.height,
         )
+
+    def _warm_trackers(
+        self,
+        cap: cv2.VideoCapture,
+        start_frame: int,
+        trackers: list,
+        seed_bboxes: list,
+    ) -> None:
+        """Read the seed frame and warm each tracker's template."""
+        cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
+        ok, seed_bgr = cap.read()
+        if ok and seed_bgr is not None:
+            seed_rgb = cv2.cvtColor(seed_bgr, cv2.COLOR_BGR2RGB)
+            for i, tracker in enumerate(trackers):
+                tracker.reset()
+                tracker.track(seed_bboxes[i], seed_rgb)
+        else:
+            print(
+                f"[vittrack] could not read seed frame {start_frame} from "
+                f"{self.video_path} — trackers will self-initialize on first available frame",
+                flush=True,
+            )
 
     def _detection_from_bbox(
         self,
@@ -676,13 +696,7 @@ class VitTrackVideoLabeller:
 
         cap = cv2.VideoCapture(str(self.video_path))
         try:
-            cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
-            ok, seed_bgr = cap.read()
-            if ok and seed_bgr is not None:
-                seed_rgb = cv2.cvtColor(seed_bgr, cv2.COLOR_BGR2RGB)
-                for i, tracker in enumerate(trackers):
-                    tracker.reset()
-                    tracker.track(seed_bboxes[i], seed_rgb)
+            self._warm_trackers(cap, start_frame, trackers, seed_bboxes)
 
             for abs_idx in range(start_frame + 1, total):
                 ok, frame_bgr = cap.read()
