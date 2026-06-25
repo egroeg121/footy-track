@@ -46,9 +46,21 @@ from footy_track.utils import get_project_root  # noqa: E402
 MODEL_TAG = "sam3_video"
 MODEL_TAG_VITTRACK = "vittrack"
 
-# Confidence threshold for VitTrack anomaly handback — below this, the user
-# is asked to correct the box rather than trusting the tracker.
-_VITTRACK_HANDBACK_SCORE = 0.5
+# Confidence threshold for VitTrack handback. VitTrack's score is a Hann-windowed
+# correlation peak (see sot_vittrack._decode_outputs): healthy tracks sit roughly
+# in the 0.20-0.80 band, NOT near 1.0. The previous 0.5 default meant almost every
+# object tripped the handback on the *first* tracked frame, so a Run stopped at
+# frame 1 with nothing propagated ("completes instantly / no boxes"). Align with
+# the design doc (vittrack_interpolation.md min_score=0.30) and the tracker's own
+# _SCORE_THRESHOLD=0.20: below this the box is considered unreliable.
+_VITTRACK_HANDBACK_SCORE = 0.3
+
+# A single low-confidence frame is not enough to hand back — VitTrack confidence
+# routinely dips for a frame or two then recovers. Only hand back once an object
+# has been below the threshold for this many *consecutive* frames, so a transient
+# dip does not abort the whole run. (The architecture review's guidance is to let
+# the tracker propagate and let the human reject false positives, not stop early.)
+_VITTRACK_HANDBACK_PATIENCE = 5
 
 
 @dataclass
