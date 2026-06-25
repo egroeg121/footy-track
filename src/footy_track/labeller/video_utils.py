@@ -1,14 +1,17 @@
-"""Backend for the SAM3 video labeller.
+"""Backend for the video labeller (VitTrack SOT tracker).
 
-Given a video and a set of bounding boxes drawn on frame 0 (each tagged with a
-class label), drive ``SAM3VideoPredictor`` to propagate those boxes through every
-frame of the clip and return one :class:`~footy_track.schema.FrameDetections`
-per frame.
+Given a video and a set of bounding boxes drawn on a seed frame (each tagged
+with a class label), drive ``VitTrackSOT`` to propagate ball objects through
+every subsequent frame of the clip and return one
+:class:`~footy_track.schema.FrameDetections` per frame.
 
-The Ultralytics SAM3 video predictor seeds one tracked object per frame-0 box
-(in the order given) and propagates them. We therefore map ``object index ->
-class label`` ourselves, since the predictor only preserves object *order*, not
-our semantic labels.
+VitTrack SOT is applied only to ball-class objects (ball, out_of_play_ball,
+in_play_ball). Non-ball objects (players, refs) are passed through verbatim
+using their seed-frame bbox — VitTrack is not well-suited to tracking the
+28+ player/ref boxes and causes performance issues at scale.
+
+The ``Sam3VideoLabeller`` class is kept for reference but is no longer wired
+into ``BackgroundLabeller`` — VitTrack is the active backend.
 """
 
 from __future__ import annotations
@@ -35,6 +38,11 @@ import cv2  # noqa: E402
 import numpy as np  # noqa: E402
 import torch  # noqa: E402
 
+from footy_track.constants import (  # noqa: E402
+    BALL_TAG,
+    IN_PLAY_BALL_TAG,
+    OUT_OF_PLAY_BALL_TAG,
+)
 from footy_track.detectors.utils import (  # noqa: E402
     _available_device,
     mask_poly_to_norm_xywh,
@@ -43,6 +51,19 @@ from footy_track.schema import FrameDetections, ObjectDetection  # noqa: E402
 from footy_track.utils import get_project_root  # noqa: E402
 
 MODEL_TAG = "sam3_video"
+MODEL_TAG_VITTRACK = "vittrack"
+
+# Labels that VitTrack SOT is applied to. VitTrack is a single-object tracker
+# designed for small, fast-moving objects like a ball. Applying it to all
+# 20-30 player/ref boxes causes ~4s/frame and guaranteed frame-1 handback
+# (Hann-windowed SOT scores for person-sized crops are typically 0.05-0.32).
+_VITTRACK_BALL_LABELS = frozenset({BALL_TAG, OUT_OF_PLAY_BALL_TAG, IN_PLAY_BALL_TAG})
+
+# Confidence threshold for VitTrack anomaly handback — below this, the user
+# is asked to correct the box rather than trusting the tracker.
+# VitTrack's Hann-windowed score scale produces values in ~0.10-0.60 for a
+# well-tracked ball; 0.30 is the practical minimum before the track degrades.
+_VITTRACK_HANDBACK_SCORE = 0.30
 
 
 @dataclass
@@ -554,8 +575,224 @@ class Sam3VideoLabeller:
         )
 
 
+class VitTrackVideoLabeller:
+    """Propagate seed boxes through a clip using per-object ``VitTrackSOT`` instances.
+
+    VitTrack SOT is applied only to ball-class objects (ball, out_of_play_ball,
+    in_play_ball). Non-ball objects (players, refs) are passed through from
+    their seed-frame bbox with confidence 1.0 on every subsequent frame.
+
+    A confidence drop below ``_VITTRACK_HANDBACK_SCORE`` for ball objects is
+    surfaced via the yielded ``FrameDetections`` confidence field so
+    ``BackgroundLabeller`` can trigger an anomaly handback.
+    """
+
+    def __init__(
+        self,
+        video_path: str | Path,
+        objects: list[LabelledObject],
+        **_kwargs,  # absorb model_uri / imgsz / min_confidence for API compat
+    ) -> None:
+        if not objects:
+            raise ValueError("At least one labelled object is required.")
+        self.video_path = Path(video_path)
+        if not self.video_path.exists():
+            raise FileNotFoundError(self.video_path)
+        self.objects = objects
+        self.width, self.height = video_dimensions(self.video_path)
+
+    def _total_frames(self) -> int:
+        cap = cv2.VideoCapture(str(self.video_path))
+        try:
+            return int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        finally:
+            cap.release()
+
+    def _seed_frame_detections(self, frame_idx: int) -> FrameDetections:
+        """Emit the user's marked objects verbatim as the seed frame's output."""
+        uri = self.video_path.parent / f"{self.video_path.stem}_frame_{frame_idx:06d}"
+        detections: list[ObjectDetection] = []
+        for o in self.objects:
+            if o.bbox_xyxy_abs is None:
+                continue
+            x1, y1, x2, y2 = o.bbox_xyxy_abs
+            detections.append(
+                ObjectDetection(
+                    label=o.label,
+                    confidence=1.0,
+                    x=max(0.0, x1 / self.width),
+                    y=max(0.0, y1 / self.height),
+                    w=max(0.0, (x2 - x1) / self.width),
+                    h=max(0.0, (y2 - y1) / self.height),
+                    model=MODEL_TAG_VITTRACK,
+                )
+            )
+        return FrameDetections(
+            uri=uri, width=self.width, height=self.height, detections=detections
+        )
+
+    def _obj_to_norm_bbox(
+        self, o: LabelledObject
+    ) -> tuple[float, float, float, float] | None:
+        """Convert a LabelledObject's absolute xyxy bbox to normalized xywh."""
+        if o.bbox_xyxy_abs is None:
+            return None
+        x1, y1, x2, y2 = o.bbox_xyxy_abs
+        return (
+            x1 / self.width,
+            y1 / self.height,
+            (x2 - x1) / self.width,
+            (y2 - y1) / self.height,
+        )
+
+    def _warm_trackers(
+        self,
+        cap: cv2.VideoCapture,
+        start_frame: int,
+        trackers: list,
+        seed_bboxes: list,
+    ) -> None:
+        """Read the seed frame and warm each tracker's template."""
+        cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
+        ok, seed_bgr = cap.read()
+        if ok and seed_bgr is not None:
+            seed_rgb = cv2.cvtColor(seed_bgr, cv2.COLOR_BGR2RGB)
+            for i, tracker in enumerate(trackers):
+                tracker.reset()
+                tracker.track(seed_bboxes[i], seed_rgb)
+        else:
+            print(
+                f"[vittrack] could not read seed frame {start_frame} from "
+                f"{self.video_path} — trackers will self-initialize on first available frame",
+                flush=True,
+            )
+
+    def _detection_from_bbox(
+        self,
+        label: str,
+        bbox: tuple[float, float, float, float],
+        score: float,
+    ) -> ObjectDetection:
+        nx, ny, nw, nh = bbox
+        return ObjectDetection(
+            label=label,
+            confidence=max(score, 0.0),
+            x=max(0.0, nx),
+            y=max(0.0, ny),
+            w=max(0.0, nw),
+            h=max(0.0, nh),
+            model=MODEL_TAG_VITTRACK,
+        )
+
+    def _update_object(
+        self,
+        i: int,
+        tracker,
+        obj: LabelledObject,
+        seed_bboxes: list,
+        frame_rgb: np.ndarray,
+    ) -> ObjectDetection | None:
+        """Track or pass through one object; update seed_bboxes[i] in place."""
+        prev_bbox = seed_bboxes[i]
+        if tracker is None:
+            # Non-ball: emit seed bbox verbatim at confidence 1.0.
+            if prev_bbox is not None:
+                return self._detection_from_bbox(obj.label, prev_bbox, 1.0)
+            return None
+        new_bbox = tracker.track(prev_bbox, frame_rgb)
+        score = tracker.last_score
+        if new_bbox is not None:
+            seed_bboxes[i] = new_bbox
+            return self._detection_from_bbox(obj.label, new_bbox, score)
+        if prev_bbox is not None:
+            return self._detection_from_bbox(obj.label, prev_bbox, score)
+        return None
+
+    def iter_frames_from(
+        self,
+        start_frame: int = 0,
+        stop_event: threading.Event | None = None,
+        progress_callback: Callable[[int, int], None] | None = None,
+    ) -> Iterator[FrameDetections]:
+        """Propagate from ``start_frame`` onward, yielding one frame at a time.
+
+        Yields the seed frame first (user boxes verbatim), then tracks forward.
+
+        VitTrack SOT is applied only to ball-label objects (see
+        ``_VITTRACK_BALL_LABELS``). Non-ball objects are passed through from
+        their seed bbox with confidence 1.0 on every subsequent frame — their
+        positions are fixed at the seed, since YOLO handles per-frame player
+        detection separately and applying SOT to 20+ player boxes causes
+        ~4s/frame and immediate frame-1 handback.
+
+        Confidence drops below ``_VITTRACK_HANDBACK_SCORE`` for ball objects
+        are encoded as low confidence so ``BackgroundLabeller`` can detect
+        and trigger an anomaly handback.
+        """
+        from footy_track.ball_trackers.sot_vittrack import VitTrackSOT  # noqa: PLC0415
+
+        total = self._total_frames()
+
+        # Only track ball-class objects with VitTrack.
+        # Non-ball indices use tracker=None and pass through their seed bbox.
+        trackers: list[VitTrackSOT | None] = [
+            VitTrackSOT() if obj.label in _VITTRACK_BALL_LABELS else None
+            for obj in self.objects
+        ]
+        ball_trackers = [t for t in trackers if t is not None]
+        seed_bboxes: list[tuple[float, float, float, float] | None] = [
+            self._obj_to_norm_bbox(o) for o in self.objects
+        ]
+
+        yield self._seed_frame_detections(start_frame)
+        if progress_callback is not None:
+            progress_callback(start_frame + 1, total)
+        if stop_event is not None and stop_event.is_set():
+            return
+
+        cap = cv2.VideoCapture(str(self.video_path))
+        try:
+            # Warm only ball trackers — skip read if no ball objects present.
+            if ball_trackers:
+                ball_seed_bboxes = [
+                    seed_bboxes[i] for i, t in enumerate(trackers) if t is not None
+                ]
+                self._warm_trackers(cap, start_frame, ball_trackers, ball_seed_bboxes)
+            else:
+                # Still need to position the VideoCapture past the seed frame.
+                cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame + 1)
+
+            for abs_idx in range(start_frame + 1, total):
+                ok, frame_bgr = cap.read()
+                if not ok:
+                    break
+                frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
+                uri = (
+                    self.video_path.parent
+                    / f"{self.video_path.stem}_frame_{abs_idx:06d}"
+                )
+                detections: list[ObjectDetection] = []
+
+                for i, (tracker, obj) in enumerate(
+                    zip(trackers, self.objects, strict=True)
+                ):
+                    det = self._update_object(i, tracker, obj, seed_bboxes, frame_rgb)
+                    if det is not None:
+                        detections.append(det)
+
+                yield FrameDetections(
+                    uri=uri, width=self.width, height=self.height, detections=detections
+                )
+                if progress_callback is not None:
+                    progress_callback(abs_idx + 1, total)
+                if stop_event is not None and stop_event.is_set():
+                    return
+        finally:
+            cap.release()
+
+
 class BackgroundLabeller:
-    """Run :class:`Sam3VideoLabeller` propagation in a daemon thread.
+    """Run :class:`VitTrackVideoLabeller` propagation in a daemon thread.
 
     Designed for the Streamlit UI: the worker thread fills ``frames`` (indexed by
     absolute frame number) while the UI polls ``progress`` / ``running`` on each
@@ -591,12 +828,10 @@ class BackgroundLabeller:
     ) -> None:
         """Stop any running job, then start propagation from ``start_frame``."""
         self.pause()
-        labeller = Sam3VideoLabeller(
+        labeller = VitTrackVideoLabeller(
             video_path=video_path,
             objects=objects,
-            model_uri=model_uri,
             min_confidence=min_confidence,
-            imgsz=imgsz,
         )
         total = labeller._total_frames()
         with self._lock:
@@ -615,7 +850,7 @@ class BackgroundLabeller:
             target=self._worker,
             args=(labeller, start_frame),
             daemon=True,
-            name="sam3-bg-labeller",
+            name="vittrack-bg-labeller",
         )
         self._thread.start()
 
@@ -640,7 +875,7 @@ class BackgroundLabeller:
                 out.append(fd)
             return out
 
-    def _worker(self, labeller: Sam3VideoLabeller, start_frame: int) -> None:
+    def _worker(self, labeller: VitTrackVideoLabeller, start_frame: int) -> None:
         try:
             prev_fd: FrameDetections | None = None
             for fd in labeller.iter_frames_from(
@@ -662,6 +897,19 @@ class BackgroundLabeller:
                     if (self.anomaly_detection and prev_fd is not None)
                     else None
                 )
+                # Also hand back on confidence drop (VitTrack-specific).
+                if reason is None and self.anomaly_detection:
+                    low = [
+                        d
+                        for d in fd.detections
+                        if d.confidence < _VITTRACK_HANDBACK_SCORE
+                    ]
+                    if low:
+                        reason = (
+                            f"VitTrack confidence dropped to "
+                            f"{low[0].confidence:.2f} for '{low[0].label}' "
+                            f"(threshold {_VITTRACK_HANDBACK_SCORE})"
+                        )
                 if reason is not None:
                     with self._lock:
                         self.anomaly_frame = idx

@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<title>SAM3 Video Labeller</title>
+<title>Footy Track Labeller</title>
 <script src="https://unpkg.com/konva@9/konva.min.js"></script>
 <style>
   :root { --bg:#0f1419; --panel:#1a2129; --ink:#e6edf3; --muted:#9bb0c0;
@@ -52,7 +52,7 @@
 </style>
 </head>
 <body>
-<header><h1>⚽ SAM3 Video Labeller</h1></header>
+<header style="display:flex;align-items:center;gap:16px;"><a href="/" style="color:var(--muted);font-size:13px;text-decoration:none;">← Home</a><h1 style="margin:0;">⚽ Footy Track Labeller</h1><a href="/object_review" style="color:var(--accent);font-size:13px;text-decoration:none;">🃏 Object Review</a></header>
 
 <div class="row" style="padding:0 16px;">
   <input type="text" id="videoPath" placeholder="/path/to/video.mp4" />
@@ -60,7 +60,7 @@
   <span id="status">no video</span>
 </div>
 <div class="row" style="padding:0 16px 8px;">
-  <input type="text" id="modelPath" placeholder="SAM3 checkpoint path (blank = default sam3.pt)" />
+  <input type="text" id="modelPath" placeholder="VitTrack (default — model auto-downloads)" />
   <span class="muted">leave blank for default</span>
 </div>
 
@@ -83,7 +83,7 @@
       <button id="noBallBtn" title="Mark frame as no-ball-visible (N)">🚫 No ball (N)</button>
       <button id="notBroadcastBtn" title="Mark frame as not broadcast (B)">📺 Not broadcast (B)</button>
       <label class="muted" style="margin-left:8px;">res
-        <select id="imgszSel" title="SAM3 inference resolution — higher tracks small objects (ball) better but is slower">
+        <select id="imgszSel" title="Inference resolution (unused by VitTrack — kept for future backends)">
           <option value="512">512</option>
           <option value="768">768</option>
           <option value="1024" selected>1024</option>
@@ -170,10 +170,8 @@ function addRect(label, x, y, w, h, editable) {
     draggable: editable, name:"box",
   });
   r.setAttr("label", label);
-  if (editable) {
-    r.on("click", () => selectRect(r));
-    r.on("transformend dragend", () => { normalizeScale(r); pushUndo(); frameDirty=true; renderList(); });
-  }
+  r.on("click", () => selectRect(r));
+  r.on("transformend dragend", () => { normalizeScale(r); pushUndo(); frameDirty=true; renderList(); });
   boxLayer.add(r);
   // number label
   const t = new Konva.Text({ x:x+2, y:Math.max(0,y-16), text:"", fontSize:13,
@@ -197,9 +195,12 @@ function drawBoxes(objs, editable){
   clearBoxes();
   objs.forEach(o => addRect(o.label, o.x*dispW, o.y*dispH, o.w*dispW, o.h*dispH, editable));
   refreshNumbers(); boxLayer.draw(); renderList();
-  // Update frame tracking sets based on what's on canvas
-  const hasBall = objs.some(o => BALL_LABELS.has(o.label));
-  const hasPlayer = objs.some(o => PLAYER_LABELS.has(o.label));
+}
+
+function syncTimelineSets(){
+  const boxes = boxesNorm();
+  const hasBall = boxes.some(o => BALL_LABELS.has(o.label));
+  const hasPlayer = boxes.some(o => PLAYER_LABELS.has(o.label));
   if (hasBall) markedBallFrames.add(viewFrame); else markedBallFrames.delete(viewFrame);
   if (hasPlayer) markedPlayerFrames.add(viewFrame); else markedPlayerFrames.delete(viewFrame);
   renderTimelineBar();
@@ -244,10 +245,10 @@ function renderList(){
     } else {
       const sel=document.createElement("select");
       CLASSES.forEach(c=>{const o=document.createElement("option");o.value=c;o.textContent=CLASS_KEYS[c]?`[${CLASS_KEYS[c]}] ${c}`:c;if(c===r.getAttr("label"))o.selected=true;sel.appendChild(o);});
-      sel.onchange=()=>{ r.setAttr("label",sel.value); r.stroke(colorOf(sel.value)); frameDirty=true; refreshNumbers(); boxLayer.draw(); renderList(); };
+      sel.onchange=()=>{ r.setAttr("label",sel.value); r.stroke(colorOf(sel.value)); frameDirty=true; refreshNumbers(); boxLayer.draw(); renderList(); syncTimelineSets(); };
       row.appendChild(sel);
       const x=document.createElement("span"); x.className="x"; x.textContent="✕";
-      x.onclick=()=>{ pushUndo(); const t=r.getAttr("numText"); if(t)t.destroy(); r.destroy(); tr.nodes([]); frameDirty=true; boxLayer.draw(); renderList(); };
+      x.onclick=()=>{ pushUndo(); const t=r.getAttr("numText"); if(t)t.destroy(); r.destroy(); tr.nodes([]); frameDirty=true; boxLayer.draw(); renderList(); syncTimelineSets(); };
       row.appendChild(x);
       row.onclick=(e)=>{ if(e.target===x||e.target===sel)return; selectRect(r); };
     }
@@ -289,11 +290,13 @@ function renderTimelineBar(){
       ctx.fillRect(x, 0, pw, 12);
     }
   }
-  // player-only frames (no ball marked) — full green
+  // player-only frames (no ball marked) — bottom green + tiny red top to flag ball not yet decided
   for (const idx of markedPlayerFrames) {
-    if (!markedBallFrames.has(idx)) {
+    if (!markedBallFrames.has(idx) && !noBallFrames.has(idx) && !notBroadcastFrames.has(idx)) {
       ctx.fillStyle = "#3fb950";
-      ctx.fillRect(Math.floor((idx / total) * W), 0, pw, 12);
+      ctx.fillRect(Math.floor((idx / total) * W), 2, pw, 10);
+      ctx.fillStyle = "#f85149";
+      ctx.fillRect(Math.floor((idx / total) * W), 0, pw, 2);
     }
   }
   // current frame cursor
@@ -345,7 +348,7 @@ let drawing=null, drawStart=null;
 stage.on("mousedown", (e)=>{
   if (tool!=="draw" || mode==="running") return;
   const p=stage.getPointerPosition(); drawStart=p;
-  drawing=addRect(classSel.value, p.x, p.y, 1, 1, true);
+  drawing=addRect(classSel.value, p.x, p.y, 1, 1, false);
 });
 stage.on("mousemove", ()=>{
   if(!drawing) return; const p=stage.getPointerPosition();
@@ -353,12 +356,19 @@ stage.on("mousemove", ()=>{
   drawing.x(Math.min(p.x,drawStart.x)); drawing.y(Math.min(p.y,drawStart.y));
   refreshNumbers(); boxLayer.draw();
 });
-stage.on("mouseup", ()=>{ if(drawing){ if(drawing.width()<4||drawing.height()<4){const t=drawing.getAttr("numText");if(t)t.destroy();drawing.destroy();} else { pushUndo(); frameDirty=true; } drawing=null; renderList(); }});
+stage.on("mouseup", ()=>{ if(drawing){ if(drawing.width()<4||drawing.height()<4){const t=drawing.getAttr("numText");if(t)t.destroy();drawing.destroy();} else { pushUndo(); frameDirty=true; syncTimelineSets(); } drawing=null; renderList(); }});
 
 // no-ball mark
 async function markNoBall() {
   if (mode === "running" || meta === null) return;
-  // Save canvas edits (saveCurrentEdits only covers paused/idle_results, handle idle too)
+  if (noBallFrames.has(viewFrame)) {
+    noBallFrames.delete(viewFrame);
+    await fetch("/no-ball/clear", {method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({idx: viewFrame})});
+    setStatus(`Frame ${viewFrame} no-ball cleared`);
+    renderList(); renderTimelineBar();
+    return;
+  }
   if (mode === "idle") {
     await fetch("/edit", {method:"POST", headers:{"Content-Type":"application/json"},
       body: JSON.stringify({idx: viewFrame, objects: boxesNorm()})});
@@ -368,7 +378,6 @@ async function markNoBall() {
   noBallFrames.add(viewFrame);
   await fetch("/no-ball", {method:"POST", headers:{"Content-Type":"application/json"},
     body: JSON.stringify({idx: viewFrame})});
-  // Clear ball boxes from canvas (server already stripped them)
   await loadTimelineFrame(viewFrame, mode !== "running");
   setStatus(`🚫 Frame ${viewFrame} marked no-ball`);
 }
@@ -399,7 +408,7 @@ window.addEventListener("keydown",(e)=>{
   if (e.target.tagName === "INPUT" || e.target.tagName === "SELECT") return;
 
   if((e.key==="Delete"||e.key==="Backspace") && tool==="edit"){
-    const n=tr.nodes()[0]; if(n){ pushUndo(); const t=n.getAttr("numText"); if(t)t.destroy(); n.destroy(); tr.nodes([]); frameDirty=true; boxLayer.draw(); renderList(); }
+    const n=tr.nodes()[0]; if(n){ pushUndo(); const t=n.getAttr("numText"); if(t)t.destroy(); n.destroy(); tr.nodes([]); frameDirty=true; boxLayer.draw(); renderList(); syncTimelineSets(); }
     return;
   }
 
@@ -502,6 +511,7 @@ async function loadClip(name, el) {
 }
 
 loadClipList();
+setInterval(loadClipList, 20000); // refresh clip ticks periodically
 
 $("addClipBtn").onclick = async () => {
   const name = prompt("Clip filename (must be in clips dir):");
@@ -552,6 +562,7 @@ async function autodetect(frameIdx){
     body:JSON.stringify({frame_idx:frameIdx, conf:0.35, iou:0.5, current_boxes:boxesNorm()})});
   const data = await res.json();   // writes to timeline server-side
   drawBoxes(data.boxes, true);
+  syncTimelineSets();
   setStatus(`auto-detected ${data.boxes.length} objects`);
 }
 $("autoBtn").onclick = ()=>autodetect(viewFrame);
@@ -572,9 +583,10 @@ function undoLast(){
   if(!undoStack.length){ setStatus("Nothing to undo"); return; }
   const snapshot = undoStack.pop();
   clearBoxes();
-  snapshot.forEach(o => addRect(o.label, o.x*dispW, o.y*dispH, o.w*dispW, o.h*dispH, true));
+  snapshot.forEach(o => addRect(o.label, o.x*dispW, o.y*dispH, o.w*dispW, o.h*dispH, tool==="edit"));
   refreshNumbers(); boxLayer.draw(); renderList();
   frameDirty = true;
+  syncTimelineSets();
 }
 async function gotoNextDetection(){
   if (meta === null) return;

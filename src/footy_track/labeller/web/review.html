@@ -1,0 +1,832 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Object Review — Footy Track</title>
+<script src="https://unpkg.com/konva@9/konva.min.js"></script>
+<style>
+  :root { --bg:#0f1419; --panel:#1a2129; --ink:#e6edf3; --muted:#9bb0c0;
+          --accent:#1e90ff; --green:#3fb950; --red:#f85149; --border:#2d3742;
+          --yellow:#e3b341; --purple:#a371f7; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink);
+         font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+  header { padding:10px 16px; border-bottom:1px solid var(--border);
+           display:flex; align-items:center; gap:16px; }
+  header h1 { margin:0; font-size:18px; }
+  header a { color:var(--accent); font-size:13px; text-decoration:none; }
+
+  /* Batch header */
+  #batch-bar { display:flex; align-items:center; gap:12px; padding:10px 16px;
+               border-bottom:1px solid var(--border); flex-wrap:wrap; }
+  .class-pill { padding:4px 12px; border-radius:20px; font-size:12px; font-weight:700;
+                cursor:pointer; border:2px solid transparent; opacity:.55; }
+  .class-pill.active { opacity:1; border-color:#fff; }
+  #batch-info { font-size:12px; color:var(--muted); margin-left:auto; }
+
+  /* Grid */
+  #grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(160px,1fr));
+          gap:10px; padding:14px 16px; }
+  .crop-card { position:relative; background:var(--panel); border:2px solid var(--border);
+               border-radius:8px; overflow:hidden; cursor:pointer; }
+  .crop-card:hover { border-color:var(--accent); }
+  .crop-card.selected { border-color:var(--green); }
+  .crop-card img { width:100%; display:block; aspect-ratio:1; object-fit:contain; background:#000; }
+  .crop-card canvas.card-overlay { position:absolute; top:0; left:0; width:100%; aspect-ratio:1;
+                                    pointer-events:none; }
+  .crop-card .card-label { font-size:10px; font-weight:700; padding:2px 6px;
+                            position:absolute; top:4px; left:4px; border-radius:3px;
+                            text-transform:uppercase; color:#000; }
+  .crop-card .card-prov { font-size:9px; position:absolute; top:4px; right:4px;
+                           background:rgba(0,0,0,.6); color:var(--muted);
+                           padding:1px 4px; border-radius:3px; }
+  .crop-card .card-yolo-tick { position:absolute; bottom:24px; right:4px; font-size:11px;
+                                opacity:.7; pointer-events:none; }
+  .crop-card .card-bbox { font-size:9px; color:var(--muted); padding:3px 5px;
+                           background:var(--bg); text-align:center; white-space:nowrap;
+                           overflow:hidden; text-overflow:ellipsis; }
+
+  /* Batch actions */
+  #batch-actions { position:sticky; bottom:0; background:rgba(15,20,25,.95);
+                   border-top:1px solid var(--border); padding:10px 16px;
+                   display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+  .btn { padding:7px 16px; border:1px solid var(--border); border-radius:7px;
+         background:#0d1620; color:var(--ink); font-size:13px; cursor:pointer; }
+  .btn:hover { border-color:var(--accent); }
+  .btn.accept { border-color:var(--green); color:var(--green); }
+  .btn.danger { border-color:var(--red); color:var(--red); }
+  .btn.warn { border-color:var(--yellow); color:var(--yellow); }
+  #sel-count { font-size:12px; color:var(--muted); }
+  #loading { text-align:center; padding:60px; color:var(--muted); font-size:16px; }
+  #done { text-align:center; padding:60px; color:var(--muted); font-size:22px; display:none; }
+
+  /* Detail modal */
+  #modal { display:none; position:fixed; inset:0; background:rgba(0,0,0,.8);
+           z-index:200; align-items:center; justify-content:center; }
+  #modal.open { display:flex; }
+  #modal-inner { background:var(--panel); border:1px solid var(--border);
+                 border-radius:12px; width:min(1100px,98vw); max-height:94vh;
+                 overflow:auto; display:flex; flex-direction:column; }
+  #modal-header { padding:10px 16px; border-bottom:1px solid var(--border);
+                  display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+  #modal-header h3 { margin:0; font-size:14px; flex:1; }
+  #modal-body { display:flex; gap:0; min-height:400px; }
+  /* Left: Konva canvas on the crop (main review area) */
+  #modal-canvas-wrap { flex:none; width:420px; position:relative; background:#000; border-right:1px solid var(--border); display:flex; align-items:center; justify-content:center; }
+  #modal-konva { display:block; }
+  /* Right: full frame context */
+  #modal-context-panel { flex:1; display:flex; flex-direction:column; min-width:0; background:#111; }
+  #modal-context-wrap { position:relative; flex:1; min-height:0; }
+  #modal-context-img { width:100%; height:100%; display:block; object-fit:contain; }
+  #modal-context-svg { position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none; }
+  #modal-crop-label { font-size:11px; color:var(--muted); padding:6px 10px; border-top:1px solid var(--border); }
+  #modal-actions { padding:10px 16px; display:flex; gap:8px; flex-wrap:wrap;
+                   align-items:center; border-top:1px solid var(--border); }
+  #modal-bbox { font-size:12px; color:var(--muted); margin-left:auto; }
+  #modal-info { padding:3px 16px 6px; font-size:11px; color:var(--muted); }
+
+  /* Picker */
+  #picker { display:none; position:fixed; inset:0; background:rgba(0,0,0,.7);
+            z-index:300; align-items:center; justify-content:center; }
+  #picker.open { display:flex; }
+  #picker-box { background:var(--panel); border:1px solid var(--border);
+                border-radius:12px; padding:20px 28px; min-width:260px; }
+  #picker-box h3 { margin:0 0 12px; font-size:15px; }
+  .pick-btn { display:flex; align-items:center; gap:10px; width:100%;
+              padding:7px 12px; margin-bottom:5px; background:#0d1620;
+              border:1px solid var(--border); border-radius:6px;
+              color:var(--ink); font-size:13px; cursor:pointer; }
+  .pick-btn:hover { border-color:var(--accent); }
+  .pick-key { font-size:10px; color:var(--muted); background:var(--border);
+              border-radius:3px; padding:1px 5px; font-family:monospace; }
+
+  /* Yolo results */
+  #yolo-results { padding:8px 16px; font-size:12px; color:var(--muted); }
+</style>
+</head>
+<body>
+<header>
+  <h1>🃏 Object Review</h1>
+  <a href="/">← Home</a>
+  <a href="/labeller">🏷️ Labeller</a>
+</header>
+
+<div id="batch-bar">
+  <div id="class-pills"></div>
+  <label style="font-size:12px;color:var(--muted);display:flex;align-items:center;gap:5px;cursor:pointer;margin-left:12px;">
+    <input type="checkbox" id="hide-seen-toggle"> Hide reviewed
+  </label>
+  <span id="batch-info"></span>
+</div>
+
+<div id="loading">Loading queue…</div>
+<div id="done">✅ All done! <br><br><button class="btn" onclick="location.reload()">Reload</button></div>
+<div id="grid"></div>
+
+<div id="batch-actions" style="display:none">
+  <span id="sel-count">0 selected</span>
+  <button class="btn accept" id="btn-accept-sel">✓ Accept selected [A]</button>
+  <button class="btn warn" id="btn-relabel-sel">W Relabel selected</button>
+  <button class="btn danger" id="btn-delete-sel">D Delete selected</button>
+  <button class="btn" id="btn-select-all">Select all [S]</button>
+  <button class="btn" id="btn-clear-sel">Clear [Esc]</button>
+</div>
+
+<!-- Detail modal -->
+<div id="modal">
+  <div id="modal-inner">
+    <div id="modal-header">
+      <h3 id="modal-title">Detail</h3>
+      <button class="btn" id="modal-tool-draw" title="Draw mode (W)">✏️ Draw</button>
+      <button class="btn" id="modal-tool-edit" title="Edit mode (E)">✋ Edit</button>
+      <button class="btn warn" id="modal-btn-yolo">🤖 YOLO</button>
+      <button class="btn" onclick="autoSaveModal().then(closeModal)" style="margin-left:auto;">✕ Close [Esc]</button>
+    </div>
+    <div id="modal-body">
+      <!-- Left: Konva canvas on crop (main review + edit area) -->
+      <div id="modal-canvas-wrap">
+        <div id="modal-konva"></div>
+      </div>
+      <!-- Right: full frame context image -->
+      <div id="modal-context-panel">
+        <div id="modal-context-wrap">
+          <img id="modal-context-img" src="" alt="full frame" />
+          <svg id="modal-context-svg" preserveAspectRatio="none"></svg>
+        </div>
+        <div id="modal-crop-label"></div>
+      </div>
+    </div>
+    <div id="yolo-results"></div>
+    <div id="modal-info"></div>
+    <div id="modal-actions">
+      <button class="btn accept" id="modal-btn-accept">✓ Correct [Space]</button>
+      <button class="btn warn" id="modal-btn-relabel">W Wrong class</button>
+      <button class="btn danger" id="modal-btn-delete">D Delete</button>
+      <span id="modal-bbox" class="modal-bbox"></span>
+    </div>
+  </div>
+</div>
+
+<!-- Class picker -->
+<div id="picker">
+  <div id="picker-box">
+    <h3>Choose class</h3>
+    <button class="pick-btn" data-label="player"><span class="pick-key">1</span> Player</button>
+    <button class="pick-btn" data-label="in_play_ball"><span class="pick-key">2</span> Ball (in play)</button>
+    <button class="pick-btn" data-label="out_of_play_ball"><span class="pick-key">3</span> Ball (out of play)</button>
+    <button class="pick-btn" data-label="referee"><span class="pick-key">4</span> Referee</button>
+    <button class="pick-btn" data-label="coach"><span class="pick-key">5</span> Coach</button>
+    <button class="pick-btn" data-label="player_sub"><span class="pick-key">6</span> Player (sub)</button>
+    <button class="pick-btn" data-label="ball"><span class="pick-key">7</span> Ball (generic)</button>
+    <button class="pick-btn" data-label="person"><span class="pick-key">8</span> Person</button>
+    <br>
+    <button class="pick-btn" id="picker-cancel" style="color:var(--muted)"><span class="pick-key">Esc</span> Cancel</button>
+  </div>
+</div>
+
+<script>
+const CLASS_COLORS = {
+  player:'#1e90ff', in_play_ball:'#ffd700', out_of_play_ball:'#ff8c00',
+  referee:'#a371f7', coach:'#00c2a8', player_sub:'#58a6ff',
+  ball:'#ffc800', person:'#9bb0c0',
+};
+const CLASSES = ['player','in_play_ball','out_of_play_ball','referee','coach','player_sub','ball','person'];
+const CLASS_KEYS = {'1':'player','2':'in_play_ball','3':'out_of_play_ball',
+                    '4':'referee','5':'coach','6':'player_sub','7':'ball','8':'person'};
+const BATCH_SIZE = 100;
+
+let allItems = [];       // full queue from server
+let activeClass = null;  // currently shown class
+let batchOffset = 0;     // offset within current class
+let selected = new Set(); // indices into current batch
+
+// Modal state
+let modalItem = null;
+let modalBbox = null;
+let modalTool = 'draw';
+let modalStage = null, modalBoxLayer = null, modalBgLayer = null, modalTr = null;
+let modalDrawing = null, modalDrawStart = null;
+let pickerTarget = null; // 'batch' or 'modal'
+
+// ── Queue loading ──────────────────────────────────────────────────────────────
+async function loadQueue() {
+  const r = await fetch('/review/queue');
+  const data = await r.json();
+  allItems = data.items;
+  document.getElementById('loading').style.display = 'none';
+  if (!allItems.length) { document.getElementById('done').style.display = 'block'; return; }
+  buildClassPills();
+  const firstClass = getClasses()[0];
+  switchClass(firstClass);
+  document.getElementById('batch-actions').style.display = 'flex';
+}
+
+function getClasses() {
+  const seen = new Set(), order = [];
+  for (const it of allItems) { if (!seen.has(it.label)) { seen.add(it.label); order.push(it.label); } }
+  return order;
+}
+
+function itemsForClass(cls) { return allItems.filter(it => it.label === cls); }
+
+function buildClassPills() {
+  const wrap = document.getElementById('class-pills');
+  wrap.innerHTML = '';
+  for (const cls of getClasses()) {
+    const n = itemsForClass(cls).length;
+    const pill = document.createElement('span');
+    pill.className = 'class-pill';
+    pill.textContent = `${cls} (${n})`;
+    pill.style.background = CLASS_COLORS[cls] || '#555';
+    pill.style.color = '#000';
+    pill.onclick = () => switchClass(cls);
+    pill.dataset.cls = cls;
+    wrap.appendChild(pill);
+  }
+}
+
+function switchClass(cls) {
+  activeClass = cls;
+  batchOffset = 0;
+  selected.clear();
+  gridCursor = -1;
+  document.querySelectorAll('.class-pill').forEach(p => p.classList.toggle('active', p.dataset.cls === cls));
+  renderGrid();
+}
+
+function currentBatch() {
+  let items = itemsForClass(activeClass);
+  if (document.getElementById('hide-seen-toggle')?.checked) {
+    items = items.filter(it => !isSeenKey(it));
+  }
+  return items.slice(batchOffset, batchOffset + BATCH_SIZE);
+}
+
+function renderGrid() {
+  const batch = currentBatch();
+  const total = itemsForClass(activeClass).length;
+  document.getElementById('batch-info').textContent =
+    `${activeClass} — showing ${batchOffset+1}–${Math.min(batchOffset+BATCH_SIZE, total)} of ${total}`;
+  updateSelCount();
+
+  const grid = document.getElementById('grid');
+  grid.innerHTML = '';
+  batch.forEach((item, i) => {
+    const card = document.createElement('div');
+    card.className = 'crop-card' + (selected.has(i) ? ' selected' : '');
+    card.dataset.idx = i;
+
+    const img = document.createElement('img');
+    img.src = item.image_url + '?t=' + item.frame_index;
+    img.loading = 'lazy';
+    card.appendChild(img);
+
+    const lbl = document.createElement('div');
+    lbl.className = 'card-label';
+    lbl.textContent = item.label;
+    lbl.style.background = CLASS_COLORS[item.label] || '#555';
+    card.appendChild(lbl);
+
+    if (item.provenance !== 'labeller') {
+      const prov = document.createElement('div');
+      prov.className = 'card-prov';
+      prov.textContent = `${Math.round(item.confidence*100)}% ${item.provenance}`;
+      card.appendChild(prov);
+    }
+
+    const bbox = document.createElement('div');
+    bbox.className = 'card-bbox';
+    const b = item.bbox;
+    bbox.textContent = `x:${b.x.toFixed(3)} y:${b.y.toFixed(3)} w:${b.w.toFixed(3)} h:${b.h.toFixed(3)}`;
+    card.appendChild(bbox);
+
+    card.addEventListener('click', (e) => {
+      if (e.shiftKey || e.metaKey || e.ctrlKey) {
+        toggleSelect(i, card);
+      } else {
+        gridCursor = i;
+        openModal(item, i);
+      }
+    });
+    card.addEventListener('dblclick', () => toggleSelect(i, card));
+
+    // Apply seen border immediately (synchronous, before image load)
+    if (isSeenKey(item)) card.style.borderColor = 'var(--green)';
+
+    grid.appendChild(card);
+  });
+
+  // Draw GT boxes on all cards as images load
+  batch.forEach((item, i) => drawGtOnCard(i, item));
+}
+
+// ── "Seen" tracking (persisted in localStorage) ────────────────────────────────
+const _SEEN_KEY = 'review_seen_v1';
+const _seenKeys = new Set(JSON.parse(localStorage.getItem(_SEEN_KEY) || '[]'));
+
+function _persistSeen() {
+  localStorage.setItem(_SEEN_KEY, JSON.stringify([..._seenKeys]));
+}
+
+function markSeen(item) {
+  const key = `${item.clip}:${item.frame_index}:${item.box_index}`;
+  if (_seenKeys.has(key)) return;
+  _seenKeys.add(key);
+  _persistSeen();
+  // Green border on the grid card
+  const batch = currentBatch();
+  const i = batch.findIndex(it => `${it.clip}:${it.frame_index}:${it.box_index}` === key);
+  if (i >= 0) {
+    const card = document.querySelector(`.crop-card[data-idx="${i}"]`);
+    if (card) card.style.borderColor = 'var(--green)';
+  }
+}
+
+function isSeenKey(item) {
+  return _seenKeys.has(`${item.clip}:${item.frame_index}:${item.box_index}`);
+}
+
+// ── GT box overlay on grid cards ───────────────────────────────────────────────
+function drawGtOnCard(cardIdx, item) {
+  const card = document.querySelector(`.crop-card[data-idx="${cardIdx}"]`);
+  if (!card) return;
+
+  const img = card.querySelector('img');
+  const doRender = () => {
+    card.querySelector('canvas.card-overlay')?.remove();
+
+    const W = img.clientWidth, H = img.clientHeight || W;
+    const canvas = document.createElement('canvas');
+    canvas.width = W; canvas.height = H;
+    canvas.className = 'card-overlay';
+    img.after(canvas);
+    const ctx = canvas.getContext('2d');
+
+    // Letterbox offset (object-fit:contain in 1:1 square)
+    const iW = img.naturalWidth || 1, iH = img.naturalHeight || 1;
+    const scale = Math.min(W / iW, H / iH);
+    const rW = iW * scale, rH = iH * scale;
+    const offX = (W - rW) / 2, offY = (H - rH) / 2;
+
+    // GT box: map frame-relative → crop-relative (edge-clamped, pad=2.0)
+    const fb = item.bbox, pad = 2.0;
+    const cropX0 = Math.max(0, fb.x - fb.w*pad), cropY0 = Math.max(0, fb.y - fb.h*pad);
+    const cropX1 = Math.min(1, fb.x + fb.w + fb.w*pad), cropY1 = Math.min(1, fb.y + fb.h + fb.h*pad);
+    const cW = cropX1 - cropX0, cH = cropY1 - cropY0;
+    const gcx = (fb.x - cropX0) / cW, gcy = (fb.y - cropY0) / cH;
+    const gcw = fb.w / cW, gch = fb.h / cH;
+
+    ctx.strokeStyle = CLASS_COLORS[item.label] || '#f00';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([]);
+    ctx.strokeRect(offX + gcx*rW, offY + gcy*rH, gcw*rW, gch*rH);
+
+  };
+
+  if (img.complete && img.naturalWidth) { doRender(); }
+  else { img.addEventListener('load', doRender, {once: true}); }
+}
+
+function toggleSelect(i, card) {
+  if (selected.has(i)) { selected.delete(i); card.classList.remove('selected'); }
+  else { selected.add(i); card.classList.add('selected'); }
+  updateSelCount();
+}
+
+function updateSelCount() {
+  document.getElementById('sel-count').textContent = `${selected.size} selected`;
+}
+
+// ── Batch actions ──────────────────────────────────────────────────────────────
+async function acceptSelected() {
+  const batch = currentBatch();
+  // Accept = no-op (marks are already saved); just remove from allItems
+  const toRemove = [...selected].map(i => batch[i]);
+  removeItems(toRemove);
+}
+
+async function deleteSelected() {
+  const batch = currentBatch();
+  const toRemove = [...selected].map(i => batch[i]);
+  await Promise.all(toRemove.map(item => fetch('/review/delete', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({clip:item.clip, frame_index:item.frame_index, box_index:item.box_index}),
+  })));
+  removeItems(toRemove);
+}
+
+async function relabelSelected(newLabel) {
+  closePicker();
+  const batch = currentBatch();
+  const toRelabel = [...selected].map(i => batch[i]);
+  await Promise.all(toRelabel.map(item => fetch('/review/correct', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({clip:item.clip, frame_index:item.frame_index, box_index:item.box_index,
+                          label:newLabel, bbox:item.bbox}),
+  })));
+  // Update labels in allItems
+  toRelabel.forEach(item => { item.label = newLabel; });
+  removeItems(toRelabel);
+}
+
+function removeItems(items) {
+  const keys = new Set(items.map(it => `${it.clip}:${it.frame_index}:${it.box_index}`));
+  allItems = allItems.filter(it => !keys.has(`${it.clip}:${it.frame_index}:${it.box_index}`));
+  selected.clear();
+  buildClassPills();
+  const classes = getClasses();
+  if (!classes.includes(activeClass)) activeClass = classes[0] || null;
+  if (activeClass) { switchClass(activeClass); } else { document.getElementById('grid').innerHTML=''; document.getElementById('done').style.display='block'; }
+}
+
+document.getElementById('btn-accept-sel').onclick = acceptSelected;
+document.getElementById('btn-delete-sel').onclick = deleteSelected;
+document.getElementById('btn-relabel-sel').onclick = () => { pickerTarget='batch'; openPicker(); };
+document.getElementById('btn-select-all').onclick = () => {
+  const n = currentBatch().length;
+  for (let i=0;i<n;i++) selected.add(i);
+  document.querySelectorAll('.crop-card').forEach(c => c.classList.add('selected'));
+  updateSelCount();
+};
+document.getElementById('btn-clear-sel').onclick = () => {
+  selected.clear();
+  document.querySelectorAll('.crop-card').forEach(c => c.classList.remove('selected'));
+  updateSelCount();
+};
+
+// ── Modal (detail + edit) ───────────────────────────────────────────────────────
+function openModal(item, batchIdx) {
+  modalItem = item;
+  modalBbox = {...item.bbox};
+  modalTool = 'draw';
+
+  document.getElementById('modal').classList.add('open');
+  document.getElementById('modal-title').textContent = `${item.label} — ${item.clip} fr.${item.frame_index} box ${item.box_index}`;
+  document.getElementById('modal-info').textContent =
+    `${item.clip} · frame ${item.frame_index} · box ${item.box_index} · ${item.provenance} · conf ${Math.round(item.confidence*100)}%`;
+  document.getElementById('yolo-results').textContent = '';
+
+  // Right panel: full frame context with GT box overlay
+  const ctxImg = document.getElementById('modal-context-img');
+  ctxImg.src = `/review/frame/${item.clip}/${item.frame_index}.jpg`;
+  drawContextBox(item.bbox, item.label);
+  const color = CLASS_COLORS[item.label] || '#f00';
+  const b = item.bbox;
+  document.getElementById('modal-crop-label').innerHTML =
+    `<span style="color:${color};font-weight:700">${item.label}</span> &nbsp; x:${b.x.toFixed(3)} y:${b.y.toFixed(3)} w:${b.w.toFixed(3)} h:${b.h.toFixed(3)}`;
+
+  updateModalBbox();
+  setupModalKonva(item);
+  markSeen(item);
+}
+
+function closeModal() {
+  document.getElementById('modal').classList.remove('open');
+  if (modalStage) { modalStage.destroy(); modalStage=null; }
+  modalItem = null;
+}
+
+async function autoSaveModal() {
+  if (!modalItem) return;
+  const bboxChanged = JSON.stringify(modalBbox) !== JSON.stringify(modalItem.bbox);
+  const labelChanged = modalItem._pendingLabel && modalItem._pendingLabel !== modalItem.label;
+  if (bboxChanged || labelChanged) {
+    const label = labelChanged ? modalItem._pendingLabel : modalItem.label;
+    await fetch('/review/correct', {method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({clip:modalItem.clip, frame_index:modalItem.frame_index,
+        box_index:modalItem.box_index, label, bbox:modalBbox})});
+    modalItem.bbox = {...modalBbox};
+    if (labelChanged) { modalItem.label = label; delete modalItem._pendingLabel; }
+  }
+}
+
+function updateModalBbox() {
+  if (!modalBbox) return;
+  const b = modalBbox;
+  document.getElementById('modal-bbox').textContent =
+    `x:${b.x.toFixed(3)} y:${b.y.toFixed(3)} w:${b.w.toFixed(3)} h:${b.h.toFixed(3)}`;
+}
+
+function drawContextBox(bbox, label) {
+  const img = document.getElementById('modal-context-img');
+  const svg = document.getElementById('modal-context-svg');
+  const doRender = () => {
+    const NS = 'http://www.w3.org/2000/svg';
+    svg.innerHTML = '';
+    const color = CLASS_COLORS[label] || '#f00';
+
+    // Compute rendered image rect inside the container (object-fit:contain letterboxing)
+    const cW = img.clientWidth, cH = img.clientHeight;
+    const iW = img.naturalWidth || cW, iH = img.naturalHeight || cH;
+    const scale = Math.min(cW / iW, cH / iH);
+    const rW = iW * scale, rH = iH * scale;
+    const offX = (cW - rW) / 2, offY = (cH - rH) / 2;
+
+    // SVG viewBox = pixel coords of the rendered image area
+    svg.setAttribute('viewBox', `${offX} ${offY} ${rW} ${rH}`);
+
+    const {x, y, w, h} = bbox;
+    const px = x * rW, py = y * rH, pw = w * rW, ph = h * rH;
+
+    const rect = document.createElementNS(NS, 'rect');
+    rect.setAttribute('x', offX + px); rect.setAttribute('y', offY + py);
+    rect.setAttribute('width', pw); rect.setAttribute('height', ph);
+    rect.setAttribute('fill', 'none');
+    rect.setAttribute('stroke', color);
+    rect.setAttribute('stroke-width', '2');
+    rect.setAttribute('vector-effect', 'non-scaling-stroke');
+    svg.appendChild(rect);
+
+    const txt = document.createElementNS(NS, 'text');
+    txt.setAttribute('x', offX + px + 2); txt.setAttribute('y', offY + py - 4);
+    txt.setAttribute('font-size', '13');
+    txt.setAttribute('fill', color);
+    txt.setAttribute('font-weight', 'bold');
+    txt.setAttribute('vector-effect', 'non-scaling-stroke');
+    txt.textContent = label;
+    svg.appendChild(txt);
+  };
+  if (img.naturalWidth) { doRender(); }
+  else { img.onload = doRender; }
+}
+
+function setupModalKonva(item) {
+  const wrap = document.getElementById('modal-canvas-wrap');
+  wrap.innerHTML = '<div id="modal-konva"></div>';
+  // Left panel: crop canvas — sized to match image aspect ratio on load
+  if (modalStage) modalStage.destroy();
+  modalStage = new Konva.Stage({container:'modal-konva', width:420, height:420});
+  modalBgLayer = new Konva.Layer();
+  modalBoxLayer = new Konva.Layer();
+  modalStage.add(modalBgLayer); modalStage.add(modalBoxLayer);
+  modalTr = new Konva.Transformer({rotateEnabled:false, borderStroke:'#fff'});
+  modalBoxLayer.add(modalTr);
+
+  // Load crop image — resize canvas to match actual image aspect ratio (no stretching)
+  const img = new Image();
+  img.onload = () => {
+    const maxDim = 420;
+    const aspect = img.naturalWidth / img.naturalHeight;
+    const cW = aspect >= 1 ? maxDim : Math.round(maxDim * aspect);
+    const cH = aspect >= 1 ? Math.round(maxDim / aspect) : maxDim;
+    modalStage.width(cW); modalStage.height(cH);
+    const bg = new Konva.Image({image:img, width:cW, height:cH});
+    modalBgLayer.add(bg); bg.moveToBottom(); modalBgLayer.draw();
+    // Draw GT box in crop-space, accounting for edge clamping
+    const fb = item.bbox, pad = 2.0;
+    const cx0 = Math.max(0, fb.x - fb.w*pad), cy0 = Math.max(0, fb.y - fb.h*pad);
+    const cx1 = Math.min(1, fb.x + fb.w + fb.w*pad), cy1 = Math.min(1, fb.y + fb.h + fb.h*pad);
+    const cW_f = cx1-cx0, cH_f = cy1-cy0;
+    const gtCropBox = {x:(fb.x-cx0)/cW_f, y:(fb.y-cy0)/cH_f, w:fb.w/cW_f, h:fb.h/cH_f};
+    drawModalBox(gtCropBox, item.label);
+  };
+  img.src = item.image_url + '?t=' + Date.now();
+
+  // Draw mode
+  modalStage.on('mousedown', (e) => {
+    if (modalTool !== 'draw') return;
+    const p = modalStage.getPointerPosition();
+    modalDrawStart = p;
+    const color = CLASS_COLORS[item.label] || '#f00';
+    modalDrawing = new Konva.Rect({x:p.x,y:p.y,width:1,height:1,
+      stroke:color,strokeWidth:2,draggable:false,name:'box'});
+    modalBoxLayer.add(modalDrawing); modalBoxLayer.draw();
+  });
+  modalStage.on('mousemove', () => {
+    if (!modalDrawing) return;
+    const p = modalStage.getPointerPosition();
+    modalDrawing.width(Math.abs(p.x-modalDrawStart.x));
+    modalDrawing.height(Math.abs(p.y-modalDrawStart.y));
+    modalDrawing.x(Math.min(p.x,modalDrawStart.x));
+    modalDrawing.y(Math.min(p.y,modalDrawStart.y));
+    modalBoxLayer.draw();
+  });
+  modalStage.on('mouseup', () => {
+    if (!modalDrawing) return;
+    if (modalDrawing.width() < 4 || modalDrawing.height() < 4) {
+      modalDrawing.destroy(); modalDrawing=null; modalBoxLayer.draw(); return;
+    }
+    // Store crop-relative coords; convert to frame-relative for saving
+    const cW = modalStage.width(), cH = modalStage.height();
+    const cropRel = {
+      x: modalDrawing.x()/cW, y: modalDrawing.y()/cH,
+      w: modalDrawing.width()/cW, h: modalDrawing.height()/cH,
+    };
+    modalBbox = cropRelToFrameRel(cropRel, modalItem.bbox);
+    modalDrawing = null;
+    updateModalBbox();
+    modalBoxLayer.draw();
+  });
+}
+
+// Convert crop-relative bbox → frame-relative, given original frame bbox (pad=2.0, edge-clamped)
+function cropRelToFrameRel(cropRel, fb) {
+  const pad = 2.0;
+  const cropX = Math.max(0, fb.x - fb.w*pad), cropY = Math.max(0, fb.y - fb.h*pad);
+  const cropW = Math.min(1, fb.x + fb.w + fb.w*pad) - cropX;
+  const cropH = Math.min(1, fb.y + fb.h + fb.h*pad) - cropY;
+  return {
+    x: cropX + cropRel.x * cropW,
+    y: cropY + cropRel.y * cropH,
+    w: cropRel.w * cropW,
+    h: cropRel.h * cropH,
+  };
+}
+
+function drawModalBox(bbox, label) {
+  if (!modalStage) return;
+  const W = modalStage.width(), H = modalStage.height();
+  modalBoxLayer.find('.box').forEach(n=>n.destroy());
+  modalBoxLayer.find('.box-lbl').forEach(n=>n.destroy());
+  modalTr.nodes([]);
+  const color = CLASS_COLORS[label] || '#f00';
+  const px = bbox.x*W, py = bbox.y*H, pw = bbox.w*W, ph = bbox.h*H;
+  // Solid filled rect with semi-transparent fill so tiny boxes are visible
+  const r = new Konva.Rect({
+    x:px, y:py, width:pw, height:ph,
+    stroke:color, strokeWidth:3,
+    fill: color.replace('#','') ? hexToRgba(color, 0.15) : 'rgba(255,0,0,0.15)',
+    draggable:modalTool==='edit', name:'box',
+  });
+  // Label text above the box
+  const t = new Konva.Text({
+    x:px, y:Math.max(0, py-18), text:label,
+    fontSize:13, fontStyle:'bold', fill:color, name:'box-lbl',
+    padding:2,
+  });
+  r.on('click', () => { if(modalTool==='edit'){ modalTr.nodes([r]); modalBoxLayer.draw(); }});
+  r.on('transformend dragend', () => {
+    r.width(Math.max(2, r.width()*r.scaleX())); r.height(Math.max(2, r.height()*r.scaleY()));
+    r.scaleX(1); r.scaleY(1);
+    const cropRel = {x:r.x()/W, y:r.y()/H, w:r.width()/W, h:r.height()/H};
+    modalBbox = modalItem ? cropRelToFrameRel(cropRel, modalItem.bbox) : cropRel;
+    t.x(r.x()); t.y(Math.max(0, r.y()-18));
+    updateModalBbox();
+  });
+  modalBoxLayer.add(r); modalBoxLayer.add(t); modalBoxLayer.draw();
+}
+
+function hexToRgba(hex, alpha) {
+  const h = hex.replace('#','');
+  const r = parseInt(h.slice(0,2),16), g = parseInt(h.slice(2,4),16), b = parseInt(h.slice(4,6),16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
+function setModalTool(t) {
+  modalTool = t;
+  document.getElementById('modal-tool-draw').style.borderColor = t==='draw' ? 'var(--accent)' : '';
+  document.getElementById('modal-tool-edit').style.borderColor = t==='edit' ? 'var(--accent)' : '';
+  if (modalBoxLayer) {
+    modalBoxLayer.find('.box').forEach(r => r.draggable(t==='edit'));
+    if (t!=='edit') modalTr && modalTr.nodes([]);
+    modalBoxLayer.draw();
+  }
+}
+
+document.getElementById('modal-tool-draw').onclick = () => setModalTool('draw');
+document.getElementById('modal-tool-edit').onclick = () => setModalTool('edit');
+
+document.getElementById('modal-btn-accept').onclick = async () => {
+  if (!modalItem) return;
+  const bboxChanged = JSON.stringify(modalBbox) !== JSON.stringify(modalItem.bbox);
+  if (bboxChanged) {
+    await fetch('/review/correct', {method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({clip:modalItem.clip,frame_index:modalItem.frame_index,
+        box_index:modalItem.box_index,label:modalItem.label,bbox:modalBbox})});
+    modalItem.bbox = {...modalBbox};
+  }
+  closeModal();
+  removeItems([modalItem]);
+};
+
+document.getElementById('modal-btn-delete').onclick = async () => {
+  if (!modalItem) return;
+  await fetch('/review/delete', {method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({clip:modalItem.clip,frame_index:modalItem.frame_index,box_index:modalItem.box_index})});
+  closeModal(); removeItems([modalItem]);
+};
+
+document.getElementById('modal-btn-relabel').onclick = () => { pickerTarget='modal'; openPicker(); };
+
+document.getElementById('modal-btn-yolo').onclick = async () => {
+  if (!modalItem) return;
+  const el = document.getElementById('yolo-results');
+  el.textContent = 'Running YOLO…';
+  const r = await fetch('/review/yolo', {method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({clip:modalItem.clip,frame_index:modalItem.frame_index})});
+  const data = await r.json();
+  if (!data.ok) { el.textContent = 'YOLO failed: ' + data.error; return; }
+  if (!data.boxes.length) { el.textContent = 'YOLO: no detections'; return; }
+  // Draw YOLO boxes on crop canvas (map frame-relative → crop-space)
+  if (modalStage && modalItem) {
+    const W = modalStage.width(), H = modalStage.height();
+    // Crop extents in frame-relative coords (pad=2.0, edge-clamped)
+    const fb = modalItem.bbox, pad2 = 2.0;
+    const cropX = Math.max(0, fb.x - fb.w*pad2), cropY = Math.max(0, fb.y - fb.h*pad2);
+    const cropW = Math.min(1, fb.x + fb.w + fb.w*pad2) - cropX;
+    const cropH = Math.min(1, fb.y + fb.h + fb.h*pad2) - cropY;
+    // Remove existing YOLO boxes
+    modalBoxLayer.find('.yolo-box').forEach(n=>n.destroy());
+    data.boxes.filter(b => b.label === modalItem.label).forEach(b => {
+      // Map frame-relative bbox → crop-relative
+      const cx = (b.x - cropX) / cropW;
+      const cy = (b.y - cropY) / cropH;
+      const cw = b.w / cropW;
+      const ch = b.h / cropH;
+      const color = CLASS_COLORS[b.label] || '#f00';
+      const r = new Konva.Rect({x:cx*W,y:cy*H,width:cw*W,height:ch*H,
+        stroke:color,strokeWidth:1.5,dash:[4,3],name:'yolo-box',listening:false});
+      modalBoxLayer.add(r);
+      const t = new Konva.Text({x:cx*W+2,y:Math.max(0,cy*H-14),text:`${b.label} ${Math.round(b.confidence*100)}%`,
+        fontSize:11,fill:color,name:'yolo-box'});
+      modalBoxLayer.add(t);
+    });
+    modalBoxLayer.draw();
+  }
+  el.textContent = `YOLO: ${data.boxes.length} box(es) — ${data.boxes.map(b=>`${b.label} ${Math.round(b.confidence*100)}%`).join(', ')}`;
+};
+
+// ── Picker ─────────────────────────────────────────────────────────────────────
+function openPicker() { document.getElementById('picker').classList.add('open'); }
+function closePicker() { document.getElementById('picker').classList.remove('open'); }
+
+document.querySelectorAll('.pick-btn[data-label]').forEach(btn => {
+  btn.onclick = async () => {
+    const label = btn.dataset.label;
+    closePicker();
+    if (pickerTarget === 'modal') {
+      if (!modalItem) return;
+      await fetch('/review/correct', {method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({clip:modalItem.clip,frame_index:modalItem.frame_index,
+          box_index:modalItem.box_index,label,bbox:modalBbox})});
+      modalItem.label = label;
+      // Stay in modal — update title and info so user can continue reviewing
+      document.getElementById('modal-title').textContent =
+        `${label} — ${modalItem.clip} fr.${modalItem.frame_index} box ${modalItem.box_index}`;
+      document.getElementById('modal-info').textContent =
+        `${modalItem.clip} · frame ${modalItem.frame_index} · box ${modalItem.box_index} · relabelled → ${label}`;
+    } else {
+      await relabelSelected(label);
+    }
+  };
+});
+document.getElementById('picker-cancel').onclick = closePicker;
+
+// ── Keyboard ───────────────────────────────────────────────────────────────────
+document.addEventListener('keydown', async e => {
+  if (e.target.tagName==='INPUT'||e.target.tagName==='SELECT') return;
+
+  // Picker open
+  if (document.getElementById('picker').classList.contains('open')) {
+    if (e.key==='Escape') { closePicker(); return; }
+    if (CLASS_KEYS[e.key]) { document.querySelector(`.pick-btn[data-label="${CLASS_KEYS[e.key]}"]`)?.click(); }
+    return;
+  }
+
+  // Modal open
+  if (document.getElementById('modal').classList.contains('open')) {
+    if (e.key==='Escape') { autoSaveModal().then(closeModal); return; }
+    if (e.key==='ArrowRight'||e.key==='d'||e.key==='D') { e.preventDefault(); await navigateGrid(1); return; }
+    if (e.key==='ArrowLeft'||e.key==='a'||e.key==='A') { e.preventDefault(); await navigateGrid(-1); return; }
+    if (e.key===' ') { e.preventDefault(); document.getElementById('modal-btn-accept').click(); }
+    else if (e.key==='Backspace'||e.key==='Delete') document.getElementById('modal-btn-delete').click();
+    else if (e.key==='w'||e.key==='W') { pickerTarget='modal'; openPicker(); }
+    else if (e.key==='e'||e.key==='E') setModalTool('edit');
+    else if (e.key==='r'||e.key==='R') document.getElementById('modal-btn-yolo').click();
+    return;
+  }
+
+  // Grid
+  if (e.key==='Escape') { selected.clear(); document.querySelectorAll('.crop-card').forEach(c=>c.classList.remove('selected')); updateSelCount(); }
+  else if (e.key==='ArrowRight'||e.key==='ArrowLeft') { e.preventDefault(); navigateGrid(e.key==='ArrowRight' ? 1 : -1); }
+  else if (e.key==='Backspace'||e.key==='Delete') document.getElementById('btn-delete-sel').click();
+  else if (e.key==='a'||e.key==='A') document.getElementById('btn-accept-sel').click();
+  else if (e.key==='s'||e.key==='S') document.getElementById('btn-select-all').click();
+  else if (e.key==='d'||e.key==='D') document.getElementById('btn-delete-sel').click();
+  else if (e.key==='w'||e.key==='W') { pickerTarget='batch'; openPicker(); }
+});
+
+// ── Grid keyboard navigation ───────────────────────────────────────────────────
+let gridCursor = -1; // index into currentBatch()
+
+async function navigateGrid(delta) {
+  await autoSaveModal();
+  const batch = currentBatch();
+  if (!batch.length) return;
+  gridCursor = Math.max(0, Math.min(batch.length - 1, gridCursor + delta));
+  openModal(batch[gridCursor], gridCursor);
+}
+
+// ── Full frame endpoint check ──────────────────────────────────────────────────
+// We need a /review/frame/<clip>/<idx>.jpg endpoint on the server.
+// Falls back to crop image if not available (handled in setupModalKonva).
+
+document.getElementById('hide-seen-toggle').addEventListener('change', () => {
+  gridCursor = -1;
+  renderGrid();
+});
+
+loadQueue();
+</script>
+</body>
+</html>
