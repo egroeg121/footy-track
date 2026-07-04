@@ -552,7 +552,14 @@ $("loadBtn").onclick = async ()=>{
   loadClipList(); // refresh ticks after switching clips
   // Defer bar render until after browser layout so offsetWidth is correct.
   requestAnimationFrame(() => renderTimelineBar());
-  await autodetect(0);
+  // Only auto-detect frame 0 if there are no saved boxes — otherwise load saved marks.
+  const tl0 = await fetch("/timeline/0");
+  const tl0data = tl0.ok ? await tl0.json() : null;
+  if (tl0data && tl0data.boxes && tl0data.boxes.length > 0) {
+    await loadTimelineFrame(0, true);
+  } else {
+    await autodetect(0);
+  }
   connectWS();
 };
 
@@ -571,7 +578,7 @@ $("nextDetBtn").onclick = ()=>gotoNextDetection();
 // Call renderTimelineBar after navigating to a frame
 const _origShowFrame = showFrame;
 showFrame = async function(idx){ await _origShowFrame(idx); renderTimelineBar(); };
-window.addEventListener("resize", () => renderTimelineBar());
+window.addEventListener("resize", () => { if (meta) { fitStage(); showFrame(viewFrame); } renderTimelineBar(); });
 
 // ---------- scrubbing ----------
 function navigateDelta(delta){
@@ -604,8 +611,26 @@ $("nextBtn").onclick = ()=>navigateDelta(1);
 // entering a frame we GET /timeline/{idx} and render it.
 async function saveCurrentEdits(){
   if (mode!=="running" && viewFrame!=null && frameDirty){
-    await fetch("/edit",{method:"POST",headers:{"Content-Type":"application/json"},
+    const res = await fetch("/edit",{method:"POST",headers:{"Content-Type":"application/json"},
       body:JSON.stringify({idx:viewFrame, objects:boxesNorm()})});
+    if (res.ok) {
+      const data = await res.json();
+      // Propagate each labeller box forward
+      let totalPropagated = 0;
+      for (let i = 0; i < data.boxes.length; i++) {
+        if (data.boxes[i].source === "labeller") {
+          const propRes = await fetch("/propagate",{method:"POST",headers:{"Content-Type":"application/json"},
+            body:JSON.stringify({frame_idx:viewFrame, box_idx:i})});
+          if (propRes.ok) {
+            const propData = await propRes.json();
+            totalPropagated += propData.propagated_to || 0;
+          }
+        }
+      }
+      if (totalPropagated > 0) {
+        setStatus(`Propagated correction to ${totalPropagated} frame${totalPropagated===1?"":"s"}`);
+      }
+    }
     frameDirty = false;
   }
 }
