@@ -199,13 +199,21 @@ class Session:
                 self.timeline[idx] = list(boxes)
 
     def merge_propagated(self, idx: int, boxes: list[ObjectDetection]) -> None:
-        """Write propagated (sam3/yolo) boxes, KEEPING any labeller ground truth."""
+        """Write propagated (vittrack/yolo) boxes, KEEPING any labeller ground truth.
+
+        If the frame already has GT (labeller) boxes, VitTrack output is ignored
+        entirely — GT is authoritative and should never be replaced or augmented.
+        If the frame has no GT, write the VitTrack boxes.
+        """
         with self._tl_lock:
             if not (0 <= idx < len(self.timeline)):
                 return
             existing = self.timeline[idx] or []
             kept = [b for b in existing if b.model == PROV_LABELLER]
-            self.timeline[idx] = kept + list(boxes)
+            if kept:
+                # GT boxes exist — do not touch this frame at all.
+                return
+            self.timeline[idx] = list(boxes)
 
     def seed_objects(self, idx: int) -> list[LabelledObject]:
         """Frame idx's boxes as LabelledObjects (abs xyxy) to seed propagation."""
@@ -593,92 +601,90 @@ async def clear_not_broadcast(body: dict) -> dict:
 
 @app.post("/propagate")
 async def propagate_labels(body: dict) -> dict:
-    """Propagate player labels from a reference frame to subsequent frames using IoU matching.
+    """Propagate a single labeller-provenance label forward through subsequent frames.
+
+    Matches YOLO-provenance boxes by IoU (threshold 0.3) to propagate a corrected
+    label forward frame by frame. Stops when no match found (track lost) or when
+    a labeller-provenance box already exists at that location.
 
     Request body:
-    - ref_idx: reference frame index
-    - end_idx: end frame index (inclusive); propagate from ref_idx to end_idx
-    - iou_threshold: minimum IoU to consider a match (default 0.3)
-    - labels_to_propagate: list of player labels to propagate (e.g., ["player", "player_sub"])
+    - frame_idx: source frame containing the labeller box
+    - box_idx: index of the labeller box within that frame
 
     Returns:
-    - propagated: dict mapping frame index to list of matched/propagated boxes
+    - propagated_to: number of frames the label was propagated to
     """
-    ref_idx = int(body.get("ref_idx", 0))
-    end_idx = int(body.get("end_idx", SESSION.total_frames - 1))
-    iou_threshold = float(body.get("iou_threshold", 0.3))
-    labels_to_propagate = set(body.get("labels_to_propagate", ["player", "player_sub"]))
+    frame_idx = int(body.get("frame_idx", 0))
+    box_idx = int(body.get("box_idx", 0))
+    iou_threshold = 0.3
 
-    # Get reference frame boxes
-    ref_boxes = SESSION.get_frame(ref_idx)
-    ref_player_boxes = [b for b in ref_boxes if b.label in labels_to_propagate]
+    # Get the labeller box at frame_idx, box_idx
+    frame_boxes = SESSION.get_frame(frame_idx)
+    if box_idx >= len(frame_boxes):
+        return {"propagated_to": 0}
 
-    propagated: dict[int, list[ObjectDetection]] = {}
+    ref_box = frame_boxes[box_idx]
+    if ref_box.model != PROV_LABELLER:
+        # Only propagate labeller-provenance boxes
+        return {"propagated_to": 0}
 
-    # For each subsequent frame, match boxes by IoU
-    for idx in range(ref_idx + 1, min(end_idx + 1, SESSION.total_frames)):
+    propagated_count = 0
+    last_position = (ref_box.x, ref_box.y, ref_box.w, ref_box.h)
+    ref_label = ref_box.label
+
+    # Walk forward frame by frame
+    for idx in range(frame_idx + 1, SESSION.total_frames):
         frame_boxes = SESSION.get_frame(idx)
         if not frame_boxes:
             continue
 
-        # Match existing boxes in this frame to reference boxes by IoU
-        matched_labels: dict[int, str] = {}  # box_idx -> player_label
-        ref_box_matched = [False] * len(ref_player_boxes)
+        # Stop if labeller-provenance box already exists at this location
+        has_labeller = any(b.model == PROV_LABELLER for b in frame_boxes)
+        if has_labeller:
+            break
 
-        for box_idx, frame_box in enumerate(frame_boxes):
-            best_iou = -1.0
-            best_ref_idx = -1
+        # Find YOLO-provenance box with highest IoU
+        best_iou = -1.0
+        best_box_idx = -1
 
-            # Find the best matching reference box
-            for ref_idx_local, ref_box in enumerate(ref_player_boxes):
-                if ref_box_matched[ref_idx_local]:
-                    continue
-                iou = bbox_iou(
-                    (ref_box.x, ref_box.y, ref_box.w, ref_box.h),
-                    (frame_box.x, frame_box.y, frame_box.w, frame_box.h),
-                )
-                if iou > best_iou:
-                    best_iou = iou
-                    best_ref_idx = ref_idx_local
+        for box_idx_local, b in enumerate(frame_boxes):
+            if b.model != PROV_YOLO:
+                continue
+            iou = bbox_iou(last_position, (b.x, b.y, b.w, b.h))
+            if iou > best_iou:
+                best_iou = iou
+                best_box_idx = box_idx_local
 
-            # If we found a good match, assign the player label
-            if best_iou >= iou_threshold and best_ref_idx >= 0:
-                matched_labels[box_idx] = ref_player_boxes[best_ref_idx].label
-                ref_box_matched[best_ref_idx] = True
+        # Stop if no match
+        if best_iou < iou_threshold:
+            break
 
-        # Create propagated boxes with matched labels
-        if matched_labels:
-            new_boxes = []
-            for box_idx, frame_box in enumerate(frame_boxes):
-                if box_idx in matched_labels:
-                    # Update the label to the matched player identity
-                    new_box = ObjectDetection(
-                        label=matched_labels[box_idx],
-                        confidence=frame_box.confidence,
-                        x=frame_box.x,
-                        y=frame_box.y,
-                        w=frame_box.w,
-                        h=frame_box.h,
-                        model=PROV_SAM3,
+        # Update the matched box's label and provenance
+        best_box = frame_boxes[best_box_idx]
+        updated_boxes = []
+        for j, b in enumerate(frame_boxes):
+            if j == best_box_idx:
+                # Override label, keep YOLO provenance (it's still YOLO-detected, just corrected)
+                updated_boxes.append(
+                    ObjectDetection(
+                        label=ref_label,
+                        confidence=b.confidence,
+                        x=b.x,
+                        y=b.y,
+                        w=b.w,
+                        h=b.h,
+                        model=PROV_YOLO,
                     )
-                    new_boxes.append(new_box)
-                else:
-                    new_boxes.append(frame_box)
+                )
+            else:
+                updated_boxes.append(b)
 
-            # Merge the updated boxes into the frame (keeping labeller ground truth)
-            SESSION.merge_propagated(idx, new_boxes)
-            propagated[idx] = new_boxes
+        SESSION.set_frame(idx, updated_boxes)
+        last_position = (best_box.x, best_box.y, best_box.w, best_box.h)
+        propagated_count += 1
 
     SESSION.schedule_flush()
-    return {
-        "ref_idx": ref_idx,
-        "end_idx": end_idx,
-        "iou_threshold": iou_threshold,
-        "propagated_frames": len(propagated),
-        "propagated": {
-            str(k): [b.model_dump() for b in v] for k, v in propagated.items()
-        },
-    }
+    return {"propagated_to": propagated_count}
 
 
 # ----------------------------------------------------------------------------
