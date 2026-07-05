@@ -644,6 +644,15 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#31-sam3-footprint-throughput-external-research-reasoned-estimates" class="md-nav__link">
+    <span class="md-ellipsis">
+      3.1 SAM3 footprint &amp; throughput — external research (reasoned estimates)
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -929,6 +938,62 @@ archives. ft-5yq stays open as that fallback but is <strong>no longer plan-of-re
 <li>Cropped runner (256–512px crop) on 8GB: comfortably fits; small SOT trackers
   / ROI-YOLO / SAM2.1-tiny should reach interactive fps. <strong>Numbers TBD — see §6.</strong></li>
 </ul>
+<h3 id="31-sam3-footprint-throughput-external-research-reasoned-estimates">3.1 SAM3 footprint &amp; throughput — external research (reasoned estimates)<a class="headerlink" href="#31-sam3-footprint-throughput-external-research-reasoned-estimates" title="Permanent link">&para;</a></h3>
+<p>Hard local numbers on our two targets come from ft-gx9. Until then, these are
+grounded in published figures + FLOP/pixel scaling. <strong>Assumptions stated; treat
+as order-of-magnitude, not benchmark truth.</strong></p>
+<p><strong>Model size (published).</strong> SAM3 is ~840M params, ~3.4 GB weights. Single-image
+inference reportedly needs <strong>~8–10 GB VRAM in fp16</strong> for the image encoder —
+i.e. comfortable on the T4 (16 GB), <strong>tight-to-borderline on the RTX 2070
+(8 GB)</strong> once activations for a high-res frame are added. This is the concrete
+basis for "8 GB is tight for full-frame SAM3" above.</p>
+<p><strong>Throughput (published, big GPUs).</strong> SAM3 is <em>notably slower than SAM2</em>:
+~1.1 s/image on an RTX 4090 (~600×500, warm), and only <strong>5–6 fps at 1080p on an
+H200</strong> where SAM2 clears 30 fps. Full-frame SAM3 is simply not an interactive
+per-frame model on any GPU we can afford — <strong>this is the single strongest
+justification for the §0 route-around</strong>, not just a local-hardware limitation.</p>
+<p><strong>Reasoned estimates for our targets (full-frame, fp16, stated assumptions):</strong></p>
+<table>
+<thead>
+<tr>
+<th>Target</th>
+<th>~fp16 TFLOPS (tensor)</th>
+<th>Est. full-frame SAM3</th>
+<th>Est. VRAM full-frame</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>RTX 2070 (8 GB)</td>
+<td>~55 (Turing)</td>
+<td><strong>~0.5–1.5 fps</strong> (~0.7–2 s/frame); scale from 4090's ~1.1 s by ~3–5× fewer usable TFLOPS</td>
+<td>~8–10 GB → <strong>OOM risk at high res</strong>; needs fp16 + modest res to fit</td>
+</tr>
+<tr>
+<td>AWS g4dn / T4 (16 GB)</td>
+<td>~65 (but bandwidth-bound)</td>
+<td><strong>~1–2 fps</strong> full-frame; T4 is memory-bandwidth-starved so real-world closer to the low end</td>
+<td>~8–10 GB → <strong>fits with headroom</strong></td>
+</tr>
+</tbody>
+</table>
+<p><em>Assumption:</em> SAM3 latency is encoder-dominated and scales ~linearly with input
+token count (∝ pixels), and Turing/T4 realise a fraction of peak TFLOPS on this
+workload — hence the conservative fps.</p>
+<p><strong>Cropped estimates (the path we actually take).</strong> A 512 px crop is ~1/8 the
+pixels of 1080p; 256 px ~1/32. Encoder cost scales roughly with pixels, so a
+cropped SAM-family runner should reach <strong>~5–15 fps on either target in fp16</strong> —
+into the interactive band — while <em>keeping</em> effective resolution high (the crop
+is mostly ball, not a downscaled full frame that loses the small ball). This is
+exactly why cropping beats downscaling for question §1's dead-end.</p>
+<p><strong>SAM3.1 base as a viable fallback backend.</strong> SAM3.1 reportedly ~doubles
+throughput (~16→32 fps class) and roughly halves VRAM (~8→4 GB fp16) vs SAM3.
+At ~4 GB it fits the RTX 2070 with room to spare, making a <em>cropped</em> SAM3.1
+runner a credible re-acquire/quality backend even on 8 GB — worth including as a
+candidate in ft-gx9 (subject to the ft-f74 whole-frame-mask caveat).</p>
+<p><em>Sources: Meta SAM3/SAM3.1 release notes, facebookresearch/sam3 issues #424/#425,
+Roboflow &amp; Spheron deployment write-ups, Ultralytics SAM3 docs. All external;
+confirm on our hardware in ft-gx9.</em></p>
 <hr />
 <h2 id="4-optimisation-levers">4. Optimisation levers<a class="headerlink" href="#4-optimisation-levers" title="Permanent link">&para;</a></h2>
 <p>Applied to the per-step runner and the re-acquire pass:</p>
