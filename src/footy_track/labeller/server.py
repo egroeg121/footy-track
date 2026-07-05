@@ -1250,6 +1250,14 @@ async def ws(websocket: WebSocket) -> None:
                         }
                     )
                     continue
+                # Tell the client we're entering the (potentially slow) model
+                # load/warmup phase *before* blocking on it — previously this
+                # only happened inside _stream_frames, whose task wasn't
+                # created until after bg.submit() had already returned, so the
+                # "compiling" status arrived too late to be useful and the
+                # frontend had no reliable signal to show a loading overlay
+                # for the duration of the actual compile (ft-wkc).
+                await websocket.send_json({"type": "status", "state": "compiling"})
                 await asyncio.to_thread(
                     bg.submit,
                     SESSION.video_path,

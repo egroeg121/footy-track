@@ -22,6 +22,23 @@
   input[type=text] { cursor:text; min-width:380px; }
   #stageWrap { border:1px solid var(--border); border-radius:8px; overflow:hidden;
                background:#000; width:100%; }
+  /* Overlay shown during the VitTrack 'compiling' (model load/warmup) phase.
+     It's a SIBLING of #stageWrap (inside #stageOuter), not a child — Konva's
+     Stage constructor clears its container's existing innerHTML on init, so
+     anything placed inside #stageWrap itself gets wiped out immediately
+     (confirmed by driving this in a real browser). Sitting alongside it and
+     positioned absolutely over it means the overlay never touches the
+     canvas/bgLayer, so the current frame stays visible underneath instead of
+     the canvas going blank (ft-wkc). pointer-events:none + display:none via
+     .hidden keeps it fully out of the way when not compiling. */
+  #compilingOverlay { position:absolute; inset:0; display:flex; align-items:center;
+               justify-content:center; gap:10px; background:rgba(15,20,25,.45);
+               color:#fff; font-size:14px; pointer-events:none; z-index:5; }
+  #compilingOverlay.hidden { display:none; }
+  #compilingOverlay .spinner { width:16px; height:16px; border-radius:50%;
+               border:2px solid rgba(255,255,255,.35); border-top-color:#fff;
+               animation:spin .8s linear infinite; }
+  @keyframes spin { to { transform:rotate(360deg); } }
   .row { display:flex; gap:8px; align-items:center; margin-bottom:8px; }
   .grow { flex:1; }
   .side { background:var(--panel); border:1px solid var(--border); border-radius:8px;
@@ -99,7 +116,10 @@
 
     <div class="muted" id="hint" style="margin-bottom:8px;">Load a video to begin. Edit: drag/resize, Delete removes. Draw: drag a box.</div>
 
-    <div id="stageWrap"></div>
+    <div id="stageOuter" style="position:relative;">
+      <div id="stageWrap"></div>
+      <div id="compilingOverlay" class="hidden"><span class="spinner"></span><span>Compiling model…</span></div>
+    </div>
 
     <div class="row" style="margin-top:8px;">
       <button id="prevBtn" disabled>⬅️ Prev</button>
@@ -668,6 +688,12 @@ async function commitCanvasTo(idx){
   await fetch("/edit",{method:"POST",headers:{"Content-Type":"application/json"},
     body:JSON.stringify({idx, objects:boxesNorm()})});
 }
+// Show/hide the compiling overlay. This ONLY toggles a CSS class on a
+// sibling div layered above the stage — it never touches bgLayer/bgImage or
+// boxLayer, so the last-rendered video frame stays visible underneath
+// throughout the compiling phase instead of the canvas going blank (ft-wkc).
+function setCompilingOverlay(on){ $("compilingOverlay").classList.toggle("hidden", !on); }
+
 $("runBtn").onclick = async ()=>{
   await commitCanvasTo(viewFrame);
   ws.send(JSON.stringify({type:"run", start_frame:viewFrame, conf:0.25, imgsz:+$("imgszSel").value, model_uri:modelUri()}));
@@ -685,6 +711,7 @@ function uiRunning(){
   $("pauseBtn").disabled=false; $("autoBtn").disabled=true; setTool("edit");
   $("runMsg").textContent="⏳ Compiling model…";
   $("hint").textContent="Running… Pause to correct boxes.";
+  setCompilingOverlay(true);
 }
 function uiPaused(idx){
   mode="paused";
@@ -693,6 +720,7 @@ function uiPaused(idx){
   $("restartBtn").style.display=""; $("restartBtn").textContent=`▶️ Restart from frame ${idx}`;
   $("runMsg").textContent="";
   $("hint").textContent="Paused. Edit boxes, scrub to a frame, then Restart.";
+  setCompilingOverlay(false);
 }
 function uiIdle(){
   mode="idle_results";
@@ -700,6 +728,7 @@ function uiIdle(){
   $("pauseBtn").disabled=true; $("autoBtn").disabled=false;
   $("runMsg").textContent="";
   $("hint").textContent="Done. Scrub to review; edit + Run to re-seed.";
+  setCompilingOverlay(false);
 }
 
 // ---------- WebSocket ----------
@@ -726,6 +755,9 @@ function connectWS(){
       // messages that arrive after a pause/scrub (they'd reset viewFrame and make
       // Restart use the wrong frame).
       if (mode==="running"){
+        // First live frame means compiling has actually finished — drop the
+        // overlay now rather than waiting on any particular status message.
+        setCompilingOverlay(false);
         await showFrame(m.idx);
         drawBoxes(m.boxes, false);
         $("frameLbl").textContent = `🔴 frame ${m.idx} / ${meta.total_frames-1}`;
@@ -743,9 +775,9 @@ function connectWS(){
       h.style.color = "#ffc800";
     }
     else if (m.type==="done"){ await gotoFrame(lastCompleted>=0?lastCompleted:0); uiIdle(); }
-    else if (m.type==="error"){ setStatus("⚠️ "+m.message); }
+    else if (m.type==="error"){ setStatus("⚠️ "+m.message); setCompilingOverlay(false); }
   };
-  ws.onclose = ()=>setStatus("disconnected");
+  ws.onclose = ()=>{ setStatus("disconnected"); setCompilingOverlay(false); };
 }
 
 // when paused, clicking pause arrives via status; switch to editable on current frame
