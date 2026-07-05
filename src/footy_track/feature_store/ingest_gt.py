@@ -36,7 +36,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from footy_track.feature_store.importers import import_roboflow
-from footy_track.feature_store.schema import DetectionRow, FrameRow, GameRow, RunRow, Stage
+from footy_track.feature_store.schema import (
+    DetectionRow,
+    FrameRow,
+    GameRow,
+    RunRow,
+    Stage,
+)
 from footy_track.feature_store.store import FeatureStore
 
 DATASET_TAG = "ball_gt_marks"
@@ -118,8 +124,8 @@ def ingest_gt_jsonl(
     frame_indices: set[int] = set()
     dets_by_frame_source: dict[tuple[int, str], list[DetectionRow]] = defaultdict(list)
 
-    for line in jsonl_path.read_text().splitlines():
-        line = line.strip()
+    for raw_line in jsonl_path.read_text().splitlines():
+        line = raw_line.strip()
         if not line:
             continue
         rec = json.loads(line)
