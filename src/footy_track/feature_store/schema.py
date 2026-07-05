@@ -125,6 +125,8 @@ class DetectionRow(_Row):
     track_id: int | None = None
     is_interpolated: bool = False
     needs_review: bool = False
+    reviewed: bool = False
+    dataset_tag: str | None = None
 
 
 class TrackMetaRow(_Row):
@@ -240,6 +242,8 @@ DDL: tuple[str, ...] = (
         track_id           INTEGER,
         is_interpolated    BOOLEAN,
         needs_review       BOOLEAN DEFAULT FALSE,
+        reviewed           BOOLEAN DEFAULT FALSE,
+        dataset_tag        VARCHAR,
         PRIMARY KEY (game_id, source, run_id, frame_index, detection_id)
     );
     """,
@@ -278,7 +282,18 @@ VIEWS: tuple[str, ...] = (
     CREATE OR REPLACE VIEW detections_enriched AS
         SELECT d.*,
                f.frame_uri, f.is_broadcast, f.half, f.game_time_s,
-               r.stage, r.model_name, r.model_version
+               r.stage, r.model_name, r.model_version,
+               RANK() OVER (
+                   PARTITION BY d.game_id, d.frame_index
+                   ORDER BY
+                       CASE d.source
+                           WHEN 'hand_label' THEN 3
+                           WHEN 'yolo' THEN 2
+                           WHEN 'sam3' THEN 2
+                           ELSE 1
+                       END DESC,
+                       r.created_at DESC NULLS LAST
+               ) = 1 AS canonical
         FROM detection d
         JOIN frame f USING (game_id, frame_index)
         LEFT JOIN run r USING (run_id);
