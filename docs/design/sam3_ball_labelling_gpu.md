@@ -172,6 +172,52 @@ archives. ft-5yq stays open as that fallback but is **no longer plan-of-record**
 - Cropped runner (256–512px crop) on 8GB: comfortably fits; small SOT trackers
   / ROI-YOLO / SAM2.1-tiny should reach interactive fps. **Numbers TBD — see §6.**
 
+### 3.1 SAM3 footprint & throughput — external research (reasoned estimates)
+
+Hard local numbers on our two targets come from ft-gx9. Until then, these are
+grounded in published figures + FLOP/pixel scaling. **Assumptions stated; treat
+as order-of-magnitude, not benchmark truth.**
+
+**Model size (published).** SAM3 is ~840M params, ~3.4 GB weights. Single-image
+inference reportedly needs **~8–10 GB VRAM in fp16** for the image encoder —
+i.e. comfortable on the T4 (16 GB), **tight-to-borderline on the RTX 2070
+(8 GB)** once activations for a high-res frame are added. This is the concrete
+basis for "8 GB is tight for full-frame SAM3" above.
+
+**Throughput (published, big GPUs).** SAM3 is *notably slower than SAM2*:
+~1.1 s/image on an RTX 4090 (~600×500, warm), and only **5–6 fps at 1080p on an
+H200** where SAM2 clears 30 fps. Full-frame SAM3 is simply not an interactive
+per-frame model on any GPU we can afford — **this is the single strongest
+justification for the §0 route-around**, not just a local-hardware limitation.
+
+**Reasoned estimates for our targets (full-frame, fp16, stated assumptions):**
+
+| Target | ~fp16 TFLOPS (tensor) | Est. full-frame SAM3 | Est. VRAM full-frame |
+|---|---|---|---|
+| RTX 2070 (8 GB) | ~55 (Turing) | **~0.5–1.5 fps** (~0.7–2 s/frame); scale from 4090's ~1.1 s by ~3–5× fewer usable TFLOPS | ~8–10 GB → **OOM risk at high res**; needs fp16 + modest res to fit |
+| AWS g4dn / T4 (16 GB) | ~65 (but bandwidth-bound) | **~1–2 fps** full-frame; T4 is memory-bandwidth-starved so real-world closer to the low end | ~8–10 GB → **fits with headroom** |
+
+*Assumption:* SAM3 latency is encoder-dominated and scales ~linearly with input
+token count (∝ pixels), and Turing/T4 realise a fraction of peak TFLOPS on this
+workload — hence the conservative fps.
+
+**Cropped estimates (the path we actually take).** A 512 px crop is ~1/8 the
+pixels of 1080p; 256 px ~1/32. Encoder cost scales roughly with pixels, so a
+cropped SAM-family runner should reach **~5–15 fps on either target in fp16** —
+into the interactive band — while *keeping* effective resolution high (the crop
+is mostly ball, not a downscaled full frame that loses the small ball). This is
+exactly why cropping beats downscaling for question §1's dead-end.
+
+**SAM3.1 base as a viable fallback backend.** SAM3.1 reportedly ~doubles
+throughput (~16→32 fps class) and roughly halves VRAM (~8→4 GB fp16) vs SAM3.
+At ~4 GB it fits the RTX 2070 with room to spare, making a *cropped* SAM3.1
+runner a credible re-acquire/quality backend even on 8 GB — worth including as a
+candidate in ft-gx9 (subject to the ft-f74 whole-frame-mask caveat).
+
+*Sources: Meta SAM3/SAM3.1 release notes, facebookresearch/sam3 issues #424/#425,
+Roboflow & Spheron deployment write-ups, Ultralytics SAM3 docs. All external;
+confirm on our hardware in ft-gx9.*
+
 ---
 
 ## 4. Optimisation levers
