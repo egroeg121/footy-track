@@ -112,6 +112,8 @@ _COLUMNS: dict[str, tuple[str, ...]] = {
         "track_id",
         "is_interpolated",
         "needs_review",
+        "reviewed",
+        "dataset_tag",
     ),
     "track_meta": (
         "game_id",
