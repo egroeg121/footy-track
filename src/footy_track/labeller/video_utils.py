@@ -40,6 +40,7 @@ from footy_track.detectors.utils import (  # noqa: E402
     _available_device,
     mask_poly_to_norm_xywh,
 )
+from footy_track.labeller.motion_tracker import Box, Detection  # noqa: E402
 from footy_track.schema import FrameDetections, ObjectDetection  # noqa: E402
 from footy_track.utils import get_project_root  # noqa: E402
 
@@ -256,7 +257,18 @@ def start_warmup_thread(
 
 
 class Sam3VideoLabeller:
-    """Propagate frame-0 box prompts through a clip with ``SAM3VideoPredictor``."""
+    """Propagate frame-0 box prompts through a clip with ``SAM3VideoPredictor``.
+
+    Also satisfies the :class:`~footy_track.labeller.motion_tracker.CropRunner`
+    protocol (``name`` / ``warmup`` / ``detect``) via a single-image SAM3
+    predictor, so it can be reused as-is for the ``MotionGuidedTracker``'s
+    full-frame re-acquire step (design doc §2.3, §2.4) — the whole-clip
+    ``run()`` / ``iter_frames_from()`` path is unchanged and still the
+    ``sam3-fullframe`` backend for the existing labeller server.
+    """
+
+    #: Provenance tag / CropRunner protocol identity.
+    name: str = "sam3-fullframe"
 
     def __init__(
         self,
@@ -279,6 +291,7 @@ class Sam3VideoLabeller:
         self.min_confidence = min_confidence
         self.imgsz = imgsz
         self.verbose = verbose
+        self._image_predictor = None  # lazily built by _build_image_predictor (CropRunner.detect)
 
         dev = _available_device()
         self.device = dev.type if isinstance(dev, torch.device) else str(dev)
@@ -290,6 +303,93 @@ class Sam3VideoLabeller:
         return get_cached_predictor(
             self.model_uri, self.imgsz, self.device, self.min_confidence
         )
+
+    # ------------------------------------------------------------------
+    # CropRunner protocol (footy_track.labeller.motion_tracker)
+    # ------------------------------------------------------------------
+
+    def warmup(self) -> None:
+        """Load weights / JIT-warm the model in-process. Idempotent."""
+        warmup_model(self.model_uri, self.imgsz)
+
+    def _build_image_predictor(self):
+        """Lazily build (and cache) a single-image SAM3 predictor for ``detect``.
+
+        Distinct from ``_build_predictor`` (the stateful video predictor used
+        by ``run``/``iter_frames_from``) since single-crop re-acquire calls
+        are one-shot image inference, not a video stream.
+        """
+        predictor = getattr(self, "_image_predictor", None)
+        if predictor is not None:
+            return predictor
+        from ultralytics.models.sam import SAM3Predictor  # noqa: PLC0415
+
+        overrides = {
+            "conf": self.min_confidence,
+            "task": "segment",
+            "mode": "predict",
+            "model": self.model_uri,
+            "imgsz": self.imgsz,
+            "verbose": self.verbose,
+            "device": self.device,
+            "save": False,
+        }
+        predictor = SAM3Predictor(overrides=overrides)
+        self._image_predictor = predictor
+        return predictor
+
+    def detect(self, crop: np.ndarray, prior: Box | None) -> Detection | None:
+        """Run single-image SAM3 on ``crop``, seeded with ``prior`` if given.
+
+        Implements :class:`~footy_track.labeller.motion_tracker.CropRunner`.
+        Used as the full-frame re-acquire backend (§2.3): ``crop`` may be a
+        small ROI or the whole frame — this method has no opinion on that,
+        it just segments whatever image it is given.
+
+        Args:
+            crop: uint8 array (H, W, 3) — BGR, matching the rest of this
+                module's OpenCV-sourced frames.
+            prior: Optional box (xyxy, in ``crop``'s own coordinates) used as
+                the box prompt. If ``None``, the whole crop is used as the
+                prompt box (a coarse "segment the main object" fallback).
+
+        Returns:
+            A ``Detection`` with ``box`` in CROP-local xyxy pixels and
+            ``confidence`` from the model, or ``None`` if nothing was found.
+        """
+        if crop is None or crop.size == 0:
+            return None
+        h, w = crop.shape[:2]
+        prompt_box = list(prior) if prior is not None else [0.0, 0.0, float(w), float(h)]
+
+        predictor = self._build_image_predictor()
+        with torch.no_grad():
+            results = predictor(crop, bboxes=[prompt_box])
+        if not results:
+            return None
+        result = results[0]
+        masks = getattr(result, "masks", None)
+        boxes = getattr(result, "boxes", None)
+
+        if masks is not None and len(masks.xyn) > 0:
+            box_norm = mask_poly_to_norm_xywh(masks.xyn[0])
+            if box_norm is None:
+                return None
+            xn, yn, wn, hn = box_norm
+            box_abs: Box = (xn * w, yn * h, (xn + wn) * w, (yn + hn) * h)
+            conf = (
+                float(boxes.conf[0])
+                if boxes is not None and getattr(boxes, "conf", None) is not None and len(boxes.conf) > 0
+                else 1.0
+            )
+            return Detection(box=box_abs, confidence=conf, label=MODEL_TAG)
+
+        if boxes is not None and getattr(boxes, "xyxy", None) is not None and len(boxes.xyxy) > 0:
+            x1, y1, x2, y2 = boxes.xyxy[0].tolist()
+            conf = float(boxes.conf[0]) if getattr(boxes, "conf", None) is not None else 1.0
+            return Detection(box=(x1, y1, x2, y2), confidence=conf, label=MODEL_TAG)
+
+        return None
 
     @torch.no_grad()
     def run(
