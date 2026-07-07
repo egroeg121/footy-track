@@ -16,6 +16,22 @@ ball even when per-frame detectors fail.
 training. A few hundred human-marked frames across 3-5 hard clips is sufficient
 for a trustworthy ranking.
 
+## Note: clips are host-specific symlinks
+
+`eval_data/clips/*.mp4` are checked-in **absolute symlinks** to the real
+footage. They currently point at `/mnt/storage/footy_data/...` (the Linux
+migration box). On any other machine (including the original macOS box,
+which used `~/Library/Mobile Documents/com~apple~CloudDocs/footy_data/...`)
+these will be broken until repointed to wherever `footy_data/` lives locally.
+If you move to a new box, re-run:
+
+```bash
+for f in eval_data/clips/*.mp4; do
+  tgt=$(readlink "$f") || continue
+  ln -sfn "/path/to/local/footy_data/${tgt#*footy_data/}" "$f"
+done
+```
+
 ## Directory layout
 
 ```
