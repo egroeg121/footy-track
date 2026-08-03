@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import math
 import pathlib
+import threading
 from typing import TYPE_CHECKING
 
 import cv2
@@ -59,13 +60,25 @@ def _hann2d(h: int, w: int) -> np.ndarray:
 _HANN_WINDOW = _hann2d(_GRID, _GRID)
 
 
+_model_path_cache: pathlib.Path | None = None
+
+
 def _download_model() -> pathlib.Path:
-    """Return path to the ONNX model, downloading from HF Hub if needed."""
+    """Return path to the ONNX model, downloading from HF Hub if needed.
+
+    Memoized: hf_hub_download re-checks the remote etag on every call, which
+    adds a network round-trip per tracker instantiation otherwise.
+    """
+    global _model_path_cache  # noqa: PLW0603
+    if _model_path_cache is not None:
+        return _model_path_cache
     try:
         from huggingface_hub import hf_hub_download  # noqa: PLC0415
 
-        path = hf_hub_download(repo_id=_HF_REPO, filename=_HF_FILENAME)
-        return pathlib.Path(path)
+        _model_path_cache = pathlib.Path(
+            hf_hub_download(repo_id=_HF_REPO, filename=_HF_FILENAME)
+        )
+        return _model_path_cache
     except ImportError as exc:
         raise RuntimeError(
             "huggingface_hub is required to download the VitTrack model. "
@@ -88,6 +101,25 @@ def _make_session(model_path: pathlib.Path) -> ort.InferenceSession:
         pass
 
     return ort.InferenceSession(str(model_path), providers=providers)
+
+
+# Session creation is expensive on macOS: the CoreML execution provider
+# recompiles the ONNX graph for every new InferenceSession. The session itself
+# is stateless (all per-object tracking state lives on VitTrackSOT), and ORT
+# sessions are thread-safe for run(), so one shared session per model path
+# serves every tracker instance in the process.
+_session_cache: dict[str, ort.InferenceSession] = {}
+_session_lock = threading.Lock()
+
+
+def _cached_session(model_path: pathlib.Path) -> ort.InferenceSession:
+    key = str(model_path)
+    with _session_lock:
+        session = _session_cache.get(key)
+        if session is None:
+            session = _make_session(model_path)
+            _session_cache[key] = session
+        return session
 
 
 def _crop_region(
@@ -218,7 +250,7 @@ class VitTrackSOT:
         """
         if model_path is None:
             model_path = _download_model()
-        self._session = _make_session(pathlib.Path(model_path))
+        self._session = _cached_session(pathlib.Path(model_path))
         self._template_blob: np.ndarray | None = None
         self._last_bbox_px: tuple[float, float, float, float] | None = None
         # Exposed to harness via getattr — populated after each track() call

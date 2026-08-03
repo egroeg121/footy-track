@@ -170,14 +170,22 @@ class Session:
                         "player_sub",
                     }
                     label = next((t for t in tags if t in ball_labels), "in_play_ball")
+                    # Restore the saved provenance rather than promoting every
+                    # box to labeller GT — otherwise machine boxes (vittrack/
+                    # yolo/sam3) become "hand marks" after a reload and block
+                    # re-propagation via the GT-authoritative merge rule.
+                    prov_tags = {PROV_LABELLER, PROV_YOLO, PROV_SAM3, PROV_VITTRACK}
+                    provenance = next(
+                        (t for t in tags if t in prov_tags), PROV_LABELLER
+                    )
                     box = ObjectDetection(
                         label=label,
-                        confidence=1.0,
+                        confidence=1.0 if provenance == PROV_LABELLER else 0.5,
                         x=x,
                         y=y,
                         w=w,
                         h=h,
-                        model=PROV_LABELLER,
+                        model=provenance,
                     )
                     with self._tl_lock:
                         if self.timeline[idx] is None:
@@ -198,22 +206,26 @@ class Session:
             if 0 <= idx < len(self.timeline):
                 self.timeline[idx] = list(boxes)
 
-    def merge_propagated(self, idx: int, boxes: list[ObjectDetection]) -> None:
+    def merge_propagated(self, idx: int, boxes: list[ObjectDetection]) -> bool:
         """Write propagated (vittrack/yolo) boxes, KEEPING any labeller ground truth.
 
         If the frame already has GT (labeller) boxes, VitTrack output is ignored
         entirely — GT is authoritative and should never be replaced or augmented.
         If the frame has no GT, write the VitTrack boxes.
+
+        Returns True when GT was kept (i.e. the propagated boxes were discarded),
+        so callers can surface which frames a run did not touch.
         """
         with self._tl_lock:
             if not (0 <= idx < len(self.timeline)):
-                return
+                return False
             existing = self.timeline[idx] or []
             kept = [b for b in existing if b.model == PROV_LABELLER]
             if kept:
                 # GT boxes exist — do not touch this frame at all.
-                return
+                return True
             self.timeline[idx] = list(boxes)
+            return False
 
     def seed_objects(self, idx: int) -> list[LabelledObject]:
         """Frame idx's boxes as LabelledObjects (abs xyxy) to seed propagation."""
@@ -1144,15 +1156,18 @@ async def ingest_run(path: str, sample: int = 5, merge_gap_s: float = 0.5, min_s
 # ----------------------------------------------------------------------------
 
 
-def _ingest_completed_frame(idx: int, fd, start_idx: int) -> list[ObjectDetection]:
-    """Write a propagated frame into the timeline and return its boxes to send.
+def _ingest_completed_frame(
+    idx: int, fd, start_idx: int
+) -> tuple[list[ObjectDetection], bool]:
+    """Write a propagated frame into the timeline and return (boxes, gt_kept).
 
     The seed frame (idx == start_idx) is the ground-truth seed — its timeline
     entry is already correct, so we don't merge SAM3's re-segmentation into it.
-    Downstream frames get SAM3 boxes merged in (keeping labeller ground truth).
+    Downstream frames get SAM3 boxes merged in (keeping labeller ground truth);
+    ``gt_kept`` is True when existing GT made the frame skip the merge.
     """
     if idx == start_idx:
-        return SESSION.get_frame(idx)
+        return SESSION.get_frame(idx), False
     vittrack_boxes = [
         ObjectDetection(
             label=d.label,
@@ -1165,8 +1180,8 @@ def _ingest_completed_frame(idx: int, fd, start_idx: int) -> list[ObjectDetectio
         )
         for d in fd.detections
     ]
-    SESSION.merge_propagated(idx, vittrack_boxes)
-    return SESSION.get_frame(idx)
+    gt_kept = SESSION.merge_propagated(idx, vittrack_boxes)
+    return SESSION.get_frame(idx), gt_kept
 
 
 async def _stream_frames(websocket: WebSocket, start_idx: int) -> None:
@@ -1178,17 +1193,23 @@ async def _stream_frames(websocket: WebSocket, start_idx: int) -> None:
         cur_bg = SESSION.bg  # may swap on a fresh load
         while sent < cur_bg.last_completed_frame:
             sent += 1
-            completed = cur_bg.completed_frames()
-            if sent < len(completed):
+            # frame_at handles mid-clip runs: completed_frames() only scans the
+            # contiguous run from frame 0, so a run seeded at frame N (with
+            # frames 0..N-1 still None) would silently skip every frame —
+            # nothing ingested into the timeline, nothing streamed (the bug
+            # behind "ran to frame 30 but 28-29 have no boxes").
+            fd = cur_bg.frame_at(sent)
+            if fd is not None:
                 if not announced_running:
                     await websocket.send_json({"type": "status", "state": "running"})
                     announced_running = True
-                boxes = _ingest_completed_frame(sent, completed[sent], start_idx)
+                boxes, gt_kept = _ingest_completed_frame(sent, fd, start_idx)
                 await websocket.send_json(
                     {
                         "type": "frame",
                         "idx": sent,
                         "boxes": _boxes_payload(boxes),
+                        "gt_kept": gt_kept,
                     }
                 )
         if cur_bg.anomaly_frame is not None:

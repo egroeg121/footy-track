@@ -131,7 +131,10 @@
   </div>
 
   <div class="side">
-    <h3 id="objHdr">Detected objects (0)</h3>
+    <div class="row" style="justify-content:space-between;align-items:center;">
+      <h3 id="objHdr">Detected objects (0)</h3>
+      <button id="clearAllBtn" title="Delete all boxes on this frame">Clear all</button>
+    </div>
     <div id="objList"></div>
   </div>
 </div>
@@ -142,6 +145,11 @@ const CLASS_KEYS = {"in_play_ball":"1","ball":"2","referee":"3","player":"4","pe
 const COLORS = {player:"#1e90ff",person:"#b48246",referee:"#9b30ff",coach:"#00c2a8",
   ball:"#ffc800",in_play_ball:"#ffd700",out_of_play_ball:"#ff8c00",player_sub:"#b48246"};
 const colorOf = l => COLORS[l] || "#ff0000";
+// Label hierarchy (see README "Label hierarchy"): labeller GT first, then
+// model-assisted propagation (vittrack/sam3), then pure model output (yolo).
+// Lower number = higher authority = drawn last (on top) / listed first.
+const TIER = {labeller:0, vittrack:1, sam3:1, yolo:2};
+const tierOf = s => TIER[s] ?? 2;
 
 let meta = null;            // {fps,total_frames,width,height}
 let scale = 1;              // display px / video px
@@ -156,6 +164,24 @@ let frameDirty = false;     // true only if user has edited the current frame
 let undoStack = [];         // stack of box snapshots for current frame
 const noBallFrames = new Set();
 const notBroadcastFrames = new Set();
+// Frames whose existing hand marks were kept (VitTrack output discarded)
+// during the current run — surfaced when the run stops so "restart didn't
+// change those frames" is visible instead of silent.
+const keptFrames = new Set();
+
+function formatFrameRanges(set){
+  const s=[...set].sort((a,b)=>a-b); const parts=[];
+  for(let i=0;i<s.length;){
+    let j=i; while(j+1<s.length && s[j+1]===s[j]+1) j++;
+    parts.push(j>i?`${s[i]}–${s[j]}`:`${s[i]}`); i=j+1;
+  }
+  return parts.join(", ");
+}
+
+function keptSummary(){
+  if(!keptFrames.size) return "";
+  return ` · kept your marks on frame${keptFrames.size>1?"s":""} ${formatFrameRanges(keptFrames)}`;
+}
 
 // --- Konva setup ---
 const stage = new Konva.Stage({ container: "stageWrap", width: 100, height: 100 });
@@ -184,12 +210,19 @@ function boxesNorm() {
   }));
 }
 
-function addRect(label, x, y, w, h, editable) {
+function addRect(label, x, y, w, h, editable, source) {
+  source = source || "labeller"; // hand-drawn boxes (draw tool) are always GT
   const r = new Konva.Rect({
     x, y, width:w, height:h, stroke:colorOf(label), strokeWidth:2,
     draggable: editable, name:"box",
+    // Subtle tier cue: GT stays full-opacity solid; machine-tier boxes get a
+    // slightly faded / dashed stroke so tiers are distinguishable at a glance
+    // without touching the class color scheme.
+    strokeOpacity: source==="labeller" ? 1 : 0.6,
+    dash: source==="labeller" ? undefined : [6,4],
   });
   r.setAttr("label", label);
+  r.setAttr("source", source);
   r.on("click", () => selectRect(r));
   r.on("transformend dragend", () => { normalizeScale(r); pushUndo(); frameDirty=true; renderList(); });
   boxLayer.add(r);
@@ -211,9 +244,26 @@ function clearSelection(){ tr.nodes([]); }
 
 function clearBoxes(){ boxLayer.find(".box").forEach(n=>n.destroy()); boxLayer.find(".num").forEach(n=>n.destroy()); tr.nodes([]); }
 
+$("clearAllBtn").onclick = () => {
+  if (!boxLayer.find(".box").length) return;
+  if (!confirm(`Delete all ${boxLayer.find(".box").length} boxes on this frame?`)) return;
+  pushUndo();
+  clearBoxes();
+  boxLayer.draw();
+  frameDirty = true;
+  renderList();
+  syncTimelineSets();
+};
+
 function drawBoxes(objs, editable){
   clearBoxes();
-  objs.forEach(o => addRect(o.label, o.x*dispW, o.y*dispH, o.w*dispW, o.h*dispH, editable));
+  // Canvas z-order follows the hierarchy: draw lower-tier (machine) boxes
+  // first, GT last, so hand marks always sit on top visually. Stable sort
+  // preserves relative order within a tier (server payload order).
+  const ordered = objs.map((o,i)=>({o,i}))
+    .sort((a,b)=> tierOf(a.o.source) - tierOf(b.o.source) || a.i - b.i)
+    .map(e=>e.o);
+  ordered.forEach(o => addRect(o.label, o.x*dispW, o.y*dispH, o.w*dispW, o.h*dispH, editable, o.source));
   refreshNumbers(); boxLayer.draw(); renderList();
 }
 
@@ -226,14 +276,22 @@ function syncTimelineSets(){
   renderTimelineBar();
 }
 
-function refreshNumbers(){
+// Boxes in hierarchy display order (labeller -> vittrack/sam3 -> yolo, stable
+// within tier by current Konva child order) — used for both the pane list and
+// the on-canvas numbering so swatch numbers stay consistent between the two.
+function orderedBoxRects(){
   const rects = boxLayer.find(".box");
+  return rects.map((r,i)=>({r,i})).sort((a,b)=> tierOf(a.r.getAttr("source")) - tierOf(b.r.getAttr("source")) || a.i - b.i).map(e=>e.r);
+}
+
+function refreshNumbers(){
+  const rects = orderedBoxRects();
   rects.forEach((r,i)=>{ const t=r.getAttr("numText"); if(t){ t.text(String(i)); t.x(r.x()+2); t.y(Math.max(0,r.y()-16)); t.fill(colorOf(r.getAttr("label"))); }});
 }
 
 function renderList(){
   refreshNumbers();
-  const rects = boxLayer.find(".box");
+  const rects = orderedBoxRects();
   $("objHdr").textContent = `Detected objects (${rects.length})`;
   const list = $("objList"); list.innerHTML = "";
   if (viewFrame !== null && noBallFrames.has(viewFrame)) {
@@ -368,7 +426,7 @@ let drawing=null, drawStart=null;
 stage.on("mousedown", (e)=>{
   if (tool!=="draw" || mode==="running") return;
   const p=stage.getPointerPosition(); drawStart=p;
-  drawing=addRect(classSel.value, p.x, p.y, 1, 1, false);
+  drawing=addRect(classSel.value, p.x, p.y, 1, 1, false, "labeller");
 });
 stage.on("mousemove", ()=>{
   if(!drawing) return; const p=stage.getPointerPosition();
@@ -556,6 +614,12 @@ $("loadBtn").onclick = async ()=>{
   meta = await res.json();
   fitStage(); await showFrame(0);
   mode="idle"; lastCompleted=-1;
+  // Reset run-control UI left over from the previous clip (stale "Restart
+  // from frame N" button, paused hint, compiling overlay).
+  $("runBtn").style.display=""; $("restartBtn").style.display="none";
+  $("pauseBtn").disabled=true; $("runMsg").textContent="";
+  const hintEl=$("hint"); hintEl.textContent=""; hintEl.style.color="";
+  setCompilingOverlay(false);
   $("scrub").max = meta.total_frames-1; $("scrub").disabled=false;
   $("runBtn").disabled=false; $("prevBtn").disabled=false; $("nextBtn").disabled=false;
   setStatus(`loaded · ${meta.total_frames} frames @ ${meta.fps.toFixed(1)}fps`);
@@ -696,15 +760,19 @@ function setCompilingOverlay(on){ $("compilingOverlay").classList.toggle("hidden
 
 $("runBtn").onclick = async ()=>{
   await commitCanvasTo(viewFrame);
-  ws.send(JSON.stringify({type:"run", start_frame:viewFrame, conf:0.25, imgsz:+$("imgszSel").value, model_uri:modelUri()}));
+  keptFrames.clear();
+  try { await wsSend({type:"run", start_frame:viewFrame, conf:0.25, imgsz:+$("imgszSel").value, model_uri:modelUri()}); }
+  catch { return; }  // reconnect failed — status already shows the problem
   mode="running"; uiRunning();
 };
 $("restartBtn").onclick = async ()=>{
   await commitCanvasTo(viewFrame);
-  ws.send(JSON.stringify({type:"restart", start_frame:viewFrame, conf:0.25, imgsz:+$("imgszSel").value, model_uri:modelUri()}));
+  keptFrames.clear();
+  try { await wsSend({type:"restart", start_frame:viewFrame, conf:0.25, imgsz:+$("imgszSel").value, model_uri:modelUri()}); }
+  catch { return; }
   mode="running"; uiRunning();
 };
-$("pauseBtn").onclick = ()=>{ ws.send(JSON.stringify({type:"pause"})); };
+$("pauseBtn").onclick = ()=>{ wsSend({type:"pause"}).catch(()=>{}); };
 
 function uiRunning(){
   $("runBtn").style.display="none"; $("restartBtn").style.display="none";
@@ -719,7 +787,7 @@ function uiPaused(idx){
   $("runBtn").style.display="none";
   $("restartBtn").style.display=""; $("restartBtn").textContent=`▶️ Restart from frame ${idx}`;
   $("runMsg").textContent="";
-  $("hint").textContent="Paused. Edit boxes, scrub to a frame, then Restart.";
+  $("hint").textContent="Paused. Edit boxes, scrub to a frame, then Restart." + keptSummary();
   setCompilingOverlay(false);
 }
 function uiIdle(){
@@ -727,14 +795,40 @@ function uiIdle(){
   $("runBtn").style.display=""; $("runBtn").disabled=false; $("restartBtn").style.display="none";
   $("pauseBtn").disabled=true; $("autoBtn").disabled=false;
   $("runMsg").textContent="";
-  $("hint").textContent="Done. Scrub to review; edit + Run to re-seed.";
+  $("hint").textContent="Done. Scrub to review; edit + Run to re-seed." + keptSummary();
   setCompilingOverlay(false);
 }
 
 // ---------- WebSocket ----------
+// A server restart silently kills the socket; ws.send() on a CLOSED socket is
+// discarded by the browser with no error, so without a guard a Run click can
+// hang at "Compiling model…" forever. ensureWS() reconnects on demand and
+// every send goes through it; onclose also auto-reconnects with backoff.
+let wsReconnectDelay = 500;
+function ensureWS(){
+  return new Promise((resolve, reject)=>{
+    if (ws && ws.readyState === WebSocket.OPEN) { resolve(); return; }
+    setStatus("reconnecting…");
+    connectWS();
+    const started = Date.now();
+    const poll = setInterval(()=>{
+      if (ws && ws.readyState === WebSocket.OPEN) { clearInterval(poll); resolve(); }
+      else if (Date.now() - started > 5000) {
+        clearInterval(poll);
+        setStatus("⚠️ can't reach server — is it running?");
+        reject(new Error("ws reconnect timeout"));
+      }
+    }, 100);
+  });
+}
+async function wsSend(payload){
+  await ensureWS();
+  ws.send(JSON.stringify(payload));
+}
 function connectWS(){
-  if (ws) ws.close();
+  if (ws) { ws.onclose = null; ws.close(); }
   ws = new WebSocket(`ws://${location.host}/ws`);
+  ws.onopen = ()=>{ wsReconnectDelay = 500; setStatus("● connected"); };
   ws.onmessage = async (ev)=>{
     const m = JSON.parse(ev.data);
     if (m.type==="status"){
@@ -751,6 +845,13 @@ function connectWS(){
     }
     else if (m.type==="frame"){
       lastCompleted = Math.max(lastCompleted, m.idx);
+      // Every ingested frame now has labels server-side — reflect it on the
+      // timeline bar live, whatever the UI mode (matches what /marks returns
+      // after a clip reload).
+      if (m.boxes.some(b => BALL_LABELS.has(b.label))) markedBallFrames.add(m.idx);
+      if (m.boxes.some(b => PLAYER_LABELS.has(b.label))) markedPlayerFrames.add(m.idx);
+      if (m.gt_kept) keptFrames.add(m.idx);
+      renderTimelineBar();
       // Only render live frames while actually running — ignore in-flight frame
       // messages that arrive after a pause/scrub (they'd reset viewFrame and make
       // Restart use the wrong frame).
@@ -777,7 +878,13 @@ function connectWS(){
     else if (m.type==="done"){ await gotoFrame(lastCompleted>=0?lastCompleted:0); uiIdle(); }
     else if (m.type==="error"){ setStatus("⚠️ "+m.message); setCompilingOverlay(false); }
   };
-  ws.onclose = ()=>{ setStatus("disconnected"); setCompilingOverlay(false); };
+  ws.onclose = ()=>{
+    setStatus("⚠️ disconnected — reconnecting…");
+    setCompilingOverlay(false);
+    // Auto-reconnect with capped backoff so a server restart heals itself.
+    setTimeout(()=>{ if (!ws || ws.readyState !== WebSocket.OPEN) connectWS(); }, wsReconnectDelay);
+    wsReconnectDelay = Math.min(wsReconnectDelay * 2, 8000);
+  };
 }
 
 // when paused, clicking pause arrives via status; switch to editable on current frame

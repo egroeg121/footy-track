@@ -920,6 +920,18 @@ class BackgroundLabeller:
                 out.append(fd)
             return out
 
+    def frame_at(self, idx: int) -> FrameDetections | None:
+        """Completed frame at absolute index *idx*, or None if not (yet) done.
+
+        Unlike :meth:`completed_frames`, this works for runs that start
+        mid-clip — where frames before the start index are None and the
+        contiguous-from-0 scan would return nothing.
+        """
+        with self._lock:
+            if 0 <= idx < len(self.frames):
+                return self.frames[idx]
+            return None
+
     def _worker(self, labeller: VitTrackVideoLabeller, start_frame: int) -> None:
         try:
             prev_fd: FrameDetections | None = None

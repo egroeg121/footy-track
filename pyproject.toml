@@ -110,3 +110,6 @@ markers = [
 ]
 
 # Ruff configuration for linting and formatting
+
+[tool.uv]
+link-mode = "hardlink"

@@ -114,7 +114,7 @@
 <div id="batch-bar">
   <div id="class-pills"></div>
   <label style="font-size:12px;color:var(--muted);display:flex;align-items:center;gap:5px;cursor:pointer;margin-left:12px;">
-    <input type="checkbox" id="hide-seen-toggle"> Hide reviewed
+    <input type="checkbox" id="hide-seen-toggle" checked> Hide reviewed
   </label>
   <span id="batch-info"></span>
 </div>
@@ -400,9 +400,11 @@ function updateSelCount() {
 // ── Batch actions ──────────────────────────────────────────────────────────────
 async function acceptSelected() {
   const batch = currentBatch();
-  // Accept = no-op (marks are already saved); just remove from allItems
-  const toRemove = [...selected].map(i => batch[i]);
-  removeItems(toRemove);
+  const toMark = [...selected].map(i => batch[i]);
+  toMark.forEach(item => markSeen(item));
+  selected.clear();
+  renderGrid();
+  updateSelCount();
 }
 
 async function deleteSelected() {
@@ -424,9 +426,11 @@ async function relabelSelected(newLabel) {
     body: JSON.stringify({clip:item.clip, frame_index:item.frame_index, box_index:item.box_index,
                           label:newLabel, bbox:item.bbox}),
   })));
-  // Update labels in allItems
-  toRelabel.forEach(item => { item.label = newLabel; });
-  removeItems(toRelabel);
+  // Update labels in allItems and mark seen
+  toRelabel.forEach(item => { item.label = newLabel; markSeen(item); });
+  selected.clear();
+  renderGrid();
+  updateSelCount();
 }
 
 function removeItems(items) {
@@ -695,8 +699,8 @@ document.getElementById('modal-btn-accept').onclick = async () => {
         box_index:modalItem.box_index,label:modalItem.label,bbox:modalBbox})});
     modalItem.bbox = {...modalBbox};
   }
-  closeModal();
-  removeItems([modalItem]);
+  markSeen(modalItem);
+  await navigateGrid(1); // move to next, auto-saves and keeps item in allItems
 };
 
 document.getElementById('modal-btn-delete').onclick = async () => {
@@ -760,11 +764,24 @@ document.querySelectorAll('.pick-btn[data-label]').forEach(btn => {
         body:JSON.stringify({clip:modalItem.clip,frame_index:modalItem.frame_index,
           box_index:modalItem.box_index,label,bbox:modalBbox})});
       modalItem.label = label;
+      delete modalItem._pendingLabel; // clear any pending save to avoid double-save
       // Stay in modal — update title and info so user can continue reviewing
       document.getElementById('modal-title').textContent =
         `${label} — ${modalItem.clip} fr.${modalItem.frame_index} box ${modalItem.box_index}`;
       document.getElementById('modal-info').textContent =
         `${modalItem.clip} · frame ${modalItem.frame_index} · box ${modalItem.box_index} · relabelled → ${label}`;
+      // Update the card in the grid immediately
+      const key = `${modalItem.clip}:${modalItem.frame_index}:${modalItem.box_index}`;
+      const batch = currentBatch();
+      const cardIdx = batch.findIndex(it => `${it.clip}:${it.frame_index}:${it.box_index}` === key);
+      if (cardIdx >= 0) {
+        const card = document.querySelector(`.crop-card[data-idx="${cardIdx}"]`);
+        if (card) {
+          const lbl = card.querySelector('.card-label');
+          if (lbl) { lbl.textContent = label; lbl.style.background = CLASS_COLORS[label] || '#555'; }
+        }
+      }
+      markSeen(modalItem);
     } else {
       await relabelSelected(label);
     }
