@@ -1,4 +1,4 @@
-"""HTTP endpoint tests for the labeller server (docs/labeller_requirements.md §3).
+"""HTTP endpoint tests for the labeller server (src/footy_track/labeller/README.md §4, LAB-3xx).
 
 All video IO goes through the fake cv2 layer in conftest.py; YOLO seeding is
 stubbed. No real videos, no real inference.

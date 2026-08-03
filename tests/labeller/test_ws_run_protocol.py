@@ -1,4 +1,4 @@
-"""WebSocket run-protocol tests (docs/labeller_requirements.md §4).
+"""WebSocket run-protocol tests (src/footy_track/labeller/README.md §7, LAB-6xx).
 
 The BackgroundLabeller is replaced with a scripted fake whose ``frames`` are
 fully populated at submit time, so the streamer drains them deterministically.

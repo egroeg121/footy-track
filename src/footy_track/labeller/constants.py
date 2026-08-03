@@ -1,7 +1,7 @@
 """Shared label / provenance constants for the labeller server modules.
 
-See ``src/footy_track/labeller/README.md`` ("Label hierarchy") and
-``docs/labeller_requirements.md`` §1 for the contract these encode.
+See ``src/footy_track/labeller/README.md`` §§1–2 (label hierarchy,
+sidecar format) for the contract these encode.
 """
 
 from __future__ import annotations

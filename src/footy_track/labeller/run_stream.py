@@ -1,7 +1,7 @@
 """Live frame streaming for propagation runs over the websocket.
 
 Implements the server side of the run protocol in
-``docs/labeller_requirements.md`` §4: polling the ``BackgroundLabeller``,
+``src/footy_track/labeller/README.md`` §7 (LAB-6xx): polling the ``BackgroundLabeller``,
 ingesting completed frames into the session timeline (GT-authoritative), and
 pushing status/frame/anomaly/done messages to the client. The ``/ws`` message
 handler itself lives in ``server.py``.

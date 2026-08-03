@@ -1,4 +1,4 @@
-"""Ingest endpoint tests (docs/labeller_requirements.md §3, Ingest).
+"""Ingest endpoint tests (src/footy_track/labeller/README.md §6, LAB-5xx).
 
 The SSE run endpoint is only exercised on its no-subprocess error path — the
 happy path shells out to split_broadcast_segments on a real video, which is

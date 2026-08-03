@@ -1,8 +1,8 @@
 """Session state + JSONL-sidecar persistence for the labeller server.
 
 ``Session`` holds the single authoritative per-frame timeline; the JSONL
-sidecar flush/restore format is specified in ``docs/labeller_requirements.md``
-§1–2. ``server.py`` is the composition root and config surface: the GT-marks
+sidecar flush/restore format is specified in ``src/footy_track/labeller/README.md``
+§§2–3 (LAB-1xx/2xx). ``server.py`` is the composition root and config surface: the GT-marks
 directory is resolved through ``server._GT_MARKS_DIR`` at call time (tests
 monkeypatch it there), never captured at import time.
 """

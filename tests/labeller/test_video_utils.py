@@ -1,5 +1,5 @@
 """Unit tests for video_utils pure logic and BackgroundLabeller semantics
-(docs/labeller_requirements.md §5). No videos, no inference: the worker is
+(src/footy_track/labeller/README.md §8, LAB-7xx). No videos, no inference: the worker is
 driven with a scripted labeller stub.
 """
 

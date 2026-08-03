@@ -5,7 +5,7 @@ timeline). A box's identity is ``(clip, frame_index, box_index)`` where
 ``box_index`` is the ordinal of the box among that frame's box lines in
 current file order (skip-marker and bbox-null lines excluded) — queue, crop,
 correct, and delete all share this numbering. See
-``docs/labeller_requirements.md`` §3 (Review API).
+``src/footy_track/labeller/README.md`` §5 (Review API, LAB-4xx).
 
 ``server.py`` is the composition root and config surface: the clips and
 GT-marks directories are resolved through it at call time (tests monkeypatch
@@ -51,8 +51,8 @@ def _clips_dir() -> Path:
 
 # Provenance tags recognised when reading sidecar lines for review. NOTE:
 # deliberately unchanged from the original implementation — 'vittrack' is
-# absent, so vittrack boxes surface with provenance 'labeller' (documented as
-# [BUG?] in docs/labeller_requirements.md and pinned by tests).
+# absent, so vittrack boxes surface with provenance 'labeller' (OPEN-3 in
+# src/footy_track/labeller/README.md, pinned by tests).
 _PROV_TAGS = {PROV_LABELLER, PROV_YOLO, PROV_SAM3}
 
 # LRU crop cache: key = (clip_stem, frame_idx, box_idx), value = JPEG bytes

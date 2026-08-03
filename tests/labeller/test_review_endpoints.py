@@ -1,4 +1,4 @@
-"""Review API tests (docs/labeller_requirements.md §3, Review API).
+"""Review API tests (src/footy_track/labeller/README.md §5, LAB-4xx).
 
 The review endpoints operate directly on the JSONL sidecars; video IO for
 crops/frames goes through the fake cv2 layer.
@@ -94,7 +94,7 @@ def test_queue_excludes_skip_markers_and_dedups_by_iou(client, clips_dir, gt_mar
 def test_queue_vittrack_tag_reported_as_labeller_current_behavior(
     client, clips_dir, gt_marks_dir
 ):
-    """Pins the [BUG?] in the requirements doc: the review provenance tag set
+    """Pins OPEN-3 in the spec: the review provenance tag set
     omits 'vittrack', so vittrack boxes surface with provenance 'labeller'
     (while still getting machine confidence 0.5). Behavior-preserving pin."""
     (clips_dir / "clip.mp4").touch()

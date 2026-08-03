@@ -1,6 +1,6 @@
 """Ingest API: upload a match video → split_broadcast_segments → clips dir.
 
-See ``docs/labeller_requirements.md`` §3 (Ingest). ``server.py`` is the
+See ``src/footy_track/labeller/README.md`` §6 (Ingest API, LAB-5xx). ``server.py`` is the
 composition root; the clips output dir is resolved through it at call time.
 """
 
