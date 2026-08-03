@@ -12,7 +12,7 @@ propagation backend (`video_utils.py`), and the web UIs (`web/index.html`,
 - **[BUG?]** — observed behavior that looks unintended. Documented, not fixed
   here; pinned as-is where tested (behavior-preserving cleanup only).
 
-Snapshot as of branch point `bdb2942`.
+Snapshot as of branch point `940ab23`.
 
 ---
 
@@ -92,8 +92,12 @@ required or provided).
 
 All request/response bodies are JSON unless noted. Boxes over the wire are
 normalized dicts `{label, x, y, w, h, conf, source}` (server → client) /
-`{label, x, y, w, h, conf?}` (client → server, coordinates clamped to [0,1]).
-**[REQ]** The `source` field carries provenance to the client.
+`{label, x, y, w, h, conf?, model?}` (client → server, coordinates clamped to
+[0,1]). **[REQ]** The `source` field carries provenance to the client.
+**[REQ]** A client box that carries a `model` field keeps that provenance;
+one without falls back to the endpoint's default (per-box GT promotion,
+`940ab23`) — so review.html and older clients that omit `model` are
+unaffected.
 
 ### Pages & static
 | Route | Behavior |
@@ -129,8 +133,11 @@ normalized dicts `{label, x, y, w, h, conf, source}` (server → client) /
 
 ### Editing
 - `POST /edit` `{idx, objects}` — **[REQ]** overwrites the frame with the
-  client boxes stamped `labeller` (GT). If the payload has ≥1 box, the frame is
-  removed from both skip sets. Schedules a debounced flush. Returns
+  client boxes; each box keeps its own `model` tag when present, and defaults
+  to `labeller` (GT) when absent — saving a frame promotes only the boxes the
+  user actually touched (the frontend stamps those `labeller`), untouched
+  machine boxes keep `vittrack`/`yolo`/`sam3`. If the payload has ≥1 box, the
+  frame is removed from both skip sets. Schedules a debounced flush. Returns
   `{idx, boxes}`.
 - `POST /no-ball` `{idx}` — **[REQ]** adds to `no_ball_frames` AND strips
   ball-class boxes from that frame (player boxes are kept). Flush scheduled.
@@ -142,9 +149,10 @@ normalized dicts `{label, x, y, w, h, conf, source}` (server → client) /
 ### Autodetect
 - `POST /autodetect` `{frame_idx, current_boxes, conf?, iou?, model_path?}`:
   - **[REQ]** No video loaded → `{idx: 0, boxes: []}`.
-  - **[REQ]** The client's `current_boxes` become `labeller` GT for the frame
+  - **[REQ]** The client's `current_boxes` replace the frame's timeline entry
     (autodetect merges with what is *on screen*, never with stale server
-    state).
+    state); boxes without a `model` field are stamped `labeller`, boxes with
+    one keep it (per-box GT promotion).
   - **[REQ]** YOLO runs on the frame (via `yolo_seed_objects`, defaults conf
     0.35 / NMS IoU 0.5); detections are stamped `yolo`; any YOLO box with IoU
     > 0.3 against a current (GT) box is suppressed; result = GT + surviving
