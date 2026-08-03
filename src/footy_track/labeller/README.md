@@ -524,6 +524,7 @@ their server contract is §§3–7. Verify by hand when touching the frontend.
   | `n` / `b` | toggle no-ball / not-broadcast on current frame |
   | `q` | re-run autodetect on current frame |
   | `r` | Run (idle) / Restart (paused) the propagation run |
+  | `Space` | pause the propagation run (only while running) |
   | `z` | undo (20-deep per-frame snapshot stack) |
   | `Delete`/`Backspace` | delete selected box (edit tool) |
 
@@ -592,6 +593,11 @@ their server contract is §§3–7. Verify by hand when touching the frontend.
   threshold, its number is highlighted (red) until the user next clicks the
   canvas — a lightweight "check this one" cue that doesn't block anything.
   - Tests: UNTESTED-FRONTEND
+- **LAB-814** (MUST) An edit to a box (move/resize/relabel/delete/draw) is
+  persisted shortly after the edit itself — not only when the user navigates
+  away or starts a run. Refreshing or closing the page right after an edit
+  must not lose it.
+  - Tests: UNTESTED-FRONTEND (debounced save; server leg is LAB-306 /edit)
 
 ## 10. Frontend — review UI (`web/review.html`) (LAB-9xx)
 

@@ -279,7 +279,7 @@ function addRect(label, x, y, w, h, editable, source) {
   r.setAttr("label", label);
   r.setAttr("source", source);
   r.on("click", () => selectRect(r));
-  r.on("transformend dragend", () => { normalizeScale(r); promoteToGT(r); pushUndo(); frameDirty=true; renderList(); });
+  r.on("transformend dragend", () => { normalizeScale(r); promoteToGT(r); pushUndo(); frameDirty=true; renderList(); scheduleEditSave(); });
   boxLayer.add(r);
   // number label
   const t = new Konva.Text({ x:x+2, y:Math.max(0,y-16), text:"", fontSize:13,
@@ -391,10 +391,10 @@ function renderList(){
     } else {
       const sel=document.createElement("select");
       CLASSES.forEach(c=>{const o=document.createElement("option");o.value=c;o.textContent=CLASS_KEYS[c]?`[${CLASS_KEYS[c]}] ${c}`:c;if(c===r.getAttr("label"))o.selected=true;sel.appendChild(o);});
-      sel.onchange=()=>{ r.setAttr("label",sel.value); r.stroke(colorOf(sel.value)); promoteToGT(r); frameDirty=true; refreshNumbers(); boxLayer.draw(); renderList(); syncTimelineSets(); };
+      sel.onchange=()=>{ r.setAttr("label",sel.value); r.stroke(colorOf(sel.value)); promoteToGT(r); frameDirty=true; refreshNumbers(); boxLayer.draw(); renderList(); syncTimelineSets(); scheduleEditSave(); };
       row.appendChild(sel);
       const x=document.createElement("span"); x.className="x"; x.textContent="✕";
-      x.onclick=()=>{ pushUndo(); const t=r.getAttr("numText"); if(t)t.destroy(); r.destroy(); tr.nodes([]); frameDirty=true; boxLayer.draw(); renderList(); syncTimelineSets(); };
+      x.onclick=()=>{ pushUndo(); const t=r.getAttr("numText"); if(t)t.destroy(); r.destroy(); tr.nodes([]); frameDirty=true; boxLayer.draw(); renderList(); syncTimelineSets(); scheduleEditSave(); };
       row.appendChild(x);
       row.onclick=(e)=>{ if(e.target===x||e.target===sel)return; selectRect(r); };
     }
@@ -505,7 +505,7 @@ stage.on("mousemove", ()=>{
   drawing.x(Math.min(p.x,drawStart.x)); drawing.y(Math.min(p.y,drawStart.y));
   refreshNumbers(); boxLayer.draw();
 });
-stage.on("mouseup", ()=>{ if(drawing){ if(drawing.width()<4||drawing.height()<4){const t=drawing.getAttr("numText");if(t)t.destroy();drawing.destroy();} else { pushUndo(); frameDirty=true; syncTimelineSets(); } drawing=null; renderList(); }});
+stage.on("mouseup", ()=>{ if(drawing){ if(drawing.width()<4||drawing.height()<4){const t=drawing.getAttr("numText");if(t)t.destroy();drawing.destroy();} else { pushUndo(); frameDirty=true; syncTimelineSets(); scheduleEditSave(); } drawing=null; renderList(); }});
 
 // no-ball mark
 async function markNoBall() {
@@ -599,6 +599,10 @@ window.addEventListener("keydown",(e)=>{
   if (e.key === "g" || e.key === "G") { gotoNextDetection(); return; }
   if (e.key === "n" || e.key === "N") { markNoBall(); return; }
   if (e.key === "b" || e.key === "B") { markNotBroadcast(); return; }
+  if (e.key === " ") {
+    if (mode === "running") { e.preventDefault(); $("pauseBtn").click(); }
+    return;
+  }
   if (e.key === "q" || e.key === "Q") { autodetect(viewFrame); return; }
   if (e.key === "r" || e.key === "R") {
     // r = Run (idle) or Restart (paused) — whichever control is active.
@@ -770,6 +774,21 @@ $("nextBtn").onclick = ()=>navigateDelta(1);
 // The server timeline is the single source of truth. When leaving an editable
 // frame we POST the current boxes to /edit (labeller ground truth); when
 // entering a frame we GET /timeline/{idx} and render it.
+
+// Edits also save WITHOUT navigation (debounced): moving/relabelling a vit box
+// must survive a page refresh or an idle session, not just a frame change
+// (LAB-814). The timer is dropped if the user navigates first — gotoFrame's
+// own save handles that path.
+let _editSaveTimer = null;
+function scheduleEditSave(){
+  if (_editSaveTimer) clearTimeout(_editSaveTimer);
+  const idx = viewFrame;
+  _editSaveTimer = setTimeout(async ()=>{
+    _editSaveTimer = null;
+    if (idx === viewFrame && frameDirty) await saveCurrentEdits();
+  }, 400);
+}
+
 async function saveCurrentEdits(){
   if (mode!=="running" && viewFrame!=null && frameDirty){
     const res = await fetch("/edit",{method:"POST",headers:{"Content-Type":"application/json"},
