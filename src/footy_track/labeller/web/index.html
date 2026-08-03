@@ -203,11 +203,23 @@ function setStatus(s){ $("status").textContent = s; }
 
 function boxesNorm() {
   // Only our labelled boxes (name="box") — NOT the Transformer's handle rects.
+  // Each box carries its model tag so saves promote ONLY hand-touched boxes to
+  // labeller GT; untouched machine boxes keep vittrack/yolo/sam3.
   return boxLayer.find(".box").map(r => ({
     label: r.getAttr("label"),
+    model: r.getAttr("source") || "labeller",
     x: r.x()/dispW, y: r.y()/dispH,
     w: (r.width()*r.scaleX())/dispW, h: (r.height()*r.scaleY())/dispH,
   }));
+}
+
+// Hand-touching a box (drag/resize/relabel) promotes exactly that box to GT:
+// its tag becomes "labeller" and its stroke turns solid immediately.
+function promoteToGT(r){
+  if (r.getAttr("source") === "labeller") return;
+  r.setAttr("source", "labeller");
+  r.strokeOpacity(1); r.dash([]);
+  boxLayer.draw();
 }
 
 function addRect(label, x, y, w, h, editable, source) {
@@ -224,7 +236,7 @@ function addRect(label, x, y, w, h, editable, source) {
   r.setAttr("label", label);
   r.setAttr("source", source);
   r.on("click", () => selectRect(r));
-  r.on("transformend dragend", () => { normalizeScale(r); pushUndo(); frameDirty=true; renderList(); });
+  r.on("transformend dragend", () => { normalizeScale(r); promoteToGT(r); pushUndo(); frameDirty=true; renderList(); });
   boxLayer.add(r);
   // number label
   const t = new Konva.Text({ x:x+2, y:Math.max(0,y-16), text:"", fontSize:13,
@@ -323,7 +335,7 @@ function renderList(){
     } else {
       const sel=document.createElement("select");
       CLASSES.forEach(c=>{const o=document.createElement("option");o.value=c;o.textContent=CLASS_KEYS[c]?`[${CLASS_KEYS[c]}] ${c}`:c;if(c===r.getAttr("label"))o.selected=true;sel.appendChild(o);});
-      sel.onchange=()=>{ r.setAttr("label",sel.value); r.stroke(colorOf(sel.value)); frameDirty=true; refreshNumbers(); boxLayer.draw(); renderList(); syncTimelineSets(); };
+      sel.onchange=()=>{ r.setAttr("label",sel.value); r.stroke(colorOf(sel.value)); promoteToGT(r); frameDirty=true; refreshNumbers(); boxLayer.draw(); renderList(); syncTimelineSets(); };
       row.appendChild(sel);
       const x=document.createElement("span"); x.className="x"; x.textContent="✕";
       x.onclick=()=>{ pushUndo(); const t=r.getAttr("numText"); if(t)t.destroy(); r.destroy(); tr.nodes([]); frameDirty=true; boxLayer.draw(); renderList(); syncTimelineSets(); };

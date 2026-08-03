@@ -335,7 +335,13 @@ SESSION = Session()
 
 
 def _boxes_from_payload(items: list[dict], provenance: str) -> list[ObjectDetection]:
-    """Client boxes (normalized xywh + label) -> ObjectDetection with provenance."""
+    """Client boxes (normalized xywh + label) -> ObjectDetection with provenance.
+
+    ``provenance`` is the fallback for items without a ``model`` field. Items
+    that carry one keep it — so saving a frame promotes only the boxes the user
+    actually touched (client stamps those "labeller"); untouched machine boxes
+    keep their vittrack/yolo/sam3 tag.
+    """
     out: list[ObjectDetection] = []
     for it in items:
         out.append(
@@ -346,7 +352,7 @@ def _boxes_from_payload(items: list[dict], provenance: str) -> list[ObjectDetect
                 y=max(0.0, min(1.0, it["y"])),
                 w=max(0.0, min(1.0, it["w"])),
                 h=max(0.0, min(1.0, it["h"])),
-                model=provenance,
+                model=it.get("model") or provenance,
             )
         )
     return out
