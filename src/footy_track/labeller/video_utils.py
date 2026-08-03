@@ -15,7 +15,6 @@ into ``BackgroundLabeller`` — VitTrack is the active backend.
 from __future__ import annotations
 
 import os
-import subprocess
 import tempfile
 import threading
 from collections.abc import Callable, Iterator
@@ -245,17 +244,6 @@ def warmup_model(model_uri: str | None = None, imgsz: int = 512) -> None:
             _warmup_done.set()
 
 
-def start_warmup_thread(
-    model_uri: str | None = None, imgsz: int = 512
-) -> threading.Thread:
-    """Spawn a daemon thread to warm up SAM3 in the background."""
-    t = threading.Thread(
-        target=warmup_model, args=(model_uri, imgsz), daemon=True, name="sam3-warmup"
-    )
-    t.start()
-    return t
-
-
 class Sam3VideoLabeller:
     """Propagate frame-0 box prompts through a clip with ``SAM3VideoPredictor``.
 
@@ -291,7 +279,9 @@ class Sam3VideoLabeller:
         self.min_confidence = min_confidence
         self.imgsz = imgsz
         self.verbose = verbose
-        self._image_predictor = None  # lazily built by _build_image_predictor (CropRunner.detect)
+        self._image_predictor = (
+            None  # lazily built by _build_image_predictor (CropRunner.detect)
+        )
 
         dev = _available_device()
         self.device = dev.type if isinstance(dev, torch.device) else str(dev)
@@ -360,7 +350,9 @@ class Sam3VideoLabeller:
         if crop is None or crop.size == 0:
             return None
         h, w = crop.shape[:2]
-        prompt_box = list(prior) if prior is not None else [0.0, 0.0, float(w), float(h)]
+        prompt_box = (
+            list(prior) if prior is not None else [0.0, 0.0, float(w), float(h)]
+        )
 
         predictor = self._build_image_predictor()
         with torch.no_grad():
@@ -379,14 +371,24 @@ class Sam3VideoLabeller:
             box_abs: Box = (xn * w, yn * h, (xn + wn) * w, (yn + hn) * h)
             conf = (
                 float(boxes.conf[0])
-                if boxes is not None and getattr(boxes, "conf", None) is not None and len(boxes.conf) > 0
+                if boxes is not None
+                and getattr(boxes, "conf", None) is not None
+                and len(boxes.conf) > 0
                 else 1.0
             )
             return Detection(box=box_abs, confidence=conf, label=MODEL_TAG)
 
-        if boxes is not None and getattr(boxes, "xyxy", None) is not None and len(boxes.xyxy) > 0:
+        if (
+            boxes is not None
+            and getattr(boxes, "xyxy", None) is not None
+            and len(boxes.xyxy) > 0
+        ):
             x1, y1, x2, y2 = boxes.xyxy[0].tolist()
-            conf = float(boxes.conf[0]) if getattr(boxes, "conf", None) is not None else 1.0
+            conf = (
+                float(boxes.conf[0])
+                if getattr(boxes, "conf", None) is not None
+                else 1.0
+            )
             return Detection(box=(x1, y1, x2, y2), confidence=conf, label=MODEL_TAG)
 
         return None
@@ -1120,16 +1122,3 @@ def export_frames_json(frames: list[FrameDetections], out_path: Path) -> Path:
     payload = "[" + ",".join(f.model_dump_json() for f in frames) + "]"
     out_path.write_text(payload)
     return out_path
-
-
-def has_ffmpeg() -> bool:
-    """Return True if ffmpeg is available (used for optional frame export)."""
-    try:
-        subprocess.run(
-            ["ffmpeg", "-version"],
-            check=True,
-            capture_output=True,
-        )
-        return True
-    except (OSError, subprocess.CalledProcessError):
-        return False

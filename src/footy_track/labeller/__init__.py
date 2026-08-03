@@ -1,8 +1,10 @@
-"""SAM3 video labelling tools.
+"""Video labelling tools.
 
-A small UI + backend that lets a human mark objects (players, ball, referee, ...)
-on the first frame of a short clip and uses ``SAM3VideoPredictor`` to propagate
-those segmentations through the whole clip, producing ``FrameDetections`` JSON.
+A web UI + backend that lets a human mark objects (players, ball, referee, ...)
+on frames of a short clip and propagates those boxes through the clip
+(VitTrack SOT; the legacy ``Sam3VideoLabeller`` backend is kept for scripts),
+producing JSONL sidecars / ``FrameDetections`` JSON. See ``README.md`` and
+``src/footy_track/labeller/README.md``.
 """
 
 from footy_track.labeller.video_utils import LabelledObject, Sam3VideoLabeller
