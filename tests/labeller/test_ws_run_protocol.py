@@ -59,7 +59,14 @@ class FakeBackgroundLabeller:
         self.running = False
 
     def submit(
-        self, video_path, objects, model_uri, conf, start_frame=0, imgsz=512
+        self,
+        video_path,
+        objects,
+        model_uri,
+        conf,
+        start_frame=0,
+        imgsz=512,
+        handback_thresholds=None,
     ) -> None:
         self.submissions.append(
             {
@@ -69,6 +76,7 @@ class FakeBackgroundLabeller:
                 "conf": conf,
                 "start_frame": start_frame,
                 "imgsz": imgsz,
+                "handback_thresholds": handback_thresholds,
             }
         )
         self.frames = list(self._script_frames)
@@ -290,3 +298,39 @@ def test_pause_message_pauses_and_acknowledges(client, ws_session):
 
     assert msg == {"type": "status", "state": "paused"}
     assert fake.paused >= 1
+
+
+def test_run_passes_sanitized_handback_thresholds(client, ws_session):
+    """LAB-610: per-class thresholds reach the backend; junk values are dropped."""
+    ws_session.timeline[0] = [make_box("player", model=PROV_LABELLER)]
+    fake = FakeBackgroundLabeller(frames=[_fd(0, [("player", 0.1)])])
+    ws_session.bg = fake
+    with client.websocket_connect("/ws") as ws:
+        ws.send_json(
+            {
+                "type": "run",
+                "start_frame": 0,
+                "handback_thresholds": {
+                    "player": 0.3,
+                    "in_play_ball": 1.7,  # clamped to 1.0
+                    "referee": "junk",  # dropped
+                    "other": True,  # bools dropped (not numeric intent)
+                },
+            }
+        )
+        _drain_until(ws, "done")
+    assert fake.submissions[0]["handback_thresholds"] == {
+        "player": 0.3,
+        "in_play_ball": 1.0,
+    }
+
+
+def test_run_without_thresholds_passes_empty_dict(client, ws_session):
+    """LAB-610: absent thresholds -> backend default behavior (empty dict)."""
+    ws_session.timeline[0] = [make_box("player", model=PROV_LABELLER)]
+    fake = FakeBackgroundLabeller(frames=[_fd(0, [("player", 0.1)])])
+    ws_session.bg = fake
+    with client.websocket_connect("/ws") as ws:
+        ws.send_json({"type": "run", "start_frame": 0})
+        _drain_until(ws, "done")
+    assert fake.submissions[0]["handback_thresholds"] == {}

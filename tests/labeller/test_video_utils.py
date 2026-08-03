@@ -252,3 +252,89 @@ def test_is_done_semantics():
     assert bg.is_done() is True
     bg.running = True
     assert bg.is_done() is False
+
+
+def test_worker_handback_uses_per_class_thresholds():
+    """LAB-712: pause only when a box drops below ITS class's threshold."""
+    bg = BackgroundLabeller()
+    bg.handback_thresholds = {"player": 0.2, "in_play_ball": 0.6, "other": 0.4}
+    frames = [
+        _fd(
+            0,
+            [
+                _det(label="player", conf=1.0),
+                _det(label="in_play_ball", conf=1.0, x=0.3),
+            ],
+        ),
+        # player 0.25 is fine (>= 0.2); ball 0.65 is fine (>= 0.6)
+        _fd(
+            1,
+            [
+                _det(label="player", conf=0.25, x=0.11),
+                _det(label="in_play_ball", conf=0.65, x=0.31),
+            ],
+        ),
+        # ball 0.55 trips its 0.6 threshold even though it would pass the old 0.5
+        _fd(
+            2,
+            [
+                _det(label="player", conf=0.25, x=0.12),
+                _det(label="in_play_ball", conf=0.55, x=0.32),
+            ],
+        ),
+        _fd(3, [_det(label="player", conf=1.0, x=0.13)]),
+    ]
+    _run_worker(bg, frames)
+    assert bg.anomaly_frame == 2
+    assert "in_play_ball" in bg.anomaly_reason
+    assert "0.6" in bg.anomaly_reason
+    assert bg.frames[3] is None
+
+
+def test_worker_handback_other_fallback_and_default():
+    """LAB-712: unlisted classes use 'other'; no thresholds at all -> global default."""
+    bg = BackgroundLabeller()
+    bg.handback_thresholds = {"other": 0.7}
+    _run_worker(bg, [_fd(0, [_det(label="referee", conf=0.65)])])
+    assert bg.anomaly_frame == 0  # referee falls back to other=0.7
+
+    bg2 = BackgroundLabeller()  # no thresholds: default 0.5 applies
+    _run_worker(bg2, [_fd(0, [_det(label="referee", conf=0.65)])])
+    assert bg2.anomaly_frame is None
+
+
+def test_submit_restart_discards_stale_downstream_frames(monkeypatch):
+    """LAB-713: a restart from frame N must not re-stream the previous run's
+    output beyond N — frames[N:] are cleared and the high-water mark resets,
+    so the streamer waits for the NEW run instead of draining stale results
+    (the "restart jumped back to frame 90" bug)."""
+    from footy_track.labeller import video_utils as vu  # noqa: PLC0415
+
+    class _StubLabeller:
+        def __init__(self, **_kw):
+            pass
+
+        def _total_frames(self):
+            return 10
+
+        def iter_frames_from(
+            self, start_frame=0, stop_event=None, progress_callback=None
+        ):
+            yield _fd(start_frame, [_det(conf=1.0)])
+
+    monkeypatch.setattr(vu, "VitTrackVideoLabeller", _StubLabeller)
+
+    bg = BackgroundLabeller()
+    # Previous run reached frame 9.
+    bg.frames = [_fd(i, [_det()]) for i in range(10)]
+    bg.last_completed_frame = 9
+
+    bg.submit("fake.mp4", [], None, 0.25, start_frame=5)
+    bg._thread.join(timeout=5)
+
+    # Stale frames 6..9 are gone; only the new run's seed (frame 5) is present.
+    assert bg.frames[5] is not None
+    assert all(bg.frames[i] is None for i in range(6, 10))
+    # Frames before the restart point are untouched.
+    assert all(bg.frames[i] is not None for i in range(5))
+    assert bg.last_completed_frame == 5

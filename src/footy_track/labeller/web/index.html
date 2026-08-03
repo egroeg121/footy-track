@@ -95,7 +95,7 @@
         <button id="toolDraw" class="on">✏️ Draw (W)</button>
       </span>
       <select id="classSel"></select>
-      <button id="autoBtn" title="Auto-detect objects on this frame (R)">🤖 Auto-detect (R)</button>
+      <button id="autoBtn" title="Auto-detect objects on this frame (Q)">🤖 Auto-detect (Q)</button>
       <button id="nextDetBtn" title="Skip to next frame with detections (G)">⏭ Next detection (G)</button>
       <button id="noBallBtn" title="Mark frame as no-ball-visible (N)">🚫 No ball (N)</button>
       <button id="notBroadcastBtn" title="Mark frame as not broadcast (B)">📺 Not broadcast (B)</button>
@@ -108,8 +108,8 @@
         </select>
       </label>
       <span class="grow"></span>
-      <button id="runBtn" class="primary" disabled>▶️ Run</button>
-      <button id="restartBtn" class="primary" style="display:none">▶️ Restart from frame 0</button>
+      <button id="runBtn" class="primary" disabled title="Run VitTrack from this frame (R)">▶️ Run (R)</button>
+      <button id="restartBtn" class="primary" style="display:none" title="Restart VitTrack from this frame (R)">▶️ Restart from frame 0</button>
       <span id="runMsg" class="muted"></span>
       <button id="pauseBtn" disabled>⏸️ Pause</button>
     </div>
@@ -136,6 +136,9 @@
       <button id="clearAllBtn" title="Delete all boxes on this frame">Clear all</button>
     </div>
     <div id="objList"></div>
+    <h3 style="margin-top:14px;">Handback thresholds</h3>
+    <div class="muted" style="font-size:11px;margin-bottom:6px;">Pause the run only when a box's confidence drops below its class threshold.</div>
+    <div id="threshSliders"></div>
   </div>
 </div>
 
@@ -164,6 +167,22 @@ let frameDirty = false;     // true only if user has edited the current frame
 let undoStack = [];         // stack of box snapshots for current frame
 const noBallFrames = new Set();
 const notBroadcastFrames = new Set();
+
+// --- Per-class handback confidence thresholds (LAB-610/712/812) -------------
+// The run pauses for correction only when a tracked box's confidence falls
+// below ITS class's threshold. Persisted across sessions.
+const THRESH_CLASSES = ["player","referee","in_play_ball","other"];
+const DEFAULT_THRESHOLDS = {player:0.3, referee:0.3, in_play_ball:0.5, other:0.5};
+let handbackThresholds = {...DEFAULT_THRESHOLDS};
+try { Object.assign(handbackThresholds, JSON.parse(localStorage.getItem("handbackThresholds")||"{}")); } catch {}
+function thresholdFor(label){
+  return handbackThresholds[label] !== undefined ? handbackThresholds[label]
+       : handbackThresholds.other !== undefined ? handbackThresholds.other : 0.5;
+}
+// True while a below-threshold machine box is on screen; cleared by the next
+// canvas click (its number renders red meanwhile).
+let lowConfAlert = false;
+
 // Frames whose existing hand marks were kept (VitTrack output discarded)
 // during the current run — surfaced when the run stops so "restart didn't
 // change those frames" is visible instead of silent.
@@ -212,6 +231,30 @@ function boxesNorm() {
     w: (r.width()*r.scaleX())/dispW, h: (r.height()*r.scaleY())/dispH,
   }));
 }
+
+// Threshold sliders (right panel). Changes persist and apply on the next run.
+(function buildThreshSliders(){
+  const wrap = $("threshSliders");
+  THRESH_CLASSES.forEach(cls => {
+    const row = document.createElement("div");
+    row.className = "objrow";
+    const lbl = document.createElement("span");
+    lbl.textContent = cls; lbl.style.flex = "1"; lbl.style.fontSize = "11px";
+    const val = document.createElement("span");
+    val.style.width = "30px"; val.style.textAlign = "right"; val.style.fontSize = "11px";
+    val.textContent = handbackThresholds[cls].toFixed(2);
+    const sl = document.createElement("input");
+    sl.type = "range"; sl.min = "0"; sl.max = "1"; sl.step = "0.05";
+    sl.value = handbackThresholds[cls]; sl.style.width = "110px";
+    sl.oninput = () => {
+      handbackThresholds[cls] = parseFloat(sl.value);
+      val.textContent = handbackThresholds[cls].toFixed(2);
+      localStorage.setItem("handbackThresholds", JSON.stringify(handbackThresholds));
+    };
+    row.appendChild(lbl); row.appendChild(sl); row.appendChild(val);
+    wrap.appendChild(row);
+  });
+})();
 
 // Hand-touching a box (drag/resize/relabel) promotes exactly that box to GT:
 // its tag becomes "labeller" and its stroke turns solid immediately.
@@ -275,7 +318,14 @@ function drawBoxes(objs, editable){
   const ordered = objs.map((o,i)=>({o,i}))
     .sort((a,b)=> tierOf(a.o.source) - tierOf(b.o.source) || a.i - b.i)
     .map(e=>e.o);
-  ordered.forEach(o => addRect(o.label, o.x*dispW, o.y*dispH, o.w*dispW, o.h*dispH, editable, o.source));
+  ordered.forEach(o => {
+    const r = addRect(o.label, o.x*dispW, o.y*dispH, o.w*dispW, o.h*dispH, editable, o.source);
+    if (o.conf !== undefined) r.setAttr("conf", o.conf);
+  });
+  // Low-confidence alert: if any machine box is below its class threshold,
+  // its number renders red until the next canvas click (LAB-813).
+  lowConfAlert = ordered.some(o => o.source !== "labeller" && o.conf !== undefined
+                                   && o.conf < thresholdFor(o.label));
   refreshNumbers(); boxLayer.draw(); renderList();
 }
 
@@ -298,7 +348,13 @@ function orderedBoxRects(){
 
 function refreshNumbers(){
   const rects = orderedBoxRects();
-  rects.forEach((r,i)=>{ const t=r.getAttr("numText"); if(t){ t.text(String(i)); t.x(r.x()+2); t.y(Math.max(0,r.y()-16)); t.fill(colorOf(r.getAttr("label"))); }});
+  rects.forEach((r,i)=>{ const t=r.getAttr("numText"); if(t){
+    t.text(String(i)); t.x(r.x()+2); t.y(Math.max(0,r.y()-16));
+    const conf = r.getAttr("conf");
+    const low = lowConfAlert && r.getAttr("source") !== "labeller"
+                && conf !== undefined && conf < thresholdFor(r.getAttr("label"));
+    t.fill(low ? "#f85149" : colorOf(r.getAttr("label")));
+  }});
 }
 
 function renderList(){
@@ -436,6 +492,9 @@ $("toolDraw").onclick=()=>setTool("draw");
 // draw-by-drag
 let drawing=null, drawStart=null;
 stage.on("mousedown", (e)=>{
+  // Any canvas click acknowledges the low-confidence alert: numbers go back
+  // to their class color (LAB-813).
+  if (lowConfAlert) { lowConfAlert=false; refreshNumbers(); boxLayer.draw(); }
   if (tool!=="draw" || mode==="running") return;
   const p=stage.getPointerPosition(); drawStart=p;
   drawing=addRect(classSel.value, p.x, p.y, 1, 1, false, "labeller");
@@ -540,7 +599,13 @@ window.addEventListener("keydown",(e)=>{
   if (e.key === "g" || e.key === "G") { gotoNextDetection(); return; }
   if (e.key === "n" || e.key === "N") { markNoBall(); return; }
   if (e.key === "b" || e.key === "B") { markNotBroadcast(); return; }
-  if (e.key === "r" || e.key === "R") { autodetect(viewFrame); return; }
+  if (e.key === "q" || e.key === "Q") { autodetect(viewFrame); return; }
+  if (e.key === "r" || e.key === "R") {
+    // r = Run (idle) or Restart (paused) — whichever control is active.
+    if ($("restartBtn").style.display !== "none") $("restartBtn").click();
+    else if (!$("runBtn").disabled && $("runBtn").style.display !== "none") $("runBtn").click();
+    return;
+  }
 });
 
 // ---------- clip picker ----------
@@ -773,15 +838,17 @@ function setCompilingOverlay(on){ $("compilingOverlay").classList.toggle("hidden
 $("runBtn").onclick = async ()=>{
   await commitCanvasTo(viewFrame);
   keptFrames.clear();
-  try { await wsSend({type:"run", start_frame:viewFrame, conf:0.25, imgsz:+$("imgszSel").value, model_uri:modelUri()}); }
+  try { await wsSend({type:"run", start_frame:viewFrame, conf:0.25, imgsz:+$("imgszSel").value, model_uri:modelUri(), handback_thresholds:handbackThresholds}); }
   catch { return; }  // reconnect failed — status already shows the problem
+  lastCompleted = -1;  // forget the previous run's high-water mark (LAB-713)
   mode="running"; uiRunning();
 };
 $("restartBtn").onclick = async ()=>{
   await commitCanvasTo(viewFrame);
   keptFrames.clear();
-  try { await wsSend({type:"restart", start_frame:viewFrame, conf:0.25, imgsz:+$("imgszSel").value, model_uri:modelUri()}); }
+  try { await wsSend({type:"restart", start_frame:viewFrame, conf:0.25, imgsz:+$("imgszSel").value, model_uri:modelUri(), handback_thresholds:handbackThresholds}); }
   catch { return; }
+  lastCompleted = -1;  // forget the previous run's high-water mark (LAB-713)
   mode="running"; uiRunning();
 };
 $("pauseBtn").onclick = ()=>{ wsSend({type:"pause"}).catch(()=>{}); };

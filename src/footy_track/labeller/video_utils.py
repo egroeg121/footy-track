@@ -863,6 +863,16 @@ class BackgroundLabeller:
         self.anomaly_frame: int | None = None
         self.anomaly_reason: str | None = None
         self.anomaly_detection: bool = True
+        # Per-class handback thresholds (label -> min confidence); set per run
+        # by submit(). Empty dict -> global default for every class.
+        self.handback_thresholds: dict[str, float] = {}
+
+    def _handback_threshold(self, label: str) -> float:
+        """Threshold for one class: exact label, else 'other', else default."""
+        thresholds = self.handback_thresholds
+        if label in thresholds:
+            return thresholds[label]
+        return thresholds.get("other", _VITTRACK_HANDBACK_SCORE)
 
     def submit(
         self,
@@ -872,9 +882,16 @@ class BackgroundLabeller:
         min_confidence: float,
         start_frame: int = 0,
         imgsz: int = 512,
+        handback_thresholds: dict[str, float] | None = None,
     ) -> None:
-        """Stop any running job, then start propagation from ``start_frame``."""
+        """Stop any running job, then start propagation from ``start_frame``.
+
+        ``handback_thresholds`` maps class label -> confidence below which the
+        run pauses for correction (LAB-712). Lookup: exact label, then
+        ``"other"``, then the global default ``_VITTRACK_HANDBACK_SCORE``.
+        """
         self.pause()
+        self.handback_thresholds = dict(handback_thresholds or {})
         labeller = VitTrackVideoLabeller(
             video_path=video_path,
             objects=objects,
@@ -885,6 +902,15 @@ class BackgroundLabeller:
             if len(self.frames) != total:
                 # First run (or video changed): allocate the full timeline.
                 self.frames = [None] * total
+            else:
+                # A restart re-owns everything from start_frame on. Without
+                # this, the streamer immediately re-drains the PREVIOUS run's
+                # frames (stale vittrack output) — the UI jumps to the old
+                # run's last frame and the new run's output is never streamed
+                # (LAB-713).
+                for i in range(start_frame, total):
+                    self.frames[i] = None
+            self.last_completed_frame = start_frame - 1
             self.error = None
             self.anomaly_frame = None
             self.anomaly_reason = None
@@ -961,13 +987,13 @@ class BackgroundLabeller:
                     low = [
                         d
                         for d in fd.detections
-                        if d.confidence < _VITTRACK_HANDBACK_SCORE
+                        if d.confidence < self._handback_threshold(d.label)
                     ]
                     if low:
                         reason = (
                             f"VitTrack confidence dropped to "
                             f"{low[0].confidence:.2f} for '{low[0].label}' "
-                            f"(threshold {_VITTRACK_HANDBACK_SCORE})"
+                            f"(threshold {self._handback_threshold(low[0].label)})"
                         )
                 if reason is not None:
                     with self._lock:

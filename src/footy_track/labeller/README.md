@@ -393,6 +393,14 @@ Client → server: `{type: "run" | "restart" | "pause"}`; `run`/`restart` carry
 - **LAB-609** (MUST) WebSocket disconnect pauses the run and cancels the
   streamer (no orphaned propagation).
   - Tests: UNTESTED
+- **LAB-610** (MUST) The user can control, per class, how confident the
+  tracker must be before a run continues without pausing: each run applies the
+  user's per-class handback thresholds (classes: `player`, `referee`,
+  `in_play_ball`, and `other` as the catch-all), so solid-but-low-confidence
+  tracks no longer pause the run frame after frame unless the user has asked
+  for that strictness. Malformed threshold input MUST NOT break a run —
+  invalid values are ignored and defaults apply.
+  - Tests: `test_ws_run_protocol.py::test_run_passes_sanitized_handback_thresholds`
 
 ## 8. Propagation backend — video_utils (LAB-7xx)
 
@@ -479,6 +487,19 @@ Client → server: `{type: "run" | "restart" | "pause"}`; `run`/`restart` carry
   `motion_tracker`. Removing it is a spec change (and LAB-007 must hold
   regardless).
   - Tests: UNTESTED (import surface only)
+- **LAB-712** (MUST) The confidence handback is per-class: a run pauses on a
+  tracked box only when its confidence falls below the threshold for that
+  box's class (unlisted classes use the catch-all; with no user thresholds at
+  all, a single global default applies). The pause reason names the class and
+  the threshold that tripped it.
+  - Tests: `test_video_utils.py::test_worker_handback_uses_per_class_thresholds`
+- **LAB-713** (MUST) Restarting from frame N re-propagates everything after N
+  from the corrected seed: the previous run's machine output beyond N is
+  discarded and never shown as if it were the new run's result (no jumping
+  ahead to the old run's last frame). Hand marks after N are NOT wiped by
+  this — they survive per LAB-002 and are reported as kept.
+  - Tests: `test_video_utils.py::test_submit_restart_discards_stale_downstream_frames`,
+    `test_ws_run_protocol.py::test_run_reports_gt_kept_frames`
 
 ## 9. Frontend — labeller UI (`web/index.html`) (LAB-8xx)
 
@@ -501,7 +522,8 @@ their server contract is §§3–7. Verify by hand when touching the frontend.
   | `f` (tap-count) | 1 tap = ½ s, 2 taps = 1 s, 3+ taps = 4 s worth of frames |
   | `g` | next frame with detections (`/next-detection`) |
   | `n` / `b` | toggle no-ball / not-broadcast on current frame |
-  | `r` | re-run autodetect on current frame |
+  | `q` | re-run autodetect on current frame |
+  | `r` | Run (idle) / Restart (paused) the propagation run |
   | `z` | undo (20-deep per-frame snapshot stack) |
   | `Delete`/`Backspace` | delete selected box (edit tool) |
 
@@ -561,6 +583,14 @@ their server contract is §§3–7. Verify by hand when touching the frontend.
 - **LAB-811** (MUST) Objects pane: per-box class dropdown (read-only while
   running; changing a class promotes per LAB-005), delete `✕`, "Clear all"
   with confirm + undo; no-ball / not-broadcast rows shown with inline clear.
+  - Tests: UNTESTED-FRONTEND
+- **LAB-812** (MUST) The user can adjust the per-class handback thresholds
+  (LAB-610) from the labeller page itself, without a restart; settings persist
+  across sessions and apply from the next run.
+  - Tests: UNTESTED-FRONTEND (sliders under the objects pane)
+- **LAB-813** (SHOULD) When a shown machine box is below its class's handback
+  threshold, its number is highlighted (red) until the user next clicks the
+  canvas — a lightweight "check this one" cue that doesn't block anything.
   - Tests: UNTESTED-FRONTEND
 
 ## 10. Frontend — review UI (`web/review.html`) (LAB-9xx)

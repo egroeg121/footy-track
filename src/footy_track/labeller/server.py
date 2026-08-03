@@ -426,6 +426,20 @@ async def propagate_labels(body: dict) -> dict:
 # ----------------------------------------------------------------------------
 
 
+def _sanitize_thresholds(raw: object) -> dict[str, float]:
+    """Client handback thresholds -> clean {label: conf in [0,1]} (LAB-610).
+
+    Non-dict input and non-numeric values are dropped; numerics are clamped.
+    """
+    if not isinstance(raw, dict):
+        return {}
+    out: dict[str, float] = {}
+    for key, value in raw.items():
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            out[str(key)] = min(1.0, max(0.0, float(value)))
+    return out
+
+
 @app.websocket("/ws")
 async def ws(websocket: WebSocket) -> None:
     await websocket.accept()
@@ -481,6 +495,7 @@ async def ws(websocket: WebSocket) -> None:
                     float(msg.get("conf", 0.25)),
                     start_frame,
                     int(msg.get("imgsz", 512)),
+                    _sanitize_thresholds(msg.get("handback_thresholds")),
                 )
                 streamer = asyncio.create_task(_run_streamer(start_frame))
 
