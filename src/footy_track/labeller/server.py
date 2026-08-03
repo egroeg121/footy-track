@@ -16,8 +16,6 @@ import asyncio
 import contextlib
 import json
 import os
-import sys
-import tempfile
 from pathlib import Path
 
 # Persist torch.compile (Inductor) cache before torch loads — see video_utils.
@@ -29,12 +27,10 @@ os.environ.setdefault(
 import cv2  # noqa: E402
 from fastapi import (  # noqa: E402
     FastAPI,
-    File,
-    UploadFile,
     WebSocket,
     WebSocketDisconnect,
 )
-from fastapi.responses import HTMLResponse, Response, StreamingResponse  # noqa: E402
+from fastapi.responses import HTMLResponse, Response  # noqa: E402
 from fastapi.staticfiles import StaticFiles  # noqa: E402
 
 from footy_track.ball_eval.metrics import bbox_iou  # noqa: E402
@@ -46,7 +42,9 @@ from footy_track.labeller.constants import (  # noqa: E402
     PROV_VITTRACK,
     PROV_YOLO,
 )
+from footy_track.labeller.ingest import router as ingest_router  # noqa: E402
 from footy_track.labeller.review import router as review_router  # noqa: E402
+from footy_track.labeller.run_stream import stream_frames  # noqa: E402
 from footy_track.labeller.session import (  # noqa: E402
     Session,
     boxes_from_payload,
@@ -104,6 +102,11 @@ async def labeller_page() -> HTMLResponse:
 @app.get("/object_review", response_class=HTMLResponse)
 async def review_page() -> HTMLResponse:
     return HTMLResponse((_STATIC_DIR / "review.html").read_text())
+
+
+@app.get("/ingest", response_class=HTMLResponse)
+async def ingest_page() -> HTMLResponse:
+    return HTMLResponse((_STATIC_DIR / "ingest.html").read_text())
 
 
 def _clip_completion(stem: str, video_path: Path) -> dict:
@@ -419,161 +422,8 @@ async def propagate_labels(body: dict) -> dict:
 
 
 # ----------------------------------------------------------------------------
-# Ingest: upload a match video → split_broadcast_segments → eval_data/clips
-# ----------------------------------------------------------------------------
-
-_INGEST_UPLOADS = Path(tempfile.gettempdir()) / "footy_ingest_uploads"
-_INGEST_UPLOADS.mkdir(parents=True, exist_ok=True)
-
-# Module-level singleton so the FastAPI param default isn't a call expression (B008).
-_UPLOAD_FILE = File(...)
-
-
-@app.get("/ingest", response_class=HTMLResponse)
-async def ingest_page() -> HTMLResponse:
-    return HTMLResponse((_STATIC_DIR / "ingest.html").read_text())
-
-
-@app.post("/ingest/upload")
-async def ingest_upload(file: UploadFile = _UPLOAD_FILE) -> dict:
-    """Save uploaded video to a temp location and return the path."""
-    dest = _INGEST_UPLOADS / (file.filename or "upload.mp4")
-    data = await file.read()
-    dest.write_bytes(data)
-    return {"path": str(dest), "name": dest.name, "size": len(data)}
-
-
-@app.get("/ingest/run")
-async def ingest_run(
-    path: str, sample: int = 5, merge_gap_s: float = 0.5, min_seg_s: float = 2.0
-) -> StreamingResponse:
-    """Stream split_broadcast_segments output as SSE."""
-    video_path = Path(path).expanduser()
-
-    async def event_stream():
-        if not video_path.exists():
-            yield f"data: ERROR: file not found: {video_path}\n\n"
-            yield "data: [DONE]\n\n"
-            return
-
-        cmd = [
-            sys.executable,
-            "-m",
-            "footy_track.scripts.split_broadcast_segments",
-            str(video_path),
-            "--outdir",
-            str(_CLIPS_DIR),
-            "--sample",
-            str(sample),
-            "--merge-gap-s",
-            str(merge_gap_s),
-            "--min-seg-s",
-            str(min_seg_s),
-        ]
-        yield f"data: Running: {' '.join(cmd)}\n\n"
-
-        proc = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.STDOUT,
-            env={**os.environ, "PYTHONUNBUFFERED": "1"},
-        )
-        assert proc.stdout is not None
-        async for raw in proc.stdout:
-            line = raw.decode(errors="replace").rstrip()
-            if line:
-                yield f"data: {line}\n\n"
-
-        rc = await proc.wait()
-        yield f"data: [EXIT {rc}]\n\n"
-        yield "data: [DONE]\n\n"
-
-    return StreamingResponse(
-        event_stream(),
-        media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
-    )
-
-
-# ----------------------------------------------------------------------------
 # WebSocket: control (run/pause/restart) + live frame stream
 # ----------------------------------------------------------------------------
-
-
-def _ingest_completed_frame(
-    idx: int, fd, start_idx: int
-) -> tuple[list[ObjectDetection], bool]:
-    """Write a propagated frame into the timeline and return (boxes, gt_kept).
-
-    The seed frame (idx == start_idx) is the ground-truth seed — its timeline
-    entry is already correct, so we don't merge SAM3's re-segmentation into it.
-    Downstream frames get SAM3 boxes merged in (keeping labeller ground truth);
-    ``gt_kept`` is True when existing GT made the frame skip the merge.
-    """
-    if idx == start_idx:
-        return SESSION.get_frame(idx), False
-    vittrack_boxes = [
-        ObjectDetection(
-            label=d.label,
-            confidence=d.confidence,
-            x=d.x,
-            y=d.y,
-            w=d.w,
-            h=d.h,
-            model=PROV_VITTRACK,
-        )
-        for d in fd.detections
-    ]
-    gt_kept = SESSION.merge_propagated(idx, vittrack_boxes)
-    return SESSION.get_frame(idx), gt_kept
-
-
-async def _stream_frames(websocket: WebSocket, start_idx: int) -> None:
-    """Push each newly-completed frame to the client until the run stops."""
-    sent = start_idx - 1
-    await websocket.send_json({"type": "status", "state": "compiling"})
-    announced_running = False
-    while True:
-        cur_bg = SESSION.bg  # may swap on a fresh load
-        while sent < cur_bg.last_completed_frame:
-            sent += 1
-            # frame_at handles mid-clip runs: completed_frames() only scans the
-            # contiguous run from frame 0, so a run seeded at frame N (with
-            # frames 0..N-1 still None) would silently skip every frame —
-            # nothing ingested into the timeline, nothing streamed (the bug
-            # behind "ran to frame 30 but 28-29 have no boxes").
-            fd = cur_bg.frame_at(sent)
-            if fd is not None:
-                if not announced_running:
-                    await websocket.send_json({"type": "status", "state": "running"})
-                    announced_running = True
-                boxes, gt_kept = _ingest_completed_frame(sent, fd, start_idx)
-                await websocket.send_json(
-                    {
-                        "type": "frame",
-                        "idx": sent,
-                        "boxes": boxes_payload(boxes),
-                        "gt_kept": gt_kept,
-                    }
-                )
-        if cur_bg.anomaly_frame is not None:
-            await websocket.send_json(
-                {
-                    "type": "anomaly",
-                    "idx": cur_bg.anomaly_frame,
-                    "reason": cur_bg.anomaly_reason or "implausible track motion",
-                }
-            )
-            cur_bg.anomaly_frame = None
-            await websocket.send_json({"type": "status", "state": "paused"})
-            return
-        if not cur_bg.running:
-            await websocket.send_json(
-                {"type": "done", "last_frame": cur_bg.last_completed_frame}
-            )
-            await websocket.send_json({"type": "status", "state": "idle"})
-            return
-        await asyncio.sleep(0.1)
 
 
 @app.websocket("/ws")
@@ -582,8 +432,8 @@ async def ws(websocket: WebSocket) -> None:
     bg = SESSION.bg
     streamer: asyncio.Task | None = None
 
-    async def stream_frames(start_idx: int) -> None:
-        await _stream_frames(websocket, start_idx)
+    async def _run_streamer(start_idx: int) -> None:
+        await stream_frames(websocket, SESSION, start_idx)
 
     try:
         while True:
@@ -632,7 +482,7 @@ async def ws(websocket: WebSocket) -> None:
                     start_frame,
                     int(msg.get("imgsz", 512)),
                 )
-                streamer = asyncio.create_task(stream_frames(start_frame))
+                streamer = asyncio.create_task(_run_streamer(start_frame))
 
             elif mtype == "pause":
                 SESSION.bg.pause()
@@ -649,6 +499,7 @@ async def ws(websocket: WebSocket) -> None:
 
 
 app.include_router(review_router)
+app.include_router(ingest_router)
 
 # Mount static assets (JS/CSS) if any beyond index.html.
 if _STATIC_DIR.exists():
