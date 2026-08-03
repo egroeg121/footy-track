@@ -9,7 +9,7 @@ exporter), this module provides a small, general-purpose export helper
 pattern of that script's ``_yolo_line`` but keeps every distinct ``label``
 as its own class, and is not itself part of the ball-specific pipeline.
 
-Three tests:
+The tests:
 
 1. ``test_roboflow_roundtrip_fidelity`` — synthetic Roboflow dataset (multi
    class, multi frame) -> ``import_roboflow`` -> store -> our export helper
@@ -26,11 +26,27 @@ Three tests:
    opt-in). See the test's docstring for why: this workspace/project are
    real production Roboflow resources and project/version creation via the
    API is only partially reversible.
+4. ``test_edge_overlapping_box_clamps_predictably`` — pins the *known,
+   by-design lossy* case: YOLO boxes whose extent crosses the frame's
+   left/top edge are clamped to [0, 1] on import (the store schema
+   requires normalized top-left coords >= 0), which shifts the centre
+   inward deterministically on export. Interior boxes (tests 1-3) round
+   trip losslessly; edge-overlapping boxes shift by an exactly
+   predictable amount, and this test asserts that exact amount so any
+   future change to the clamping rule is caught. No network.
+5. ``test_labeller_json_roundtrip_fidelity`` — the labeller/SAM3 path:
+   boxes are *already* top-left in the JSON, so the round trip involves
+   no centre<->topleft conversion on import, only float32 storage and
+   one topleft->centre conversion on export. Verifies exported centres
+   equal ``x + w/2`` of the original JSON values within tolerance. No
+   network.
 """
 
 from __future__ import annotations
 
+import json
 import os
+import time
 from collections import defaultdict
 from pathlib import Path
 
@@ -38,7 +54,12 @@ import pytest
 import yaml
 from PIL import Image
 
-from footy_track.feature_store import FeatureStore, import_roboflow
+from footy_track.feature_store import (
+    FeatureStore,
+    import_labeller_json,
+    import_roboflow,
+)
+from footy_track.feature_store.importers import parse_roboflow_stem
 
 # --------------------------------------------------------------------------- #
 # Tolerance derivation (do not loosen without re-deriving)                    #
@@ -250,6 +271,70 @@ def _make_multiclass_roboflow(
     return root, original_lines
 
 
+def _assert_labels_match_originals(
+    original_lines: dict[int, list[tuple[str, float, float, float, float]]],
+    label_file_for_frame: dict[int, Path],
+    names_list: list[str],
+) -> None:
+    """Shared fidelity comparison: every original (frame, detection) must
+    appear in the corresponding label file with the same class *name* and
+    centre-xywh values within ``FLOAT32_ROUNDTRIP_TOL``.
+
+    ``label_file_for_frame`` maps original frame_index -> the label ``.txt``
+    to compare against (callers build it for their layout: our flat export
+    layout, or a Roboflow-downloaded split layout with mangled filenames).
+    ``names_list`` is the data.yaml names list of the dataset under test
+    (list index == class id). Comparison keys on class *name* because class
+    ids may legitimately be remapped across a round trip.
+    """
+    for fi, expected_dets in original_lines.items():
+        label_path = label_file_for_frame.get(fi)
+        assert label_path is not None and label_path.is_file(), (
+            f"frame {fi}: no label file found (dropped frame?); "
+            f"mapping has {sorted(label_file_for_frame)}"
+        )
+
+        exported_lines = label_path.read_text().strip().splitlines()
+        assert len(exported_lines) == len(expected_dets), (
+            f"frame {fi}: expected {len(expected_dets)} detections, "
+            f"got {len(exported_lines)} in {label_path}\n"
+            f"  expected: {expected_dets}\n"
+            f"  actual lines: {exported_lines}"
+        )
+
+        # Match exported lines to expected detections positionally: the
+        # export preserves detection_id order, which was assigned in
+        # fixture-authoring (label-file line) order on import.
+        for i, (exp_label, exp_cx, exp_cy, exp_w, exp_h) in enumerate(expected_dets):
+            actual_parts = exported_lines[i].split()
+            assert len(actual_parts) == 5, (
+                f"frame {fi} detection {i}: malformed exported line "
+                f"{exported_lines[i]!r} (expected 5 whitespace-separated fields)"
+            )
+            act_cls_idx = int(actual_parts[0])
+            act_cx, act_cy, act_w, act_h = (float(v) for v in actual_parts[1:])
+
+            act_label = names_list[act_cls_idx]
+            assert act_label == exp_label, (
+                f"frame {fi} detection {i}: class mismatch — "
+                f"expected label {exp_label!r}, got {act_label!r} "
+                f"(class id {act_cls_idx}, names={names_list})"
+            )
+
+            for field_name, exp_val, act_val in (
+                ("cx", exp_cx, act_cx),
+                ("cy", exp_cy, act_cy),
+                ("w", exp_w, act_w),
+                ("h", exp_h, act_h),
+            ):
+                diff = abs(exp_val - act_val)
+                assert diff < FLOAT32_ROUNDTRIP_TOL, (
+                    f"frame {fi} detection {i} ({exp_label}): {field_name} mismatch "
+                    f"beyond float32 round-trip tolerance ({FLOAT32_ROUNDTRIP_TOL}) — "
+                    f"expected {exp_val!r}, got {act_val!r}, diff={diff!r}"
+                )
+
+
 # --------------------------------------------------------------------------- #
 # Test 1 — full round-trip fidelity, no network                              #
 # --------------------------------------------------------------------------- #
@@ -282,61 +367,16 @@ def test_roboflow_roundtrip_fidelity(tmp_path: Path) -> None:
         f"exported class-name set {exported_names} != original {set(_CLASS_NAMES)}"
     )
 
-    # -- per-frame, per-detection comparison against the ORIGINAL YOLO lines #
-    for fi, expected_dets in original_lines.items():
-        base = f"{game}_{fi:06d}"
-        label_path = out_dir / "labels" / "all" / f"{base}.txt"
-        assert label_path.is_file(), (
-            f"frame {fi}: expected exported label file {label_path} is missing"
-        )
-
-        exported_lines = label_path.read_text().strip().splitlines()
-        assert len(exported_lines) == len(expected_dets), (
-            f"frame {fi}: expected {len(expected_dets)} detections, "
-            f"got {len(exported_lines)} in {label_path}\n"
-            f"  expected: {expected_dets}\n"
-            f"  actual lines: {exported_lines}"
-        )
-
-        # Parse the exported data.yaml's class-id -> name mapping (ids may
-        # legitimately differ from the original dataset's ids; only names
-        # are a stable comparison key -- see export_source_to_yolo docstring).
-        exported_names_list = yaml.safe_load((out_dir / "data.yaml").read_text())[
-            "names"
-        ]
-
-        # Match exported lines to expected detections by nearest box (same
-        # frame can have same-class multiple detections, so match
-        # positionally in write order -- export preserves detection_id
-        # order, which we assigned in fixture-authoring order).
-        for i, (exp_label, exp_cx, exp_cy, exp_w, exp_h) in enumerate(expected_dets):
-            actual_parts = exported_lines[i].split()
-            assert len(actual_parts) == 5, (
-                f"frame {fi} detection {i}: malformed exported line "
-                f"{exported_lines[i]!r} (expected 5 whitespace-separated fields)"
-            )
-            act_cls_idx = int(actual_parts[0])
-            act_cx, act_cy, act_w, act_h = (float(v) for v in actual_parts[1:])
-
-            act_label = exported_names_list[act_cls_idx]
-            assert act_label == exp_label, (
-                f"frame {fi} detection {i}: class mismatch — "
-                f"expected label {exp_label!r}, got {act_label!r} "
-                f"(exported class id {act_cls_idx}, names={exported_names_list})"
-            )
-
-            for field_name, exp_val, act_val in (
-                ("cx", exp_cx, act_cx),
-                ("cy", exp_cy, act_cy),
-                ("w", exp_w, act_w),
-                ("h", exp_h, act_h),
-            ):
-                diff = abs(exp_val - act_val)
-                assert diff < FLOAT32_ROUNDTRIP_TOL, (
-                    f"frame {fi} detection {i} ({exp_label}): {field_name} mismatch beyond "
-                    f"float32 round-trip tolerance ({FLOAT32_ROUNDTRIP_TOL}) — "
-                    f"expected {exp_val!r}, got {act_val!r}, diff={diff!r}"
-                )
+    # -- per-frame, per-detection comparison against the ORIGINAL YOLO lines.
+    # Class ids may legitimately differ from the original dataset's ids;
+    # only names are a stable comparison key (see export_source_to_yolo).
+    exported_names_list = yaml.safe_load((out_dir / "data.yaml").read_text())["names"]
+    label_file_for_frame = {
+        fi: out_dir / "labels" / "all" / f"{game}_{fi:06d}.txt" for fi in original_lines
+    }
+    _assert_labels_match_originals(
+        original_lines, label_file_for_frame, exported_names_list
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -450,6 +490,21 @@ def test_export_is_structurally_roboflow_ready(tmp_path: Path) -> None:
 # --------------------------------------------------------------------------- #
 
 
+def _download_generated_version(project, version_num: int, download_root: Path):
+    """Poll ``.download()`` until the (asynchronously generated) Roboflow
+    version materialises; the SDK raises while generation is pending."""
+    deadline = time.monotonic() + 600  # generation usually takes < 10 min
+    while True:
+        try:
+            return project.version(version_num).download(
+                "yolov8", location=str(download_root)
+            )
+        except Exception:  # noqa: BLE001 - SDK raises assorted errors while pending
+            if time.monotonic() > deadline:
+                raise
+            time.sleep(15)
+
+
 @pytest.mark.live_roboflow
 def test_live_roboflow_upload_roundtrip(tmp_path: Path) -> None:
     """Full live round trip: export a tiny dataset -> upload to a throwaway
@@ -480,8 +535,6 @@ def test_live_roboflow_upload_roundtrip(tmp_path: Path) -> None:
             "real, likely-permanent resources in the production egroeg121 workspace"
         )
 
-    import json as _json  # noqa: PLC0415
-
     from roboflow import Roboflow  # noqa: PLC0415
 
     def _load_api_key() -> str:
@@ -489,7 +542,7 @@ def test_live_roboflow_upload_roundtrip(tmp_path: Path) -> None:
         if env_key:
             return env_key
         config_path = Path.home() / ".config" / "roboflow" / "config.json"
-        config = _json.loads(config_path.read_text())
+        config = json.loads(config_path.read_text())
         for ws in config.get("workspaces", {}).values():
             if ws.get("url") == "egroeg121":
                 return ws["apiKey"]
@@ -536,17 +589,180 @@ def test_live_roboflow_upload_roundtrip(tmp_path: Path) -> None:
 
     assert uploaded > 0, "expected at least one image to be uploaded"
 
-    # Downloading back and re-comparing against `original_lines` (same
-    # fidelity comparison as test_roboflow_roundtrip_fidelity) would go
-    # here, e.g.:
-    #
-    #   version = project.generate_version(settings={})
-    #   dataset = project.version(version).download("yolov8", location=str(tmp_path / "downloaded"))
-    #   downloaded_root = Path(dataset.location)
-    #   ... re-run the same per-frame / per-detection comparison as test 1 ...
-    #
-    # Left as a follow-up once this test is deliberately run once and the
-    # download/versioning latency characteristics are known -- Roboflow
-    # version generation is asynchronous and would need a poll/wait loop
-    # here that this write-only-not-run test should not guess the timing
-    # of blind.
+    # -- generate a version and download it back --------------------------- #
+    # Roboflow version generation is asynchronous; poll `.download()` until
+    # the version materialises (the SDK raises while generation is pending).
+    version_num = project.generate_version(
+        settings={"preprocessing": {}, "augmentation": {}}
+    )
+    dataset = _download_generated_version(project, version_num, tmp_path / "downloaded")
+    downloaded_root = Path(dataset.location)
+    dl_yaml = yaml.safe_load((downloaded_root / "data.yaml").read_text())
+    dl_names = list(dl_yaml["names"])
+
+    # Build frame_index -> downloaded label file. Roboflow mangles filenames
+    # (appends `_<ext>.rf.<hash>`) and may rebalance splits, so scan every
+    # split and recover frame identity with the same parser the importer uses.
+    label_file_for_frame: dict[int, Path] = {}
+    for split in ("train", "valid", "test"):
+        labels_dir = downloaded_root / split / "labels"
+        if not labels_dir.is_dir():
+            continue
+        for label_path in labels_dir.glob("*.txt"):
+            _stem, frame_index = parse_roboflow_stem(label_path.name)
+            label_file_for_frame[frame_index] = label_path
+
+    # Same fidelity comparison as test_roboflow_roundtrip_fidelity, against
+    # the literal original YOLO lines authored in the fixture. Compared by
+    # class *name*: Roboflow rebuilds the class list on ingest so ids may
+    # be remapped, which is fine.
+    _assert_labels_match_originals(original_lines, label_file_for_frame, dl_names)
+
+
+# --------------------------------------------------------------------------- #
+# Test 4 — edge-overlapping boxes clamp predictably (by-design lossy case)    #
+# --------------------------------------------------------------------------- #
+
+
+def test_edge_overlapping_box_clamps_predictably(tmp_path: Path) -> None:
+    """Boxes whose YOLO extent crosses the frame's LEFT or TOP edge are the
+    one *known, by-design lossy* case in the round trip, and this test pins
+    the exact behaviour so it can never drift silently.
+
+    Why lossy: the store schema requires normalized top-left coords in
+    [0, 1], so ``_yolo_centre_to_topleft`` clamps ``x = max(0, cx - w/2)``
+    (and same for y). For a box crossing the left edge the true top-left is
+    negative, the clamp moves it to 0, and the re-derived centre on export
+    shifts inward to exactly ``w/2`` (resp. ``h/2``). The shift equals the
+    out-of-frame overhang — fully deterministic, not corruption.
+
+    Right/bottom overhang is NOT clamped on import (top-left stays in
+    range; only ``x + w`` exceeds 1, which the schema permits per-column),
+    so right/bottom-edge boxes round trip losslessly. Asserted here too.
+    """
+    game = "edge_demo"
+    root = tmp_path / "roboflow_edges"
+    (root / "train" / "labels").mkdir(parents=True)
+    (root / "train" / "images").mkdir(parents=True)
+    (root / "data.yaml").write_text(
+        yaml.safe_dump({"names": ["ball"], "nc": 1, "roboflow": {"version": 7}})
+    )
+
+    # (case_name, authored (cx, cy, w, h), predicted round-tripped (cx, cy, w, h))
+    cases = [
+        # crosses LEFT edge: true x = 0.01 - 0.02 = -0.01 -> clamped to 0
+        # -> exported cx = 0 + w/2 = 0.02 (shift = the 0.01 overhang)
+        ("left_edge", (0.01, 0.5, 0.04, 0.06), (0.02, 0.5, 0.04, 0.06)),
+        # crosses TOP edge: true y = 0.02 - 0.04 = -0.02 -> clamped to 0
+        # -> exported cy = 0 + h/2 = 0.04 (shift = the 0.02 overhang)
+        ("top_edge", (0.5, 0.02, 0.1, 0.08), (0.5, 0.04, 0.1, 0.08)),
+        # crosses RIGHT edge: x = 0.97 in range, x + w = 1.01 permitted
+        # -> lossless round trip
+        ("right_edge", (0.99, 0.5, 0.04, 0.06), (0.99, 0.5, 0.04, 0.06)),
+        # crosses BOTTOM edge: same, lossless
+        ("bottom_edge", (0.5, 0.98, 0.1, 0.08), (0.5, 0.98, 0.1, 0.08)),
+    ]
+
+    fi = 7
+    base = f"{game}_{fi:06d}_png.rf.cafef00d{fi}"
+    lines = [f"0 {cx:.6f} {cy:.6f} {w:.6f} {h:.6f}" for _, (cx, cy, w, h), _p in cases]
+    (root / "train" / "labels" / f"{base}.txt").write_text("\n".join(lines) + "\n")
+    Image.new("RGB", (IMG_W, IMG_H)).save(root / "train" / "images" / f"{base}.jpg")
+
+    store = FeatureStore.open(":memory:")
+    import_roboflow(store, root, game_id=game)
+
+    out_dir = tmp_path / "export_edges"
+    export_source_to_yolo(store, source="hand_label", out_dir=out_dir)
+
+    exported = (
+        (out_dir / "labels" / "all" / f"{game}_{fi:06d}.txt")
+        .read_text()
+        .strip()
+        .splitlines()
+    )
+    assert len(exported) == len(cases)
+
+    for line, (case_name, authored, predicted) in zip(exported, cases, strict=True):
+        act = tuple(float(v) for v in line.split()[1:])
+        for field_name, pred_val, act_val, auth_val in zip(
+            ("cx", "cy", "w", "h"), predicted, act, authored, strict=True
+        ):
+            diff = abs(pred_val - act_val)
+            assert diff < FLOAT32_ROUNDTRIP_TOL, (
+                f"{case_name}: {field_name} did not clamp as predicted — authored "
+                f"{auth_val!r}, predicted round-trip {pred_val!r}, got {act_val!r} "
+                f"(diff from prediction {diff!r}). The import-side clamp rule in "
+                f"_yolo_centre_to_topleft (or the export-side centre re-derivation) "
+                f"has changed behaviour."
+            )
+
+
+# --------------------------------------------------------------------------- #
+# Test 5 — labeller/SAM3 (top-left JSON) round trip, no network              #
+# --------------------------------------------------------------------------- #
+
+
+def test_labeller_json_roundtrip_fidelity(tmp_path: Path) -> None:
+    """The web-labeller/SAM3 import path stores boxes verbatim (already
+    top-left, no conversion), so its round trip through the store to YOLO
+    exercises only float32 storage plus the single topleft->centre
+    conversion on export. Exported centres must equal ``x + w/2`` /
+    ``y + h/2`` of the original JSON values within tolerance.
+    """
+    game = "labeller_demo"
+    frames = {
+        3: [
+            ("ball", 0.1, 0.2, 0.02, 0.03),
+            ("player", 0.6, 0.4, 0.05, 0.1),
+        ],
+        4: [
+            ("player", 0.3, 0.5, 0.08, 0.12),
+        ],
+    }
+
+    records = [
+        {
+            "uri": f"{game}_frame_{fi:06d}",
+            "width": IMG_W,
+            "height": IMG_H,
+            "detections": [
+                {"label": label, "confidence": 1.0, "x": x, "y": y, "w": w, "h": h}
+                for label, x, y, w, h in dets
+            ],
+        }
+        for fi, dets in frames.items()
+    ]
+    json_path = tmp_path / "labels.json"
+    json_path.write_text(json.dumps(records))
+
+    store = FeatureStore.open(":memory:")
+    report = import_labeller_json(store, json_path, run_id="sam3_rt", game_id=game)
+    assert report.detections_written == sum(len(d) for d in frames.values())
+
+    # The labeller import records a synthetic frame_uri; point it at real
+    # images so the exporter has pixels to copy (same pattern as
+    # test_export_training_dataset._seed_clip).
+    images_dir = tmp_path / "imgs"
+    images_dir.mkdir()
+    for fi in frames:
+        img = images_dir / f"{game}_{fi:06d}.jpg"
+        Image.new("RGB", (IMG_W, IMG_H)).save(img)
+        store.query(
+            "UPDATE frame SET frame_uri = ? WHERE game_id = ? AND frame_index = ?",
+            [str(img), game, fi],
+        )
+
+    out_dir = tmp_path / "export_labeller"
+    export_source_to_yolo(store, source="sam3", out_dir=out_dir)
+
+    # Expected YOLO lines derived from the authored top-left values.
+    original_lines = {
+        fi: [(label, x + w / 2, y + h / 2, w, h) for label, x, y, w, h in dets]
+        for fi, dets in frames.items()
+    }
+    names_list = yaml.safe_load((out_dir / "data.yaml").read_text())["names"]
+    label_file_for_frame = {
+        fi: out_dir / "labels" / "all" / f"{game}_{fi:06d}.txt" for fi in frames
+    }
+    _assert_labels_match_originals(original_lines, label_file_for_frame, names_list)
