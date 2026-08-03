@@ -338,3 +338,68 @@ def test_submit_restart_discards_stale_downstream_frames(monkeypatch):
     # Frames before the restart point are untouched.
     assert all(bg.frames[i] is not None for i in range(5))
     assert bg.last_completed_frame == 5
+
+
+def test_worker_skips_anomaly_checks_on_reseed_frames():
+    """LAB-714: the deliberate jump to a hand-fixed frame is not an anomaly."""
+    bg = BackgroundLabeller()
+    bg.reseed_indices = {1}
+    frames = [
+        _fd(0, [_det(label="player", conf=1.0, x=0.10)]),
+        # Frame 1 re-seeds: big jump + seed conf below no threshold check.
+        _fd(1, [_det(label="player", conf=1.0, x=0.80)]),
+        _fd(2, [_det(label="player", conf=1.0, x=0.81)]),
+    ]
+    _run_worker(bg, frames)
+    assert bg.anomaly_frame is None
+    assert bg.frames[2] is not None
+    assert bg.last_completed_frame == 2
+
+
+def test_run_reseeds_from_gt_frames_midrun(monkeypatch, tmp_path):
+    """LAB-714: propagation continues from a hand-fixed frame's content, not
+    from the tracker's own trajectory."""
+    import cv2  # noqa: PLC0415
+    import numpy as np  # noqa: PLC0415
+
+    w, h = 64, 48
+    clip = tmp_path / "clip.mp4"
+    writer = cv2.VideoWriter(str(clip), cv2.VideoWriter_fourcc(*"mp4v"), 25.0, (w, h))
+    for i in range(5):
+        writer.write(np.full((h, w, 3), i * 20, dtype=np.uint8))
+    writer.release()
+
+    class _DriftTracker:
+        """Stub SOT: drifts +0.05 in x each frame; never loses the box."""
+
+        def __init__(self):
+            self.last_score = 0.9
+
+        def reset(self):
+            pass
+
+        def track(self, prev_bbox, _frame):
+            if prev_bbox is None:
+                return None
+            x, y, bw, bh = prev_bbox
+            return (x + 0.05, y, bw, bh)
+
+    import footy_track.ball_trackers.sot_vittrack as sot  # noqa: PLC0415
+
+    monkeypatch.setattr(sot, "VitTrackSOT", _DriftTracker)
+
+    seed = LabelledObject(label="player", bbox_xyxy_abs=(6.4, 9.6, 12.8, 19.2))
+    # Hand-fixed frame 2: box relocated to x=0.5 (32px) — the run must adopt it.
+    fixed = LabelledObject(label="player", bbox_xyxy_abs=(32.0, 9.6, 38.4, 19.2))
+    labeller = VitTrackVideoLabeller(
+        video_path=clip, objects=[seed], reseed_frames={2: [fixed]}
+    )
+    out = list(labeller.iter_frames_from(start_frame=0))
+
+    xs = [fd.detections[0].x for fd in out]
+    assert xs[0] == pytest.approx(0.1)  # seed verbatim
+    assert xs[1] == pytest.approx(0.15)  # drifted once
+    assert xs[2] == pytest.approx(0.5)  # hand-fixed frame emitted verbatim
+    # Frame 3 tracks FROM the fix (0.5 + drift), not the old trajectory (~0.2).
+    assert xs[3] == pytest.approx(0.55)
+    assert xs[4] == pytest.approx(0.60)

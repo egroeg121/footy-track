@@ -179,9 +179,6 @@ function thresholdFor(label){
   return handbackThresholds[label] !== undefined ? handbackThresholds[label]
        : handbackThresholds.other !== undefined ? handbackThresholds.other : 0.5;
 }
-// True while a below-threshold machine box is on screen; cleared by the next
-// canvas click (its number renders red meanwhile).
-let lowConfAlert = false;
 
 // Frames whose existing hand marks were kept (VitTrack output discarded)
 // during the current run — surfaced when the run stops so "restart didn't
@@ -227,6 +224,7 @@ function boxesNorm() {
   return boxLayer.find(".box").map(r => ({
     label: r.getAttr("label"),
     model: r.getAttr("source") || "labeller",
+    conf: r.getAttr("conf") !== undefined ? r.getAttr("conf") : 1.0,
     x: r.x()/dispW, y: r.y()/dispH,
     w: (r.width()*r.scaleX())/dispW, h: (r.height()*r.scaleY())/dispH,
   }));
@@ -261,7 +259,9 @@ function boxesNorm() {
 function promoteToGT(r){
   if (r.getAttr("source") === "labeller") return;
   r.setAttr("source", "labeller");
+  r.setAttr("conf", 1.0);
   r.strokeOpacity(1); r.dash([]);
+  refreshNumbers();
   boxLayer.draw();
 }
 
@@ -322,10 +322,6 @@ function drawBoxes(objs, editable){
     const r = addRect(o.label, o.x*dispW, o.y*dispH, o.w*dispW, o.h*dispH, editable, o.source);
     if (o.conf !== undefined) r.setAttr("conf", o.conf);
   });
-  // Low-confidence alert: if any machine box is below its class threshold,
-  // its number renders red until the next canvas click (LAB-813).
-  lowConfAlert = ordered.some(o => o.source !== "labeller" && o.conf !== undefined
-                                   && o.conf < thresholdFor(o.label));
   refreshNumbers(); boxLayer.draw(); renderList();
 }
 
@@ -351,7 +347,9 @@ function refreshNumbers(){
   rects.forEach((r,i)=>{ const t=r.getAttr("numText"); if(t){
     t.text(String(i)); t.x(r.x()+2); t.y(Math.max(0,r.y()-16));
     const conf = r.getAttr("conf");
-    const low = lowConfAlert && r.getAttr("source") !== "labeller"
+    // Persistent low-confidence cue (LAB-813): a machine box below its class
+    // threshold stays red until it's corrected/promoted, not until a click.
+    const low = r.getAttr("source") !== "labeller"
                 && conf !== undefined && conf < thresholdFor(r.getAttr("label"));
     t.fill(low ? "#f85149" : colorOf(r.getAttr("label")));
   }});
@@ -492,9 +490,6 @@ $("toolDraw").onclick=()=>setTool("draw");
 // draw-by-drag
 let drawing=null, drawStart=null;
 stage.on("mousedown", (e)=>{
-  // Any canvas click acknowledges the low-confidence alert: numbers go back
-  // to their class color (LAB-813).
-  if (lowConfAlert) { lowConfAlert=false; refreshNumbers(); boxLayer.draw(); }
   if (tool!=="draw" || mode==="running") return;
   const p=stage.getPointerPosition(); drawStart=p;
   drawing=addRect(classSel.value, p.x, p.y, 1, 1, false, "labeller");

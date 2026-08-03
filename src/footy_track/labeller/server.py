@@ -426,6 +426,22 @@ async def propagate_labels(body: dict) -> dict:
 # ----------------------------------------------------------------------------
 
 
+def _gt_reseed_frames(session: Session, start_frame: int) -> dict[int, list]:
+    """Downstream frames with hand-fixed labels -> their full seed objects.
+
+    A passing run re-seeds at these frames (LAB-714), so human corrections
+    steer propagation instead of being displayed-but-ignored.
+    """
+    out: dict[int, list] = {}
+    for idx in range(start_frame + 1, session.total_frames):
+        boxes = session.get_frame(idx)
+        if any(b.model == PROV_LABELLER for b in boxes):
+            objects = session.seed_objects(idx)
+            if objects:
+                out[idx] = objects
+    return out
+
+
 def _sanitize_thresholds(raw: object) -> dict[str, float]:
     """Client handback thresholds -> clean {label: conf in [0,1]} (LAB-610).
 
@@ -496,6 +512,7 @@ async def ws(websocket: WebSocket) -> None:
                     start_frame,
                     int(msg.get("imgsz", 512)),
                     _sanitize_thresholds(msg.get("handback_thresholds")),
+                    _gt_reseed_frames(SESSION, start_frame),
                 )
                 streamer = asyncio.create_task(_run_streamer(start_frame))
 

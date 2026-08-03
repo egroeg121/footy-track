@@ -676,6 +676,7 @@ class VitTrackVideoLabeller:
         self,
         video_path: str | Path,
         objects: list[LabelledObject],
+        reseed_frames: dict[int, list[LabelledObject]] | None = None,
         **_kwargs,  # absorb model_uri / imgsz / min_confidence for API compat
     ) -> None:
         if not objects:
@@ -684,6 +685,9 @@ class VitTrackVideoLabeller:
         if not self.video_path.exists():
             raise FileNotFoundError(self.video_path)
         self.objects = objects
+        # Frames carrying hand-fixed labels act as fresh seeds mid-run
+        # (LAB-714): absolute frame idx -> the objects to re-seed from.
+        self.reseed_frames = dict(reseed_frames or {})
         self.width, self.height = video_dimensions(self.video_path)
 
     def _total_frames(self) -> int:
@@ -769,7 +773,7 @@ class VitTrackVideoLabeller:
             model=MODEL_TAG_VITTRACK,
         )
 
-    def iter_frames_from(
+    def iter_frames_from(  # noqa: PLR0912 — reseed branch; generator reads clearest inline
         self,
         start_frame: int = 0,
         stop_event: threading.Event | None = None,
@@ -805,6 +809,25 @@ class VitTrackVideoLabeller:
                 if not ok:
                     break
                 frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
+
+                # Hand-fixed frame ahead: re-seed the whole run from ITS
+                # content instead of tracking through it (LAB-714). Human
+                # corrections steer the tracker, they aren't just displayed.
+                reseed = self.reseed_frames.get(abs_idx)
+                if reseed:
+                    self.objects = reseed
+                    trackers = [VitTrackSOT() for _ in self.objects]
+                    seed_bboxes = [self._obj_to_norm_bbox(o) for o in self.objects]
+                    for i, tracker in enumerate(trackers):
+                        tracker.reset()
+                        tracker.track(seed_bboxes[i], frame_rgb)
+                    yield self._seed_frame_detections(abs_idx)
+                    if progress_callback is not None:
+                        progress_callback(abs_idx + 1, total)
+                    if stop_event is not None and stop_event.is_set():
+                        return
+                    continue
+
                 uri = (
                     self.video_path.parent
                     / f"{self.video_path.stem}_frame_{abs_idx:06d}"
@@ -866,6 +889,9 @@ class BackgroundLabeller:
         # Per-class handback thresholds (label -> min confidence); set per run
         # by submit(). Empty dict -> global default for every class.
         self.handback_thresholds: dict[str, float] = {}
+        # Frames that re-seed the run from hand-fixed labels (LAB-714): the
+        # deliberate jump to the corrected box must not trip anomaly checks.
+        self.reseed_indices: set[int] = set()
 
     def _handback_threshold(self, label: str) -> float:
         """Threshold for one class: exact label, else 'other', else default."""
@@ -883,18 +909,23 @@ class BackgroundLabeller:
         start_frame: int = 0,
         imgsz: int = 512,
         handback_thresholds: dict[str, float] | None = None,
+        reseed_frames: dict[int, list[LabelledObject]] | None = None,
     ) -> None:
         """Stop any running job, then start propagation from ``start_frame``.
 
         ``handback_thresholds`` maps class label -> confidence below which the
         run pauses for correction (LAB-712). Lookup: exact label, then
         ``"other"``, then the global default ``_VITTRACK_HANDBACK_SCORE``.
+        ``reseed_frames`` maps absolute frame idx -> objects: downstream frames
+        with hand-fixed labels that must re-seed the run in passing (LAB-714).
         """
         self.pause()
         self.handback_thresholds = dict(handback_thresholds or {})
+        self.reseed_indices = set(reseed_frames or {})
         labeller = VitTrackVideoLabeller(
             video_path=video_path,
             objects=objects,
+            reseed_frames=reseed_frames,
             min_confidence=min_confidence,
         )
         total = labeller._total_frames()
@@ -973,6 +1004,13 @@ class BackgroundLabeller:
                     if 0 <= idx < len(self.frames):
                         self.frames[idx] = fd
                     self.last_completed_frame = max(self.last_completed_frame, idx)
+
+                # A re-seed frame IS the correction: jumping to the hand-fixed
+                # box is expected, and its boxes are seeds, not tracker output
+                # — skip both anomaly checks for it (LAB-714).
+                if idx in self.reseed_indices:
+                    prev_fd = fd
+                    continue
 
                 # Anomaly auto-stop: if a track box did something implausible vs
                 # the previous frame, record the frame + reason and stop so the

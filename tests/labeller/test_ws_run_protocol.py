@@ -67,6 +67,7 @@ class FakeBackgroundLabeller:
         start_frame=0,
         imgsz=512,
         handback_thresholds=None,
+        reseed_frames=None,
     ) -> None:
         self.submissions.append(
             {
@@ -77,6 +78,7 @@ class FakeBackgroundLabeller:
                 "start_frame": start_frame,
                 "imgsz": imgsz,
                 "handback_thresholds": handback_thresholds,
+                "reseed_frames": reseed_frames,
             }
         )
         self.frames = list(self._script_frames)
@@ -334,3 +336,23 @@ def test_run_without_thresholds_passes_empty_dict(client, ws_session):
         ws.send_json({"type": "run", "start_frame": 0})
         _drain_until(ws, "done")
     assert fake.submissions[0]["handback_thresholds"] == {}
+
+
+def test_run_passes_reseed_frames_for_downstream_gt(client, ws_session):
+    """LAB-714: downstream hand-fixed frames reach the backend as re-seeds."""
+    ws_session.timeline[0] = [make_box("player", model=PROV_LABELLER)]
+    ws_session.timeline[3] = [
+        make_box("player", model=PROV_LABELLER, x=0.5),
+        make_box("referee", model=PROV_VITTRACK, x=0.7),
+    ]
+    ws_session.timeline[5] = [make_box("player", model=PROV_VITTRACK, x=0.2)]
+    fake = FakeBackgroundLabeller(frames=[_fd(0, [("player", 0.1)])])
+    ws_session.bg = fake
+    with client.websocket_connect("/ws") as ws:
+        ws.send_json({"type": "run", "start_frame": 0})
+        _drain_until(ws, "done")
+    reseed = fake.submissions[0]["reseed_frames"]
+    # Frame 3 has GT -> re-seed with the frame's FULL content (GT + kept
+    # machine boxes). Frame 5 is machine-only -> not a re-seed.
+    assert set(reseed) == {3}
+    assert len(reseed[3]) == 2

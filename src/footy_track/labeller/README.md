@@ -500,6 +500,14 @@ Client → server: `{type: "run" | "restart" | "pause"}`; `run`/`restart` carry
   this — they survive per LAB-002 and are reported as kept.
   - Tests: `test_video_utils.py::test_submit_restart_discards_stale_downstream_frames`,
     `test_ws_run_protocol.py::test_run_reports_gt_kept_frames`
+- **LAB-714** (MUST) Hand-fixed labels are the ground-truth seed even when a
+  run passes over them again: when propagation reaches a downstream frame
+  that carries hand-fixed labels, that frame acts as a fresh seed — the
+  tracker continues from the frame's (human-corrected) content, not from its
+  own trajectory. Human corrections are never merely displayed-but-ignored by
+  a passing run, and re-seeding at such a frame is not itself an anomaly.
+  - Tests: `test_video_utils.py::test_run_reseeds_from_gt_frames_midrun`,
+    `test_video_utils.py::test_worker_skips_anomaly_checks_on_reseed_frames`
 
 ## 9. Frontend — labeller UI (`web/index.html`) (LAB-8xx)
 
@@ -589,10 +597,13 @@ their server contract is §§3–7. Verify by hand when touching the frontend.
   (LAB-610) from the labeller page itself, without a restart; settings persist
   across sessions and apply from the next run.
   - Tests: UNTESTED-FRONTEND (sliders under the objects pane)
-- **LAB-813** (SHOULD) When a shown machine box is below its class's handback
-  threshold, its number is highlighted (red) until the user next clicks the
-  canvas — a lightweight "check this one" cue that doesn't block anything.
-  - Tests: UNTESTED-FRONTEND
+- **LAB-813** (SHOULD) A machine box below its class's handback threshold has
+  its number highlighted (red) for as long as it remains an uncorrected
+  machine box — the cue persists across clicks and navigation, and clears
+  only when the box is corrected/promoted to GT. Saving a frame must not
+  erase the underlying confidences (they round-trip through edits).
+  - Tests: UNTESTED-FRONTEND (conf round-trip server leg: LAB-003 payload
+    `conf` passthrough)
 - **LAB-814** (MUST) An edit to a box (move/resize/relabel/delete/draw) is
   persisted shortly after the edit itself — not only when the user navigates
   away or starts a run. Refreshing or closing the page right after an edit
