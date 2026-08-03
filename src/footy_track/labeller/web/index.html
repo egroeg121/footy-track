@@ -686,7 +686,7 @@ function undoLast(){
   if(!undoStack.length){ setStatus("Nothing to undo"); return; }
   const snapshot = undoStack.pop();
   clearBoxes();
-  snapshot.forEach(o => addRect(o.label, o.x*dispW, o.y*dispH, o.w*dispW, o.h*dispH, tool==="edit"));
+  snapshot.forEach(o => addRect(o.label, o.x*dispW, o.y*dispH, o.w*dispW, o.h*dispH, tool==="edit", o.model));
   refreshNumbers(); boxLayer.draw(); renderList();
   frameDirty = true;
   syncTimelineSets();
