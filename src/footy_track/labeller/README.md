@@ -5,6 +5,11 @@ through the clip with VitTrack, review/correct the results. FastAPI backend
 (`server.py`), Konva.js frontends (`web/index.html` labeller, `web/review.html`
 review), VitTrack SOT propagation backend (`video_utils.py`).
 
+This file is the short contract. The complete, testable inventory of current
+behavior — every endpoint, the Session state machine, the websocket run
+protocol, frontend behaviors, and the sidecar format, with REQUIRED vs
+incidental behavior marked — lives in `docs/labeller_requirements.md`.
+
 Run with:
 
 ```bash
