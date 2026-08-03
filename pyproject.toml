@@ -107,6 +107,7 @@ per-file-ignores."tests/*.py" = [ "PLR2004" ]
 addopts = "-q -n 2"
 markers = [
   "slow: tests that run models and may take longer",
+  "live_roboflow: requires live Roboflow API credentials and makes real network calls; skipped by default",
 ]
 
 # Ruff configuration for linting and formatting
