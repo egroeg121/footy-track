@@ -635,6 +635,27 @@ their server contract is §§3–7. Verify by hand when touching the frontend.
   pad-2.0 edge-clamped mapping as the server crop (LAB-405) — card overlays,
   modal box drawing/editing, and YOLO overlay mapping.
   - Tests: UNTESTED-FRONTEND
+- **LAB-906** (MUST) The modal's mini (crop) Konva view has `w`/`e` keyboard
+  shortcuts for its two box-manipulation modes, mirroring the main labeller's
+  tool convention (index.html's `toolDraw`/`toolEdit`, §9): `w` switches to
+  draw mode (draw a replacement box by dragging on the crop), `e` switches to
+  edit mode (select/drag/resize the existing box via the Konva transformer).
+  Both are also reachable via the header's "Draw"/"Edit" buttons. Relabelling
+  ("wrong class" → open the class picker) is bound to `c`, not `w`, to avoid
+  colliding with draw mode. Keys are ignored while an input/select has focus.
+  - Tests: UNTESTED-FRONTEND
+- **LAB-907** (MUST) The full-frame (wide) context panel's SVG box overlay
+  must render at the same on-screen position as the crop panel's box for the
+  same underlying bbox, including when the frame is letterboxed inside the
+  panel (frame aspect ratio ≠ panel aspect ratio). The overlay computes an
+  `object-fit:contain` rendered-image rect (offX/offY/rW/rH) and sets the
+  `<svg>` `viewBox` to that rect; because the viewBox's min-x/min-y already
+  shifts the SVG's coordinate origin to the letterboxed image's top-left
+  corner, child element coordinates must be expressed in image-relative
+  pixels only (`x*rW`, `y*rH`, …) — re-adding offX/offY on top of the
+  viewBox shift double-applies the offset and misplaces the box whenever
+  there is any letterboxing.
+  - Tests: UNTESTED-FRONTEND
 
 ## 11. Operational notes (informative)
 
@@ -696,8 +717,8 @@ updating/adding the corresponding LAB requirement + tests.
 | 7. WebSocket (LAB-6xx) | 9 | 8 | 1 | 0 |
 | 8. Backend (LAB-7xx) | 11 | 8 | 3 | 0 |
 | 9. Labeller UI (LAB-8xx) | 11 | 0 | 0 | 11 |
-| 10. Review UI (LAB-9xx) | 5 | 0 | 0 | 5 |
-| **Total** | **82** | **55** | **8** | **19** |
+| 10. Review UI (LAB-9xx) | 7 | 0 | 0 | 7 |
+| **Total** | **84** | **55** | **8** | **21** |
 
 Open items: 4 (OPEN-1..4) + 1 fixed on main (undo provenance, `95b60cc`).
 Test suite: 103 tests in `tests/labeller/` (all green), plus the

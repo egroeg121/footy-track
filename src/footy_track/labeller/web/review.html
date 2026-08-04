@@ -160,7 +160,7 @@
     <div id="modal-info"></div>
     <div id="modal-actions">
       <button class="btn accept" id="modal-btn-accept">✓ Correct [Space]</button>
-      <button class="btn warn" id="modal-btn-relabel">W Wrong class</button>
+      <button class="btn warn" id="modal-btn-relabel">C Wrong class</button>
       <button class="btn danger" id="modal-btn-delete">D Delete</button>
       <span id="modal-bbox" class="modal-bbox"></span>
     </div>
@@ -526,14 +526,20 @@ function drawContextBox(bbox, label) {
     const rW = iW * scale, rH = iH * scale;
     const offX = (cW - rW) / 2, offY = (cH - rH) / 2;
 
-    // SVG viewBox = pixel coords of the rendered image area
+    // SVG viewBox = pixel coords of the rendered image area. The viewBox's
+    // min-x/min-y (offX, offY) already shifts the SVG's user-space origin to
+    // the letterboxed image's top-left corner, so child elements must be
+    // positioned in image-relative coords WITHOUT re-adding offX/offY —
+    // doing so double-applies the letterbox offset (bug: box drifted from
+    // the true position whenever the frame was letterboxed, i.e. its aspect
+    // ratio didn't match the panel's).
     svg.setAttribute('viewBox', `${offX} ${offY} ${rW} ${rH}`);
 
     const {x, y, w, h} = bbox;
     const px = x * rW, py = y * rH, pw = w * rW, ph = h * rH;
 
     const rect = document.createElementNS(NS, 'rect');
-    rect.setAttribute('x', offX + px); rect.setAttribute('y', offY + py);
+    rect.setAttribute('x', px); rect.setAttribute('y', py);
     rect.setAttribute('width', pw); rect.setAttribute('height', ph);
     rect.setAttribute('fill', 'none');
     rect.setAttribute('stroke', color);
@@ -542,7 +548,7 @@ function drawContextBox(bbox, label) {
     svg.appendChild(rect);
 
     const txt = document.createElementNS(NS, 'text');
-    txt.setAttribute('x', offX + px + 2); txt.setAttribute('y', offY + py - 4);
+    txt.setAttribute('x', px + 2); txt.setAttribute('y', py - 4);
     txt.setAttribute('font-size', '13');
     txt.setAttribute('fill', color);
     txt.setAttribute('font-weight', 'bold');
@@ -807,8 +813,9 @@ document.addEventListener('keydown', async e => {
     if (e.key==='ArrowLeft'||e.key==='a'||e.key==='A') { e.preventDefault(); await navigateGrid(-1); return; }
     if (e.key===' ') { e.preventDefault(); document.getElementById('modal-btn-accept').click(); }
     else if (e.key==='Backspace'||e.key==='Delete') document.getElementById('modal-btn-delete').click();
-    else if (e.key==='w'||e.key==='W') { pickerTarget='modal'; openPicker(); }
+    else if (e.key==='w'||e.key==='W') setModalTool('draw');
     else if (e.key==='e'||e.key==='E') setModalTool('edit');
+    else if (e.key==='c'||e.key==='C') { pickerTarget='modal'; openPicker(); }
     else if (e.key==='r'||e.key==='R') document.getElementById('modal-btn-yolo').click();
     return;
   }
