@@ -367,17 +367,29 @@ def upload_plan(
 
     labelmap_path = str(plan.dataset_dir / "data.yaml")
 
+    import threading  # noqa: PLC0415
+    from concurrent.futures import ThreadPoolExecutor  # noqa: PLC0415
+
+    from tqdm import tqdm  # noqa: PLC0415
+
     images_uploaded = 0
     images_failed = 0
     labels_uploaded = 0
     total = plan.total_images
-    done = 0
+    counter_lock = threading.Lock()
 
+    jobs = []  # (img_path, label_path, roboflow_split)
     for split in plan.splits:
         label_by_stem = {p.stem: p for p in split.labels}
         roboflow_split = _roboflow_split_name(split.split)
         for img_path in split.images:
-            label_path = label_by_stem.get(img_path.stem)
+            jobs.append((img_path, label_by_stem.get(img_path.stem), roboflow_split))
+
+    with tqdm(total=total, desc="uploading", unit="img") as bar:
+
+        def _upload_one(job):
+            nonlocal images_uploaded, images_failed, labels_uploaded
+            img_path, label_path, roboflow_split = job
             try:
                 project.upload(
                     image_path=str(img_path),
@@ -387,17 +399,23 @@ def upload_plan(
                     batch_name=batch_name,
                     num_retry_uploads=2,
                 )
-                images_uploaded += 1
-                if label_path is not None:
-                    labels_uploaded += 1
+                with counter_lock:
+                    images_uploaded += 1
+                    if label_path is not None:
+                        labels_uploaded += 1
             except Exception as exc:  # noqa: BLE001 - keep going, report at the end
-                images_failed += 1
-                print(f"  FAILED upload {img_path}: {exc}")
-            done += 1
-            if progress_every and done % progress_every == 0:
-                print(f"  uploaded {done}/{total} images...")
+                with counter_lock:
+                    images_failed += 1
+                tqdm.write(f"  FAILED upload {img_path}: {exc}")
+            bar.update(1)
 
-    print(f"  uploaded {done}/{total} images (final)")
+        # Uploads are I/O-bound HTTP calls; parallel workers give ~10x
+        # throughput. Split/labelmap are per-call parameters so pinning is
+        # unaffected by ordering.
+        with ThreadPoolExecutor(max_workers=12) as pool:
+            list(pool.map(_upload_one, jobs))
+
+    print(f"  uploaded {images_uploaded + images_failed}/{total} images (final)")
 
     version_number = None
     if generate_version:
