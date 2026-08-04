@@ -1,15 +1,30 @@
-"""Export a leakage-free ball-detection YOLO dataset from the feature store (ft-n2o.1).
+"""Export a leakage-free YOLO training dataset from the feature store (ft-n2o.1).
 
-Queries the ``detections_enriched`` canonical view for ball-class detections
-(``ball`` / ``in_play_ball`` / ``out_of_play_ball`` -> single ``ball`` class),
-assembles a YOLOv8-format dataset (``images/{train,val}``, ``labels/{train,val}``,
+By default (no ``--classes``), queries the ``detections_enriched`` canonical
+view for ball-class detections (``ball`` / ``in_play_ball`` / ``out_of_play_ball``
+-> single ``ball`` class) — this is the original, back-compat behavior.
+
+Passing ``--classes`` switches to multi-class mode: a comma-separated list of
+store label strings (e.g. ``player,referee,person``), or the literal ``all``
+for every distinct label present. In this mode each store label maps 1:1 to
+its own YOLO class (no aliasing/collapsing, except the ball-mode collapse
+above, which is exclusive to the default/no-``--classes`` path). Class ids are
+assigned by sorting the requested (or discovered, for ``all``) label strings
+alphabetically and taking their index — deterministic and recorded in
+``data.yaml["names"]``.
+
+Assembles a YOLOv8-format dataset (``images/{train,val}``, ``labels/{train,val}``,
 ``data.yaml``) with a **by-clip** train/val split (a clip never straddles the
-split, preventing near-duplicate frame leakage).
+split, preventing near-duplicate frame leakage) in all modes.
 
 Leakage guard (the critical requirement): every clip used by the ball_eval
 harness is excluded from both splits. The harness eval set is the set of clips
 that have a GT ``.jsonl`` sidecar under ``--eval-dir`` (default
 ``eval_data/clips``). Extra clips can be excluded with repeated ``--exclude-clip``.
+
+``--sources`` (comma list, e.g. ``hand_label`` or ``hand_label,vittrack``)
+optionally restricts detections to specific ``source`` values. Default (omitted)
+is unrestricted — the original behavior of pulling every canonical source.
 
 Images are sourced two ways:
   - detections whose ``frame_uri`` points at a real image file (Roboflow
@@ -26,7 +41,9 @@ CLI:
         --video-dir eval_data/clips \\
         --out data/training_datasets/ball_v1 \\
         [--eval-dir eval_data/clips] [--exclude-clip <stem> ...] \\
-        [--val-fraction 0.2] [--tag ball_v1]
+        [--val-fraction 0.2] [--tag ball_v1] \\
+        [--classes player,referee,person | --classes all] \\
+        [--sources hand_label,vittrack]
 """
 
 from __future__ import annotations
@@ -49,17 +66,52 @@ def _eval_clip_stems(eval_dir: Path) -> set[str]:
     return {p.stem for p in eval_dir.glob("*.jsonl")}
 
 
-def _query_ball_detections(store: FeatureStore):
+def _distinct_labels(store: FeatureStore) -> list[str]:
+    """Every distinct canonical label present in the store, sorted."""
+    df = store.query(
+        "SELECT DISTINCT label FROM detections_enriched WHERE canonical ORDER BY label"
+    )
+    return sorted(df["label"].tolist())
+
+
+def _query_ball_detections(store: FeatureStore, *, sources: list[str] | None = None):
     placeholders = ", ".join("?" for _ in BALL_LABELS)
+    params: list[object] = list(BALL_LABELS)
+    source_clause = ""
+    if sources:
+        source_placeholders = ", ".join("?" for _ in sources)
+        source_clause = f" AND source IN ({source_placeholders})"
+        params += sources
     sql = f"""
-        SELECT game_id, frame_index, detection_id, source, run_id,
+        SELECT game_id, frame_index, detection_id, source, run_id, label,
                bbox_x, bbox_y, bbox_w, bbox_h, frame_uri, dataset_tag
         FROM detections_enriched
         WHERE canonical
-          AND lower(label) IN ({placeholders})
+          AND lower(label) IN ({placeholders}){source_clause}
         ORDER BY game_id, frame_index, detection_id
     """
-    return store.query(sql, list(BALL_LABELS))
+    return store.query(sql, params)
+
+
+def _query_multiclass_detections(
+    store: FeatureStore, labels: list[str], *, sources: list[str] | None = None
+):
+    placeholders = ", ".join("?" for _ in labels)
+    params: list[object] = list(labels)
+    source_clause = ""
+    if sources:
+        source_placeholders = ", ".join("?" for _ in sources)
+        source_clause = f" AND source IN ({source_placeholders})"
+        params += sources
+    sql = f"""
+        SELECT game_id, frame_index, detection_id, source, run_id, label,
+               bbox_x, bbox_y, bbox_w, bbox_h, frame_uri, dataset_tag
+        FROM detections_enriched
+        WHERE canonical
+          AND label IN ({placeholders}){source_clause}
+        ORDER BY game_id, frame_index, detection_id
+    """
+    return store.query(sql, params)
 
 
 def _split_clips(clips: list[str], val_fraction: float) -> tuple[set[str], set[str]]:
@@ -93,14 +145,32 @@ def _split_clips(clips: list[str], val_fraction: float) -> tuple[set[str], set[s
 # rather than guessed at.
 _FALLBACK_MATCH_DIRS: tuple[tuple[str, str, str], ...] = (
     # (clip_stem_prefix, data_root_subdir, real_filename_prefix)
-    ("arsenal_mancity_", "arsenal_mancity/split_video_broadcast_frames", "arsenal_mancity_20250925_"),
-    ("mancity_part", "arsenal_mancity/split_video_broadcast_frames", "arsenal_mancity_20250925_part"),
-    ("astonvilla_", "arsenal_astonvilla/split_video_broadcast_frames", "Arsenal - Aston Villa_"),
-    ("bournemouth_1st_", "arsenal_bournmouth_1st_half/split_video_broadcast_frames", "Bournemouth vs Arsenal 1_"),
+    (
+        "arsenal_mancity_",
+        "arsenal_mancity/split_video_broadcast_frames",
+        "arsenal_mancity_20250925_",
+    ),
+    (
+        "mancity_part",
+        "arsenal_mancity/split_video_broadcast_frames",
+        "arsenal_mancity_20250925_part",
+    ),
+    (
+        "astonvilla_",
+        "arsenal_astonvilla/split_video_broadcast_frames",
+        "Arsenal - Aston Villa_",
+    ),
+    (
+        "bournemouth_1st_",
+        "arsenal_bournmouth_1st_half/split_video_broadcast_frames",
+        "Bournemouth vs Arsenal 1_",
+    ),
 )
 
 
-def _resolve_video_path(clip: str, video_dir: Path, data_root: Path | None) -> Path | None:
+def _resolve_video_path(
+    clip: str, video_dir: Path, data_root: Path | None
+) -> Path | None:
     """Find the real video file for *clip*, following the local ``video_dir``
     first and falling back to the raw match-footage tree on ``data_root``."""
     direct = video_dir / f"{clip}.mp4"
@@ -115,7 +185,7 @@ def _resolve_video_path(clip: str, video_dir: Path, data_root: Path | None) -> P
     for prefix, subdir, real_prefix in _FALLBACK_MATCH_DIRS:
         if not clip.startswith(prefix):
             continue
-        suffix = clip[len(prefix):]  # e.g. "seg010" or "050"
+        suffix = clip[len(prefix) :]  # e.g. "seg010" or "050"
         candidate = data_root / subdir / f"{real_prefix}{suffix}.mp4"
         if candidate.is_file():
             return candidate
@@ -138,10 +208,10 @@ def _extract_frame(video_path: Path, frame_index: int, out_path: Path) -> bool:
         cap.release()
 
 
-def _yolo_line(x: float, y: float, w: float, h: float) -> str:
+def _yolo_line(class_id: int, x: float, y: float, w: float, h: float) -> str:
     cx = min(max(x + w / 2, 0.0), 1.0)
     cy = min(max(y + h / 2, 0.0), 1.0)
-    return f"{BALL_CLASS_ID} {cx:.6f} {cy:.6f} {w:.6f} {h:.6f}"
+    return f"{class_id} {cx:.6f} {cy:.6f} {w:.6f} {h:.6f}"
 
 
 def _materialise_image(
@@ -172,6 +242,7 @@ def _export_clip(
     data_root: Path | None,
     counts: dict,
     tagged: list,
+    class_id_for_label: dict[str, int],
 ) -> tuple[int, int]:
     """Write images+labels for one clip's frames. Returns (n_images, n_boxes)."""
     by_frame: dict[int, list] = defaultdict(list)
@@ -183,9 +254,16 @@ def _export_clip(
     for fi, frows in sorted(by_frame.items()):
         base = f"{clip}_{fi:06d}"
         img_out = out_dir / "images" / split / f"{base}.jpg"
-        if not _materialise_image(clip, fi, frame_uri[fi], img_out, video_dir, data_root):
+        if not _materialise_image(
+            clip, fi, frame_uri[fi], img_out, video_dir, data_root
+        ):
             continue  # no pixels -> skip this frame entirely
-        lines = [_yolo_line(r.bbox_x, r.bbox_y, r.bbox_w, r.bbox_h) for r in frows]
+        lines = [
+            _yolo_line(
+                class_id_for_label[r.label], r.bbox_x, r.bbox_y, r.bbox_w, r.bbox_h
+            )
+            for r in frows
+        ]
         (out_dir / "labels" / split / f"{base}.txt").write_text("\n".join(lines) + "\n")
         clip_images += 1
         clip_boxes += len(frows)
@@ -193,7 +271,9 @@ def _export_clip(
         counts[split]["boxes"] += len(frows)
         for r in frows:
             counts[split]["by_source"][r.source] += 1
-            tagged.append((clip, r.source, r.run_id, int(fi), int(r.detection_id), split))
+            tagged.append(
+                (clip, r.source, r.run_id, int(fi), int(r.detection_id), split)
+            )
     return clip_images, clip_boxes
 
 
@@ -207,8 +287,28 @@ def export(
     val_fraction: float,
     tag: str,
     data_root: Path | None = None,
+    classes: list[str] | None = None,
+    sources: list[str] | None = None,
 ) -> dict:
-    df = _query_ball_detections(store)
+    """Export a leakage-free YOLO dataset.
+
+    ``classes`` is ``None`` for the original ball-only mode (single ``ball``
+    class, id 0). Otherwise it's an explicit list of store label strings to
+    export (already resolved from ``--classes all`` if that was requested);
+    each label becomes its own class, ids assigned by sorted label order.
+
+    ``sources`` optionally restricts detections to specific ``source`` column
+    values (e.g. ``["hand_label"]``); ``None``/empty means unrestricted.
+    """
+    multiclass = classes is not None
+    if multiclass:
+        class_names = sorted(set(classes))
+        class_id_for_label = {name: i for i, name in enumerate(class_names)}
+        df = _query_multiclass_detections(store, class_names, sources=sources)
+    else:
+        class_names = ["ball"]
+        class_id_for_label = defaultdict(lambda: BALL_CLASS_ID)
+        df = _query_ball_detections(store, sources=sources)
     eval_clips = _eval_clip_stems(eval_dir)
     excluded = eval_clips | extra_exclude
 
@@ -240,13 +340,23 @@ def export(
         (out_dir / "images" / split).mkdir(parents=True, exist_ok=True)
         (out_dir / "labels" / split).mkdir(parents=True, exist_ok=True)
 
-    tagged: list[tuple] = []  # (game_id, source, run_id, frame_index, detection_id, split)
+    tagged: list[
+        tuple
+    ] = []  # (game_id, source, run_id, frame_index, detection_id, split)
     unresolved_clips: set[str] = set()
 
     for clip, rows in rows_by_clip.items():
         split = "val" if clip in val_clips else "train"
         clip_images, clip_boxes = _export_clip(
-            clip, rows, split, out_dir, video_dir, data_root, counts, tagged
+            clip,
+            rows,
+            split,
+            out_dir,
+            video_dir,
+            data_root,
+            counts,
+            tagged,
+            class_id_for_label,
         )
         per_clip[clip] = {"split": split, "images": clip_images, "boxes": clip_boxes}
         if clip_boxes and not clip_images:
@@ -265,13 +375,15 @@ def export(
         "path": str(out_dir.resolve()),
         "train": "images/train",
         "val": "images/val",
-        "nc": 1,
-        "names": ["ball"],
+        "nc": len(class_names),
+        "names": class_names,
     }
     (out_dir / "data.yaml").write_text(yaml.safe_dump(data_yaml, sort_keys=False))
 
     manifest = {
         "tag": tag,
+        "classes": class_names,
+        "sources": sorted(sources) if sources else None,
         "excluded_eval_clips": sorted(eval_clips),
         "extra_excluded_clips": sorted(extra_exclude),
         "excluded_ball_boxes": excluded_boxes,
@@ -298,9 +410,13 @@ def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--db", type=Path, required=True)
     parser.add_argument("--video-dir", type=Path, required=True)
-    parser.add_argument("--out", type=Path, default=Path("data/training_datasets/ball_v1"))
+    parser.add_argument(
+        "--out", type=Path, default=Path("data/training_datasets/ball_v1")
+    )
     parser.add_argument("--eval-dir", type=Path, default=Path("eval_data/clips"))
-    parser.add_argument("--exclude-clip", action="append", default=[], dest="exclude_clip")
+    parser.add_argument(
+        "--exclude-clip", action="append", default=[], dest="exclude_clip"
+    )
     parser.add_argument("--val-fraction", type=float, default=0.2)
     parser.add_argument("--tag", type=str, default="ball_v1")
     parser.add_argument(
@@ -310,9 +426,38 @@ def main(argv: list[str] | None = None) -> None:
         help="Fallback root (e.g. /mnt/storage/footy_data) searched for source "
         "video when --video-dir has a broken/missing symlink for a clip.",
     )
+    parser.add_argument(
+        "--classes",
+        type=str,
+        default=None,
+        help="Comma-separated store label(s) to export as their own YOLO classes "
+        "(e.g. 'player,referee,person'), or 'all' for every distinct label in "
+        "the store. Omit for the original ball-only single-class export "
+        "(back-compat default).",
+    )
+    parser.add_argument(
+        "--sources",
+        type=str,
+        default=None,
+        help="Comma-separated detection 'source' values to restrict the export to "
+        "(e.g. 'hand_label' or 'hand_label,vittrack'). Omit for unrestricted "
+        "(all canonical sources, the original behavior).",
+    )
     args = parser.parse_args(argv)
 
     store = FeatureStore.open(args.db)
+
+    classes: list[str] | None = None
+    if args.classes is not None:
+        if args.classes.strip().lower() == "all":
+            classes = _distinct_labels(store)
+        else:
+            classes = [c.strip() for c in args.classes.split(",") if c.strip()]
+
+    sources: list[str] | None = None
+    if args.sources is not None:
+        sources = [s.strip() for s in args.sources.split(",") if s.strip()]
+
     manifest = export(
         store,
         out_dir=args.out,
@@ -322,18 +467,30 @@ def main(argv: list[str] | None = None) -> None:
         val_fraction=args.val_fraction,
         data_root=args.data_root,
         tag=args.tag,
+        classes=classes,
+        sources=sources,
     )
 
     print("=== export_training_dataset manifest ===")
-    print(f"excluded eval clips ({len(manifest['excluded_eval_clips'])}): "
-          f"{manifest['excluded_eval_clips']}")
+    print(f"classes: {manifest['classes']}")
+    print(
+        f"sources: {manifest['sources'] if manifest['sources'] else 'all (unrestricted)'}"
+    )
+    print(
+        f"excluded eval clips ({len(manifest['excluded_eval_clips'])}): "
+        f"{manifest['excluded_eval_clips']}"
+    )
     print(f"excluded ball boxes (in eval clips): {manifest['excluded_ball_boxes']}")
-    print(f"train: clips={len(manifest['train_clips'])} "
-          f"images={manifest['train']['images']} boxes={manifest['train']['boxes']} "
-          f"by_source={manifest['train']['by_source']}")
-    print(f"val:   clips={len(manifest['val_clips'])} "
-          f"images={manifest['val']['images']} boxes={manifest['val']['boxes']} "
-          f"by_source={manifest['val']['by_source']}")
+    print(
+        f"train: clips={len(manifest['train_clips'])} "
+        f"images={manifest['train']['images']} boxes={manifest['train']['boxes']} "
+        f"by_source={manifest['train']['by_source']}"
+    )
+    print(
+        f"val:   clips={len(manifest['val_clips'])} "
+        f"images={manifest['val']['images']} boxes={manifest['val']['boxes']} "
+        f"by_source={manifest['val']['by_source']}"
+    )
     overlap = set(manifest["train_clips"]) & set(manifest["val_clips"])
     print(f"train/val clip overlap (must be empty): {overlap}")
     unresolved = manifest["unresolved_clips_no_source_video"]
