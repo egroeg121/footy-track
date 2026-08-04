@@ -14,6 +14,38 @@ from roboflow import Roboflow
 from ultralytics import YOLO
 
 
+def apply_mps_assigner_workaround() -> None:
+    """Run ultralytics' TaskAlignedAssigner on CPU when training on MPS.
+
+    torch-on-MPS has an advanced-indexing bug that crashes the assigner
+    stochastically (RuntimeError: shape mismatch in get_box_metrics). The
+    assigner is no_grad bookkeeping, so computing it on CPU is exact; the
+    model forward/backward stays on MPS.
+    """
+    from ultralytics.utils.tal import TaskAlignedAssigner  # noqa: PLC0415
+
+    orig = TaskAlignedAssigner.forward
+
+    def cpu_safe(self, pd_scores, pd_bboxes, anc_points, gt_labels, gt_bboxes, mask_gt):
+        dev = pd_scores.device
+        if dev.type == "mps":
+            out = orig(
+                self,
+                pd_scores.cpu(),
+                pd_bboxes.cpu(),
+                anc_points.cpu(),
+                gt_labels.cpu(),
+                gt_bboxes.cpu(),
+                mask_gt.cpu(),
+            )
+            return tuple(t.to(dev) for t in out)
+        return orig(
+            self, pd_scores, pd_bboxes, anc_points, gt_labels, gt_bboxes, mask_gt
+        )
+
+    TaskAlignedAssigner.forward = cpu_safe
+
+
 def train_detector(
     model_name: str,
     dataset_version: int,
@@ -21,6 +53,10 @@ def train_detector(
     epochs: int,
     name_prepend: str = "",
     local_dataset: str | None = None,
+    imgsz: int = 640,
+    batch: int = -1,
+    amp: bool = True,
+    device: str = "mps",
 ):
     """
     Downloads a dataset from Roboflow (or uses a local path) and trains a YOLO detector.
@@ -59,10 +95,13 @@ def train_detector(
     )
 
     # Set up training run
-    run_name = f"{datetime.now():%Y-%m-%d_%H-%M}_model_name={str(model_name)}_dataset_version={dataset_version}_epochs={epochs}_freeze_layers={freeze_layers}"
+    run_name = f"{datetime.now():%Y-%m-%d_%H-%M}_model_name={str(model_name)}_dataset_version={dataset_version}_epochs={epochs}_freeze_layers={freeze_layers}_imgsz={imgsz}"
     if name_prepend:
         run_name = f"{name_prepend}_{run_name}"
     model_path = f"{model_name}.pt"
+
+    if device == "mps":
+        apply_mps_assigner_workaround()
 
     print(f"Starting training for run: {run_name}")
     model = YOLO(model_path)
@@ -71,12 +110,14 @@ def train_detector(
     results = model.train(
         data=os.path.join(dataset_location, "data.yaml"),
         epochs=epochs,
-        imgsz=640,
+        imgsz=imgsz,
         freeze=freeze_layers,
+        batch=batch,
+        amp=amp,
         cache=True,
         augment=True,
         plots=True,
-        device="mps",
+        device=device,
         project="footy_scan_detection",
         name=run_name,
     )
@@ -116,6 +157,29 @@ if __name__ == "__main__":
     )
 
     parser.add_argument(
+        "--imgsz",
+        type=int,
+        default=640,
+        help="Training image size (px). Use 1280 for small-object (ball) work.",
+    )
+    parser.add_argument(
+        "--batch",
+        type=int,
+        default=-1,
+        help="Batch size (-1 = auto). On MPS use an explicit small batch, e.g. 4-8.",
+    )
+    parser.add_argument(
+        "--no-amp",
+        action="store_true",
+        help="Disable mixed precision (recommended on MPS).",
+    )
+    parser.add_argument(
+        "--device",
+        type=str,
+        default="mps",
+        help="Training device (mps, cpu, 0 for CUDA).",
+    )
+    parser.add_argument(
         "--local-dataset",
         type=str,
         default=None,
@@ -128,6 +192,10 @@ if __name__ == "__main__":
     train_detector(
         model_name=args.model,
         dataset_version=args.dataset_version,
+        imgsz=args.imgsz,
+        batch=args.batch,
+        amp=not args.no_amp,
+        device=args.device,
         freeze_layers=args.freeze,
         epochs=args.epochs,
         local_dataset=args.local_dataset,
