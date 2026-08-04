@@ -23,6 +23,7 @@ from footy_track import constants
 from footy_track.scripts.upload_dataset_to_roboflow import (
     InvalidYoloDatasetError,
     UploadPlan,
+    _roboflow_split_name,
     build_parser,
     compute_upload_plan,
     get_or_create_project,
@@ -266,6 +267,42 @@ def test_cli_from_store_accepts_passthrough_args() -> None:
     assert args.val_fraction == 0.3
 
 
+def test_cli_from_store_accepts_test_fraction() -> None:
+    parser = build_parser()
+    args = parser.parse_args(
+        [
+            "--from-store",
+            "--project",
+            "proj",
+            "--db",
+            "data/fs.duckdb",
+            "--video-dir",
+            "eval_data/clips",
+            "--val-fraction",
+            "0.2",
+            "--test-fraction",
+            "0.1",
+        ]
+    )
+    assert args.test_fraction == 0.1
+
+
+def test_cli_test_fraction_defaults_to_zero() -> None:
+    parser = build_parser()
+    args = parser.parse_args(
+        [
+            "--from-store",
+            "--project",
+            "proj",
+            "--db",
+            "data/fs.duckdb",
+            "--video-dir",
+            "eval_data/clips",
+        ]
+    )
+    assert args.test_fraction == 0.0
+
+
 def test_cli_default_workspace() -> None:
     parser = build_parser()
     args = parser.parse_args(["--dataset-dir", "/tmp/x", "--project", "proj"])
@@ -447,6 +484,119 @@ def test_upload_plan_creates_project_when_missing(tmp_path: Path) -> None:
         annotation="brand-new",
     )
     assert result.project_created is True
+
+
+def test_roboflow_split_name_mapping() -> None:
+    assert _roboflow_split_name("train") == "train"
+    assert _roboflow_split_name("val") == "valid"
+    assert _roboflow_split_name("test") == "test"
+
+
+def _three_way_dataset(tmp_path: Path) -> Path:
+    root = tmp_path / "three_way_v1"
+    return _write_yolo_dataset(
+        root,
+        splits={
+            "train": [("clip_a_000000", ["0 0.5 0.5 0.02 0.03"])],
+            "val": [("clip_b_000000", ["0 0.5 0.5 0.02 0.03"])],
+            "test": [("clip_c_000000", ["0 0.5 0.5 0.02 0.03"])],
+        },
+    )
+
+
+def _run_upload_plan_with_fake_sdk(plan, **kwargs):
+    """Shared harness: install a fake roboflow module with a MagicMock
+    project for an existing project, run upload_plan, and return
+    (result, fake_project)."""
+    fake_project = MagicMock()
+    fake_project.generate_version.return_value = 1
+    fake_workspace = MagicMock()
+    fake_workspace.project.return_value = fake_project
+    fake_roboflow_instance = MagicMock()
+    fake_roboflow_instance.workspace.return_value = fake_workspace
+    fake_roboflow_module = MagicMock()
+    fake_roboflow_module.Roboflow = MagicMock(return_value=fake_roboflow_instance)
+
+    import_saved = sys.modules.get("roboflow")
+    sys.modules["roboflow"] = fake_roboflow_module
+    try:
+        result = upload_plan(plan, api_key="test-key", **kwargs)
+    finally:
+        if import_saved is not None:
+            sys.modules["roboflow"] = import_saved
+        else:
+            sys.modules.pop("roboflow", None)
+    return result, fake_project
+
+
+def test_upload_plan_pins_correct_roboflow_split_per_local_dir(
+    tmp_path: Path,
+) -> None:
+    """Each image's upload call must carry the Roboflow split name derived
+    from its local split dir: train->train, val->valid, test->test."""
+    root = _three_way_dataset(tmp_path)
+    plan = compute_upload_plan(root, project_name="proj")
+
+    _result, fake_project = _run_upload_plan_with_fake_sdk(plan)
+
+    upload_calls = [c for c in fake_project.method_calls if c[0] == "upload"]
+    assert len(upload_calls) == 3
+    splits_by_stem = {
+        Path(c.kwargs["image_path"]).stem: c.kwargs["split"] for c in upload_calls
+    }
+    assert splits_by_stem["clip_a_000000"] == "train"
+    assert splits_by_stem["clip_b_000000"] == "valid"  # local "val" -> roboflow "valid"
+    assert splits_by_stem["clip_c_000000"] == "test"
+
+
+def test_upload_plan_passes_labelmap_on_annotated_uploads(tmp_path: Path) -> None:
+    """Every upload with an annotation must carry annotation_labelmap
+    pointing at the dataset's data.yaml, so Roboflow resolves class ids to
+    real class names instead of leaving them as bare numeric ids."""
+    root = _write_yolo_dataset(
+        tmp_path / "labelmap_v1",
+        splits={
+            "train": [
+                ("has_label", ["0 0.5 0.5 0.1 0.1", "1 0.2 0.2 0.1 0.1"]),
+                ("no_label", []),
+            ]
+        },
+        class_names=["ball", "player"],
+    )
+    plan = compute_upload_plan(root, project_name="proj")
+
+    _result, fake_project = _run_upload_plan_with_fake_sdk(plan)
+
+    upload_calls = [c for c in fake_project.method_calls if c[0] == "upload"]
+    assert len(upload_calls) == 2
+    by_stem = {Path(c.kwargs["image_path"]).stem: c.kwargs for c in upload_calls}
+
+    # Annotated image: labelmap points at this dataset's data.yaml.
+    assert by_stem["has_label"]["annotation_labelmap"] == str(root / "data.yaml")
+    # Unannotated image: no annotation, no labelmap.
+    assert by_stem["no_label"]["annotation_path"] is None
+    assert by_stem["no_label"]["annotation_labelmap"] is None
+
+
+def test_upload_plan_generate_version_settings_have_no_resplit_key(
+    tmp_path: Path,
+) -> None:
+    """generate_version must be called without any rebalance/resplit key, so
+    the split assignments pinned at upload time are preserved, not
+    recomputed by Roboflow."""
+    root = _valid_dataset(tmp_path)
+    plan = compute_upload_plan(root, project_name="proj")
+
+    _result, fake_project = _run_upload_plan_with_fake_sdk(plan)
+
+    fake_project.generate_version.assert_called_once()
+    settings = fake_project.generate_version.call_args.kwargs["settings"]
+    assert "rebalance" not in settings
+    assert "train_test_split" not in settings
+    for section in settings.values():
+        assert isinstance(section, dict)
+        for key in ("rebalance", "resplit", "split"):
+            assert key not in section
 
 
 def test_upload_plan_passes_annotation_path_only_when_label_exists(

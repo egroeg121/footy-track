@@ -94,6 +94,21 @@ class InvalidYoloDatasetError(ValueError):
     """Raised when ``--dataset-dir`` is not a well-formed YOLOv8 export."""
 
 
+# Roboflow's canonical split names (accepted by Project.upload's ``split``
+# param) are "train", "valid", "test" -- our local YOLO export directories
+# use "train", "val", "test" (matching Ultralytics' data.yaml convention).
+# This maps our local split dir name -> the name we must send to Roboflow.
+ROBOFLOW_SPLIT_NAME = {"train": "train", "val": "valid", "test": "test"}
+
+
+def _roboflow_split_name(local_split: str) -> str:
+    """Map a local split directory name ("train"/"val"/"test") to the split
+    name Roboflow's API expects. Unknown split dir names pass through
+    unchanged (defensive; every split this codebase produces is covered
+    above)."""
+    return ROBOFLOW_SPLIT_NAME.get(local_split, local_split)
+
+
 @dataclass
 class SplitPlan:
     """Per-split image/label counts for one split (e.g. "train", "val")."""
@@ -149,9 +164,16 @@ class UploadPlan:
         ]
         for s in self.splits:
             lines.append(
-                f"  split={s.split}: images={s.n_images} labels={s.n_labels} boxes={s.n_boxes}"
+                f"  split={s.split} (roboflow split={_roboflow_split_name(s.split)}): "
+                f"images={s.n_images} labels={s.n_labels} boxes={s.n_boxes}"
             )
         lines.append(f"total: images={self.total_images} boxes={self.total_boxes}")
+        lines.append(
+            "split assignment: pinned per-image at upload time from the local "
+            "train/val/test dirs (val -> roboflow 'valid'). generate_version is "
+            "called with no rebalance/resplit setting, so these pinned "
+            "assignments are preserved, not recomputed by Roboflow."
+        )
         lines.append(
             "version strategy: upload adds images to the project; a NEW version "
             "is generated afterwards. Existing project data/images/versions are "
@@ -315,6 +337,21 @@ def upload_plan(
 
     Only ever ADDS data: uses ``Project.upload`` per image (no delete/update
     calls at all). Never touches pre-existing images or versions.
+
+    **Split pinning**: each image's split is explicitly pinned to the split
+    Roboflow expects (mapped from the local train/val/test dir via
+    ``_roboflow_split_name`` -- our local ``val`` -> Roboflow's ``valid``).
+    This is deliberate: without an explicit, correctly-named ``split`` on
+    every upload, Roboflow can rebalance/reassign splits itself at version
+    generation time. ``generate_version`` below is called with an empty
+    ``preprocessing``/``augmentation`` settings dict -- no rebalance/resplit
+    key is set -- so the pinned per-image split assignments from upload time
+    are preserved rather than recomputed.
+
+    **Class-name labelmap**: every annotated upload also passes
+    ``annotation_labelmap`` (the dataset's ``data.yaml`` path) so Roboflow
+    resolves each YOLO ``.txt`` class id to its real class name (e.g.
+    ``ball``, ``player``) instead of leaving classes as bare numeric ids.
     """
     from roboflow import Roboflow  # noqa: PLC0415 - keep SDK import lazy/optional
 
@@ -328,6 +365,8 @@ def upload_plan(
         batch_name or f"upload_dataset_to_roboflow_{time.strftime('%Y%m%d%H%M%S')}"
     )
 
+    labelmap_path = str(plan.dataset_dir / "data.yaml")
+
     images_uploaded = 0
     images_failed = 0
     labels_uploaded = 0
@@ -336,13 +375,15 @@ def upload_plan(
 
     for split in plan.splits:
         label_by_stem = {p.stem: p for p in split.labels}
+        roboflow_split = _roboflow_split_name(split.split)
         for img_path in split.images:
             label_path = label_by_stem.get(img_path.stem)
             try:
                 project.upload(
                     image_path=str(img_path),
                     annotation_path=str(label_path) if label_path else None,
-                    split=split.split,
+                    annotation_labelmap=labelmap_path if label_path else None,
+                    split=roboflow_split,
                     batch_name=batch_name,
                     num_retry_uploads=2,
                 )
@@ -360,6 +401,8 @@ def upload_plan(
 
     version_number = None
     if generate_version:
+        # No rebalance/resplit key here -- keeps the per-image split
+        # assignments pinned at upload time above.
         version_number = project.generate_version(
             settings={"preprocessing": {}, "augmentation": {}}
         )
@@ -391,6 +434,7 @@ def run_store_export(args: argparse.Namespace) -> Path:
         eval_dir=args.eval_dir,
         extra_exclude=set(args.exclude_clip),
         val_fraction=args.val_fraction,
+        test_fraction=args.test_fraction,
         data_root=args.data_root,
         tag=args.tag,
     )
@@ -468,6 +512,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--exclude-clip", action="append", default=[], dest="exclude_clip"
     )
     store_group.add_argument("--val-fraction", type=float, default=0.2)
+    store_group.add_argument("--test-fraction", type=float, default=0.0)
     store_group.add_argument("--tag", type=str, default="ball_v1")
     store_group.add_argument("--data-root", type=Path, default=None)
 
