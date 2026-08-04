@@ -15,6 +15,59 @@ Grains:
 All timestamps are ContinuousTime (seconds from kickoff); all boxes are
 normalised top-left xywh in ``[0, 1]`` — matching ``footy_track.schema`` and
 the cross-stage invariants in ``docs/system_design.md`` §4.
+
+Canonical-detection semantics (``detections_enriched.canonical``)
+-------------------------------------------------------------------
+``canonical`` picks, for every ``(game_id, frame_index)``, which *batch* of
+detection rows an export/training query should use. The unit of arbitration
+is the **batch** (a run or run-family from one coherent import/flush), not
+the individual row and not the row's source tier.
+
+Why: the labeller (``ingest_gt.py``) enforces label precedence *per box*
+before it ever flushes a sidecar — a hand-corrected object's machine box is
+dropped or superseded, but machine boxes for *other* objects on that same
+frame are deliberately left in place and are just as valid. A flushed frame
+therefore already is one coherent, internally-resolved snapshot (e.g. 2
+``hand_label`` player rows + 13 ``vittrack`` rows). Re-adjudicating rows
+individually by source tier — the old behaviour — silently discards the
+coexisting machine rows on every hand-corrected frame, because "any hand row
+present on this frame" used to demote every machine row on that frame to
+non-canonical regardless of which import produced them.
+
+The rule:
+
+1. Every detection row belongs to a **run_group**:
+   - Rows from a GT-marks sidecar flush (``ingest_gt.py``) all share the
+     ``run_id`` family ``gt_import_<provenance_tag>`` (one run per
+     provenance tag actually present in that flush, e.g.
+     ``gt_import_labeller``, ``gt_import_vittrack``). All ``gt_import_*``
+     runs for the same ``game_id`` are treated as **one run_group**
+     (``gt_import:<game_id>``), because they came from one sidecar file /
+     one labeller pass and the labeller already resolved per-box
+     precedence across them.
+   - Every other ``run_id`` (e.g. a Roboflow dataset import
+     ``roboflow_v<N>``, or a future non-sidecar import) is its own,
+     independent run_group.
+2. Per ``(game_id, frame_index)``, run_groups are ranked:
+   a. a group containing at least one ``hand_label`` row outranks one that
+      doesn't (human ground truth wins);
+   b. among groups that tie on (a), the GT-marks sidecar's run_group
+      (``gt_import:<game_id>``) outranks a Roboflow/other import — the
+      sidecar is the labeller's live, per-box-resolved snapshot and is
+      treated as the more current source of truth than a static dataset
+      export;
+   c. remaining ties broken by ``max(run_id)`` descending — a deliberately
+      simple, deterministic tiebreaker given ``run.created_at`` is not
+      populated by either importer today.
+3. **Every row in the winning run_group is canonical** — not just the
+   hand-labelled ones. Rows in losing run_groups are all non-canonical.
+
+This means: a frame touched only by one import (Roboflow-only, or
+sidecar-only with no hand labels) stays fully canonical, unchanged. A frame
+covered by *both* a Roboflow import and a sidecar flush containing a hand
+label picks the sidecar's entire run_group. A hand-corrected sidecar frame
+(hand_label + coexisting machine-source rows from the same flush) keeps
+*all* of those rows canonical, matching what the labeller already decided.
 """
 
 from __future__ import annotations
@@ -281,23 +334,58 @@ VIEWS: tuple[str, ...] = (
     """,
     """
     CREATE OR REPLACE VIEW detections_enriched AS
-        SELECT d.*,
+        WITH scored AS (
+            SELECT d.*,
+                   -- Rows imported together from one GT-marks sidecar flush
+                   -- (ingest_gt.py) share the run-id family "gt_import_*" --
+                   -- one run per provenance tag seen in that flush -- but
+                   -- are one coherent per-frame snapshot: the labeller has
+                   -- already resolved hand-vs-machine precedence per box
+                   -- before writing the sidecar, so hand_label rows and the
+                   -- machine rows they coexist with on the same frame must
+                   -- win or lose canonical status *together*. Any other
+                   -- run_id (e.g. a Roboflow dataset import "roboflow_v*")
+                   -- is its own independent, competing batch.
+                   CASE
+                       WHEN d.run_id LIKE 'gt_import_%' THEN 'gt_import:' || d.game_id
+                       ELSE d.run_id
+                   END AS run_group,
+                   (d.run_id LIKE 'gt_import_%') AS is_gt_import
+            FROM detection d
+        ),
+        group_rank AS (
+            SELECT game_id, frame_index, run_group,
+                   RANK() OVER (
+                       PARTITION BY game_id, frame_index
+                       ORDER BY
+                           -- A batch that contains any hand-labelled row
+                           -- (human ground truth) always outranks a batch
+                           -- that does not -- this is what makes a sidecar
+                           -- flush win over a plain Roboflow import when
+                           -- both cover the same frame.
+                           bool_or(source = 'hand_label') DESC,
+                           -- Among hand-label-containing batches, the GT-marks
+                           -- sidecar flush (the labeller's live, per-box-
+                           -- resolved snapshot) outranks a static Roboflow
+                           -- dataset import -- the sidecar is the more
+                           -- current, more granular source of truth.
+                           bool_or(is_gt_import) DESC,
+                           max(run_id) DESC
+                   ) AS rnk
+            FROM scored
+            GROUP BY game_id, frame_index, run_group
+        )
+        SELECT s.game_id, s.frame_index, s.continuous_time_s, s.detection_id,
+               s.source, s.run_id, s.label, s.confidence,
+               s.bbox_x, s.bbox_y, s.bbox_w, s.bbox_h, s.mask_ref, s.track_id,
+               s.is_interpolated, s.needs_review, s.reviewed, s.dataset_tag,
                f.frame_uri, f.is_broadcast, f.half, f.game_time_s,
                r.stage, r.model_name, r.model_version,
-               RANK() OVER (
-                   PARTITION BY d.game_id, d.frame_index
-                   ORDER BY
-                       CASE d.source
-                           WHEN 'hand_label' THEN 3
-                           WHEN 'yolo' THEN 2
-                           WHEN 'sam3' THEN 2
-                           ELSE 1
-                       END DESC,
-                       r.created_at DESC NULLS LAST
-               ) = 1 AS canonical
-        FROM detection d
+               (gr.rnk = 1) AS canonical
+        FROM scored s
         JOIN frame f USING (game_id, frame_index)
-        LEFT JOIN run r USING (run_id);
+        LEFT JOIN run r USING (run_id)
+        JOIN group_rank gr USING (game_id, frame_index, run_group);
     """,
     """
     CREATE OR REPLACE VIEW tracks_enriched AS
