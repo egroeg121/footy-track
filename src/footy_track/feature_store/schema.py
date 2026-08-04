@@ -50,6 +50,7 @@ class Source(StrEnum):
     HAND_LABEL = "hand_label"
     YOLO = "yolo"
     SAM3 = "sam3"
+    VITTRACK = "vittrack"
     BYTETRACK = "bytetrack"
     BOTSORT = "botsort"
 

@@ -1,12 +1,12 @@
-"""Initial-flush driver: GT/labeller marks + the Roboflow hand-label dataset
-into the DuckDB feature store (ft-lzx).
+"""Flush driver: GT/labeller marks + the Roboflow hand-label dataset into the
+DuckDB feature store (ft-lzx).
 
 CLI:
     uv run python -m footy_track.feature_store.ingest_gt \\
         --gt-dir /mnt/storage/footy_data/ball_gt_marks \\
         --video-dir /home/george/code/footy_track/refinery/rig/eval_data/clips \\
         --db data/feature_store.duckdb \\
-        [--dry-run] [--clip <stem>] [--roboflow-dir <path>]
+        [--dry-run] [--clip <stem>] [--roboflow-dir <path>] [--legacy-all-reviewed]
 
 Each ``<clip_stem>.jsonl`` in ``--gt-dir`` holds one JSON object per line:
     {"frame_index": int, "bbox": {x,y,w,h} | null, "center": {...} | null,
@@ -15,10 +15,26 @@ Each ``<clip_stem>.jsonl`` in ``--gt-dir`` holds one JSON object per line:
 Object-class tags observed: player, referee, coach, person, player_sub,
 in_play_ball, out_of_play_ball. Skip markers: no_ball, not_broadcast (no
 detection emitted, but the frame is still recorded on the spine).
-Provenance tags: labeller -> hand_label, yolo -> yolo, sam3 -> sam3.
 
-For this initial flush every imported label gets ``reviewed=True`` and
-``dataset_tag='ball_gt_marks'`` (per user instruction: treat as hand-reviewed).
+Provenance tags and their tier mapping (default, per-tag tiering):
+    labeller -> source=hand_label, reviewed=True   (human ground truth)
+    vittrack -> source=vittrack,   reviewed=False  (VitTrack-propagated box;
+                                                     counts as a real label at
+                                                     model tier, not human)
+    yolo     -> source=yolo,       reviewed=False
+    sam3     -> source=sam3,       reviewed=False
+
+Lines whose tags carry no recognized provenance tag are dropped (no
+detection emitted) — same fallback as before this change, now documented
+here explicitly.
+
+Historical note: the very first flush of this driver stamped every imported
+label ``reviewed=True`` regardless of provenance (i.e. it treated yolo/sam3
+rows as reviewed too). That behavior predates VitTrack support and is no
+longer the default. Pass ``--legacy-all-reviewed`` to reproduce it for
+callers that still depend on the old blanket-reviewed semantics.
+
+``dataset_tag='ball_gt_marks'`` is stamped on every imported row either way.
 
 Frame width/height/fps come from the matching video in ``--video-dir`` (named
 ``<clip_stem>.mp4``) via OpenCV when available. If no matching video is found
@@ -53,8 +69,21 @@ DEFAULT_WIDTH = 1920
 DEFAULT_HEIGHT = 1080
 
 _SKIP_TAGS = {"no_ball", "not_broadcast"}
-_PROVENANCE_TAGS = {"labeller", "yolo", "sam3"}
-_PROVENANCE_TO_SOURCE = {"labeller": "hand_label", "yolo": "yolo", "sam3": "sam3"}
+_PROVENANCE_TAGS = {"labeller", "vittrack", "yolo", "sam3"}
+_PROVENANCE_TO_SOURCE = {
+    "labeller": "hand_label",
+    "vittrack": "vittrack",
+    "yolo": "yolo",
+    "sam3": "sam3",
+}
+# Per-tag reviewed default: only human-labelled rows are "reviewed" by
+# default. Model-tier tags (vittrack, yolo, sam3) are reviewed=False.
+_PROVENANCE_TO_REVIEWED = {
+    "labeller": True,
+    "vittrack": False,
+    "yolo": False,
+    "sam3": False,
+}
 _VIDEO_SUFFIXES = (".mp4", ".mov", ".avi", ".mkv")
 
 
@@ -107,6 +136,7 @@ def ingest_gt_jsonl(
     *,
     video_dir: Path,
     dry_run: bool = False,
+    legacy_all_reviewed: bool = False,
 ) -> GtImportReport:
     """Import one ``<clip_stem>.jsonl`` GT-marks file into the store."""
     stem = jsonl_path.stem
@@ -142,6 +172,7 @@ def ingest_gt_jsonl(
             continue
 
         source = _PROVENANCE_TO_SOURCE[prov_tag]
+        reviewed = True if legacy_all_reviewed else _PROVENANCE_TO_REVIEWED[prov_tag]
         ct = frame_index / fps
         run_id = f"gt_import_{prov_tag}"
         key = (frame_index, source)
@@ -160,7 +191,7 @@ def ingest_gt_jsonl(
                 bbox_y=float(bbox["y"]),
                 bbox_w=float(bbox["w"]),
                 bbox_h=float(bbox["h"]),
-                reviewed=True,
+                reviewed=reviewed,
                 dataset_tag=DATASET_TAG,
             )
         )
@@ -222,13 +253,20 @@ def ingest_gt_dir(
     video_dir: Path,
     clip: str | None = None,
     dry_run: bool = False,
+    legacy_all_reviewed: bool = False,
 ) -> GtImportReport:
     total = GtImportReport()
     paths = sorted(gt_dir.glob("*.jsonl"))
     if clip:
         paths = [p for p in paths if p.stem == clip]
     for path in paths:
-        r = ingest_gt_jsonl(store, path, video_dir=video_dir, dry_run=dry_run)
+        r = ingest_gt_jsonl(
+            store,
+            path,
+            video_dir=video_dir,
+            dry_run=dry_run,
+            legacy_all_reviewed=legacy_all_reviewed,
+        )
         total.games |= r.games
         total.frames_written += r.frames_written
         total.detections_written += r.detections_written
@@ -251,6 +289,15 @@ def main(argv: list[str] | None = None) -> None:
         default=None,
         help="Roboflow YOLO dataset dir to import as source=hand_label (skipped if omitted)",
     )
+    parser.add_argument(
+        "--legacy-all-reviewed",
+        action="store_true",
+        help=(
+            "Reproduce the original flush behavior: stamp reviewed=True on every "
+            "imported row regardless of provenance tier. Default is per-tag tiering "
+            "(labeller=reviewed, vittrack/yolo/sam3=unreviewed)."
+        ),
+    )
     args = parser.parse_args(argv)
 
     store = FeatureStore.open(":memory:" if args.dry_run else args.db)
@@ -260,7 +307,12 @@ def main(argv: list[str] | None = None) -> None:
         roboflow_report = import_roboflow(store, args.roboflow_dir)
 
     gt_report = ingest_gt_dir(
-        store, args.gt_dir, video_dir=args.video_dir, clip=args.clip, dry_run=args.dry_run
+        store,
+        args.gt_dir,
+        video_dir=args.video_dir,
+        clip=args.clip,
+        dry_run=args.dry_run,
+        legacy_all_reviewed=args.legacy_all_reviewed,
     )
 
     print("=== ingest_gt import report ===")
