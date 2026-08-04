@@ -12,6 +12,7 @@ from footy_track.feature_store.ingest_gt import ingest_gt_jsonl
 from footy_track.scripts.export_training_dataset import (
     _distinct_labels,
     _split_clips,
+    _split_clips_three_way,
     export,
     main,
 )
@@ -47,6 +48,123 @@ def test_split_clips_no_overlap() -> None:
     assert not (train & val)
     assert train | val == set(clips)
     assert len(val) == 2
+
+
+def test_split_clips_three_way_no_overlap_and_fractions() -> None:
+    clips = [f"c{i}" for i in range(20)]
+    train, val, test = _split_clips_three_way(clips, 0.2, 0.1)
+    # No clip in more than one split, all pairs disjoint.
+    assert not (train & val)
+    assert not (train & test)
+    assert not (val & test)
+    assert train | val | test == set(clips)
+    assert len(val) == 4  # round(20 * 0.2)
+    assert len(test) == 2  # round(20 * 0.1)
+    assert len(train) == 14
+
+
+def test_split_clips_three_way_test_fraction_zero_matches_two_way() -> None:
+    """test_fraction=0 must reduce exactly to the two-way split (back-compat)."""
+    clips = [f"c{i}" for i in range(11)]
+    train2, val2 = _split_clips(clips, 0.2)
+    train3, val3, test3 = _split_clips_three_way(clips, 0.2, 0.0)
+    assert train3 == train2
+    assert val3 == val2
+    assert test3 == set()
+
+
+def test_split_clips_three_way_small_and_zero_clips() -> None:
+    assert _split_clips_three_way([], 0.2, 0.1) == (set(), set(), set())
+    # single clip: no split possible (mirrors _split_clips's len(clips) > 1 guard)
+    train, val, test = _split_clips_three_way(["only"], 0.2, 0.1)
+    assert train == {"only"}
+    assert val == set()
+    assert test == set()
+
+
+def test_export_three_way_split_end_to_end(tmp_path) -> None:
+    """--test-fraction > 0 produces a genuine three-way by-clip split with no
+    clip straddling any pair of splits, plus test dirs/data.yaml/manifest."""
+    images_dir = tmp_path / "imgs"
+    images_dir.mkdir()
+    store = FeatureStore.open(":memory:")
+    for i in range(10):
+        _seed_clip(store, tmp_path, f"clip_{i}", images_dir, frames=(0, 1))
+
+    out = tmp_path / "ball_v1"
+    eval_dir = tmp_path / "eval"
+    eval_dir.mkdir()
+    manifest = export(
+        store,
+        out_dir=out,
+        video_dir=tmp_path,
+        eval_dir=eval_dir,
+        extra_exclude=set(),
+        val_fraction=0.2,
+        test_fraction=0.1,
+        tag="ball_v1",
+    )
+
+    train_clips = set(manifest["train_clips"])
+    val_clips = set(manifest["val_clips"])
+    test_clips = set(manifest["test_clips"])
+    assert not (train_clips & val_clips)
+    assert not (train_clips & test_clips)
+    assert not (val_clips & test_clips)
+    assert train_clips | val_clips | test_clips == {f"clip_{i}" for i in range(10)}
+    assert len(test_clips) == 1  # round(10 * 0.1)
+    assert len(val_clips) == 2  # round(10 * 0.2)
+
+    # data.yaml has all three splits.
+    dy = yaml.safe_load((out / "data.yaml").read_text())
+    assert dy["train"] == "images/train"
+    assert dy["val"] == "images/val"
+    assert dy["test"] == "images/test"
+
+    # Output dirs exist for all three splits.
+    for split in ("train", "val", "test"):
+        assert (out / "images" / split).is_dir()
+        assert (out / "labels" / split).is_dir()
+
+    # test split actually has images/boxes.
+    assert manifest["test"]["images"] > 0
+    assert manifest["test"]["boxes"] > 0
+
+    # dataset_tag write-back covers the test split.
+    tagged_test = store.query(
+        "SELECT DISTINCT dataset_tag FROM detection WHERE dataset_tag = 'ball_v1:test'"
+    )
+    assert len(tagged_test) == 1
+
+
+def test_export_test_fraction_zero_back_compat_default(tmp_path) -> None:
+    """Default (test_fraction=0.0) leaves the manifest/data.yaml/dirs exactly
+    as before: no 'test' key, no test dirs."""
+    images_dir = tmp_path / "imgs"
+    images_dir.mkdir()
+    store = FeatureStore.open(":memory:")
+    for i in range(5):
+        _seed_clip(store, tmp_path, f"clip_{i}", images_dir, frames=(0, 1, 2))
+
+    out = tmp_path / "ball_v1"
+    eval_dir = tmp_path / "eval"
+    eval_dir.mkdir()
+    manifest = export(
+        store,
+        out_dir=out,
+        video_dir=tmp_path,
+        eval_dir=eval_dir,
+        extra_exclude=set(),
+        val_fraction=0.2,
+        tag="ball_v1",
+    )
+
+    assert "test" not in manifest
+    assert "test_clips" not in manifest
+    dy = yaml.safe_load((out / "data.yaml").read_text())
+    assert "test" not in dy
+    assert not (out / "images" / "test").exists()
+    assert not (out / "labels" / "test").exists()
 
 
 def test_export_end_to_end_by_clip(tmp_path) -> None:

@@ -13,9 +13,16 @@ assigned by sorting the requested (or discovered, for ``all``) label strings
 alphabetically and taking their index — deterministic and recorded in
 ``data.yaml["names"]``.
 
-Assembles a YOLOv8-format dataset (``images/{train,val}``, ``labels/{train,val}``,
-``data.yaml``) with a **by-clip** train/val split (a clip never straddles the
-split, preventing near-duplicate frame leakage) in all modes.
+Assembles a YOLOv8-format dataset (``images/{train,val[,test]}``,
+``labels/{train,val[,test]}``, ``data.yaml``) with a **by-clip** split (a clip
+never straddles a split, preventing near-duplicate frame leakage) in all modes.
+
+By default only train/val are produced (``--test-fraction 0`` — the original,
+back-compat two-way split). Passing ``--test-fraction`` > 0 switches to a
+three-way by-clip split (train/val/test); clips are still never split across
+any pair of splits, and the same deterministic assignment approach as the
+two-way split is used. The recommended convention is a 70/20/10 split:
+``--val-fraction 0.2 --test-fraction 0.1``.
 
 Leakage guard (the critical requirement): every clip used by the ball_eval
 harness is excluded from both splits. The harness eval set is the set of clips
@@ -41,9 +48,16 @@ CLI:
         --video-dir eval_data/clips \\
         --out data/training_datasets/ball_v1 \\
         [--eval-dir eval_data/clips] [--exclude-clip <stem> ...] \\
-        [--val-fraction 0.2] [--tag ball_v1] \\
+        [--val-fraction 0.2] [--test-fraction 0.1] [--tag ball_v1] \\
         [--classes player,referee,person | --classes all] \\
         [--sources hand_label,vittrack]
+
+    # Recommended 70/20/10 split:
+    uv run python -m footy_track.scripts.export_training_dataset \\
+        --db data/feature_store.duckdb \\
+        --video-dir eval_data/clips \\
+        --out data/training_datasets/ball_v1 \\
+        --val-fraction 0.2 --test-fraction 0.1 --tag ball_v1
 """
 
 from __future__ import annotations
@@ -114,6 +128,16 @@ def _query_multiclass_detections(
     return store.query(sql, params)
 
 
+def _pick_spread(clips: list[str], n: int) -> set[str]:
+    """Pick *n* clips spread across the sorted list (every k-th) for game
+    diversity. ``clips`` must already be sorted."""
+    if not n:
+        return set()
+    step = max(1, len(clips) // n)
+    picked = {clips[i] for i in range(0, len(clips), step)}
+    return set(sorted(picked)[:n])
+
+
 def _split_clips(clips: list[str], val_fraction: float) -> tuple[set[str], set[str]]:
     """Deterministic by-clip split: assign whole clips to val until the target
     fraction of clips is reached. Sorted for reproducibility."""
@@ -121,15 +145,35 @@ def _split_clips(clips: list[str], val_fraction: float) -> tuple[set[str], set[s
     if not clips:
         return set(), set()
     n_val = max(1, round(len(clips) * val_fraction)) if len(clips) > 1 else 0
-    # Spread val picks across the sorted list (every k-th) for game diversity.
-    val: set[str] = set()
-    if n_val:
-        step = max(1, len(clips) // n_val)
-        val = {clips[i] for i in range(0, len(clips), step)}
-        # trim to exactly n_val
-        val = set(sorted(val)[:n_val])
+    val = _pick_spread(clips, n_val)
     train = set(clips) - val
     return train, val
+
+
+def _split_clips_three_way(
+    clips: list[str], val_fraction: float, test_fraction: float
+) -> tuple[set[str], set[str], set[str]]:
+    """Deterministic by-clip three-way split: train/val/test, no clip in more
+    than one split. Same spread-picking approach as the two-way split, applied
+    first to carve out val, then test, from what remains.
+
+    ``test_fraction == 0`` reduces exactly to ``_split_clips``'s train/val
+    behavior (test is simply empty)."""
+    clips = sorted(clips)
+    if not clips:
+        return set(), set(), set()
+    n_val = max(1, round(len(clips) * val_fraction)) if len(clips) > 1 else 0
+    val = _pick_spread(clips, n_val)
+
+    remaining = sorted(set(clips) - val)
+    n_test = 0
+    if test_fraction > 0 and len(clips) > 1 and remaining:
+        n_test = max(1, round(len(clips) * test_fraction))
+        n_test = min(n_test, len(remaining))
+    test = _pick_spread(remaining, n_test)
+
+    train = set(clips) - val - test
+    return train, val, test
 
 
 # Fallback source-video resolution (ft-n2o.1): the `eval_data/clips/*.mp4`
@@ -289,6 +333,7 @@ def export(
     data_root: Path | None = None,
     classes: list[str] | None = None,
     sources: list[str] | None = None,
+    test_fraction: float = 0.0,
 ) -> dict:
     """Export a leakage-free YOLO dataset.
 
@@ -299,6 +344,11 @@ def export(
 
     ``sources`` optionally restricts detections to specific ``source`` column
     values (e.g. ``["hand_label"]``); ``None``/empty means unrestricted.
+
+    ``test_fraction`` defaults to ``0.0``: the original two-way (train/val)
+    by-clip split, output unchanged. Set > 0 for a three-way (train/val/test)
+    by-clip split (recommended: ``val_fraction=0.2, test_fraction=0.1`` for a
+    70/20/10 split); a clip never straddles any pair of splits.
     """
     multiclass = classes is not None
     if multiclass:
@@ -322,21 +372,31 @@ def export(
         rows_by_clip[r.game_id].append(r)
 
     clips = list(rows_by_clip)
-    train_clips, val_clips = _split_clips(clips, val_fraction)
+    has_test = test_fraction > 0
+    if has_test:
+        train_clips, val_clips, test_clips = _split_clips_three_way(
+            clips, val_fraction, test_fraction
+        )
+    else:
+        train_clips, val_clips = _split_clips(clips, val_fraction)
+        test_clips = set()
 
-    # Sanity: no clip in both splits.
+    # Sanity: no clip in more than one split.
     assert not (train_clips & val_clips), "clip leakage between splits"
+    assert not (train_clips & test_clips), "clip leakage between splits"
+    assert not (val_clips & test_clips), "clip leakage between splits"
 
+    splits = ("train", "val", "test") if has_test else ("train", "val")
     counts = {
-        "train": {"images": 0, "boxes": 0, "by_source": defaultdict(int)},
-        "val": {"images": 0, "boxes": 0, "by_source": defaultdict(int)},
+        split: {"images": 0, "boxes": 0, "by_source": defaultdict(int)}
+        for split in splits
     }
     per_clip = {}
 
     # Reset output dirs.
     if out_dir.exists():
         shutil.rmtree(out_dir)
-    for split in ("train", "val"):
+    for split in splits:
         (out_dir / "images" / split).mkdir(parents=True, exist_ok=True)
         (out_dir / "labels" / split).mkdir(parents=True, exist_ok=True)
 
@@ -346,7 +406,12 @@ def export(
     unresolved_clips: set[str] = set()
 
     for clip, rows in rows_by_clip.items():
-        split = "val" if clip in val_clips else "train"
+        if clip in val_clips:
+            split = "val"
+        elif clip in test_clips:
+            split = "test"
+        else:
+            split = "train"
         clip_images, clip_boxes = _export_clip(
             clip,
             rows,
@@ -378,6 +443,8 @@ def export(
         "nc": len(class_names),
         "names": class_names,
     }
+    if has_test:
+        data_yaml["test"] = "images/test"
     (out_dir / "data.yaml").write_text(yaml.safe_dump(data_yaml, sort_keys=False))
 
     manifest = {
@@ -402,6 +469,13 @@ def export(
         "per_clip": per_clip,
         "unresolved_clips_no_source_video": sorted(unresolved_clips),
     }
+    if has_test:
+        manifest["test_clips"] = sorted(test_clips)
+        manifest["test"] = {
+            "images": counts["test"]["images"],
+            "boxes": counts["test"]["boxes"],
+            "by_source": dict(counts["test"]["by_source"]),
+        }
     (out_dir / "manifest.yaml").write_text(yaml.safe_dump(manifest, sort_keys=False))
     return manifest
 
@@ -418,6 +492,15 @@ def main(argv: list[str] | None = None) -> None:
         "--exclude-clip", action="append", default=[], dest="exclude_clip"
     )
     parser.add_argument("--val-fraction", type=float, default=0.2)
+    parser.add_argument(
+        "--test-fraction",
+        type=float,
+        default=0.0,
+        help="Fraction of clips held out as a third (test) split, by-clip like "
+        "--val-fraction. Default 0.0 keeps the original train/val-only "
+        "behavior exactly. Recommended convention for a 70/20/10 split: "
+        "--val-fraction 0.2 --test-fraction 0.1.",
+    )
     parser.add_argument("--tag", type=str, default="ball_v1")
     parser.add_argument(
         "--data-root",
@@ -465,6 +548,7 @@ def main(argv: list[str] | None = None) -> None:
         eval_dir=args.eval_dir,
         extra_exclude=set(args.exclude_clip),
         val_fraction=args.val_fraction,
+        test_fraction=args.test_fraction,
         data_root=args.data_root,
         tag=args.tag,
         classes=classes,
@@ -491,8 +575,17 @@ def main(argv: list[str] | None = None) -> None:
         f"images={manifest['val']['images']} boxes={manifest['val']['boxes']} "
         f"by_source={manifest['val']['by_source']}"
     )
+    if "test" in manifest:
+        print(
+            f"test:  clips={len(manifest['test_clips'])} "
+            f"images={manifest['test']['images']} boxes={manifest['test']['boxes']} "
+            f"by_source={manifest['test']['by_source']}"
+        )
     overlap = set(manifest["train_clips"]) & set(manifest["val_clips"])
-    print(f"train/val clip overlap (must be empty): {overlap}")
+    if "test" in manifest:
+        overlap |= set(manifest["train_clips"]) & set(manifest["test_clips"])
+        overlap |= set(manifest["val_clips"]) & set(manifest["test_clips"])
+    print(f"train/val(/test) clip overlap (must be empty): {overlap}")
     unresolved = manifest["unresolved_clips_no_source_video"]
     if unresolved:
         print(
