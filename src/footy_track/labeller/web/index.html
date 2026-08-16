@@ -66,6 +66,18 @@
   .clip-item.active { background:rgba(30,144,255,.3); color:#fff; }
   .no-ball-badge { display:inline-block; background:#555; color:#fff; border-radius:3px;
                    font-size:10px; padding:1px 4px; margin-left:4px; }
+  .queue-panel { background:var(--panel); border:1px solid var(--border); border-radius:8px;
+                 padding:10px; max-height:40vh; overflow:auto; margin-top:10px; }
+  .queue-panel h3 { margin:0 0 8px; font-size:14px; }
+  .queue-item { padding:4px 6px; border-radius:4px; font-size:12px; cursor:pointer;
+                white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .queue-item:hover { background:rgba(30,144,255,.15); }
+  .queue-item.active { background:rgba(30,144,255,.3); color:#fff; }
+  .queue-item.done { color:var(--green); }
+  .queue-item .q-reason { color:var(--muted); font-size:10px; display:block;
+                           white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .queue-controls { display:flex; gap:6px; margin-top:6px; }
+  .queue-controls button { flex:1; font-size:11px; }
 </style>
 </head>
 <body>
@@ -82,10 +94,23 @@
 </div>
 
 <div class="wrap">
-  <div class="clips-panel">
-    <h3>📂 Clips</h3>
-    <div id="clipList"><span class="muted">Loading…</span></div>
-    <button id="addClipBtn" style="margin-top:8px;width:100%;font-size:11px;">+ Add clip</button>
+  <div>
+    <div class="clips-panel">
+      <h3>📂 Clips</h3>
+      <div id="clipList"><span class="muted">Loading…</span></div>
+      <button id="addClipBtn" style="margin-top:8px;width:100%;font-size:11px;">+ Add clip</button>
+    </div>
+
+    <div class="queue-panel" id="queuePanel" style="display:none">
+      <h3>🎯 Queue <span id="queueProgress" class="muted" style="font-weight:normal;font-size:12px;"></span></h3>
+      <div id="queueList"></div>
+      <div class="queue-controls">
+        <button id="queuePrevBtn" disabled>← Prev</button>
+        <button id="queueNextBtn" disabled>Next →</button>
+        <button id="queueClearBtn" style="flex:none;font-size:11px;">✕</button>
+      </div>
+    </div>
+    <button id="loadQueueBtn" style="margin-top:8px;width:100%;font-size:11px;" title="Load a queue JSON file or paste JSON">📋 Load queue…</button>
   </div>
 
   <div>
@@ -651,6 +676,17 @@ async function loadClipList() {
   });
 }
 
+// Resolve a clip reference (full filename or stem like "bournemouth_seg031")
+// to {name, el} against the rendered clip list.
+function resolveClip(ref) {
+  let match = null;
+  document.querySelectorAll(".clip-item").forEach(el => {
+    const n = el.title;
+    if (n === ref || n.replace(/\.[^.]+$/, "") === ref) match = { name: n, el };
+  });
+  return match || { name: ref, el: null };
+}
+
 async function loadClip(name, el) {
   if (!clipsDir) return;
   // Save current frame then clear canvas before switching clips
@@ -661,7 +697,7 @@ async function loadClip(name, el) {
   // Highlight active clip
   document.querySelectorAll(".clip-item").forEach(e => e.classList.remove("active"));
   if (el) el.classList.add("active");
-  $("loadBtn").click();
+  await loadVideo();
 }
 
 loadClipList();
@@ -680,7 +716,7 @@ $("addClipBtn").onclick = async () => {
 // Restore the last-used video path so it's pre-filled next time.
 $("videoPath").value = localStorage.getItem("lastVideoPath") || "";
 
-$("loadBtn").onclick = async ()=>{
+async function loadVideo(){
   let path = $("videoPath").value.trim();
   if ((path.startsWith("'")&&path.endsWith("'"))||(path.startsWith('"')&&path.endsWith('"'))) path=path.slice(1,-1);
   localStorage.setItem("lastVideoPath", path);
@@ -721,7 +757,8 @@ $("loadBtn").onclick = async ()=>{
     await autodetect(0);
   }
   connectWS();
-};
+}
+$("loadBtn").onclick = loadVideo;
 
 async function autodetect(frameIdx){
   setStatus("auto-detecting…");
@@ -980,6 +1017,147 @@ function connectWS(){
   };
 }
 
+// ---------- clip queue ----------
+const waitForClipsDir = () => new Promise(resolve => { const check = () => clipsDir ? resolve() : setTimeout(check, 100); check(); });
+let queue = [];           // [{clip, start, end, reason}] — start/end are optional frame ranges
+let queueIdx = -1;        // index of currently active queue entry
+
+function renderQueue() {
+  const panel = $("queuePanel");
+  const list = $("queueList");
+  if (!queue.length) { panel.style.display = "none"; return; }
+  panel.style.display = "";
+  $("queueProgress").textContent = `(${Math.max(0, queueIdx + 1)}/${queue.length})`;
+  list.innerHTML = "";
+  queue.forEach((entry, i) => {
+    const el = document.createElement("div");
+    el.className = "queue-item" + (i === queueIdx ? " active" : "") + (i < queueIdx ? " done" : "");
+    const nameEl = document.createElement("span");
+    nameEl.textContent = entry.clip + (entry.start != null ? ` @${entry.start}${entry.end != null ? "–" + entry.end : ""}` : "");
+    el.appendChild(nameEl);
+    if (entry.reason) {
+      const r = document.createElement("span"); r.className = "q-reason"; r.textContent = entry.reason;
+      el.appendChild(r);
+    }
+    el.onclick = () => jumpToQueueEntry(i);
+    list.appendChild(el);
+  });
+  $("queuePrevBtn").disabled = queueIdx <= 0;
+  $("queueNextBtn").disabled = queueIdx >= queue.length - 1;
+}
+
+async function jumpToQueueEntry(i) {
+  if (i < 0 || i >= queue.length) return;
+  queueIdx = i;
+  const entry = queue[i];
+  // Wait for clipsDir to be populated (may not be set yet if called from URL params at startup)
+  await waitForClipsDir();
+  const { name, el } = resolveClip(entry.clip);
+  await loadClip(name, el);
+  // Jump to start frame if specified
+  if (entry.start != null) {
+    const targetFrame = Math.min(entry.start, meta ? meta.total_frames - 1 : entry.start);
+    await gotoFrame(targetFrame);
+  }
+  renderQueue();
+  // Scroll active item into view
+  const activeEl = $("queueList").querySelector(".queue-item.active");
+  if (activeEl) activeEl.scrollIntoView({ block: "nearest" });
+}
+
+async function loadQueueData(data) {
+  // data: [{clip, start?, end?, reason?}, ...]
+  queue = data.map(e => ({
+    clip: String(e.clip || e.name || ""),
+    start: e.start != null ? parseInt(e.start) : null,
+    end: e.end != null ? parseInt(e.end) : null,
+    reason: e.reason || e.note || null,
+  })).filter(e => e.clip);
+  queueIdx = -1;
+  renderQueue();
+  if (queue.length) await jumpToQueueEntry(0);
+}
+
+function clearQueue() {
+  queue = []; queueIdx = -1; renderQueue();
+}
+
+$("queueClearBtn").onclick = clearQueue;
+$("queuePrevBtn").onclick = () => jumpToQueueEntry(queueIdx - 1);
+$("queueNextBtn").onclick = () => jumpToQueueEntry(queueIdx + 1);
+
+$("loadQueueBtn").onclick = async () => {
+  // First fetch available server-side queues
+  let queueNames = [];
+  try {
+    const r = await fetch("/queues");
+    if (r.ok) queueNames = await r.json();
+  } catch {}
+
+  let prompt_msg = "Load queue:\n";
+  if (queueNames.length) prompt_msg += `Server queues: ${queueNames.join(", ")}\nEnter queue name (e.g. low_confidence.json) or paste JSON array:\n`;
+  else prompt_msg += "Paste JSON array of {clip, start?, end?, reason?} objects, or enter a server queue filename:\n";
+
+  const raw = prompt(prompt_msg);
+  if (!raw) return;
+  const trimmed = raw.trim();
+
+  // Try as server queue name
+  if (!trimmed.startsWith("[") && !trimmed.startsWith("{")) {
+    const name = trimmed.endsWith(".json") ? trimmed : trimmed + ".json";
+    try {
+      const r = await fetch(`/queue/${encodeURIComponent(name)}`);
+      if (r.ok) { await loadQueueData(await r.json()); return; }
+    } catch {}
+    alert(`Queue "${name}" not found on server`);
+    return;
+  }
+
+  let data;
+  try { data = JSON.parse(trimmed); } catch { alert("Invalid JSON"); return; }
+  if (!Array.isArray(data)) { alert("Expected a JSON array"); return; }
+  await loadQueueData(data);
+};
+
+// ---------- URL-based clip+timestamp loading ----------
+(async function applyUrlParams() {
+  const params = new URLSearchParams(location.search);
+  const clipParam = params.get("clip");
+  const frameParam = params.get("frame");
+  const queueParam = params.get("queue");
+  const queueJsonParam = params.get("queue_json");
+
+  // queue_json: base64-encoded JSON array
+  if (queueJsonParam) {
+    try {
+      const decoded = atob(queueJsonParam);
+      const data = JSON.parse(decoded);
+      if (Array.isArray(data)) { await loadQueueData(data); return; }
+    } catch { console.warn("Invalid queue_json param"); }
+  }
+
+  // queue: URL to a JSON file
+  if (queueParam) {
+    try {
+      const res = await fetch(queueParam);
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data)) { await loadQueueData(data); return; }
+      }
+    } catch { console.warn("Failed to fetch queue from", queueParam); }
+  }
+
+  // clip+frame: direct navigation
+  if (clipParam) {
+    await waitForClipsDir();
+    const { name, el } = resolveClip(clipParam);
+    await loadClip(name, el);
+    if (frameParam != null) {
+      const targetFrame = Math.max(0, parseInt(frameParam) || 0);
+      if (meta) await gotoFrame(Math.min(targetFrame, meta.total_frames - 1));
+    }
+  }
+})();
 </script>
 </body>
 </html>

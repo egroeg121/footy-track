@@ -27,6 +27,7 @@ os.environ.setdefault(
 import cv2  # noqa: E402
 from fastapi import (  # noqa: E402
     FastAPI,
+    HTTPException,
     WebSocket,
     WebSocketDisconnect,
 )
@@ -69,6 +70,7 @@ app = FastAPI(title="Footy Track Labeller")
 # resolve these at call time (and tests monkeypatch them here).
 _STATIC_DIR = Path(__file__).parent / "web"
 _CLIPS_DIR = Path(__file__).parents[3] / "eval_data" / "clips"
+_QUEUE_DIR = Path(__file__).parents[3] / "eval_data" / "queues"
 _GT_MARKS_DIR = (
     Path.home()
     / "Library"
@@ -107,6 +109,29 @@ async def review_page() -> HTMLResponse:
 @app.get("/ingest", response_class=HTMLResponse)
 async def ingest_page() -> HTMLResponse:
     return HTMLResponse((_STATIC_DIR / "ingest.html").read_text())
+
+
+@app.get("/queue/{name}")
+async def get_queue(name: str) -> list:
+    """Serve a named queue JSON file from the queues directory.
+
+    Queue files are JSON arrays of {clip, start?, end?, reason?} objects.
+    External tools (bake-off runner, active learning scripts) write queue files
+    here; the labeller UI fetches them via ?queue=/queue/<name>.json.
+    """
+    safe_name = Path(name).name  # prevent path traversal
+    queue_path = _QUEUE_DIR / safe_name
+    if not queue_path.exists():
+        raise HTTPException(status_code=404, detail=f"Queue not found: {safe_name}")
+    return json.loads(queue_path.read_text())
+
+
+@app.get("/queues")
+async def list_queues() -> list:
+    """List available queue files."""
+    if not _QUEUE_DIR.exists():
+        return []
+    return sorted(p.name for p in _QUEUE_DIR.iterdir() if p.suffix == ".json")
 
 
 def _clip_completion(stem: str, video_path: Path) -> dict:
