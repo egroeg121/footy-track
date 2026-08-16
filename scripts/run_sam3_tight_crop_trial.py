@@ -33,24 +33,30 @@ import numpy as np
 
 PROJECT_ROOT = pathlib.Path(__file__).parents[1]
 
-# GT marks and video locations
-GT_DIR = (
-    pathlib.Path.home()
-    / "Library"
-    / "Mobile Documents"
-    / "com~apple~CloudDocs"
-    / "footy_data"
-    / "ball_gt_marks"
-)
-VIDEO_DIR = (
-    pathlib.Path.home()
-    / "Library"
-    / "Mobile Documents"
-    / "com~apple~CloudDocs"
-    / "footy_data"
-    / "arsenal_mancity"
-    / "split_video_broadcast_frames"
-)
+# footy_data root: $FOOTY_DATA, else /mnt/storage/footy_data (Mac mini), else
+# the macOS iCloud path.
+def _resolve_footy_data() -> pathlib.Path:
+    import os
+    candidates = []
+    if os.environ.get("FOOTY_DATA"):
+        candidates.append(pathlib.Path(os.environ["FOOTY_DATA"]))
+    candidates += [
+        pathlib.Path("/mnt/storage/footy_data"),
+        pathlib.Path.home() / "Library" / "Mobile Documents" / "com~apple~CloudDocs" / "footy_data",
+    ]
+    for c in candidates:
+        # require the model dir too — ~/Library on the mini is a partial mirror
+        if (c / "model_saves").exists():
+            return c
+    for c in candidates:
+        if c.exists():
+            return c
+    return candidates[-1]
+
+
+FOOTY_DATA = _resolve_footy_data()
+GT_DIR = FOOTY_DATA / "ball_gt_marks"
+VIDEO_DIR = FOOTY_DATA / "arsenal_mancity" / "split_video_broadcast_frames"
 
 OUTPUT_PATH = PROJECT_ROOT / "docs" / "sam3_trial_results.json"
 
@@ -343,14 +349,7 @@ def score_results(
 
 def resolve_model_uri() -> str:
     candidates = [
-        pathlib.Path.home()
-        / "Library"
-        / "Mobile Documents"
-        / "com~apple~CloudDocs"
-        / "footy_data"
-        / "model_saves"
-        / "sam3"
-        / "sam3.pt",
+        FOOTY_DATA / "model_saves" / "sam3" / "sam3.pt",
         PROJECT_ROOT / "model_saves" / "sam3" / "sam3.pt",
     ]
     for p in candidates:
