@@ -48,7 +48,12 @@ MODEL_TAG_VITTRACK = "vittrack"
 
 # Confidence threshold for VitTrack anomaly handback — below this, the user
 # is asked to correct the box rather than trusting the tracker.
-_VITTRACK_HANDBACK_SCORE = 0.5
+_VITTRACK_HANDBACK_SCORE = 0.30
+# Non-ball classes never halt a run (ft-rx3). A typical seed is ~18 objects of
+# which one is the ball; VitTrack's Hann-windowed scores run much lower for
+# player/ref boxes, so one global threshold stopped every run on frame 1.
+_NONBALL_HANDBACK_SCORE = 0.0
+_BALL_LABELS = frozenset({"ball", "in_play_ball"})
 
 
 @dataclass
@@ -898,7 +903,11 @@ class BackgroundLabeller:
         thresholds = self.handback_thresholds
         if label in thresholds:
             return thresholds[label]
-        return thresholds.get("other", _VITTRACK_HANDBACK_SCORE)
+        if "other" in thresholds:
+            return thresholds["other"]
+        if label in _BALL_LABELS:
+            return _VITTRACK_HANDBACK_SCORE
+        return _NONBALL_HANDBACK_SCORE
 
     def submit(
         self,

@@ -183,18 +183,39 @@ def test_worker_slots_frames_by_absolute_index():
 
 
 def test_worker_confidence_handback_stops_run():
+    """A BALL dropping below the ball threshold (0.30) hands back for correction."""
     bg = BackgroundLabeller()
     frames = [
-        _fd(0, [_det(conf=1.0)]),
-        _fd(1, [_det(conf=0.31, x=0.11)]),  # below the 0.5 handback threshold
-        _fd(2, [_det(conf=1.0, x=0.12)]),
+        _fd(0, [_det(label="in_play_ball", conf=1.0)]),
+        _fd(1, [_det(label="in_play_ball", conf=0.21, x=0.11)]),  # below 0.30
+        _fd(2, [_det(label="in_play_ball", conf=1.0, x=0.12)]),
     ]
     _run_worker(bg, frames)
     assert bg.anomaly_frame == 1
     assert "confidence dropped" in bg.anomaly_reason
-    assert "0.31" in bg.anomaly_reason
+    assert "0.21" in bg.anomaly_reason
     # The run stopped: frame 2 was never ingested.
     assert bg.frames[2] is None
+
+
+def test_worker_low_confidence_nonball_does_not_stop_run():
+    """ft-rx3: non-ball classes must never halt a run.
+
+    A typical seed is ~18 objects of which exactly one is the ball; VitTrack's
+    Hann-windowed scores run much lower for player/ref boxes. Under the old
+    single 0.5 threshold any one of those 17 boxes halted propagation on the
+    first frame, so Run appeared to do nothing at all.
+    """
+    bg = BackgroundLabeller()
+    frames = [
+        _fd(0, [_det(conf=1.0)]),
+        _fd(1, [_det(conf=0.05, x=0.11)]),  # player, far below any ball threshold
+        _fd(2, [_det(conf=1.0, x=0.12)]),
+    ]
+    _run_worker(bg, frames)
+    assert bg.anomaly_frame is None
+    assert bg.frames[2] is not None
+    assert bg.last_completed_frame == 2
 
 
 def test_worker_motion_anomaly_stops_run():
