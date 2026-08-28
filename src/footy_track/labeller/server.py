@@ -68,14 +68,40 @@ app = FastAPI(title="Footy Track Labeller")
 # server.py is the composition root and config surface: extracted modules
 # resolve these at call time (and tests monkeypatch them here).
 _STATIC_DIR = Path(__file__).parent / "web"
-_CLIPS_DIR = Path(__file__).parents[3] / "eval_data" / "clips"
-_GT_MARKS_DIR = (
+
+
+def _env_dir(var: str, *fallbacks: Path) -> Path:
+    """First existing candidate: $var, then each fallback, else fallbacks[0].
+
+    The GT/clip locations differ per machine (macOS iCloud on the laptop, plain
+    directories on Linux boxes and rented GPUs). Hardcoding the macOS path made
+    Linux hosts resolve to an empty ``~/Library/Mobile Documents/...`` directory,
+    so the labeller silently showed no existing labels and there was no way to
+    tell what still needed doing. Resolve by environment instead.
+    """
+    override = os.environ.get(var)
+    if override:
+        return Path(override).expanduser()
+    for cand in fallbacks:
+        if cand.is_dir():
+            return cand
+    return fallbacks[0]
+
+
+_CLIPS_DIR = _env_dir(
+    "FOOTY_CLIPS_DIR",
+    Path(__file__).parents[3] / "eval_data" / "clips",
+    Path.home() / "footy" / "footy_data" / "clips",
+)
+_GT_MARKS_DIR = _env_dir(
+    "FOOTY_GT_MARKS_DIR",
+    Path.home() / "footy" / "footy_data" / "ball_gt_marks",
     Path.home()
     / "Library"
     / "Mobile Documents"
     / "com~apple~CloudDocs"
     / "footy_data"
-    / "ball_gt_marks"
+    / "ball_gt_marks",
 )
 
 
@@ -152,6 +178,10 @@ async def list_clips() -> dict:
     paths = sorted(
         p for p in _CLIPS_DIR.iterdir() if p.suffix.lower() in video_suffixes
     )
+    # FOOTY_MAX_CLIPS keeps startup cheap on a small development box (--debug).
+    max_clips = os.environ.get("FOOTY_MAX_CLIPS")
+    if max_clips and max_clips.isdigit() and int(max_clips) > 0:
+        paths = paths[: int(max_clips)]
     # Return names fast; completion checked lazily via /clips/status
     clips = [
         {"name": p.name, "marked": (_GT_MARKS_DIR / f"{p.stem}.jsonl").exists()}
