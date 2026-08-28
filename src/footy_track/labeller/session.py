@@ -10,7 +10,10 @@ monkeypatch it there), never captured at import time.
 from __future__ import annotations
 
 import json
+import os
+import shutil
 import threading
+import time
 from pathlib import Path
 
 import cv2
@@ -98,6 +101,12 @@ class Session:
         jsonl_path = _gt_marks_dir() / f"{self.video_path.stem}.jsonl"
         if not jsonl_path.exists():
             return
+        # Count marks we could not load. _do_flush rewrites the WHOLE file from
+        # the timeline, so anything dropped here would be erased from disk on the
+        # next flush. A wrong total_frames (unreadable video, dangling symlink)
+        # drops EVERY mark and silently destroys the file — this is not
+        # hypothetical: it truncated arsenal_example.jsonl from 3348 rows to 0.
+        dropped = 0
         with jsonl_path.open() as f:
             for raw_line in f:
                 stripped = raw_line.strip()
@@ -106,9 +115,11 @@ class Session:
                 try:
                     d = json.loads(stripped)
                 except json.JSONDecodeError:
+                    dropped += 1
                     continue
                 idx = int(d.get("frame_index", -1))
                 if idx < 0 or idx >= self.total_frames:
+                    dropped += 1
                     continue
                 tags = d.get("tags") or []
                 if NOT_BROADCAST_TAG in tags:
@@ -121,6 +132,14 @@ class Session:
                 if bbox is None:
                     continue
                 self._restore_box_line(idx, bbox, tags)
+        self._load_dropped = dropped
+        if dropped:
+            print(
+                f"[load] {jsonl_path.name}: {dropped} mark(s) could not be loaded "
+                f"(total_frames={self.total_frames}) — flushing is DISABLED for this "
+                f"session so the sidecar is not overwritten with partial data.",
+                flush=True,
+            )
 
     def _restore_box_line(self, idx: int, bbox: dict | list, tags: list[str]) -> None:
         """Rebuild one sidecar box line into the timeline, provenance intact."""
@@ -234,6 +253,16 @@ class Session:
         if self.video_path is None:
             return
         out_path = _gt_marks_dir() / f"{self.video_path.stem}.jsonl"
+        # Refuse to rewrite a sidecar we could not fully load — a partial flush
+        # would silently delete the marks that were dropped at load time.
+        if getattr(self, "_load_dropped", 0):
+            print(
+                f"[flush] REFUSING to write {out_path.name}: "
+                f"{self._load_dropped} mark(s) failed to load; writing would "
+                f"destroy them. Fix the clip/total_frames, then reload.",
+                flush=True,
+            )
+            return
         try:
             out_path.parent.mkdir(parents=True, exist_ok=True)
             with self._tl_lock:
@@ -251,7 +280,24 @@ class Session:
                 if boxes is None:
                     continue
                 lines.extend(_box_line(idx, b) for b in boxes)
-            out_path.write_text("\n".join(lines) + ("\n" if lines else ""))
+            # Never silently replace real marks with nothing. A legitimate
+            # "clear all" is still allowed, but the previous content is kept.
+            if not lines and out_path.exists() and out_path.stat().st_size > 0:
+                backup = out_path.with_suffix(f".jsonl.bak-{int(time.time())}")
+                shutil.copy2(out_path, backup)
+                print(
+                    f"[flush] {out_path.name} is being emptied; previous "
+                    f"content saved to {backup.name}",
+                    flush=True,
+                )
+            # Atomic: a crash mid-write must not leave a truncated sidecar.
+            payload = "\n".join(lines) + ("\n" if lines else "")
+            tmp = out_path.with_suffix(".jsonl.tmp")
+            with tmp.open("w") as fh:
+                fh.write(payload)
+                fh.flush()
+                os.fsync(fh.fileno())
+            os.replace(tmp, out_path)
         except Exception as exc:  # noqa: BLE001 — flush must never kill the server
             print(f"[flush] failed to write {out_path}: {exc}", flush=True)
 
