@@ -1,12 +1,14 @@
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-import fiftyone as fo
 import torch
 from PIL import Image
 from torchvision import transforms, utils
 
 from footy_track.schema import FrameDetections, ObjectDetection
+
+if TYPE_CHECKING:  # pragma: no cover - typing only
+    import fiftyone as fo
 
 
 def _available_device():
@@ -239,7 +241,7 @@ def ultralytics_result_to_detections(
 # ------------------------------
 
 
-def detection_to_fiftyone(d: ObjectDetection) -> fo.Detection:
+def detection_to_fiftyone(d: ObjectDetection) -> "fo.Detection":
     """Convert a single Detection to a FiftyOne Detection.
 
     Returns
@@ -247,6 +249,8 @@ def detection_to_fiftyone(d: ObjectDetection) -> fo.Detection:
     fiftyone.core.labels.Detection
         With bounding_box as [x, y, w, h] and confidence
     """
+    import fiftyone as fo  # noqa: PLC0415
+
     return fo.Detection(
         label=d.label,
         bounding_box=[float(d.x), float(d.y), float(d.w), float(d.h)],
@@ -254,7 +258,7 @@ def detection_to_fiftyone(d: ObjectDetection) -> fo.Detection:
     )
 
 
-def frame_to_fiftyone_detections(frame: FrameDetections) -> list[fo.Detection]:
+def frame_to_fiftyone_detections(frame: FrameDetections) -> list["fo.Detection"]:
     """Convert FrameDetections to a list of FiftyOne Detection objects."""
     return [detection_to_fiftyone(d) for d in frame.detections]
 

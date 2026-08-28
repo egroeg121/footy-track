@@ -6,10 +6,12 @@ comment out for now. Uncomment if they are needed
 
 import pathlib
 from enum import StrEnum
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
-import fiftyone as fo
 from pydantic import BaseModel, ConfigDict, Field
+
+if TYPE_CHECKING:  # pragma: no cover - typing only
+    import fiftyone as fo
 
 from footy_track.constants import (
     BALL_TAG,
@@ -86,8 +88,15 @@ class FrameClassifications(BaseModel):
     uri: pathlib.Path = Field(..., description="Path to the image file or identifier")
     classification: BroadcastClassification
 
-    def to_fiftyone_sample(self) -> fo.Sample:
-        """Convert to a FiftyOne Sample."""
+    def to_fiftyone_sample(self) -> "fo.Sample":
+        """Convert to a FiftyOne Sample.
+
+        ``fiftyone`` is imported lazily: it is a heavy dependency (and pulls in
+        a bundled MongoDB) that the labeller does not need at all. Importing it
+        at module scope made ``import footy_track.labeller.server`` cost ~12 s
+        and 245 MB, and made the labeller unrunnable on a machine without it.
+        """
+        import fiftyone as fo  # noqa: PLC0415
 
         sample = fo.Sample(filepath=str(self.uri))
         sample["broadcast_classification"] = fo.Classification(

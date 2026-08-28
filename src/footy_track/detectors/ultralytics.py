@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 import torch
@@ -28,23 +29,44 @@ from .utils import (
 # Path to the current best-performing object-detection checkpoint, relative to
 # the project root. Update this when a better model is trained. Mirrors the
 # classifier's get_current_best_guess_classifier() convention.
+# Must always name a checkpoint trained at DEFAULT_IMGSZ. The previous value was a
+# 2026-01 yolo11s on dataset v3, served at 640px where ball recall is 0.000 - so every
+# experiment using it measured a detector effectively blind to the ball (bead ft-90o).
+# The metric is in the comment so a defeated checkpoint cannot quietly stay the default.
 CURRENT_BEST_DETECTOR_CHECKPOINT = (
-    "model_saves/detector/"
-    "optuna_trial_1_2026-01-18_17-51_model_name=yolo11s_dataset_version=3_epochs=2226_freeze_layers=3/"
-    "best.pt"
+    "model_saves/detector/rtdetr_1920_v11/best.pt"  # v11 @1280: ball mAP50 .221 / recall .209
 )
+
+# Resolution is the single biggest measured lever for ball detection (640 -> 1280 took
+# ball recall from 0.000). Keep it explicit; never inherit the library default.
+DEFAULT_IMGSZ = 1280
+
+
+def debug_mode() -> bool:
+    """True when FOOTY_DEBUG is set to a truthy value.
+
+    Debug mode exists so the labeller can be developed on a machine with no GPU
+    and little RAM: it must never load a checkpoint, download weights, or touch
+    CUDA. See ``python -m footy_track.labeller --debug``.
+    """
+    return os.environ.get("FOOTY_DEBUG", "").strip().lower() in {"1", "true", "yes", "on"}
 
 
 def get_current_best_detector(
     min_confidence: float = 0.3,
     iou_threshold: float = 0.90,
     verbose: bool = False,
-) -> "UltralyticsObjectDetector":
+) -> "ObjectDetector":
     """Return the current best-guess object detector.
 
     Resolves CURRENT_BEST_DETECTOR_CHECKPOINT against the project root so the
     same constant works regardless of the caller's working directory.
+
+    Under ``FOOTY_DEBUG`` returns a :class:`StubObjectDetector` instead, so no
+    weights are loaded on a CPU-only development box.
     """
+    if debug_mode():
+        return StubObjectDetector(min_confidence=min_confidence)
     model_uri = str(get_project_root() / CURRENT_BEST_DETECTOR_CHECKPOINT)
     return UltralyticsObjectDetector(
         model_uri=model_uri,
@@ -53,6 +75,38 @@ def get_current_best_detector(
         verbose=verbose,
         use_model_names=True,
     )
+
+
+class StubObjectDetector(ObjectDetector):
+    """Zero-cost detector used by ``FOOTY_DEBUG``.
+
+    Loads nothing, downloads nothing and never touches CUDA, so the labeller
+    can be run and developed on a laptop with no GPU and little free RAM. It
+    reads image dimensions only, and returns no detections.
+
+    It deliberately returns an EMPTY detection list rather than fake boxes:
+    invented boxes could be saved into a sidecar and become indistinguishable
+    from real machine labels, which would corrupt the provenance tiers. An
+    empty result is honest and harmless.
+    """
+
+    model_tag: str = "stub"
+
+    def __init__(self, min_confidence: float = 0.3) -> None:
+        self.min_confidence = min_confidence
+
+    def predict_from_path(self, image_path: Path) -> FrameDetections:
+        width = height = 0
+        try:
+            from PIL import Image  # noqa: PLC0415
+
+            with Image.open(image_path) as im:
+                width, height = im.size
+        except Exception:  # noqa: BLE001 - dimensions are best-effort in debug
+            pass
+        return FrameDetections(
+            uri=Path(image_path), width=width, height=height, detections=[]
+        )
 
 
 class UltralyticsObjectDetector(ObjectDetector):
@@ -72,6 +126,7 @@ class UltralyticsObjectDetector(ObjectDetector):
         min_confidence: float = 0.3,
         iou_threshold: float = 0.90,
         use_model_names: bool = False,
+        imgsz: int = DEFAULT_IMGSZ,
     ):
         # Use shared device selection util (prefers MPS on Apple, then CUDA, then CPU)
         dev = _available_device()
@@ -81,11 +136,13 @@ class UltralyticsObjectDetector(ObjectDetector):
         # When True, `classes` reflects the checkpoint's own label set rather than
         # the COCO person/ball subset used for stock weights.
         self.use_model_names = use_model_names
+        self.imgsz = imgsz
         self.predict_kwargs = {
             "verbose": verbose,
             "compile": compile,
             "conf": min_confidence,
             "iou": iou_threshold,
+            "imgsz": imgsz,
         }
 
     @property
