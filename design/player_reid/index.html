@@ -1,0 +1,2044 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Tracking players, actions, and events in football matches.">
+      
+      
+      
+        <link rel="canonical" href="https://egroeg121.github.io/footy-track/design/player_reid/">
+      
+      
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.6.20">
+    
+    
+      
+        <title>Player Identification & Re-Identification — Design - Footy Scan</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.e53b48f4.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+    
+  </head>
+  
+  
+    <body dir="ltr">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#player-identification-re-identification-design" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="Footy Scan" class="md-header__button md-logo" aria-label="Footy Scan" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Footy Scan
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Player Identification &amp; Re-Identification — Design
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="Footy Scan" class="md-nav__button md-logo" aria-label="Footy Scan" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Footy Scan
+  </label>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Home
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    Development
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            Development
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../system_design/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    System Design
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../system_overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    System Overview
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Getting Started
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../pipeline_architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Pipeline Architecture
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../timings/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Time Formats
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../data_formats/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Data Formats
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../training/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Training
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../training/notable_runs/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Notable Training Runs
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    Contributing
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            Contributing
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../agent_guidelines/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Agent Guidelines
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#0-measurements-taken-for-this-document" class="md-nav__link">
+    <span class="md-ellipsis">
+      0. Measurements taken for this document
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="0. Measurements taken for this document">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#what-these-imply" class="md-nav__link">
+    <span class="md-ellipsis">
+      What these imply
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#1-problem-definition" class="md-nav__link">
+    <span class="md-ellipsis">
+      1. Problem definition
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="1. Problem definition">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#why-p0-first-concretely" class="md-nav__link">
+    <span class="md-ellipsis">
+      Why P0 first, concretely
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#broadcast-football-specifics-that-make-this-hard" class="md-nav__link">
+    <span class="md-ellipsis">
+      Broadcast-football specifics that make this hard
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-measurement" class="md-nav__link">
+    <span class="md-ellipsis">
+      2. Measurement
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="2. Measurement">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#21-metric-survey-and-honest-trade-offs" class="md-nav__link">
+    <span class="md-ellipsis">
+      2.1 Metric survey and honest trade-offs
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#22-the-metric-i-actually-want-as-primary-tracklet-purity" class="md-nav__link">
+    <span class="md-ellipsis">
+      2.2 The metric I actually want as primary: tracklet purity
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#23-the-v1-benchmark-buildable-from-data-that-exists" class="md-nav__link">
+    <span class="md-ellipsis">
+      2.3 The v1 benchmark — buildable from data that exists
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#24-what-good-enough-means-numerically" class="md-nav__link">
+    <span class="md-ellipsis">
+      2.4 What "good enough" means, numerically
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-implementation-options" class="md-nav__link">
+    <span class="md-ellipsis">
+      3. Implementation options
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="3. Implementation options">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#31-tracking-by-detection-iou-hungarian-laptracker-measure-first" class="md-nav__link">
+    <span class="md-ellipsis">
+      3.1 Tracking-by-detection: IoU + Hungarian (LapTracker) — measure first
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#32-bytetrack-measure-second" class="md-nav__link">
+    <span class="md-ellipsis">
+      3.2 ByteTrack — measure second
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#33-bot-sort-with-camera-motion-compensation-measure-third-expected-winner" class="md-nav__link">
+    <span class="md-ellipsis">
+      3.3 BoT-SORT with camera-motion compensation — measure third, expected winner
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#34-oc-sort-deep-oc-sort-boosttrack-only-if-3133-miss-the-bar" class="md-nav__link">
+    <span class="md-ellipsis">
+      3.4 OC-SORT / Deep OC-SORT / BoostTrack — only if §3.1–3.3 miss the bar
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#35-appearance-embeddings-reid-backbones-required-for-p2-probably-not-for-p0" class="md-nav__link">
+    <span class="md-ellipsis">
+      3.5 Appearance embeddings / ReID backbones — required for P2, probably not for P0
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#36-team-clustering-by-kit-colour-build-and-use-it-as-a-constraint" class="md-nav__link">
+    <span class="md-ellipsis">
+      3.6 Team clustering by kit colour — build, and use it as a constraint
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#37-jersey-number-ocr-do-not-build" class="md-nav__link">
+    <span class="md-ellipsis">
+      3.7 Jersey-number OCR — do NOT build
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#38-pose-gait-cues-do-not-build" class="md-nav__link">
+    <span class="md-ellipsis">
+      3.8 Pose / gait cues — do NOT build
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#39-things-i-would-explicitly-not-build-and-why" class="md-nav__link">
+    <span class="md-ellipsis">
+      3.9 Things I would explicitly NOT build, and why
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#310-recommended-path" class="md-nav__link">
+    <span class="md-ellipsis">
+      3.10 Recommended path
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#311-milestone-1-small-enough-to-validate-quickly" class="md-nav__link">
+    <span class="md-ellipsis">
+      3.11 Milestone 1 — small enough to validate quickly
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-label-collection" class="md-nav__link">
+    <span class="md-ellipsis">
+      4. Label collection
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="4. Label collection">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#41-the-core-principle-humans-review-tracklets-never-boxes" class="md-nav__link">
+    <span class="md-ellipsis">
+      4.1 The core principle: humans review tracklets, never boxes
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#42-interaction-1-the-tracklet-strip-catches-id-switches" class="md-nav__link">
+    <span class="md-ellipsis">
+      4.2 Interaction 1 — the tracklet strip (catches ID switches)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#43-interaction-2-tracklet-merge-builds-identities-and-the-p2-labels" class="md-nav__link">
+    <span class="md-ellipsis">
+      4.3 Interaction 2 — tracklet merge (builds identities, and the P2 labels)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#44-provenance-tiers-for-identity-what-human-checked-means-for-a-track" class="md-nav__link">
+    <span class="md-ellipsis">
+      4.4 Provenance tiers for identity — what "human-checked" means for a track
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#45-storage" class="md-nav__link">
+    <span class="md-ellipsis">
+      4.5 Storage
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#46-how-many-labels-and-how-many-human-hours" class="md-nav__link">
+    <span class="md-ellipsis">
+      4.6 How many labels, and how many human hours
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-risks-and-open-questions" class="md-nav__link">
+    <span class="md-ellipsis">
+      5. Risks and open questions
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="5. Risks and open questions">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#open-questions" class="md-nav__link">
+    <span class="md-ellipsis">
+      Open questions
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-plan-of-record" class="md-nav__link">
+    <span class="md-ellipsis">
+      6. Plan of record
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#appendix-a-reproducing-the-0-measurements" class="md-nav__link">
+    <span class="md-ellipsis">
+      Appendix A — reproducing the §0 measurements
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#appendix-b-sources" class="md-nav__link">
+    <span class="md-ellipsis">
+      Appendix B — sources
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+
+<h1 id="player-identification-re-identification-design">Player Identification &amp; Re-Identification — Design<a class="headerlink" href="#player-identification-re-identification-design" title="Permanent link">&para;</a></h1>
+<p><strong>Bead:</strong> TBD · <strong>Date:</strong> 2026-08-30 · <strong>Author:</strong> design pass · <strong>Status:</strong> DRAFT</p>
+<p><strong>Scope:</strong> associating <code>player</code> detections (a) across frames within a clip and
+(b) across clips. Covers how to <strong>measure</strong> it, how to <strong>implement</strong> it, and how
+to <strong>collect the labels</strong> it needs. Resolves the re-ID / team / jersey TODOs
+deferred in <a href="../player_tracking_format/"><code>player_tracking_format.md</code> §6</a> and
+<a href="../tracking/"><code>tracking.md</code> §6</a>.</p>
+<blockquote>
+<p><strong>Headline.</strong> The tracking <em>code</em> already exists (<code>src/footy_track/trackers/</code>,
+599 LOC, <code>LapTracker</code> + <code>UltralyticsTracker</code>) and the <em>storage</em> already exists
+(<code>detection.track_id</code>, <code>track_meta.{team_id,jersey_number,player_id,reid_parent_track_id}</code>).
+Neither has ever been run against ground truth, because <strong>there are zero player
+identity labels and zero MOT metrics in this repo.</strong> So the bottleneck is not
+algorithms — it is measurement. I measured the footage directly (§0) and three
+facts reshape the problem: <strong>clips contain no interior camera cuts</strong> (0 in
+3,175 frames across 5 clips), so within-clip tracking is single-shot tracking;
+<strong>frame-to-frame IoU is easy</strong> (median best-IoU 0.837, only 3.6% of
+associations ambiguous); and <strong>kit colour separates the two teams essentially
+perfectly</strong> (1.0% ambiguous). Meanwhile <strong>jersey OCR is dead on arrival</strong> —
+the median player box is 52×111 px, so digits are ~10–18 px tall. The
+recommendation is therefore: build a ~2-human-hour benchmark, measure the
+trackers we already have, add a free team-constraint, and <strong>build nothing else
+until the numbers say so.</strong> Do not repeat the VitTrack mistake of assuming a
+tracker works for a year without measuring it.</p>
+</blockquote>
+<hr />
+<h2 id="0-measurements-taken-for-this-document">0. Measurements taken for this document<a class="headerlink" href="#0-measurements-taken-for-this-document" title="Permanent link">&para;</a></h2>
+<p>Everything below was measured on 2026-08-30 against real project data, not
+cited. <strong>Read the denominators.</strong> Most numbers come from a <em>single clip</em>
+(<code>arsenal_mancity_20250925_seg002</code>, 430 frames, 17.2 s) and must be re-run
+across the corpus before anything is built on them (§5, R2). Reproduction
+commands are in the Appendix.</p>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>Measurement</th>
+<th>Value</th>
+<th>Denominator</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>M1</strong></td>
+<td><strong>Interior camera cuts per clip</strong></td>
+<td><strong>0</strong></td>
+<td>5 clips (seg001/002/004/005/008), <strong>3,175 frames</strong>. Each clip has exactly one histogram discontinuity, located in its <strong>final 1–4 frames</strong>. seg004 (175 fr) has none.</td>
+</tr>
+<tr>
+<td><strong>M2</strong></td>
+<td>Players per frame</td>
+<td>mean <strong>19.5</strong>, median 20, max 32 (conf≥0.10)<br>mean <strong>14.5</strong>, median 15, max 18 (conf≥0.5)</td>
+<td>seg002, 430 frames</td>
+</tr>
+<tr>
+<td><strong>M3</strong></td>
+<td>Player box size @1920×1080</td>
+<td>median <strong>52 × 111 px</strong>; height p10 74 px, p90 149 px; width p10 26, p90 84</td>
+<td>seg002, n=<strong>8,398</strong> player boxes</td>
+</tr>
+<tr>
+<td><strong>M4</strong></td>
+<td>Consecutive-frame best IoU</td>
+<td>median <strong>0.837</strong>, mean 0.780, p10 0.545; <strong>4.4%</strong> below 0.3; 3.3% below 0.1</td>
+<td>seg002, conf≥0.5, n=<strong>6,242</strong> instance-pairs</td>
+</tr>
+<tr>
+<td><strong>M4b</strong></td>
+<td>Association margin (best − 2nd-best IoU)</td>
+<td>median <strong>0.810</strong>, p10 0.444; <strong>3.6%</strong> below 0.05</td>
+<td>same n=6,242</td>
+</tr>
+<tr>
+<td><strong>M5</strong></td>
+<td>Crowding / occlusion</td>
+<td><strong>6.3%</strong> of player instances overlap another player at IoU&gt;0.2; <strong>2.6%</strong> at IoU&gt;0.5; <strong>36.5%</strong> of frames contain ≥1 overlapping pair</td>
+<td>seg002, n=6,242 instances / 430 frames</td>
+</tr>
+<tr>
+<td><strong>M6</strong></td>
+<td>Kit-colour team separability</td>
+<td>k=2 on torso HSV → split <strong>541 / 712</strong>, <strong>1.0%</strong> ambiguous. Centroids hue <strong>185°</strong> (sky blue) and <strong>23°</strong> (red). k=3 adds a 255-crop hue-61° cluster (likely referee/GK).</td>
+<td>seg002, n=<strong>1,253</strong> torso crops, every 5th frame, conf≥0.5</td>
+</tr>
+<tr>
+<td><strong>M7</strong></td>
+<td>Corpus composition</td>
+<td><strong>all 162 clips are one match</strong> (<code>arsenal_mancity_20250925</code>). 97,625 frames = <strong>65.1 min</strong>. Clip length min 50 / p25 225 / <strong>median 430</strong> / p75 785 / max 2,535 frames.</td>
+<td><code>machine_labels/_manifest.json</code></td>
+</tr>
+<tr>
+<td><strong>M8</strong></td>
+<td>Per-class detector reliability</td>
+<td><code>player</code> median conf <strong>0.919</strong> (74.3% ≥0.5) · <code>coach</code> 0.925 · <code>referee</code> <strong>0.335</strong> (44.5% ≥0.5) · <code>in_play_ball</code> 0.222 · <code>person</code> n=50, median <strong>0.123</strong>, 0% ≥0.25 · <code>player_sub</code> n=11, median 0.113</td>
+<td>seg002, n=11,512 detections</td>
+</tr>
+</tbody>
+</table>
+<h3 id="what-these-imply">What these imply<a class="headerlink" href="#what-these-imply" title="Permanent link">&para;</a></h3>
+<ol>
+<li><strong>M1 collapses two of the four sub-problems into one.</strong> The clips were cut at
+   shot boundaries by <code>split_broadcast_segments</code>. There is no such thing as
+   "identity across a camera cut <em>within</em> a clip" — a cut <em>is</em> a clip boundary.
+   So "across a cut" and "across clips" are the same problem, and "within a
+   clip" is pure single-shot tracking over a median of 17 s.</li>
+<li><strong>M4/M4b say plain IoU association should mostly work.</strong> 96.4% of
+   associations have an unambiguous winner. This is a <strong>falsifiable prediction</strong>:
+   IoU + Hungarian (<code>LapTracker</code>, already written) should score respectably, and
+   its failures should concentrate in the 6.3% crowded instances from M5. If
+   that prediction fails, the model of the problem is wrong and this plan needs
+   revisiting.</li>
+<li><strong>M6 makes team assignment nearly free</strong>, and — more valuably — makes it a
+   cheap <em>constraint</em> on association (§3.6).</li>
+<li><strong>M3 kills jersey OCR.</strong> A 52×111 px player box puts the number at roughly
+   10–18 px tall, below any OCR viability threshold. See §3.7.</li>
+<li><strong>M7 means cross-match re-ID is currently unmeasurable.</strong> There is exactly
+   one match in <code>machine_labels/</code>.</li>
+<li><strong>M8 means the <code>person</code> and <code>player_sub</code> classes are noise</strong> (0% of instances
+   above conf 0.25) and <code>referee</code> is weak. Filter accordingly.</li>
+</ol>
+<hr />
+<h2 id="1-problem-definition">1. Problem definition<a class="headerlink" href="#1-problem-definition" title="Permanent link">&para;</a></h2>
+<p>"Player identification" is four different problems with an order-of-magnitude
+spread in difficulty and value. Naming them separately is most of the work.</p>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>Sub-problem</th>
+<th>What it means</th>
+<th>Difficulty</th>
+<th>Value now</th>
+<th>Priority</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>P0</strong></td>
+<td><strong>Within-shot association</strong></td>
+<td>Link <code>player</code> detections across consecutive frames inside one clip. Output: a <code>track_id</code> per detection. Because of M1 this is single-shot, cut-free tracking over a median 17 s.</td>
+<td><strong>Low–medium.</strong> M4 says 96% of frames are unambiguous; the hard 4% is crowding (M5).</td>
+<td><strong>High</strong> — unlocks per-shot velocity, possession duration, formation, and crucially <em>tracklet-level</em> auto-labelling (one human decision covers ~400 boxes).</td>
+<td><strong>P0 — do first</strong></td>
+</tr>
+<tr>
+<td><strong>P1</strong></td>
+<td><strong>Team + role assignment</strong></td>
+<td>Label each tracklet <code>home</code>/<code>away</code>/<code>referee</code>/<code>goalkeeper</code>. Not identity, but the cheapest useful identity-adjacent attribute.</td>
+<td><strong>Very low.</strong> M6: 1.0% ambiguous.</td>
+<td><strong>High</strong>, and it makes P0 <em>better</em> (§3.6).</td>
+<td><strong>P0 — do alongside</strong></td>
+</tr>
+<tr>
+<td><strong>P2</strong></td>
+<td><strong>Cross-clip identity, same match</strong></td>
+<td>The player who is track 7 in <code>seg002</code> is the same person as track 3 in <code>seg041</code>. Requires a persistent per-match identity (<code>p_home_04</code>). Equivalent to "identity across a camera cut" (M1).</td>
+<td><strong>High.</strong> Gaps of seconds to minutes, kit is near-identical within a team, jersey unreadable (M3), pose/scale change wildly.</td>
+<td>Medium — needed for per-player match stats, not for most per-shot analysis.</td>
+<td><strong>P1 — after P0 is measured</strong></td>
+</tr>
+<tr>
+<td><strong>P3</strong></td>
+<td><strong>Cross-match identity</strong></td>
+<td>Same human being across different games, kits, seasons.</td>
+<td><strong>Very high</strong>, and <strong>currently unmeasurable</strong> (M7: one match in the corpus).</td>
+<td>Low right now.</td>
+<td><strong>Defer</strong></td>
+</tr>
+</tbody>
+</table>
+<h3 id="why-p0-first-concretely">Why P0 first, concretely<a class="headerlink" href="#why-p0-first-concretely" title="Permanent link">&para;</a></h3>
+<ul>
+<li>It is the <strong>only one that is fully measurable with data that exists today</strong>
+  plus ~2 hours of human labelling (§4.6).</li>
+<li>The code is already written (<code>trackers/</code>) and has <strong>never been run against
+  ground truth</strong> — <code>tests/tracking/</code> contains fixtures but no test file. So the
+  cheapest possible next action is "measure what we already have", which is
+  exactly the lesson VitTrack taught (constant 0.119 confidence, target held for
+  5% of frames, assumed workable for a year).</li>
+<li>P0 is a <strong>prerequisite</strong> for P2: cross-clip re-ID matches <em>tracklets</em>, not
+  boxes. If tracklets are impure, cross-clip matching is matching noise.</li>
+<li>P0 is where the auto-labelling leverage is. One tracklet decision propagates
+  to hundreds of boxes.</li>
+</ul>
+<h3 id="broadcast-football-specifics-that-make-this-hard">Broadcast-football specifics that make this hard<a class="headerlink" href="#broadcast-football-specifics-that-make-this-hard" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>Near-identical kit within a team.</strong> Appearance embeddings distinguish teams
+  trivially (M6) and teammates barely at all. This is why appearance re-ID is
+  much weaker here than on pedestrian benchmarks, and why DanceTrack (similar-
+  appearance targets) is the right external analogue, not MOT17.</li>
+<li><strong>Heavy occlusion in the 6.3%</strong> (M5) — and it is exactly the interesting 6.3%
+  (challenges, corners, goalmouth scrambles).</li>
+<li><strong>Players entering and leaving frame constantly.</strong> A broadcast wide shot holds
+  ~15–20 of 22 players (M2); the rest are off-camera and return with new IDs.</li>
+<li><strong>Jersey numbers unreadable</strong> at this box size (M3).</li>
+<li><strong>Camera pan/tilt/zoom</strong> — not a cut, but it breaks constant-velocity motion
+  models. This is what camera-motion compensation is for (§3.3).</li>
+<li><strong>Motion blur</strong> at 25 fps on sprinting players.</li>
+<li><strong>Replays</strong> are separate clips (M1), and a replay shows the <em>same</em> players from
+  a <em>different</em> angle — an under-appreciated free source of hard positive pairs
+  for P2, and exactly how SoccerNet-ReID defines its identities.</li>
+</ul>
+<hr />
+<h2 id="2-measurement">2. Measurement<a class="headerlink" href="#2-measurement" title="Permanent link">&para;</a></h2>
+<h3 id="21-metric-survey-and-honest-trade-offs">2.1 Metric survey and honest trade-offs<a class="headerlink" href="#21-metric-survey-and-honest-trade-offs" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Metric</th>
+<th>Measures</th>
+<th>Failure mode / why it can mislead</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>MOTA</strong> (CLEAR-MOT, Bernardin &amp; Stiefelhagen 2008)</td>
+<td><code>1 − Σ(FN+FP+IDSW)/Σ(GT)</code></td>
+<td><strong>Dominated by detection.</strong> ID switches are a rounding error next to FP/FN, so a tracker that scrambles every identity can still post a high MOTA. Can go negative. <strong>For us it would mostly re-measure the detector.</strong> Report it, never optimise it.</td>
+</tr>
+<tr>
+<td><strong>IDF1</strong></td>
+<td>Identity F1 over a <em>global</em> track-to-track assignment</td>
+<td>Directly measures the thing we care about (identity consistency). But it is a global bipartite matching, so a single long track absorbing a switch can shift the whole assignment; it can <em>decrease</em> as detection improves. Sensitive in crowded scenes — i.e. exactly our 6.3%.</td>
+</tr>
+<tr>
+<td><strong>HOTA</strong> (Luiten et al., IJCV 2020)</td>
+<td>Geometric-mean-style balance of <strong>DetA</strong> × <strong>AssA</strong></td>
+<td>Designed precisely because MOTA over-weights detection and IDF1 over-weights association. <strong>Primary secondary metric.</strong> Its value: <code>AssA</code> isolates association from detection, so we can tell whether a bad score is the tracker's fault or RT-DETR's.</td>
+</tr>
+<tr>
+<td><strong>IDSW / fragmentation / MT / ML</strong></td>
+<td>Raw counts</td>
+<td>Not normalised — meaningless without a denominator. Report as <strong>IDSW per 1,000 player-frames</strong>.</td>
+</tr>
+<tr>
+<td><strong>rank-1 / CMC</strong> (re-ID, P2)</td>
+<td>Probability the top gallery hit is correct</td>
+<td><strong>Gallery-size dependent.</strong> Our within-match gallery is ~30 identities vs Market-1501's ~750 — rank-1 will look flatteringly high. Never quote it without the gallery size.</td>
+</tr>
+<tr>
+<td><strong>mAP</strong> (re-ID, P2)</td>
+<td>Mean average precision over the full ranked list</td>
+<td>Preferred over CMC because it credits <em>complete</em> retrieval, not just the first hit — and a player appears in many clips, so there are many true matches per query. <strong>Primary P2 metric.</strong></td>
+</tr>
+</tbody>
+</table>
+<h3 id="22-the-metric-i-actually-want-as-primary-tracklet-purity">2.2 The metric I actually want as primary: tracklet purity<a class="headerlink" href="#22-the-metric-i-actually-want-as-primary-tracklet-purity" title="Permanent link">&para;</a></h3>
+<p>Standard MOT metrics were designed for surveillance, where fragmentation and
+switching are roughly equally bad. <strong>Our downstream use is auto-labelling, and
+the costs are wildly asymmetric:</strong></p>
+<ul>
+<li>A <strong>fragmented</strong> track (one player, three IDs) is nearly harmless. You get
+  three shorter, <em>correct</em> tracklets. Training data is still clean.</li>
+<li>A <strong>switched</strong> track (two players, one ID) is <strong>poison</strong>. It injects
+  confidently-wrong identity labels into the training set, and the whole point
+  of the tiering scheme is to never let that happen silently.</li>
+</ul>
+<p>So the primary metric is:</p>
+<blockquote>
+<p><strong>Tracklet purity</strong> = fraction of predicted tracklets whose non-<code>unknown</code>
+frames map to exactly one ground-truth identity.</p>
+<p><strong>Tracklet coverage</strong> = mean fraction of each GT identity's frames captured by
+its single largest matching predicted tracklet.</p>
+</blockquote>
+<p>Purity is the one to hold a bar on; coverage is the one to improve afterwards.
+Report both — purity alone is trivially gamed by emitting one-frame tracklets,
+which is why coverage is mandatory alongside it. HOTA/IDF1/MOTA are reported as
+standard cross-comparable secondaries via <strong>TrackEval</strong>, which we should use
+rather than writing a bespoke metric (<code>ball_eval/metrics.py</code> is bespoke by
+necessity; MOT metrics are not, and TrackEval is the reference implementation).</p>
+<h3 id="23-the-v1-benchmark-buildable-from-data-that-exists">2.3 The v1 benchmark — buildable from data that exists<a class="headerlink" href="#23-the-v1-benchmark-buildable-from-data-that-exists" title="Permanent link">&para;</a></h3>
+<p><strong>Name:</strong> <code>player_eval</code> v1. Sits alongside <code>ball_eval/</code>, same shape
+(<code>dataset.py</code> / <code>metrics.py</code> / <code>runner.py</code>), different GT.</p>
+<table>
+<thead>
+<tr>
+<th>Property</th>
+<th>Spec</th>
+<th>Rationale</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Clips</td>
+<td><strong>10</strong>, stratified</td>
+<td>see selection rules below</td>
+</tr>
+<tr>
+<td>Frames</td>
+<td>~4,300 (~2.9 min)</td>
+<td>~10 × median 430 (M7)</td>
+</tr>
+<tr>
+<td>Player-frame instances</td>
+<td><strong>~62,000</strong> (est., at 14.5/frame conf≥0.5, M2)</td>
+<td></td>
+</tr>
+<tr>
+<td>GT tracklets</td>
+<td><strong>~250–350</strong> (est.)</td>
+<td>must be <em>reported</em>, not estimated, once labelled</td>
+</tr>
+<tr>
+<td>GT identities</td>
+<td>~30 per clip (22 players + subs + refs)</td>
+<td></td>
+</tr>
+<tr>
+<td>Format</td>
+<td>MOT-Challenge CSV per clip (via an exporter from the canonical store)</td>
+<td>so TrackEval runs unmodified</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Clip selection rules — all four are mandatory:</strong></p>
+<ol>
+<li><strong>Exclude contamination.</strong> Any clip present in the v11 detection training
+   split is disqualified. <code>astonvilla_seg080</code> and <code>bournemouth_1st_seg070</code> are
+   known-contaminated (they score ~1.000 there — meaningless). This requires
+   actually enumerating the v11 train split, not assuming.</li>
+<li><strong>Stratify by length</strong> across the M7 quartiles (min 50 / median 430 /
+   max 2,535) — a tracker that is fine for 200 frames may drift over 2,500.</li>
+<li><strong>Stratify by difficulty</strong>, using the M5 crowding rate computed per clip from
+   the JSONL alone (free, no video decode). Include at least 3 clips in the top
+   crowding decile — otherwise the benchmark only measures the easy case and we
+   reproduce the ball-mAP-on-44-instances error in a new place.</li>
+<li><strong>Reserve a clean holdout.</strong> Label 10 more clips later and never tune on
+   them.</li>
+</ol>
+<p><strong>Trustworthiness — the rule that replaces a missing literature answer.</strong>
+I searched for published guidance on how many frames/tracks give a stable
+IDF1/HOTA and <strong>found none</strong> — this appears to be a genuine gap. So instead of
+inventing a threshold, measure the uncertainty directly:</p>
+<blockquote>
+<p>Every reported number carries a <strong>clip-level bootstrap 95% CI</strong> (resample the
+10 clips with replacement, 10,000 draws) and is quoted as
+<code>HOTA 0.NN [0.NN–0.NN], n=10 clips / N frames / N tracklets / N identities</code>.
+Tracker A is only claimed better than B if the CI on the <strong>paired</strong>
+per-clip difference excludes zero.</p>
+</blockquote>
+<p>This is the direct, mechanical answer to "a metric without its denominator is
+worthless": the denominator is in the string, and the CI tells you whether 10
+clips was enough. If the CI is uselessly wide, the benchmark tells you to label
+more clips rather than letting you publish a number you can't defend.</p>
+<p><strong>Also mandatory:</strong> double-label 2 of the 10 clips (same human, ≥3 days apart).
+Intra-annotator agreement on those two clips is the <strong>ceiling</strong> — no tracker can
+be scored above the level at which the labels themselves are reproducible.</p>
+<h3 id="24-what-good-enough-means-numerically">2.4 What "good enough" means, numerically<a class="headerlink" href="#24-what-good-enough-means-numerically" title="Permanent link">&para;</a></h3>
+<p>External anchors (cited, not measured here):</p>
+<ul>
+<li>SoccerNet-Tracking baselines on 30 s broadcast clips: <strong>ByteTrack with
+  ground-truth detections = 71.50 HOTA / 94.57 MOTA</strong>; <strong>FairMOT-ft without GT
+  detections = 57.88 HOTA / 83.57 MOTA</strong>. The 2023 challenge winner reached
+  <strong>~69.5 HOTA</strong>.</li>
+<li>SoccerNet-ReID: 2022 baseline <strong>59.11% mAP / 48.41% rank-1</strong>; 2023 challenge
+  best <strong>93.26% mAP</strong>, on 340,993 thumbnails from 400 matches.</li>
+</ul>
+<p>Targets (<strong>these are my estimates, calibrated against the above, not measured</strong>):</p>
+<table>
+<thead>
+<tr>
+<th>Sub-problem</th>
+<th>Metric</th>
+<th>v1 target</th>
+<th>Justification</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>P0</strong></td>
+<td><strong>Tracklet purity</strong></td>
+<td><strong>≥ 0.95</strong></td>
+<td>The auto-labelling bar. At 0.95 with ~300 tracklets, ~15 tracklets per benchmark are contaminated — few enough to catch by review, and each contaminated tracklet is caught <em>before</em> it enters training data.</td>
+</tr>
+<tr>
+<td><strong>P0</strong></td>
+<td>Tracklet coverage</td>
+<td>≥ 0.70</td>
+<td>Fragmentation is cheap (§2.2). Don't over-constrain.</td>
+</tr>
+<tr>
+<td><strong>P0</strong></td>
+<td>HOTA</td>
+<td><strong>≥ 0.65</strong></td>
+<td>Between SoccerNet's GT-detection ceiling (71.5) and its no-GT-detection baseline (57.9). Our shots are <em>shorter and cut-free</em> (M1, median 17 s vs 30 s) which helps; our detections are not GT, which hurts. 0.65 is the midpoint. <strong>Estimate — revise once the first real number exists.</strong></td>
+</tr>
+<tr>
+<td><strong>P0</strong></td>
+<td>IDF1</td>
+<td>≥ 0.75</td>
+<td>Consistent with HOTA 0.65 at typical DetA/AssA splits.</td>
+</tr>
+<tr>
+<td><strong>P0</strong></td>
+<td>IDSW</td>
+<td>≤ 1 per 1,000 player-frames</td>
+<td>~62 switches across the v1 benchmark. Directly comparable to the purity target.</td>
+</tr>
+<tr>
+<td><strong>P1</strong></td>
+<td>Team assignment accuracy</td>
+<td><strong>≥ 0.98</strong></td>
+<td>M6 measured 1.0% ambiguous on real crops. Anything below 0.98 means the pipeline is losing information the raw pixels already contain.</td>
+</tr>
+<tr>
+<td><strong>P2</strong></td>
+<td>mAP, within-match gallery</td>
+<td>≥ 0.70, <strong>gallery size stated</strong> (~30 identities)</td>
+<td>Not comparable to SoccerNet's 93% — that gallery and identity definition are different. Quoting SoccerNet's number as our target would be exactly the contamination error in a new costume.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Caveat I want on the record:</strong> the HOTA/IDF1 targets are the softest numbers in
+this document. The purity and team-accuracy targets are grounded in measured
+project data (M5, M6); the HOTA target is an interpolation between two external
+benchmarks on different footage. Treat the first measured HOTA as calibration,
+not as pass/fail.</p>
+<hr />
+<h2 id="3-implementation-options">3. Implementation options<a class="headerlink" href="#3-implementation-options" title="Permanent link">&para;</a></h2>
+<p>The honest starting position: <strong><code>src/footy_track/trackers/</code> already contains a
+working-looking <code>LapTracker</code> (IoU + <code>lap.lapjv</code> Hungarian, <code>max_age=30</code>,
+<code>iou_threshold=0.3</code>, no motion model) and a working <code>UltralyticsTracker</code>
+(<code>YOLO.track(persist=True)</code> with <code>bytetrack.yaml</code> / <code>botsort.yaml</code>).
+<code>tests/tracking/</code> has fixtures and no tests. Nothing has ever been measured.</strong></p>
+<h3 id="31-tracking-by-detection-iou-hungarian-laptracker-measure-first">3.1 Tracking-by-detection: IoU + Hungarian (<code>LapTracker</code>) — <strong>measure first</strong><a class="headerlink" href="#31-tracking-by-detection-iou-hungarian-laptracker-measure-first" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>Cost:</strong> zero. Written. Runs on CPU.</li>
+<li><strong>Prediction (M4/M4b):</strong> should handle ~96% of associations. Its weakness is
+  the missing motion model — a fast pan will drop IoU below threshold.</li>
+<li><strong>Verdict: this is milestone 1.</strong> Not because it is best, but because it is
+  free and until it is measured every other option is speculation.</li>
+</ul>
+<h3 id="32-bytetrack-measure-second">3.2 ByteTrack — <strong>measure second</strong><a class="headerlink" href="#32-bytetrack-measure-second" title="Permanent link">&para;</a></h3>
+<p>Associates high-confidence detections first, then recovers low-confidence ones
+in a second pass. Given M8 (<code>player</code> median conf 0.919 but only 74.3% ≥0.5),
+there is a <strong>real low-confidence tail</strong> for ByteTrack's second pass to recover.
+Already wired. Cost: zero.</p>
+<h3 id="33-bot-sort-with-camera-motion-compensation-measure-third-expected-winner">3.3 BoT-SORT with camera-motion compensation — <strong>measure third, expected winner</strong><a class="headerlink" href="#33-bot-sort-with-camera-motion-compensation-measure-third-expected-winner" title="Permanent link">&para;</a></h3>
+<p>Adds a Kalman state fix, IoU–ReID fusion, and <strong>CMC</strong> (global motion estimation
+via ECC / sparse optical flow) which subtracts camera pan/tilt/zoom before
+motion prediction. Reported at <strong>80.5 MOTA / 80.2 IDF1 / 65.0 HOTA on MOT17
+test</strong>; CMC alone is worth <strong>~1.0–1.5 HOTA on MOT17</strong>, attributed specifically
+to camera movement.</p>
+<p><strong>Broadcast football is a much more camera-moving domain than MOT17</strong>, so I
+expect CMC to be worth more here than there. This is the one place I'd predict
+a real gain over §3.1 — and it is already available via <code>botsort.yaml</code>. Cost:
+zero to try, some CPU (ECC is not free).</p>
+<h3 id="34-oc-sort-deep-oc-sort-boosttrack-only-if-3133-miss-the-bar">3.4 OC-SORT / Deep OC-SORT / BoostTrack — <strong>only if §3.1–3.3 miss the bar</strong><a class="headerlink" href="#34-oc-sort-deep-oc-sort-boosttrack-only-if-3133-miss-the-bar" title="Permanent link">&para;</a></h3>
+<p>OC-SORT handles non-linear motion (beats ByteTrack by &gt;10 HOTA on DanceTrack);
+Deep OC-SORT reaches ~64.9 HOTA on MOT17. Available through <code>boxmot</code>.
+<strong>Cost:</strong> a new dependency + integration, maybe a day. <strong>Verdict: hold.</strong> Adding
+three more trackers before having a benchmark is how you end up with five
+unmeasured trackers instead of two.</p>
+<h3 id="35-appearance-embeddings-reid-backbones-required-for-p2-probably-not-for-p0">3.5 Appearance embeddings / ReID backbones — <strong>required for P2, probably not for P0</strong><a class="headerlink" href="#35-appearance-embeddings-reid-backbones-required-for-p2-probably-not-for-p0" title="Permanent link">&para;</a></h3>
+<ul>
+<li>OSNet (lightweight, 512-D, 256×128 input) or CLIP-ReID, both via <code>boxmot</code> /
+  <code>torchreid</code>. PRTReID (identity+team+role-aware) is the SoccerNet
+  game-state-reconstruction baseline's choice.</li>
+<li><strong>Cost to embed the whole corpus:</strong> ~2M player crops. OSNet is tiny; at an
+  assumed ~1,000 crops/s on a rented GPU that is <strong>~35 min ≈ $0.25</strong> at
+  vast.ai rates. <em>(Throughput figure is an estimate, not measured here.)</em> This
+  is cheap enough that it is not a budget question — it is a "do we need it"
+  question.</li>
+<li><strong>My expectation for P0: embeddings will not help much</strong>, because teammates
+  are near-identical (M6 separates <em>teams</em> at 1% error; it says nothing about
+  separating two Arsenal players). Appearance re-ID's leverage on similar-
+  appearance targets is the known weak spot — this is what DanceTrack exists to
+  demonstrate.</li>
+<li><strong>For P2 it is unavoidable</strong> — there is no geometric cue linking two clips.
+  Use <strong>SoccerNet-ReID pretrained weights (MIT licensed)</strong>; do <strong>not</strong> train a
+  backbone from scratch (§3.9).</li>
+</ul>
+<h3 id="36-team-clustering-by-kit-colour-build-and-use-it-as-a-constraint">3.6 Team clustering by kit colour — <strong>build, and use it as a constraint</strong><a class="headerlink" href="#36-team-clustering-by-kit-colour-build-and-use-it-as-a-constraint" title="Permanent link">&para;</a></h3>
+<p>M6 is the strongest measured result in this document: k=2 on mean torso HSV
+(encoded as <code>cos h, sin h, s, v</code> to handle hue wraparound) separates the teams
+with <strong>1.0% ambiguity</strong> on 1,253 real crops. The wider ecosystem does the same
+thing with heavier machinery (<code>sn-gamestate</code>: PRTReID embeddings → K-means;
+<code>roboflow/sports</code>: SigLIP → UMAP → K-means). <strong>We do not need embeddings for
+this</strong> — raw torso hue is sufficient on this footage, at ~zero cost.</p>
+<p>The non-obvious part, and the reason this is P0 and not a nice-to-have:</p>
+<blockquote>
+<p><strong>Forbid association across team clusters.</strong> The classic ID switch is two
+players crossing; the <em>costly</em> version is an attacker and a defender crossing.
+A hard team constraint removes that entire failure class for the price of a
+hue histogram.</p>
+</blockquote>
+<p>Implementation: assign each detection a team at detection time, aggregate to a
+per-tracklet majority vote (robust to per-frame noise), and set the association
+cost to <code>inf</code> across teams. Then handle the exceptions explicitly:
+<strong>goalkeepers and referees are their own clusters</strong> (the k=3 hue-61° cluster of
+255 crops is the likely referee/GK population — must be verified before this is
+trusted).</p>
+<h3 id="37-jersey-number-ocr-do-not-build">3.7 Jersey-number OCR — <strong>do NOT build</strong><a class="headerlink" href="#37-jersey-number-ocr-do-not-build" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>M3 is decisive.</strong> Median player box <strong>52 × 111 px</strong>; even at p90 it is
+  84 × 149. The number occupies a fraction of the torso — call it <strong>10–18 px
+  tall</strong>. That is below OCR viability, and this is the <em>source</em> resolution; the
+  detector runs at <code>imgsz=1280</code>, which is smaller still.</li>
+<li>The literature's headline numbers do not transfer. Koshkina &amp; Elder report
+  <strong>87.4% on soccer tracklets</strong> — but a tracklet is scored as legible if <strong>≥1
+  frame</strong> is legible, and the crops are higher-resolution. A "Digit-Aware"
+  method reports 82.74% on the SoccerNet jersey test set. These are
+  <em>tracklet-level, best-frame</em> numbers on a curated dataset, not per-frame
+  numbers on 52-px boxes.</li>
+<li><strong>But</strong> — and this is the useful inversion — <strong>a human can often read a number
+  a model cannot</strong>, by scrubbing several frames and using context. So jersey
+  number belongs in the <strong>labelling UI as an optional human annotation</strong>
+  (§4.3), populating the existing <code>track_meta.jersey_number</code> column, and <strong>not</strong>
+  in the inference pipeline. That gives us the identity anchor without the OCR.</li>
+<li><strong>Revisit if and only if</strong> a higher-resolution source (4K, or tactical-camera
+  feed) appears. Then M3 should be re-measured, and this section rewritten.</li>
+</ul>
+<h3 id="38-pose-gait-cues-do-not-build">3.8 Pose / gait cues — <strong>do NOT build</strong><a class="headerlink" href="#38-pose-gait-cues-do-not-build" title="Permanent link">&para;</a></h3>
+<p>Requires a pose model per crop (GPU cost per frame), and gait recognition needs
+long clean sequences of an unoccluded subject — which a 17 s broadcast shot with
+36.5% crowded frames does not provide. No evidence it helps in this domain.
+Revisit never, absent a specific measured failure that only gait explains.</p>
+<h3 id="39-things-i-would-explicitly-not-build-and-why">3.9 Things I would explicitly NOT build, and why<a class="headerlink" href="#39-things-i-would-explicitly-not-build-and-why" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Not building</th>
+<th>Why not</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Jersey OCR in the pipeline</strong></td>
+<td>M3: digits ~10–18 px. Put it in the labelling UI instead (§3.7).</td>
+</tr>
+<tr>
+<td><strong>A bespoke ReID backbone trained from scratch</strong></td>
+<td>We have zero identity labels, and one match ⇒ ~30 identities (M7). ReID fine-tuning wants hundreds. SoccerNet-ReID weights are MIT-licensed and free.</td>
+</tr>
+<tr>
+<td><strong>End-to-end transformer trackers (MOTR / MOTRv2)</strong></td>
+<td>Won SoccerNet 2023 at ~69.5 HOTA, but they are GPU-hungry to train and need labelled tracking data we do not have. Wrong end of the cost curve for a no-GPU laptop and a $3.60 training budget.</td>
+</tr>
+<tr>
+<td><strong>A custom MOT metric</strong></td>
+<td>TrackEval is the reference implementation of HOTA/CLEAR/Identity. Writing our own invites a metric bug that flatters us — the exact class of error this project has already paid for.</td>
+</tr>
+<tr>
+<td><strong>Cross-match re-ID (P3)</strong></td>
+<td>Unmeasurable today (M7). Building it would mean shipping something whose success cannot be evaluated.</td>
+</tr>
+<tr>
+<td><strong>Pose / gait</strong></td>
+<td>§3.8.</td>
+</tr>
+<tr>
+<td><strong>A second labelling front-end</strong></td>
+<td><code>labeller_review_2026-06.md</code> already found two divergent front-ends (Streamlit <code>app.py</code> + the FastAPI/Konva web UI). Extend <code>web/review.html</code>; do not add a third.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="310-recommended-path">3.10 Recommended path<a class="headerlink" href="#310-recommended-path" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code>        ┌──────────────────── P0: within-shot (single camera shot, M1) ────────────────────┐
+        │  RT-DETR dets (exist, 2.77M)                                                      │
+        │        │                                                                          │
+        │        ├──▶ torso-hue team cluster (M6, ~free) ──┐                                │
+        │        │                                          ▼                               │
+        │        └──▶ IoU/Hungarian or BoT-SORT+CMC ── team-constrained association         │
+        │                          │                                                        │
+        │                          ▼   track_id  →  detection.track_id (column exists)      │
+        └───────────────────────────────────────────────────────────────────────────────────┘
+                                   │  tracklets
+                                   ▼
+        ┌──────────────── P2: cross-clip (same match) — ONLY after P0 measured ─────────────┐
+        │  tracklet appearance embedding (OSNet / SoccerNet-ReID, MIT)                       │
+        │        + team constraint + temporal exclusion (same clip ⇒ different players)      │
+        │        + human-supplied jersey number where legible                                │
+        │        → player_id, reid_parent_track_id (columns exist)                           │
+        └───────────────────────────────────────────────────────────────────────────────────┘
+</code></pre></div>
+<p><strong>Exploiting the 2.77M existing detections.</strong> They are the substrate for
+everything above and cost nothing to reuse — but note what they are <em>not</em>: they
+are TIER 3, conf≥0.10, unreviewed, and single-match. Three concrete uses:</p>
+<ol>
+<li><strong>Free difficulty statistics.</strong> M2/M4/M5/M8 need only the JSONL — no video
+   decode. Running them across all 162 clips is minutes of laptop CPU and gives
+   a per-clip crowding score to drive benchmark stratification (§2.3) and active
+   learning (§4.5). <strong>Do this first; it is the cheapest useful thing in the
+   document.</strong></li>
+<li><strong>Tracker input.</strong> All trackers here are training-free, so 2.77M detections
+   become ~65 min of tracklets for the price of CPU.</li>
+<li><strong>Embedding corpus</strong> for P2 (~2M player crops, ~$0.25 of GPU, §3.5).</li>
+</ol>
+<h3 id="311-milestone-1-small-enough-to-validate-quickly">3.11 Milestone 1 — small enough to validate quickly<a class="headerlink" href="#311-milestone-1-small-enough-to-validate-quickly" title="Permanent link">&para;</a></h3>
+<blockquote>
+<p><strong>Run <code>LapTracker</code> and <code>UltralyticsTracker</code>(botsort) over 10 selected clips,
+label those 10 clips (§4), and report purity / coverage / HOTA / IDF1 / IDSW
+with clip-level bootstrap CIs.</strong></p>
+</blockquote>
+<p>No new algorithm. No GPU. No training labels. Estimated ~2 human hours of
+labelling (§4.6) plus a day of harness work. The deliverable is a number, and
+the number decides everything after it.</p>
+<hr />
+<h2 id="4-label-collection">4. Label collection<a class="headerlink" href="#4-label-collection" title="Permanent link">&para;</a></h2>
+<p>This is the crux: <strong>there are zero player identity labels today</strong>, and the
+existing <code>ball_gt_marks/</code> (39 files) are ball-only.</p>
+<h3 id="41-the-core-principle-humans-review-tracklets-never-boxes">4.1 The core principle: humans review tracklets, never boxes<a class="headerlink" href="#41-the-core-principle-humans-review-tracklets-never-boxes" title="Permanent link">&para;</a></h3>
+<p>A median clip has 430 frames × ~15 players ≈ <strong>6,500 player boxes</strong> but only
+<strong>~30 tracklets</strong>. Labelling boxes from scratch is a non-starter; reviewing
+tracklets is a <strong>~250× reduction</strong> in human decisions. So:</p>
+<blockquote>
+<p>The human is never asked "where is this player?". The tracker answers that.
+The human is asked <strong>"does this track change person?"</strong> — a question a human
+answers in a fraction of a second and a tracker answers wrongly.</p>
+</blockquote>
+<p>This mirrors the precedent already in the codebase: <code>/propagate</code> produces
+machine boxes and the human corrects them; <code>Session.merge_propagated</code> makes
+human GT absolutely authoritative (propagated output for a human-touched frame
+is discarded entirely, not merged). Identity labelling should use the same
+posture.</p>
+<h3 id="42-interaction-1-the-tracklet-strip-catches-id-switches">4.2 Interaction 1 — the tracklet strip (catches ID switches)<a class="headerlink" href="#42-interaction-1-the-tracklet-strip-catches-id-switches" title="Permanent link">&para;</a></h3>
+<p>The primary screen. One predicted tracklet, rendered as a horizontal filmstrip
+of player crops.</p>
+<div class="highlight"><pre><span></span><code> track 7  ·  team HOME  ·  frames 102–389 (288 fr, 11.5 s)  ·  risk 0.31
+ ┌────┬────┬────┬────┬────┬────┬────┬────┬────┬────┬────┬────┐
+ │ f102│ f120│ f138│ f156│▓f171│▓f174│▓f177│ f195│ f240│ f290│ f340│ f389│
+ └────┴────┴────┴────┴────┴────┴────┴────┴────┴────┴────┴────┘
+                          └── dense sampling around a risky frame ──┘
+ [Enter] accept   [S] split here   [U] mark unknown   [J] set jersey   [←/→] move
+</code></pre></div>
+<ul>
+<li><strong>Adaptive sampling.</strong> Uniform every ~18 frames, <strong>plus dense sampling around
+  risky frames</strong>. Risk per frame = crowding (M5: IoU&gt;0.2 with another box) +
+  low detection confidence (M8) + <strong>the tracker's own association margin</strong>
+  (M4b: margin &lt; 0.05). This is the single biggest cost lever — it puts the
+  human's eyes only where a switch could plausibly have happened.</li>
+<li><strong>One click per decision.</strong> <code>S</code> splits the tracklet at the cursor. <code>Enter</code>
+  accepts the whole thing.</li>
+<li><strong>Record what was actually seen.</strong> Every crop the human displayed is appended
+  to <code>checked_frames</code>. This is not bookkeeping pedantry — it is the entire basis
+  of the tiering scheme (§4.4).</li>
+</ul>
+<p><strong>Errors the human must catch, in priority order:</strong></p>
+<ol>
+<li><strong>ID switch</strong> (two people, one track ID) — poison (§2.2). Non-negotiable.</li>
+<li><strong>Fragmentation</strong> (one person, several IDs) — benign for training, but needed
+   for a correct coverage/IDF1 number. Caught in interaction 2.</li>
+<li><strong>Team error</strong> — should be near-impossible given M6; if seen, it is a bug
+   signal, not a labelling task.</li>
+<li><strong>Bad boxes</strong> — explicitly <em>not</em> this task. The existing review UI
+   (<code>web/review.html</code>, <code>POST /review/correct</code>) owns box quality. Mixing the two
+   makes both slower.</li>
+</ol>
+<h3 id="43-interaction-2-tracklet-merge-builds-identities-and-the-p2-labels">4.3 Interaction 2 — tracklet merge (builds identities, and the P2 labels)<a class="headerlink" href="#43-interaction-2-tracklet-merge-builds-identities-and-the-p2-labels" title="Permanent link">&para;</a></h3>
+<p>After splits, present <strong>ranked candidate pairs</strong> and ask a binary question:</p>
+<div class="highlight"><pre><span></span><code>   Are these the same player?          [Y] same   [N] different   [?] can&#39;t tell
+   ┌──────────┐   ┌──────────┐
+   │ t007     │   │ t019     │      both HOME · seg002 f102-241 vs f260-389
+   │ 4 crops  │   │ 4 crops  │      temporally disjoint · similarity 0.81
+   └──────────┘   └──────────┘
+</code></pre></div>
+<ul>
+<li>Candidates come from appearance similarity + team + <strong>temporal exclusion</strong>
+  (two tracklets overlapping in time in the same clip <strong>cannot</strong> be the same
+  player — a free, hard constraint that removes most of the candidate space).</li>
+<li><strong>Capture the <code>N</code> answers.</strong> Rejected pairs are <em>negative</em> labels, they cost
+  nothing extra, and they are exactly what a ReID metric and any future ReID
+  fine-tuning need. Most annotation schemes throw these away.</li>
+<li><strong>Optional jersey number</strong> (<code>J</code>): the human scrubs full-resolution frames and
+  types a number if legible. This is the §3.7 inversion — human-in-the-loop
+  jersey reading instead of OCR. Populates the existing
+  <code>track_meta.jersey_number</code>. Also: <strong>record the fraction of tracklets for which
+  a human <em>could</em> read the number.</strong> That number is independently interesting —
+  it is the empirical ceiling for any future OCR work, measured on our footage
+  rather than borrowed from a paper.</li>
+</ul>
+<h3 id="44-provenance-tiers-for-identity-what-human-checked-means-for-a-track">4.4 Provenance tiers for identity — what "human-checked" means for a track<a class="headerlink" href="#44-provenance-tiers-for-identity-what-human-checked-means-for-a-track" title="Permanent link">&para;</a></h3>
+<p>This is the question the project rules pose and it does not have the same answer
+as it does for a box.</p>
+<blockquote>
+<p><strong>For a box, <code>human_checked</code> is atomic: a human looked at one box, once.
+For a track it is not.</strong> A tracklet is hundreds of association assertions
+spanning ~17 seconds, and the human physically cannot look at all of them —
+the whole point of the strip UI (§4.2) is that they look at ~12 of 288 frames.
+<strong>A boolean <code>reviewed</code> flag on a tracklet is therefore a lie.</strong></p>
+</blockquote>
+<p>The resolution: <strong>tier is a property of a frame interval, not of a tracklet.</strong>
+A single tracklet is routinely mixed-tier.</p>
+<table>
+<thead>
+<tr>
+<th>Tier</th>
+<th>Identity meaning</th>
+<th>Tag / storage</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>TIER 1 — human-placed</strong></td>
+<td>A <strong>point assertion the human directly made</strong>: a split point, a <code>same</code>/<code>different</code> pair judgement, an identity name, a jersey number, an <code>unknown</code> marking.</td>
+<td><code>tags</code> contain <code>labeller</code></td>
+</tr>
+<tr>
+<td><strong>TIER 2 — machine + human-checked</strong></td>
+<td>A tracker-produced association interval <strong>that lies inside <code>checked_frames</code></strong> — i.e. the human actually saw crops bracketing it and did not split.</td>
+<td>source tag <strong>and</strong> <code>human_checked</code></td>
+</tr>
+<tr>
+<td><strong>TIER 3 — machine only</strong></td>
+<td>Tracker association <strong>outside</strong> <code>checked_frames</code>. The overwhelming majority of frames in a "reviewed" tracklet.</td>
+<td>source tag alone</td>
+</tr>
+</tbody>
+</table>
+<p>Rules that follow, and that must be enforced in code, not just documented:</p>
+<ul>
+<li><strong>Reviewing a tracklet does NOT promote the whole tracklet to TIER 2.</strong> Only
+  the checked intervals. This is the exact auto-promotion the project rules
+  forbid, and it is very easy to do by accident here.</li>
+<li>Machine tracklets are written to a <strong>separate directory</strong> from human identity
+  GT, matching the existing machine-labels/human-GT split.</li>
+<li>Precedent to mirror: <code>Session.merge_propagated</code> discards machine output for a
+  human-touched frame entirely rather than merging it; <code>detections_enriched</code>
+  arbitrates canonicality at <strong>run-batch</strong> level, not per row (commit <code>d5d27e2</code>).
+  Identity arbitration should follow the same batch-level rule.</li>
+</ul>
+<p><strong>The unidentifiable player.</strong> A first-class value, not a missing one:</p>
+<ul>
+<li><code>identity: "unknown"</code> — the human looked and genuinely could not tell (fully
+  occluded, off-screen, 20 px tall, hopeless blur).</li>
+<li>Strictly distinct from <code>null</code> = not yet reviewed.</li>
+<li><code>unknown</code> intervals become <strong>ignore regions</strong> in evaluation, exactly like MOT
+  distractor zones: the tracker is neither rewarded nor punished there. Scoring
+  a tracker as wrong on a frame no human can resolve measures nothing.</li>
+<li><strong>Report the unknown rate.</strong> It is the <strong>human ceiling</strong>: if 12% of
+  player-frames are human-unidentifiable, then a "purity ≥ 0.95" target needs
+  restating relative to the resolvable 88%. Claiming a number above the ceiling
+  is incoherent, and we would not otherwise notice.</li>
+</ul>
+<h3 id="45-storage">4.5 Storage<a class="headerlink" href="#45-storage" title="Permanent link">&para;</a></h3>
+<p><strong>Hard prerequisite — stable detection IDs.</strong> Machine-label JSONL rows today are
+<code>{frame_index, bbox, center, tags, confidence, model_id, run_id, reviewed}</code> with
+<strong>no <code>detection_id</code></strong>; <code>feature_store/importers.py</code> synthesises one as the row
+ordinal (<code>detection_id=i</code>). Identity labels keyed to a detection would therefore
+<strong>silently rebind if a JSONL is ever filtered, re-sorted, or regenerated.</strong> The
+review UI has the same latent bug in a different place (its box identity is the
+positional <code>(clip, frame, box_index)</code>, so a delete shifts every later index).</p>
+<blockquote>
+<p><strong>Add an explicit, stable <code>detection_id</code> to the machine-label writer, assigned
+at inference time and monotone within a clip, before collecting any identity
+label.</strong> Small change; everything downstream depends on it.</p>
+</blockquote>
+<p><strong>Do not extend the existing <code>tags</code> list.</strong> It is a fixed 2-element positional
+convention <code>[label, provenance]</code> parsed by set-membership across the loaders and
+the review UI. Adding a third element is a footgun for a schema that has already
+caused one data-loss incident (<code>arsenal_example.jsonl</code> truncated 3,348 → 0 rows).</p>
+<p><strong>Recommendation: a new per-clip sidecar</strong>, <code>&lt;clip_stem&gt;.tracks.jsonl</code>, machine
+tracks and human identity assertions in separate directories, with the feature
+store as the queryable index (it is rebuildable from the sidecars, per the
+existing "Parquet is source of truth, DuckDB is an index" rule).</p>
+<div class="highlight"><pre><span></span><code>{&quot;type&quot;:&quot;tracklet&quot;,&quot;tracklet_id&quot;:&quot;t007&quot;,&quot;run_id&quot;:&quot;lap_v1__20260830&quot;,&quot;clip&quot;:&quot;..._seg002&quot;,
+ &quot;start_frame&quot;:102,&quot;end_frame&quot;:389,&quot;team&quot;:&quot;home&quot;,&quot;identity&quot;:&quot;p_home_04&quot;,
+ &quot;checked_frames&quot;:[[102,108],[168,180],[236,244],[386,389]],
+ &quot;checked_by&quot;:&quot;george&quot;,&quot;checked_at&quot;:&quot;2026-08-30T10:14:00Z&quot;}
+{&quot;type&quot;:&quot;identity&quot;,&quot;identity&quot;:&quot;p_home_04&quot;,&quot;team&quot;:&quot;home&quot;,&quot;jersey&quot;:17,&quot;role&quot;:&quot;player&quot;,&quot;tags&quot;:[&quot;labeller&quot;]}
+{&quot;type&quot;:&quot;split&quot;,&quot;run_id&quot;:&quot;lap_v1__20260830&quot;,&quot;track_id&quot;:7,&quot;at_frame&quot;:241,&quot;tags&quot;:[&quot;labeller&quot;]}
+{&quot;type&quot;:&quot;pair&quot;,&quot;a&quot;:&quot;t007&quot;,&quot;b&quot;:&quot;t019&quot;,&quot;verdict&quot;:&quot;same&quot;,&quot;tags&quot;:[&quot;labeller&quot;]}
+{&quot;type&quot;:&quot;pair&quot;,&quot;a&quot;:&quot;t007&quot;,&quot;b&quot;:&quot;t022&quot;,&quot;verdict&quot;:&quot;different&quot;,&quot;tags&quot;:[&quot;labeller&quot;]}
+{&quot;type&quot;:&quot;unknown&quot;,&quot;tracklet_id&quot;:&quot;t007&quot;,&quot;frames&quot;:[[300,318]],&quot;tags&quot;:[&quot;labeller&quot;]}
+</code></pre></div>
+<p><strong>Feature store: no schema change needed.</strong> <code>detection.track_id</code> and
+<code>track_meta.{team_id, jersey_number, player_id, reid_parent_track_id}</code> already
+exist end-to-end (<code>TrackMeta</code> → table → <code>tracks_enriched</code> view →
+<code>player_trajectory()</code>) and <strong>nothing currently writes them</strong>. The plumbing is
+done; only the producer is missing. The one addition worth making is a
+tier-carrying interval table so <code>checked_frames</code> is queryable rather than buried
+in JSON — otherwise "show me every TIER 2 association" is not answerable, and
+the tiering scheme becomes decorative.</p>
+<h3 id="46-how-many-labels-and-how-many-human-hours">4.6 How many labels, and how many human hours<a class="headerlink" href="#46-how-many-labels-and-how-many-human-hours" title="Permanent link">&para;</a></h3>
+<p><strong>Estimates, clearly labelled as such</strong> — the per-tracklet review time is the
+load-bearing unknown and <strong>must be measured on the first clip before committing
+to the rest.</strong></p>
+<p>Per median clip (430 frames, M7):</p>
+<table>
+<thead>
+<tr>
+<th>Step</th>
+<th>Volume</th>
+<th>Est. rate</th>
+<th>Est. time</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Tracklet strip review</td>
+<td>~30 tracklets</td>
+<td>~15 s each</td>
+<td>7.5 min</td>
+</tr>
+<tr>
+<td>Merge pass (binary pairs)</td>
+<td>~20 candidate pairs</td>
+<td>~5 s each</td>
+<td>1.7 min</td>
+</tr>
+<tr>
+<td>Team / role confirmation</td>
+<td>2 clusters + GK/ref</td>
+<td>—</td>
+<td>0.5 min</td>
+</tr>
+<tr>
+<td><strong>Total</strong></td>
+<td></td>
+<td></td>
+<td><strong>~10 min/clip</strong> (range 8–15)</td>
+</tr>
+</tbody>
+</table>
+<table>
+<thead>
+<tr>
+<th>Deliverable</th>
+<th>Clips</th>
+<th><strong>Est. human hours</strong></th>
+<th>Enables</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>v1 benchmark (eval only)</strong></td>
+<td><strong>10</strong></td>
+<td><strong>~2 h</strong></td>
+<td>Rank the trackers we already have. <strong>P0.</strong></td>
+</tr>
+<tr>
+<td>Clean holdout</td>
+<td>+10</td>
+<td>~2 h</td>
+<td>Guard against tuning on the benchmark</td>
+</tr>
+<tr>
+<td>v2 / per-condition breakdown</td>
+<td>+20</td>
+<td>~4 h</td>
+<td>Tighter CIs; crowded-vs-open analysis</td>
+</tr>
+<tr>
+<td>Cross-clip identity, one match</td>
+<td>20 clips linked</td>
+<td>~3 h</td>
+<td><strong>P2</strong> eval (gallery ~30 identities)</td>
+</tr>
+<tr>
+<td>ReID <em>training</em> set</td>
+<td>≥5 matches needed</td>
+<td><strong>not yet possible</strong></td>
+<td>P3 — blocked on corpus (M7), not on labelling</td>
+</tr>
+</tbody>
+</table>
+<p><strong>The single most important number here: the first useful dataset is ~2 human
+hours.</strong> That is small enough that there is no excuse for continuing to guess.</p>
+<p><strong>Zero training labels are needed for milestone 1</strong> — every tracker in §3.1–3.3
+is training-free. Labels are needed purely to <em>measure</em>. This is what makes the
+first milestone cheap.</p>
+<p><strong>Active learning, in priority order (all cheap):</strong></p>
+<ol>
+<li><strong>Tracker disagreement.</strong> Run <code>LapTracker</code> and BoT-SORT over all 162 clips
+   and rank clips/frames by how much they disagree. Disagreement localises
+   ambiguity without any model of ambiguity, and it needs no labels to compute.</li>
+<li><strong>Association margin</strong> (M4b) — 3.6% of associations have margin &lt; 0.05. Those
+   frames are where switches happen; sample them densely (§4.2).</li>
+<li><strong>Crowding</strong> (M5) — 6.3% of instances. Free from JSONL alone.</li>
+<li>Only after v1: uncertainty from a trained model. Not before.</li>
+</ol>
+<hr />
+<h2 id="5-risks-and-open-questions">5. Risks and open questions<a class="headerlink" href="#5-risks-and-open-questions" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>Risk</th>
+<th>Impact</th>
+<th><strong>Cheapest thing to measure first</strong></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>R1</strong></td>
+<td><strong>Single-match corpus.</strong> All 162 clips are <code>arsenal_mancity_20250925</code> (M7). P3 is unmeasurable and P2's gallery is one kit pair.</td>
+<td>Blocks cross-match work entirely; makes P2 results non-generalising.</td>
+<td>S3 already holds <code>arsenal_astonvilla/</code>, <code>arsenal_bournmouth_*/</code>, <code>arsenal_norwich/</code> source footage. <strong>Run the existing detector over one more match</strong> (~1 GPU-hour, well under $1) and re-check M6 on a second kit pair.</td>
+</tr>
+<tr>
+<td><strong>R2</strong></td>
+<td><strong>M2–M6 and M8 come from ONE clip</strong> (seg002, 430 frames, one wide angle). Close-ups, replays and goalmouth scrambles may behave completely differently. This is structurally the same error as the 44-instance ball mAP.</td>
+<td>Could invalidate the "IoU is easy" premise and the whole milestone-1 plan.</td>
+<td><strong>Re-run M2, M4, M4b, M5, M8 across all 162 clips from the JSONL alone</strong> — no video decode, minutes of laptop CPU. <strong>Do this before anything else in this document.</strong> M6 needs video, so sample ~20 clips.</td>
+</tr>
+<tr>
+<td><strong>R3</strong></td>
+<td><strong>Existing trackers may simply not work.</strong> <code>trackers/</code> is written-but-unexercised scaffolding: <code>tests/tracking/</code> has fixtures and <strong>no test file</strong>; <code>TrackedDetection.is_interpolated</code> documents a Kalman filter that neither tracker has.</td>
+<td>Milestone 1 stalls on debugging, not measuring.</td>
+<td>Run both over one clip and eyeball the overlay video <strong>before</strong> building the benchmark harness. This is the direct VitTrack lesson — it was assumed workable for a year.</td>
+</tr>
+<tr>
+<td><strong>R4</strong></td>
+<td><strong>Detector recall drives everything.</strong> If RT-DETR misses players, tracks fragment and no association algorithm recovers them. The autolabelling architecture review already found detection was <strong>100%</strong> of the ball failure.</td>
+<td>A bad HOTA would be misattributed to the tracker.</td>
+<td>HOTA's <strong>DetA/AssA decomposition</strong> separates these for free. Also: the §4 labels give player-detection recall as a by-product — measure it in the same pass.</td>
+</tr>
+<tr>
+<td><strong>R5</strong></td>
+<td><strong>Referee detections are weak</strong> (M8: median conf 0.335) and <code>person</code>/<code>player_sub</code> are pure noise (0% above conf 0.25). Refs mis-typed as players pollute team clustering.</td>
+<td>Team constraint (§3.6) misfires; a whole failure class reappears.</td>
+<td>Verify whether the k=3 hue-61° cluster (n=255) is the referee/GK population — one afternoon on existing crops.</td>
+</tr>
+<tr>
+<td><strong>R6</strong></td>
+<td><strong>Purity target unreachable if the human-unknown rate is high.</strong></td>
+<td>The ≥0.95 bar would be incoherent (§4.4).</td>
+<td>Report the unknown rate from the <strong>first labelled clip</strong>; restate targets relative to the resolvable fraction.</td>
+</tr>
+<tr>
+<td><strong>R7</strong></td>
+<td><strong>Value risk: is P2 worth doing at all?</strong> SoccerNet's own ReID dataset defines identity <strong>only within an action</strong>, not persistently across a match — strong evidence that persistent broadcast identity is both hard and often unnecessary.</td>
+<td>We could spend weeks on cross-clip identity nobody consumes.</td>
+<td><strong>Write down the actual downstream queries</strong> and mark which genuinely need persistent identity vs. which are satisfied by per-shot tracklets + team + pitch position. Costs an hour and may delete P2.</td>
+</tr>
+<tr>
+<td><strong>R8</strong></td>
+<td><strong>Positional-index fragility.</strong> The review UI keys boxes by ordinal <code>box_index</code>; machine JSONL has no <code>detection_id</code>.</td>
+<td>Identity labels silently rebind to the wrong boxes — the worst possible failure, because it is invisible.</td>
+<td>The §4.5 <code>detection_id</code> prerequisite. Non-negotiable and must land first.</td>
+</tr>
+<tr>
+<td><strong>R9</strong></td>
+<td>Labelling rate estimate (~15 s/tracklet) is a guess. If it is 60 s, the 2-hour figure becomes 8 hours.</td>
+<td>Plan slips 4×.</td>
+<td>Time the <strong>first clip</strong> and revise §4.6 before labelling the other nine.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="open-questions">Open questions<a class="headerlink" href="#open-questions" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>Does the team constraint actually reduce ID switches?</strong> M6 says teams are
+  separable; it does <strong>not</strong> say switches are predominantly cross-team.
+  <em>Resolved by:</em> ablating the constraint on the v1 benchmark once it exists.</li>
+<li><strong>Is CMC worth its CPU cost here?</strong> Expected yes (§3.3) but unmeasured on this
+  footage. <em>Resolved by:</em> BoT-SORT with and without <code>gmc_method</code> on v1.</li>
+<li><strong>What is the right <code>track_buffer</code>?</strong> Given the asymmetric costs (§2.2), a
+  <em>short</em> buffer that fragments rather than switches may be optimal — the
+  opposite of the usual MOT tuning instinct. <em>Resolved by:</em> sweeping it against
+  purity rather than HOTA.</li>
+<li><strong>Do the last 1–4 frames of each clip (the next shot's leading frames, M1)
+  need trimming?</strong> They inject a handful of wrong-scene detections into every
+  clip. <em>Resolved by:</em> a cheap shot-boundary check in the segmenter.</li>
+<li><strong>Should identity be per-match or per-clip?</strong> This doc assumes per-match
+  identities (<code>p_home_04</code>) with per-clip tracklets. Not obviously right if P2 is
+  deprioritised by R7.</li>
+</ul>
+<hr />
+<h2 id="6-plan-of-record">6. Plan of record<a class="headerlink" href="#6-plan-of-record" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>Priority</th>
+<th>Action</th>
+<th>Cost</th>
+<th>Gate</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>T0</strong></td>
+<td><strong>P0</strong></td>
+<td>Re-run M2/M4/M4b/M5/M8 across <strong>all 162 clips</strong> from JSONL only; sample ~20 clips for M6. Publish per-clip crowding scores.</td>
+<td>Minutes of laptop CPU</td>
+<td>R2. <strong>Nothing else starts until this confirms the single-clip numbers.</strong></td>
+</tr>
+<tr>
+<td><strong>T1</strong></td>
+<td><strong>P0</strong></td>
+<td>Add stable <code>detection_id</code> to the machine-label writer and importer.</td>
+<td>Small</td>
+<td>R8; prerequisite for all labelling</td>
+</tr>
+<tr>
+<td><strong>T2</strong></td>
+<td><strong>P0</strong></td>
+<td>Smoke-run <code>LapTracker</code> + <code>UltralyticsTracker(botsort)</code> on one clip; watch the overlay video.</td>
+<td>Hours</td>
+<td>R3</td>
+</tr>
+<tr>
+<td><strong>T3</strong></td>
+<td><strong>P0</strong></td>
+<td>Build <code>player_eval/</code> (dataset + MOT-CSV exporter + TrackEval wiring + purity/coverage + clip-level bootstrap CIs). Mirror <code>ball_eval/</code>'s shape.</td>
+<td>~1 day</td>
+<td>—</td>
+</tr>
+<tr>
+<td><strong>T4</strong></td>
+<td><strong>P0</strong></td>
+<td>Tracklet-strip + merge UI in <code>web/review.html</code> (<strong>not</strong> a new front-end).</td>
+<td>~2 days</td>
+<td>—</td>
+</tr>
+<tr>
+<td><strong>T5</strong></td>
+<td><strong>P0</strong></td>
+<td>Select 10 clips (contamination-excluded, length- and crowding-stratified); label them. <strong>Time the first clip and revise estimates.</strong></td>
+<td><strong>~2 human hours</strong></td>
+<td>R9</td>
+</tr>
+<tr>
+<td><strong>T6</strong></td>
+<td><strong>P0</strong></td>
+<td>Report purity / coverage / HOTA / IDF1 / IDSW with CIs and full denominators, for both trackers. <strong>This is milestone 1.</strong></td>
+<td>—</td>
+<td>Decides everything after</td>
+</tr>
+<tr>
+<td><strong>T7</strong></td>
+<td><strong>P1</strong></td>
+<td>Torso-hue team clustering + team-constrained association; ablate on the benchmark.</td>
+<td>~1 day</td>
+<td>§3.6</td>
+</tr>
+<tr>
+<td><strong>T8</strong></td>
+<td><strong>P1</strong></td>
+<td>Detector run over a second match.</td>
+<td>~1 GPU-hour, &lt;$1</td>
+<td>R1</td>
+</tr>
+<tr>
+<td><strong>T9</strong></td>
+<td><strong>P2</strong></td>
+<td>Only if T6 misses the bar: OC-SORT / Deep OC-SORT via <code>boxmot</code>; appearance embeddings.</td>
+<td>Days</td>
+<td>Gated on measured need</td>
+</tr>
+<tr>
+<td><strong>T10</strong></td>
+<td><strong>P2</strong></td>
+<td>Cross-clip P2 work — but <strong>only after R7 is answered</strong>.</td>
+<td>—</td>
+<td>R7</td>
+</tr>
+</tbody>
+</table>
+<p><strong>One-line summary.</strong> The algorithms and the storage columns already exist and
+have never been measured; the footage says within-clip tracking is easier than
+feared (no cuts, median IoU 0.837), team assignment is nearly free (1% ambiguous)
+and jersey OCR is impossible (52×111 px boxes). So: spend ~2 human hours building
+a benchmark, measure what we already have, hold the bar on <strong>tracklet purity</strong>
+rather than HOTA because auto-labelling punishes switches far more than
+fragmentation, tier identity labels <strong>per frame-interval</strong> rather than per
+tracklet because a human cannot look at 288 frames, and build nothing else until
+a number says to.</p>
+<hr />
+<h2 id="appendix-a-reproducing-the-0-measurements">Appendix A — reproducing the §0 measurements<a class="headerlink" href="#appendix-a-reproducing-the-0-measurements" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><span class="nb">cd</span><span class="w"> </span>/home/george/footy-track
+aws<span class="w"> </span>s3<span class="w"> </span>cp<span class="w"> </span>s3://georgebarnett-general-purpose/footy_data/machine_labels/_manifest.json<span class="w"> </span>/tmp/
+aws<span class="w"> </span>s3<span class="w"> </span>cp<span class="w"> </span>s3://georgebarnett-general-purpose/footy_data/machine_labels/arsenal_mancity_20250925_seg002.jsonl<span class="w"> </span>/tmp/
+aws<span class="w"> </span>s3<span class="w"> </span>cp<span class="w"> </span>s3://georgebarnett-general-purpose/footy_data/clips/arsenal_mancity_20250925_seg002.mp4<span class="w"> </span>/tmp/
+<span class="c1"># M2/M3/M4/M5/M8 need only the JSONL; M6 decodes the mp4; M1 decodes 5 clips.</span>
+<span class="c1"># M1:  per-frame 64-bin greyscale histogram L1 distance, cut threshold 0.25</span>
+<span class="c1"># M6:  torso crop = bbox[0.25..0.75]w x [0.20..0.50]h, mean HSV,</span>
+<span class="c1">#      features (cos h, sin h, s/255, v/255), k-means k=2</span>
+</code></pre></div>
+<p><code>M7</code> comes straight from <code>_manifest.json</code>. <code>.venv/bin/python</code> has numpy 2.3.5 and
+cv2 5.0.0; there is <strong>no scipy</strong> in the venv.</p>
+<h2 id="appendix-b-sources">Appendix B — sources<a class="headerlink" href="#appendix-b-sources" title="Permanent link">&para;</a></h2>
+<p><strong>Metrics</strong>
+- HOTA — Luiten et al., IJCV 2020 — https://arxiv.org/abs/2009.07736 · author's explainer https://jonathonluiten.medium.com/how-to-evaluate-tracking-with-the-hota-metrics-754036d183e1
+- CLEAR MOT / MOTA — Bernardin &amp; Stiefelhagen 2008
+- TrackEval (reference implementation of HOTA / CLEAR / Identity) — https://github.com/JonathonLuiten/TrackEval
+- re-ID mAP vs CMC — Zheng et al., Market-1501, ICCV 2015 — https://www.cv-foundation.org/openaccess/content_iccv_2015/papers/Zheng_Scalable_Person_Re-Identification_ICCV_2015_paper.pdf
+- <em>No published guidance was found on the minimum annotation size for a stable IDF1/HOTA — hence the bootstrap-CI rule in §2.3.</em></p>
+<p><strong>SoccerNet</strong>
+- SoccerNet-Tracking (225,375 frames, 5,009 tracklets, 12 matches, 1080p/25fps; ByteTrack w/ GT dets 71.50 HOTA, FairMOT-ft 57.88 HOTA) — https://arxiv.org/abs/2204.06918
+- SoccerNet 2023 tracking challenge (winner ~69.5 HOTA) — https://arxiv.org/pdf/2308.16651
+- SoccerNet-ReID (340,993 thumbnails, 400 matches, MIT licence; <strong>identities valid only within an action</strong>) — https://github.com/SoccerNet/sn-reid
+- SoccerNet 2023 ReID challenge (best 93.26% mAP; 2022 baseline 59.11% mAP / 48.41% rank-1) — https://arxiv.org/pdf/2309.06006
+- SoccerNet Game State Reconstruction / <code>sn-gamestate</code> (PRTReID + K-means team assignment, GS-HOTA) — https://arxiv.org/pdf/2404.11335 · https://github.com/SoccerNet/sn-gamestate</p>
+<p><strong>Trackers</strong>
+- BoT-SORT (80.5 MOTA / 80.2 IDF1 / 65.0 HOTA on MOT17; CMC worth ~1.0–1.5 HOTA) — https://arxiv.org/pdf/2206.14651 · https://github.com/NirAharon/BoT-SORT
+- OC-SORT / Deep OC-SORT (64.9 HOTA MOT17; &gt;10 HOTA over ByteTrack on DanceTrack) — https://arxiv.org/pdf/2302.11813 · https://github.com/GerardMaggiolino/Deep-OC-SORT
+- <code>boxmot</code> (OSNet / CLIP-ReID / LightMBN plug-ins) — https://github.com/mikel-brostrom/boxmot</p>
+<p><strong>Jersey numbers</strong>
+- Koshkina &amp; Elder, CVPRW 2024 — 87.4% on soccer <strong>tracklets</strong> (tracklet legible if ≥1 frame legible) — https://arxiv.org/html/2405.13896 · https://github.com/mkoshkina/jersey-number-pipeline
+- SoccerNet jersey-number challenge — https://github.com/SoccerNet/sn-jersey</p>
+<p><strong>Team assignment</strong>
+- <code>roboflow/sports</code> — SigLIP → UMAP → K-means into 2 clusters — https://github.com/roboflow/sports</p>
+<p><strong>Project context</strong>
+- <a href="../player_tracking_format/"><code>player_tracking_format.md</code></a> §5–6 · <a href="../tracking/"><code>tracking.md</code></a> · <a href="../feature_store/"><code>feature_store.md</code></a> · <a href="../autolabelling_architecture_review/"><code>autolabelling_architecture_review.md</code></a> · <a href="../bidirectional_tracking_research/"><code>bidirectional_tracking_research.md</code></a> · <a href="../labeller_review_2026-06/"><code>labeller_review_2026-06.md</code></a>
+- Code: <code>src/footy_track/trackers/</code> · <code>src/footy_track/ball_eval/</code> (harness template) · <code>src/footy_track/feature_store/schema.py</code> (DDL) · <code>src/footy_track/labeller/web/review.html</code></p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      <script id="__config" type="application/json">{"base": "../..", "features": [], "search": "../../assets/javascripts/workers/search.973d3a69.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.f55a23d4.min.js"></script>
+      
+    
+  </body>
+</html>

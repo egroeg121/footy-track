@@ -2,118 +2,122 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
     <url>
          <loc>https://egroeg121.github.io/footy-track/</loc>
-         <lastmod>2026-08-28</lastmod>
+         <lastmod>2026-08-30</lastmod>
     </url>
     <url>
          <loc>https://egroeg121.github.io/footy-track/agent_guidelines/</loc>
-         <lastmod>2026-08-28</lastmod>
+         <lastmod>2026-08-30</lastmod>
     </url>
     <url>
          <loc>https://egroeg121.github.io/footy-track/approach/</loc>
-         <lastmod>2026-08-28</lastmod>
+         <lastmod>2026-08-30</lastmod>
     </url>
     <url>
          <loc>https://egroeg121.github.io/footy-track/ball_tracker_failure_analysis/</loc>
-         <lastmod>2026-08-28</lastmod>
+         <lastmod>2026-08-30</lastmod>
     </url>
     <url>
          <loc>https://egroeg121.github.io/footy-track/data_formats/</loc>
-         <lastmod>2026-08-28</lastmod>
+         <lastmod>2026-08-30</lastmod>
     </url>
     <url>
          <loc>https://egroeg121.github.io/footy-track/development/</loc>
-         <lastmod>2026-08-28</lastmod>
+         <lastmod>2026-08-30</lastmod>
     </url>
     <url>
          <loc>https://egroeg121.github.io/footy-track/doc_review/</loc>
-         <lastmod>2026-08-28</lastmod>
+         <lastmod>2026-08-30</lastmod>
     </url>
     <url>
          <loc>https://egroeg121.github.io/footy-track/interfaces/</loc>
-         <lastmod>2026-08-28</lastmod>
+         <lastmod>2026-08-30</lastmod>
     </url>
     <url>
          <loc>https://egroeg121.github.io/footy-track/labeller_requirements/</loc>
-         <lastmod>2026-08-28</lastmod>
+         <lastmod>2026-08-30</lastmod>
     </url>
     <url>
          <loc>https://egroeg121.github.io/footy-track/labeller_timeline_design/</loc>
-         <lastmod>2026-08-28</lastmod>
+         <lastmod>2026-08-30</lastmod>
     </url>
     <url>
          <loc>https://egroeg121.github.io/footy-track/labeller_web_app_design/</loc>
-         <lastmod>2026-08-28</lastmod>
+         <lastmod>2026-08-30</lastmod>
     </url>
     <url>
          <loc>https://egroeg121.github.io/footy-track/pipeline_architecture/</loc>
-         <lastmod>2026-08-28</lastmod>
+         <lastmod>2026-08-30</lastmod>
     </url>
     <url>
          <loc>https://egroeg121.github.io/footy-track/pipelines/</loc>
-         <lastmod>2026-08-28</lastmod>
+         <lastmod>2026-08-30</lastmod>
     </url>
     <url>
          <loc>https://egroeg121.github.io/footy-track/problem/</loc>
-         <lastmod>2026-08-28</lastmod>
+         <lastmod>2026-08-30</lastmod>
     </url>
     <url>
          <loc>https://egroeg121.github.io/footy-track/system_design/</loc>
-         <lastmod>2026-08-28</lastmod>
+         <lastmod>2026-08-30</lastmod>
     </url>
     <url>
          <loc>https://egroeg121.github.io/footy-track/system_overview/</loc>
-         <lastmod>2026-08-28</lastmod>
+         <lastmod>2026-08-30</lastmod>
     </url>
     <url>
          <loc>https://egroeg121.github.io/footy-track/timings/</loc>
-         <lastmod>2026-08-28</lastmod>
+         <lastmod>2026-08-30</lastmod>
     </url>
     <url>
          <loc>https://egroeg121.github.io/footy-track/training/</loc>
-         <lastmod>2026-08-28</lastmod>
+         <lastmod>2026-08-30</lastmod>
     </url>
     <url>
          <loc>https://egroeg121.github.io/footy-track/design/autolabelling_architecture_review/</loc>
-         <lastmod>2026-08-28</lastmod>
+         <lastmod>2026-08-30</lastmod>
     </url>
     <url>
          <loc>https://egroeg121.github.io/footy-track/design/bidirectional_tracking_research/</loc>
-         <lastmod>2026-08-28</lastmod>
+         <lastmod>2026-08-30</lastmod>
     </url>
     <url>
          <loc>https://egroeg121.github.io/footy-track/design/feature_store/</loc>
-         <lastmod>2026-08-28</lastmod>
+         <lastmod>2026-08-30</lastmod>
     </url>
     <url>
          <loc>https://egroeg121.github.io/footy-track/design/input_live_stream/</loc>
-         <lastmod>2026-08-28</lastmod>
+         <lastmod>2026-08-30</lastmod>
     </url>
     <url>
          <loc>https://egroeg121.github.io/footy-track/design/labeller_review_2026-06/</loc>
-         <lastmod>2026-08-28</lastmod>
+         <lastmod>2026-08-30</lastmod>
     </url>
     <url>
          <loc>https://egroeg121.github.io/footy-track/design/output/</loc>
-         <lastmod>2026-08-28</lastmod>
+         <lastmod>2026-08-30</lastmod>
+    </url>
+    <url>
+         <loc>https://egroeg121.github.io/footy-track/design/player_reid/</loc>
+         <lastmod>2026-08-30</lastmod>
     </url>
     <url>
          <loc>https://egroeg121.github.io/footy-track/design/player_tracking_format/</loc>
-         <lastmod>2026-08-28</lastmod>
+         <lastmod>2026-08-30</lastmod>
     </url>
     <url>
          <loc>https://egroeg121.github.io/footy-track/design/projection/</loc>
-         <lastmod>2026-08-28</lastmod>
+         <lastmod>2026-08-30</lastmod>
     </url>
     <url>
          <loc>https://egroeg121.github.io/footy-track/design/sam3_ball_labelling_gpu/</loc>
-         <lastmod>2026-08-28</lastmod>
+         <lastmod>2026-08-30</lastmod>
     </url>
     <url>
          <loc>https://egroeg121.github.io/footy-track/design/tracking/</loc>
-         <lastmod>2026-08-28</lastmod>
+         <lastmod>2026-08-30</lastmod>
     </url>
     <url>
          <loc>https://egroeg121.github.io/footy-track/training/notable_runs/</loc>
-         <lastmod>2026-08-28</lastmod>
+         <lastmod>2026-08-30</lastmod>
     </url>
 </urlset>
