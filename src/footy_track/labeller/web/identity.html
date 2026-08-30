@@ -82,8 +82,9 @@
     <div><div class="hint" style="margin:0 0 4px">track</div>
     <video id="trackVid" autoplay loop muted playsinline
         style="width:320px;height:320px;background:#000;border-radius:6px"></video></div>
-    <div><div class="hint" style="margin:0 0 4px">best read <span id="bestPx"></span></div>
-    <img id="bestImg" style="height:320px;background:#000;border-radius:6px"></div>
+    <div><div class="hint" style="margin:0 0 4px">best read for a number
+      <span id="bestPx"></span></div>
+    <div id="bestRow" style="display:flex;gap:8px"></div></div>
   </div>
     <div class="strip" id="strip"></div>
     <table id="tracklets"><tbody></tbody></table>
@@ -131,14 +132,24 @@ async function loadStrip() {
   $("jersey").value = "";
   // The closest-up frame, which is where a number is legible. Different frame
   // from the riskiest one, and usually a different question.
-  fetch(`/identity/best-frame?clip=${encodeURIComponent(current)}&track_id=${tid}`)
+  // Several candidates, not one: the facing-away heuristic is unvalidated
+  // (players backpedal, sidestep, turn), so the reviewer picks from a shortlist
+  // rather than trusting the ranking to be right.
+  fetch(`/identity/best-frame?clip=${encodeURIComponent(current)}&track_id=${tid}&n=3`)
     .then(r => r.json()).then(bf => {
-      if (!bf || bf.frame === null || !bf.bbox) { $("bestImg").removeAttribute("src"); return; }
-      const b = bf.bbox;
-      $("bestImg").src = `/identity/crop/${encodeURIComponent(current)}/${bf.frame}.jpg`
-        + `?x=${b.x}&y=${b.y}&w=${b.w}&h=${b.h}&pad=0.25`;
-      $("bestPx").textContent = `· ${bf.height_px}px tall`
-        + (bf.height_px >= 150 ? " · number may be readable" : " · likely too small");
+      const cs = (bf && bf.candidates) || [];
+      $("bestRow").innerHTML = cs.map(c => {
+        const b = c.bbox;
+        const away = c.facing_away === null ? "" : ` · away ${c.facing_away}`;
+        return `<figure class="fr"><img style="height:300px;background:#000;border-radius:6px"
+          src="/identity/crop/${encodeURIComponent(current)}/${c.frame}.jpg`
+          + `?x=${b.x}&y=${b.y}&w=${b.w}&h=${b.h}&pad=0.25">
+          <figcaption>${c.frame} · ${c.height_px}px${away}</figcaption></figure>`;
+      }).join("") || '<span class="hint">no candidates</span>';
+      const top = cs[0];
+      $("bestPx").textContent = top
+        ? (top.height_px >= 150 ? "· may be readable" : "· likely too small")
+        : "";
     });
   const r = await fetch(`/identity/risky-frames?clip=${encodeURIComponent(current)}&track_id=${tid}&k=12`)
     .then(r => r.json());

@@ -244,8 +244,8 @@ def test_crop_draws_only_the_reviewed_box(client, tmp_path, monkeypatch):
     assert len(boxed.content) != len(plain.content)
 
 
-def test_best_frame_picks_the_largest_box(client, tmp_path):
-    """For reading a number the closest-up frame matters, not the riskiest."""
+def test_best_frame_falls_back_to_size_when_motion_unmeasurable(client, tmp_path):
+    """Too short to measure motion — size alone, and say so."""
     _write_tracklets(tmp_path, "seg010", [
         {"frame_index": 1, "track_id": 5, "tags": ["player"], "confidence": 0.9,
          "bbox": {"x": 0.1, "y": 0.1, "w": 0.02, "h": 0.05}},
@@ -253,8 +253,51 @@ def test_best_frame_picks_the_largest_box(client, tmp_path):
          "bbox": {"x": 0.1, "y": 0.1, "w": 0.06, "h": 0.20}},
     ])
     b = client.get("/identity/best-frame?clip=seg010&track_id=5").json()
-    assert b["frame"] == 9
-    assert b["height_px"] == 216
+    assert b["heuristic"] == "size-only"
+    assert b["candidates"][0]["frame"] == 9
+    assert b["candidates"][0]["height_px"] == 216
+
+
+def test_best_frame_prefers_player_moving_away_from_camera(client, tmp_path):
+    """A big box facing the camera shows no number; orientation is what matters.
+
+    Two equal-sized frames: one where the player moves UP-screen (away, back
+    visible) and one moving DOWN-screen (toward camera, no number). The
+    away-moving frame must rank first despite identical box size.
+    """
+    rows = []
+    for f in range(40):
+        y = 0.60 - f * 0.004 if f < 20 else 0.20 + (f - 20) * 0.004
+        rows.append({"frame_index": f, "track_id": 5, "tags": ["player"],
+                     "confidence": 0.9,
+                     "bbox": {"x": 0.5, "y": round(y, 4), "w": 0.05, "h": 0.15}})
+        # a second track holding still, so camera compensation sees no pan
+        rows.append({"frame_index": f, "track_id": 6, "tags": ["player"],
+                     "confidence": 0.9,
+                     "bbox": {"x": 0.1, "y": 0.5, "w": 0.05, "h": 0.15}})
+    _write_tracklets(tmp_path, "seg011", rows)
+    b = client.get("/identity/best-frame?clip=seg011&track_id=5&n=3").json()
+    assert b["heuristic"] == "orientation+size"
+    assert b["candidates"][0]["frame"] < 20, "must prefer the away-moving phase"
+
+
+def test_best_frame_compensates_for_camera_pan(client, tmp_path):
+    """A pan moves every box together and must not read as running away."""
+    rows = []
+    for f in range(40):
+        pan = -f * 0.004                      # whole scene drifts up-screen
+        rows.append({"frame_index": f, "track_id": 5, "tags": ["player"],
+                     "confidence": 0.9,
+                     "bbox": {"x": 0.5, "y": round(0.5 + pan, 4), "w": 0.05, "h": 0.15}})
+        for t in (6, 7, 8):
+            rows.append({"frame_index": f, "track_id": t, "tags": ["player"],
+                         "confidence": 0.9,
+                         "bbox": {"x": 0.1 * t, "y": round(0.5 + pan, 4),
+                                  "w": 0.05, "h": 0.15}})
+    _write_tracklets(tmp_path, "seg012", rows)
+    b = client.get("/identity/best-frame?clip=seg012&track_id=5&n=1").json()
+    # Everything moves identically, so relative motion is zero everywhere.
+    assert b["candidates"][0]["facing_away"] == 0.0
 
 
 def test_review_records_a_human_read_jersey_number(client):

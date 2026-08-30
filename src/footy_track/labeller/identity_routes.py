@@ -204,31 +204,94 @@ async def risky_frames(clip: str, track_id: int, k: int = 12) -> dict:
 
 
 @router.get("/best-frame")
-async def best_frame(clip: str, track_id: int) -> dict:
-    """The frame where this tracklet's box is LARGEST.
+async def best_frame(clip: str, track_id: int, n: int = 3) -> dict:
+    """Frames most likely to show a READABLE BACK NUMBER.
 
-    For reading a jersey number the relevant frame is the closest-up one, not
-    the riskiest one. Those are different questions and usually different
-    frames: risk ranking looks for switches, this looks for legibility.
+    Box size alone is the wrong criterion: a large crop of a player facing the
+    camera shows no number at all. Orientation is the binding constraint, and
+    size only decides whether the digits have enough pixels once they are
+    actually pointing at you.
+
+    Without a pose model the usable proxy is motion direction — a player moving
+    up-screen is running away from camera, so their back is visible. Two
+    corrections make that workable:
+
+    * **Camera compensation.** A pan moves every box together, so raw vertical
+      motion mostly measures the camera. The median motion of all tracks in the
+      same frame is subtracted, leaving motion relative to the play.
+    * **A window, not a frame pair.** Single-frame deltas are dominated by box
+      jitter on a ~100px detection; motion is measured over +/-3 frames.
+
+    This is a HEURISTIC and is not validated: players backpedal, sidestep and
+    turn, and none of that is captured. So it returns the top ``n`` candidates
+    rather than one answer, and the reviewer picks — glancing at three crops is
+    fast and does not depend on the heuristic being right, only on it putting a
+    good frame somewhere in the shortlist.
     """
     safe = _safe_clip(clip)
     if safe is None:
-        return {"error": "bad clip name"}
-    rows = [
-        r for r in _load_tracklet_rows(safe)
-        if r.get("track_id") == track_id and isinstance(r.get("bbox"), dict)
-    ]
+        return {"error": "bad clip name", "candidates": []}
+    all_rows = [r for r in _load_tracklet_rows(safe) if isinstance(r.get("bbox"), dict)]
+    rows = [r for r in all_rows if r.get("track_id") == track_id]
     if not rows:
-        return {"frame": None, "bbox": None, "height_px": 0}
-    best = max(rows, key=lambda r: r["bbox"]["h"])
-    return {
-        "clip": safe,
-        "track_id": track_id,
-        "frame": int(best["frame_index"]),
-        "bbox": best["bbox"],
-        # ~1080p source; a back number is roughly 12-15% of player height.
-        "height_px": round(best["bbox"]["h"] * 1080),
-    }
+        return {"candidates": []}
+
+    cy = {}
+    for r in all_rows:
+        b = r["bbox"]
+        cy.setdefault(int(r["frame_index"]), []).append(
+            (int(r["track_id"]), b["y"] + b["h"] / 2)
+        )
+    track_cy = {int(r["frame_index"]): r["bbox"]["y"] + r["bbox"]["h"] / 2 for r in rows}
+
+    def camera_dy(f0: int, f1: int) -> float:
+        """Median vertical motion of all tracks present in BOTH frames."""
+        a = {t: y for t, y in cy.get(f0, [])}
+        b = {t: y for t, y in cy.get(f1, [])}
+        both = [b[t] - a[t] for t in a.keys() & b.keys()]
+        if not both:
+            return 0.0
+        both.sort()
+        return both[len(both) // 2]
+
+    W = 3
+    cands = []
+    for r in rows:
+        f = int(r["frame_index"])
+        f0, f1 = f - W, f + W
+        if f0 not in track_cy or f1 not in track_cy:
+            continue
+        rel_dy = (track_cy[f1] - track_cy[f0]) - camera_dy(f0, f1)
+        away = max(0.0, -rel_dy)          # negative dy (up-screen) == away from camera
+        h_px = r["bbox"]["h"] * 1080
+        cands.append((f, r["bbox"], h_px, away))
+
+    if not cands:  # too short to measure motion — fall back to size alone
+        best = max(rows, key=lambda r: r["bbox"]["h"])
+        return {"clip": safe, "track_id": track_id, "heuristic": "size-only",
+                "candidates": [{"frame": int(best["frame_index"]), "bbox": best["bbox"],
+                                "height_px": round(best["bbox"]["h"] * 1080),
+                                "facing_away": None}]}
+
+    max_h = max(c[2] for c in cands) or 1.0
+    max_away = max(c[3] for c in cands) or 1.0
+    # Size gates legibility, orientation decides whether there is anything to
+    # read. Weighted toward orientation, but never zero on size.
+    scored = sorted(
+        cands,
+        key=lambda c: -((0.35 + 0.65 * (c[3] / max_away)) * (c[2] / max_h)),
+    )
+    seen, out = set(), []
+    for f, bbox, h_px, away in scored:
+        if any(abs(f - g) < 15 for g in seen):   # spread candidates out in time
+            continue
+        seen.add(f)
+        out.append({"frame": f, "bbox": bbox, "height_px": round(h_px),
+                    "facing_away": round(away / max_away, 2)})
+        if len(out) >= max(1, n):
+            break
+    return {"clip": safe, "track_id": track_id, "heuristic": "orientation+size",
+            "candidates": out}
 
 
 @router.get("/crop/{clip}/{frame}.jpg")
