@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<!--
+  Identity review: verify tracklets, then merge them across clips.
+
+  Two panes on purpose. The left pane is the within-clip pass ("is this one
+  player throughout?"); the right is the cross-clip merge ("are these two the
+  same player?"). The merge pane shows two clips at once, which is precisely
+  what the box labeller's single-session model cannot do.
+
+  Every question here is BINARY. Humans are fast and accurate at same/different
+  and slow and error-prone at "which of 22 players is this?", so identity is
+  built by clustering cheap pairwise answers and naming the clusters once at the
+  end — roughly 30 naming decisions for a whole match.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Identity review</title>
+<style>
+  body { font: 14px/1.4 system-ui, sans-serif; margin: 0; background: #14161a; color: #e8e8e8; }
+  header { padding: 10px 14px; background: #1d2026; display: flex; gap: 14px; align-items: center; }
+  header a { color: #7fb2ff; }
+  .wrap { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; padding: 14px; }
+  .pane { background: #1a1d23; border-radius: 8px; padding: 12px; }
+  h2 { margin: 0 0 10px; font-size: 15px; font-weight: 600; }
+  .hint { color: #9aa4b2; font-size: 12px; margin-bottom: 8px; }
+  .strip { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; min-height: 60px; }
+  .strip img { height: 90px; border: 2px solid transparent; border-radius: 4px; cursor: pointer; background:#000; }
+  .strip img.cut { border-color: #ff6b6b; }
+  .row { display: flex; gap: 8px; align-items: center; margin: 8px 0; flex-wrap: wrap; }
+  button { background: #2a2f3a; color: #e8e8e8; border: 1px solid #3a4150; border-radius: 6px;
+           padding: 7px 12px; cursor: pointer; font-size: 13px; }
+  button:hover { background: #333a47; }
+  button.same { border-color: #3fa45b; } button.diff { border-color: #c0554d; }
+  button.unk  { border-color: #8a8f99; }
+  select, input { background: #22262e; color: #e8e8e8; border: 1px solid #3a4150;
+                  border-radius: 5px; padding: 5px; }
+  .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .pair figure { margin: 0; text-align: center; }
+  .pair img { width: 100%; background: #000; border-radius: 4px; }
+  figcaption { color: #9aa4b2; font-size: 12px; margin-top: 4px; }
+  .warn { color: #ffb454; }
+  .ok { color: #6ec07a; }
+  #status { margin-left: auto; color: #9aa4b2; font-size: 12px; }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  td, th { text-align: left; padding: 3px 6px; border-bottom: 1px solid #262b33; }
+</style>
+</head>
+<body>
+<header>
+  <strong>Identity review</strong>
+  <a href="/main">← labeller</a>
+  <select id="clipSel"></select>
+  <span id="status"></span>
+</header>
+
+<div class="wrap">
+  <!-- ---------------- within-clip verification ---------------- -->
+  <div class="pane">
+    <h2>1 · Is this one player throughout?</h2>
+    <div class="hint">
+      Frames are ordered by switch risk, not spread evenly — a switch happens at
+      one moment and a uniform sample usually misses it. Click a frame to mark a
+      cut there. Only the frames you see are recorded as human-checked.
+    </div>
+    <div class="row">
+      <select id="trackSel"></select>
+      <button id="btnPure">Pure ✓</button>
+      <button id="btnSplit">Save with cuts</button>
+    </div>
+    <div class="strip" id="strip"></div>
+    <table id="tracklets"><tbody></tbody></table>
+  </div>
+
+  <!-- ---------------- cross-clip merge ---------------- -->
+  <div class="pane">
+    <h2>2 · Same player?</h2>
+    <div class="hint">
+      Compare within a team only — kit colour already separates teams, so
+      cross-team pairs teach a model nothing. <b>Unknown</b> is a real answer:
+      record it rather than guessing, it becomes an ignore-region.
+    </div>
+    <div class="row">
+      <select id="clipA"></select><input id="trackA" type="number" placeholder="track" style="width:70px">
+      <select id="clipB"></select><input id="trackB" type="number" placeholder="track" style="width:70px">
+      <button id="btnLoadPair">Load</button>
+    </div>
+    <div class="pair">
+      <figure><img id="imgA"><figcaption id="capA">—</figcaption></figure>
+      <figure><img id="imgB"><figcaption id="capB">—</figcaption></figure>
+    </div>
+    <div class="row">
+      <button class="same" id="btnSame">Same (S)</button>
+      <button class="diff" id="btnDiff">Different (D)</button>
+      <button class="unk"  id="btnUnk">Unknown (U)</button>
+    </div>
+    <div id="clusterInfo" class="hint"></div>
+  </div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let clips = [], current = null, riskyFrames = [], cuts = new Set(), dets = {};
+
+function status(msg, cls) { $("status").innerHTML = cls ? `<span class="${cls}">${msg}</span>` : msg; }
+
+async function loadClips() {
+  const r = await fetch("/clips").then(r => r.json());
+  clips = (r.clips || []).map(c => c.name.replace(/\.[^.]+$/, ""));
+  for (const sel of [$("clipSel"), $("clipA"), $("clipB")]) {
+    sel.innerHTML = clips.map(c => `<option>${c}</option>`).join("");
+  }
+  if (clips.length) { current = clips[0]; loadTracklets(); }
+}
+
+async function loadTracklets() {
+  current = $("clipSel").value || current;
+  const r = await fetch(`/identity/tracklets?clip=${encodeURIComponent(current)}`).then(r => r.json());
+  const rows = r.tracklets || [];
+  $("trackSel").innerHTML = rows.map(t =>
+    `<option value="${t.track_id}">#${t.track_id} · ${t.label} · ${t.n_detections}f</option>`).join("");
+  $("tracklets").querySelector("tbody").innerHTML =
+    `<tr><th>track</th><th>frames</th><th>reviewed</th><th>checked</th></tr>` +
+    rows.map(t => `<tr><td>#${t.track_id}</td><td>${t.start_frame}–${t.end_frame}</td>
+      <td>${t.reviewed ? (t.is_pure ? '<span class="ok">pure</span>' : '<span class="warn">split</span>') : '—'}</td>
+      <td>${(t.checked_fraction * 100).toFixed(0)}%</td></tr>`).join("");
+  if (!rows.length) status("no tracklets — run a tracker first", "warn");
+  else { status(`${rows.length} tracklets`); loadStrip(); }
+}
+
+async function loadStrip() {
+  cuts.clear();
+  const tid = $("trackSel").value;
+  if (tid === undefined || tid === "") return;
+  const r = await fetch(`/identity/risky-frames?clip=${encodeURIComponent(current)}&track_id=${tid}&k=12`)
+    .then(r => r.json());
+  riskyFrames = r.frames || [];
+  $("strip").innerHTML = riskyFrames.map(f =>
+    `<img data-f="${f}" title="frame ${f}" src="/identity/crop/${encodeURIComponent(current)}/${f}.jpg">`).join("");
+  for (const img of $("strip").children) {
+    img.onclick = () => { const f = +img.dataset.f;
+      if (cuts.has(f)) { cuts.delete(f); img.classList.remove("cut"); }
+      else { cuts.add(f); img.classList.add("cut"); } };
+  }
+}
+
+async function saveReview(pure) {
+  const tid = +$("trackSel").value;
+  // Only the frames actually rendered are claimed as checked — one interval per
+  // frame, never the whole tracklet span.
+  const checked = riskyFrames.map(f => [f, f]);
+  const r = await fetch("/identity/review", { method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({ clip: current, track_id: tid,
+      checked, split_at: pure ? [] : [...cuts] })}).then(r => r.json());
+  status(r.ok ? `saved · ${r.checked_frames} frames checked` : r.error, r.ok ? "ok" : "warn");
+  loadTracklets();
+}
+
+async function loadPair() {
+  for (const side of ["A", "B"]) {
+    const clip = $("clip" + side).value, tid = $("track" + side).value;
+    if (!tid) continue;
+    const r = await fetch(`/identity/risky-frames?clip=${encodeURIComponent(clip)}&track_id=${tid}&k=1`)
+      .then(r => r.json());
+    const f = (r.frames || [0])[0] || 0;
+    $("img" + side).src = `/identity/crop/${encodeURIComponent(clip)}/${f}.jpg`;
+    $("cap" + side).textContent = `${clip} · #${tid} · frame ${f}`;
+  }
+}
+
+async function labelPair(verdict) {
+  const body = { a: { clip: $("clipA").value, track_id: +$("trackA").value },
+                 b: { clip: $("clipB").value, track_id: +$("trackB").value }, verdict };
+  const r = await fetch("/identity/pair", { method: "POST",
+    headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)}).then(r => r.json());
+  refreshClusters();
+}
+
+async function refreshClusters() {
+  const r = await fetch("/identity/clusters").then(r => r.json());
+  let msg = `${r.n_labels} labels · ${r.n_clusters} clusters · ${r.n_unknown} unknown`;
+  if (!r.is_consistent) {
+    msg += ` · <span class="warn">${r.contradictions.length} CONTRADICTION(S) — a verdict is wrong, re-check before trusting clusters</span>`;
+  }
+  $("clusterInfo").innerHTML = msg;
+}
+
+$("clipSel").onchange = loadTracklets;
+$("trackSel").onchange = loadStrip;
+$("btnPure").onclick = () => saveReview(true);
+$("btnSplit").onclick = () => saveReview(false);
+$("btnLoadPair").onclick = loadPair;
+$("btnSame").onclick = () => labelPair("same");
+$("btnDiff").onclick = () => labelPair("different");
+$("btnUnk").onclick  = () => labelPair("unknown");
+document.addEventListener("keydown", e => {
+  if (e.target.tagName === "INPUT") return;
+  if (e.key === "s") labelPair("same");
+  if (e.key === "d") labelPair("different");
+  if (e.key === "u") labelPair("unknown");
+});
+
+loadClips().then(refreshClusters);
+</script>
+</body>
+</html>

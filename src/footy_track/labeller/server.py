@@ -105,6 +105,13 @@ _GT_MARKS_DIR = _env_dir(
 )
 
 
+from footy_track.labeller import identity_routes  # noqa: E402
+
+# Identity review lives on its own page and shares no session state with the
+# box labeller: different unit (tracklets, not boxes), different scope (two
+# clips at once), and append-only storage rather than whole-file rewrites.
+app.include_router(identity_routes.router)
+
 SESSION = Session()
 
 
