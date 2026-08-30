@@ -88,6 +88,19 @@ class TrackletReview:
     checked_intervals: list[CheckedInterval] = field(default_factory=list)
     split_at: list[int] = field(default_factory=list)
     annotator: str = "human"
+    # Some tracklets are obvious; some are genuinely undecidable at 52x111 px.
+    # Forcing a binary answer on the hard ones manufactures confident labels out
+    # of guesses, and those are worse than no label: they enter the eval set and
+    # silently move the purity number. Recorded instead as an ignore-region.
+    unsure: bool = False
+    # A jersey number read by a HUMAN, not OCR. Measured on this footage, only
+    # ~9% of tracklets ever contain a frame >=150px tall (~20px digits), so
+    # automated per-frame OCR is not viable. But grounding is per-CLUSTER, not
+    # per-tracklet: merging links many fragments into one player, and a single
+    # legible number names the whole cluster. A number is also a GLOBAL anchor
+    # (same team + same number = same player) so it short-circuits pairwise
+    # comparison entirely.
+    jersey_number: str | None = None
 
     def tier_at(self, frame: int) -> int:
         """TIER 2 inside a checked interval, TIER 3 outside it."""
@@ -99,8 +112,11 @@ class TrackletReview:
         return sum(iv.end_frame - iv.start_frame + 1 for iv in self.checked_intervals)
 
     def is_pure(self) -> bool:
-        """True when the human found no identity change in what they inspected."""
-        return not self.split_at
+        """True when the human found no identity change in what they inspected.
+
+        An unsure review is NOT pure: it carries no positive claim at all.
+        """
+        return not self.split_at and not self.unsure
 
 
 @dataclass(frozen=True)

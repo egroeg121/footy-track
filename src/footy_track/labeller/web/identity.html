@@ -20,13 +20,15 @@
   body { font: 14px/1.4 system-ui, sans-serif; margin: 0; background: #14161a; color: #e8e8e8; }
   header { padding: 10px 14px; background: #1d2026; display: flex; gap: 14px; align-items: center; }
   header a { color: #7fb2ff; }
-  .wrap { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; padding: 14px; }
+  .wrap { display: grid; grid-template-columns: 1fr; gap: 14px; padding: 14px; }
   .pane { background: #1a1d23; border-radius: 8px; padding: 12px; }
   h2 { margin: 0 0 10px; font-size: 15px; font-weight: 600; }
   .hint { color: #9aa4b2; font-size: 12px; margin-bottom: 8px; }
   .strip { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; min-height: 60px; }
-  .strip img { height: 90px; border: 2px solid transparent; border-radius: 4px; cursor: pointer; background:#000; }
+  .strip img { height: 190px; border: 2px solid transparent; border-radius: 4px; cursor: pointer; background:#000; }
   .strip img.cut { border-color: #ff6b6b; }
+  .fr { margin: 0; text-align: center; }
+  .fr figcaption { color: #7c8595; font-size: 11px; margin-top: 2px; }
   .row { display: flex; gap: 8px; align-items: center; margin: 8px 0; flex-wrap: wrap; }
   button { background: #2a2f3a; color: #e8e8e8; border: 1px solid #3a4150; border-radius: 6px;
            padding: 7px 12px; cursor: pointer; font-size: 13px; }
@@ -37,7 +39,7 @@
                   border-radius: 5px; padding: 5px; }
   .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
   .pair figure { margin: 0; text-align: center; }
-  .pair img { width: 100%; background: #000; border-radius: 4px; }
+  .pair img { max-height: 320px; width: auto; background: #000; border-radius: 4px; }
   figcaption { color: #9aa4b2; font-size: 12px; margin-top: 4px; }
   .warn { color: #ffb454; }
   .ok { color: #6ec07a; }
@@ -48,7 +50,8 @@
 </head>
 <body>
 <header>
-  <strong>Identity review</strong>
+  <strong>Is this one player?</strong>
+  <a href="/identity/merge">merge tracklets →</a>
   <a href="/main">← labeller</a>
   <select id="clipSel"></select>
   <span id="status"></span>
@@ -59,43 +62,33 @@
   <div class="pane">
     <h2>1 · Is this one player throughout?</h2>
     <div class="hint">
-      Frames are ordered by switch risk, not spread evenly — a switch happens at
-      one moment and a uniform sample usually misses it. Click a frame to mark a
-      cut there. Only the frames you see are recorded as human-checked.
+      <b>Click the odd ones out</b> — the frames showing a <i>different</i> person.
+      Leave every frame that IS this player, even if the box is bad (only a leg,
+      clipped at the edge): a bad box is a detector problem, not an identity
+      change, and flagging it would record a switch that never happened.
+      The yellow box marks the tracked player, so in a crowded crop you can tell
+      which one you are judging. Frames are chosen by switch risk but shown in
+      time order. Only the frames you see are recorded as human-checked.
     </div>
     <div class="row">
       <select id="trackSel"></select>
-      <button id="btnPure">Pure ✓</button>
-      <button id="btnSplit">Save with cuts</button>
+      <button id="btnPure">All this player ✓</button>
+      <button id="btnSplit">Save flagged frames</button>
+      <button class="unk" id="btnUnsure">Not sure</button>
+      <label style="margin-left:10px;color:#9aa4b2">#<input id="jersey" placeholder="jersey"
+        style="width:64px" title="Read the number off the BEST READ frame if you can — it names the whole cluster"></label>
     </div>
+    <div style="display:flex;gap:12px;align-items:flex-start">
+    <div><div class="hint" style="margin:0 0 4px">track</div>
+    <video id="trackVid" autoplay loop muted playsinline
+        style="width:320px;height:320px;background:#000;border-radius:6px"></video></div>
+    <div><div class="hint" style="margin:0 0 4px">best read <span id="bestPx"></span></div>
+    <img id="bestImg" style="height:320px;background:#000;border-radius:6px"></div>
+  </div>
     <div class="strip" id="strip"></div>
     <table id="tracklets"><tbody></tbody></table>
   </div>
 
-  <!-- ---------------- cross-clip merge ---------------- -->
-  <div class="pane">
-    <h2>2 · Same player?</h2>
-    <div class="hint">
-      Compare within a team only — kit colour already separates teams, so
-      cross-team pairs teach a model nothing. <b>Unknown</b> is a real answer:
-      record it rather than guessing, it becomes an ignore-region.
-    </div>
-    <div class="row">
-      <select id="clipA"></select><input id="trackA" type="number" placeholder="track" style="width:70px">
-      <select id="clipB"></select><input id="trackB" type="number" placeholder="track" style="width:70px">
-      <button id="btnLoadPair">Load</button>
-    </div>
-    <div class="pair">
-      <figure><img id="imgA"><figcaption id="capA">—</figcaption></figure>
-      <figure><img id="imgB"><figcaption id="capB">—</figcaption></figure>
-    </div>
-    <div class="row">
-      <button class="same" id="btnSame">Same (S)</button>
-      <button class="diff" id="btnDiff">Different (D)</button>
-      <button class="unk"  id="btnUnk">Unknown (U)</button>
-    </div>
-    <div id="clusterInfo" class="hint"></div>
-  </div>
 </div>
 
 <script>
@@ -132,19 +125,50 @@ async function loadStrip() {
   cuts.clear();
   const tid = $("trackSel").value;
   if (tid === undefined || tid === "") return;
+  // Watching the box follow the player is the fastest way to spot a switch;
+  // the stills below are for pinpointing WHICH frame is wrong.
+  $("trackVid").src = `/identity/track-video/${encodeURIComponent(current)}/${tid}.mp4`;
+  $("jersey").value = "";
+  // The closest-up frame, which is where a number is legible. Different frame
+  // from the riskiest one, and usually a different question.
+  fetch(`/identity/best-frame?clip=${encodeURIComponent(current)}&track_id=${tid}`)
+    .then(r => r.json()).then(bf => {
+      if (!bf || bf.frame === null || !bf.bbox) { $("bestImg").removeAttribute("src"); return; }
+      const b = bf.bbox;
+      $("bestImg").src = `/identity/crop/${encodeURIComponent(current)}/${bf.frame}.jpg`
+        + `?x=${b.x}&y=${b.y}&w=${b.w}&h=${b.h}&pad=0.25`;
+      $("bestPx").textContent = `· ${bf.height_px}px tall`
+        + (bf.height_px >= 150 ? " · number may be readable" : " · likely too small");
+    });
   const r = await fetch(`/identity/risky-frames?clip=${encodeURIComponent(current)}&track_id=${tid}&k=12`)
     .then(r => r.json());
-  riskyFrames = r.frames || [];
-  $("strip").innerHTML = riskyFrames.map(f =>
-    `<img data-f="${f}" title="frame ${f}" src="/identity/crop/${encodeURIComponent(current)}/${f}.jpg">`).join("");
-  for (const img of $("strip").children) {
-    img.onclick = () => { const f = +img.dataset.f;
+  // Select by risk, but DISPLAY in time order. Risk order is right for choosing
+  // which frames to spend attention on, and wrong for reading continuity: two
+  // adjacent thumbnails could be 200 frames apart, so an apparent "jump" tells
+  // you nothing. Sorting by frame index makes a real switch visible as a break
+  // in an otherwise continuous sequence.
+  const pairs = (r.frames || []).map((f, i) => [f, (r.boxes || [])[i]])
+                                .sort((a, b) => a[0] - b[0]);
+  riskyFrames = pairs.map(p => p[0]);
+  const boxes = pairs.map(p => p[1]);
+  // The box MUST be passed or the endpoint returns the whole frame — which
+  // renders 12 identical wide shots of the pitch instead of one player.
+  $("strip").innerHTML = riskyFrames.map((f, i) => {
+    const b = boxes[i];
+    const q = b ? `?x=${b.x}&y=${b.y}&w=${b.w}&h=${b.h}` : "";
+    return `<figure class="fr"><img data-f="${f}" title="frame ${f}" loading="lazy"
+      src="/identity/crop/${encodeURIComponent(current)}/${f}.jpg${q}">
+      <figcaption>${f}</figcaption></figure>`;
+  }).join("");
+  for (const fig of $("strip").children) {
+    const img = fig.querySelector("img");
+    fig.onclick = () => { const f = +img.dataset.f;
       if (cuts.has(f)) { cuts.delete(f); img.classList.remove("cut"); }
       else { cuts.add(f); img.classList.add("cut"); } };
   }
 }
 
-async function saveReview(pure) {
+async function saveReview(pure, unsure) {
   const tid = +$("trackSel").value;
   // Only the frames actually rendered are claimed as checked — one interval per
   // frame, never the whole tracklet span.
@@ -152,9 +176,34 @@ async function saveReview(pure) {
   const r = await fetch("/identity/review", { method: "POST",
     headers: {"Content-Type": "application/json"},
     body: JSON.stringify({ clip: current, track_id: tid,
-      checked, split_at: pure ? [] : [...cuts] })}).then(r => r.json());
+      checked, split_at: pure ? [] : [...cuts], unsure: !!unsure,
+      jersey_number: $("jersey").value })}).then(r => r.json());
   status(r.ok ? `saved · ${r.checked_frames} frames checked` : r.error, r.ok ? "ok" : "warn");
-  loadTracklets();
+  if (r.ok) await advance();
+  else loadTracklets();
+}
+
+// After a decision, move straight to the next thing needing review. Reviewing is
+// a long repetitive pass; making the human re-select a tracklet each time is
+// where the throughput goes. Prefers the next UNREVIEWED tracklet in this clip,
+// then falls through to the next clip.
+async function advance() {
+  const r = await fetch(`/identity/tracklets?clip=${encodeURIComponent(current)}`).then(r => r.json());
+  const rows = r.tracklets || [];
+  const pending = rows.filter(t => !t.reviewed).map(t => String(t.track_id));
+  await loadTracklets();
+  if (pending.length) {
+    $("trackSel").value = pending[0];
+    status(`${pending.length} left in this clip`);
+    return loadStrip();
+  }
+  const i = clips.indexOf(current);
+  if (i >= 0 && i + 1 < clips.length) {
+    $("clipSel").value = clips[i + 1];
+    status(`clip done → ${clips[i + 1]}`, "ok");
+    return loadTracklets();
+  }
+  status("all clips reviewed", "ok");
 }
 
 async function loadPair() {
@@ -164,7 +213,9 @@ async function loadPair() {
     const r = await fetch(`/identity/risky-frames?clip=${encodeURIComponent(clip)}&track_id=${tid}&k=1`)
       .then(r => r.json());
     const f = (r.frames || [0])[0] || 0;
-    $("img" + side).src = `/identity/crop/${encodeURIComponent(clip)}/${f}.jpg`;
+    const b = (r.boxes || [])[0];
+    const q = b ? `?x=${b.x}&y=${b.y}&w=${b.w}&h=${b.h}` : "";
+    $("img" + side).src = `/identity/crop/${encodeURIComponent(clip)}/${f}.jpg${q}`;
     $("cap" + side).textContent = `${clip} · #${tid} · frame ${f}`;
   }
 }
@@ -190,6 +241,7 @@ $("clipSel").onchange = loadTracklets;
 $("trackSel").onchange = loadStrip;
 $("btnPure").onclick = () => saveReview(true);
 $("btnSplit").onclick = () => saveReview(false);
+$("btnUnsure").onclick = () => saveReview(false, true);
 $("btnLoadPair").onclick = loadPair;
 $("btnSame").onclick = () => labelPair("same");
 $("btnDiff").onclick = () => labelPair("different");

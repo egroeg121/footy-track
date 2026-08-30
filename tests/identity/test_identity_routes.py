@@ -195,3 +195,77 @@ def test_review_with_cuts_is_not_pure(client):
         "clip": "seg000", "track_id": 2,
         "checked": [[0, 0]], "split_at": [7]}).json()
     assert r["is_pure"] is False
+
+
+def test_risky_frames_returns_boxes_for_cropping(client, tmp_path):
+    """Without boxes the client cannot crop and silently shows the whole frame.
+
+    That bug rendered 12 identical wide shots of the pitch instead of one
+    player, making the review pane useless while looking like it worked.
+    """
+    _write_tracklets(
+        tmp_path,
+        "seg002",
+        [
+            {"frame_index": 4, "track_id": 3, "tags": ["player"], "confidence": 0.9,
+             "bbox": {"x": 0.11, "y": 0.22, "w": 0.03, "h": 0.09}},
+        ],
+    )
+    body = client.get("/identity/risky-frames?clip=seg002&track_id=3&k=5").json()
+    assert body["frames"] == [4]
+    assert body["boxes"] == [{"x": 0.11, "y": 0.22, "w": 0.03, "h": 0.09}]
+    assert len(body["boxes"]) == len(body["frames"]), "one box per returned frame"
+
+
+def test_crop_draws_only_the_reviewed_box(client, tmp_path, monkeypatch):
+    """A padded crop often contains several players; mark which one is tracked.
+
+    Without it the reviewer judges continuity on whichever player is most
+    visible, which is not the question being asked.
+    """
+    import numpy as np
+    import footy_track.labeller.identity_routes as ir
+
+    frame = np.zeros((1080, 1920, 3), dtype=np.uint8)
+
+    class _Cap:
+        def __init__(self, *a, **k): pass
+        def set(self, *a): pass
+        def read(self): return True, frame.copy()
+        def release(self): pass
+
+    monkeypatch.setattr(ir.cv2, "VideoCapture", _Cap)
+    (tmp_path / "clips" / "seg009.mp4").write_bytes(b"stub")
+
+    boxed = client.get("/identity/crop/seg009/0.jpg?x=0.4&y=0.4&w=0.05&h=0.1")
+    plain = client.get("/identity/crop/seg009/0.jpg")
+    assert boxed.status_code == 200 and plain.status_code == 200
+    # The full-frame request must NOT be annotated; the boxed one must be.
+    assert len(boxed.content) != len(plain.content)
+
+
+def test_best_frame_picks_the_largest_box(client, tmp_path):
+    """For reading a number the closest-up frame matters, not the riskiest."""
+    _write_tracklets(tmp_path, "seg010", [
+        {"frame_index": 1, "track_id": 5, "tags": ["player"], "confidence": 0.9,
+         "bbox": {"x": 0.1, "y": 0.1, "w": 0.02, "h": 0.05}},
+        {"frame_index": 9, "track_id": 5, "tags": ["player"], "confidence": 0.9,
+         "bbox": {"x": 0.1, "y": 0.1, "w": 0.06, "h": 0.20}},
+    ])
+    b = client.get("/identity/best-frame?clip=seg010&track_id=5").json()
+    assert b["frame"] == 9
+    assert b["height_px"] == 216
+
+
+def test_review_records_a_human_read_jersey_number(client):
+    r = client.post("/identity/review", json={
+        "clip": "seg000", "track_id": 8, "checked": [[3, 3]],
+        "split_at": [], "jersey_number": " 17 "}).json()
+    assert r["jersey_number"] == "17", "must be trimmed and stored"
+
+
+def test_unsure_review_is_not_pure(client):
+    r = client.post("/identity/review", json={
+        "clip": "seg000", "track_id": 9, "checked": [[1, 1]], "unsure": True}).json()
+    assert r["unsure"] is True
+    assert r["is_pure"] is False, "unsure carries no positive claim"

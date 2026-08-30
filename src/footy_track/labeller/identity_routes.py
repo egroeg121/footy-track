@@ -27,6 +27,7 @@ import re
 from pathlib import Path
 
 import cv2
+import numpy as np
 from fastapi import APIRouter, Response
 from fastapi.responses import HTMLResponse
 
@@ -102,6 +103,21 @@ async def identity_page() -> HTMLResponse:
     return HTMLResponse(page.read_text())
 
 
+@router.get("/merge", response_class=HTMLResponse)
+async def merge_page() -> HTMLResponse:
+    """Cross-clip merging, deliberately a separate page from tracklet review.
+
+    The two tasks share no state and have different rhythms: review is a fast
+    linear pass over one clip, merging is a comparison across clips. Putting
+    them side by side split the reviewer's attention between two unrelated
+    questions.
+    """
+    page = _STATIC_DIR / "merge.html"
+    if not page.exists():
+        return HTMLResponse("<h1>merge.html missing</h1>", status_code=404)
+    return HTMLResponse(page.read_text())
+
+
 @router.get("/tracklets")
 async def list_tracklets(clip: str) -> dict:
     """Summarise the tracklets in one clip, with review state attached.
@@ -138,6 +154,8 @@ async def list_tracklets(clip: str) -> dict:
                 "n_detections": len(dets),
                 "reviewed": rv is not None,
                 "is_pure": rv.is_pure() if rv else None,
+                "unsure": rv.unsure if rv else None,
+                "jersey": rv.jersey_number if rv else None,
                 "checked_fraction": (
                     round(rv.checked_frame_count() / span, 3) if rv and span else 0.0
                 ),
@@ -172,7 +190,45 @@ async def risky_frames(clip: str, track_id: int, k: int = 12) -> dict:
         )
         for r in rows
     ]
-    return {"clip": safe, "track_id": track_id, "frames": rank_risky_frames(risks, k)}
+    ranked = rank_risky_frames(risks, k)
+    # Return the box with each frame: without it the client cannot build a crop
+    # URL and silently falls back to the full frame, which shows 12 identical
+    # wide shots of the pitch instead of one player.
+    box_at = {int(r["frame_index"]): r.get("bbox") for r in rows}
+    return {
+        "clip": safe,
+        "track_id": track_id,
+        "frames": ranked,
+        "boxes": [box_at.get(f) for f in ranked],
+    }
+
+
+@router.get("/best-frame")
+async def best_frame(clip: str, track_id: int) -> dict:
+    """The frame where this tracklet's box is LARGEST.
+
+    For reading a jersey number the relevant frame is the closest-up one, not
+    the riskiest one. Those are different questions and usually different
+    frames: risk ranking looks for switches, this looks for legibility.
+    """
+    safe = _safe_clip(clip)
+    if safe is None:
+        return {"error": "bad clip name"}
+    rows = [
+        r for r in _load_tracklet_rows(safe)
+        if r.get("track_id") == track_id and isinstance(r.get("bbox"), dict)
+    ]
+    if not rows:
+        return {"frame": None, "bbox": None, "height_px": 0}
+    best = max(rows, key=lambda r: r["bbox"]["h"])
+    return {
+        "clip": safe,
+        "track_id": track_id,
+        "frame": int(best["frame_index"]),
+        "bbox": best["bbox"],
+        # ~1080p source; a back number is roughly 12-15% of player height.
+        "height_px": round(best["bbox"]["h"] * 1080),
+    }
 
 
 @router.get("/crop/{clip}/{frame}.jpg")
@@ -206,10 +262,129 @@ async def crop(
     x2, y2 = int(min(W, cx + half_w)), int(min(H, cy + half_h))
     if x2 <= x1 or y2 <= y1:
         return Response(status_code=404)
-    ok, buf = cv2.imencode(".jpg", img[y1:y2, x1:x2])
+    crop_img = img[y1:y2, x1:x2].copy()
+    # Draw ONLY the reviewed player's box. Padding plus crowding means a crop
+    # often contains two or three players, and without this the reviewer cannot
+    # tell which one the tracklet is actually following -- they would judge
+    # continuity on whichever player is most visible, which is not the question
+    # being asked. Skipped when the request is for a full frame (no real box).
+    is_full_frame = x <= 0.0 and y <= 0.0 and w >= 1.0 and h >= 1.0
+    if not is_full_frame:
+        bx1, by1 = int(px - x1), int(py - y1)
+        bx2, by2 = int(px + pw - x1), int(py + ph - y1)
+        cv2.rectangle(crop_img, (bx1, by1), (bx2, by2), (0, 235, 255), 2)
+    # A median player box is ~52x111 px. Even padded that is unreadable at
+    # screen size, and the whole point of the review is that a human can SEE
+    # the player. Upscale so the short side is at least MIN_SIDE px.
+    MIN_SIDE = 220
+    ch, cw = crop_img.shape[:2]
+    short = min(ch, cw)
+    if short and short < MIN_SIDE:
+        scale = MIN_SIDE / short
+        crop_img = cv2.resize(
+            crop_img, (int(cw * scale), int(ch * scale)), interpolation=cv2.INTER_CUBIC
+        )
+    ok, buf = cv2.imencode(".jpg", crop_img)
     if not ok:
         return Response(status_code=500)
     return Response(content=buf.tobytes(), media_type="image/jpeg")
+
+
+@router.get("/track-video/{clip}/{track_id}.mp4")
+async def track_video(clip: str, track_id: int, max_frames: int = 150) -> Response:
+    """Render the tracked player as a short video, box drawn, player centred.
+
+    Stills answer "are these the same person"; a video answers "does the box
+    stay on them", which is the actual question and is far faster to judge --
+    a switch is obvious as a jump when you watch it and easy to miss across
+    twelve thumbnails.
+
+    The window follows the box so the player stays centred, otherwise the
+    subject walks out of a fixed crop and the reviewer is tracking the tracker
+    by eye. Decoding is SEQUENTIAL over the tracklet span: per-frame seeking on
+    a 1080p H.264 file is orders of magnitude slower, and this runs on a
+    machine with no GPU. Long tracklets are temporally subsampled to
+    ``max_frames`` so cost is bounded by the cap, not the tracklet length.
+
+    Rendered videos are cached on disk: review revisits the same tracklet often
+    and re-decoding each time would dominate the interaction.
+    """
+    safe = _safe_clip(clip)
+    if safe is None:
+        return Response(status_code=400)
+    path = _clips_dir() / f"{safe}.mp4"
+    if not path.exists():
+        return Response(status_code=404)
+
+    cache_dir = _labels_dir().parent / "track_videos"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    cached = cache_dir / f"{safe}__{track_id}.mp4"
+    if cached.exists() and cached.stat().st_size > 0:
+        return Response(content=cached.read_bytes(), media_type="video/mp4")
+
+    rows = [r for r in _load_tracklet_rows(safe) if r.get("track_id") == track_id]
+    boxes = {int(r["frame_index"]): r.get("bbox") for r in rows if r.get("bbox")}
+    if not boxes:
+        return Response(status_code=404)
+
+    frames = sorted(boxes)
+    step = max(1, len(frames) // max_frames)
+    wanted = set(frames[::step])
+
+    OUT = 320  # square output; big enough to judge, small enough to stay cheap
+    cap = cv2.VideoCapture(str(path))
+    cap.set(cv2.CAP_PROP_POS_FRAMES, frames[0])
+    tmp = cached.with_suffix(".tmp.mp4")
+    writer = cv2.VideoWriter(str(tmp), cv2.VideoWriter_fourcc(*"avc1"), 10, (OUT, OUT))
+    if not writer.isOpened():  # avc1 is not always available; mp4v always is
+        writer = cv2.VideoWriter(str(tmp), cv2.VideoWriter_fourcc(*"mp4v"), 10, (OUT, OUT))
+
+    idx, written = frames[0], 0
+    while idx <= frames[-1]:
+        ok, img = cap.read()
+        if not ok:
+            break
+        if idx in wanted:
+            H, W = img.shape[:2]
+            b = boxes[idx]
+            cx, cy = (b["x"] + b["w"] / 2) * W, (b["y"] + b["h"] / 2) * H
+            half = max(b["w"] * W, b["h"] * H) * 1.6
+            half = max(half, 60.0)
+            x1, y1 = int(cx - half), int(cy - half)
+            x2, y2 = int(cx + half), int(cy + half)
+            pad_l, pad_t = max(0, -x1), max(0, -y1)
+            pad_r, pad_b = max(0, x2 - W), max(0, y2 - H)
+            win = img[max(0, y1):min(H, y2), max(0, x1):min(W, x2)]
+            if win.size == 0:
+                idx += 1
+                continue
+            if pad_l or pad_t or pad_r or pad_b:
+                # Pad rather than shift the window: shifting would move the
+                # player off-centre exactly when they are near the touchline.
+                win = cv2.copyMakeBorder(win, pad_t, pad_b, pad_l, pad_r,
+                                         cv2.BORDER_CONSTANT, value=(20, 20, 20))
+            scale = OUT / max(win.shape[0], win.shape[1])
+            win = cv2.resize(win, (int(win.shape[1] * scale), int(win.shape[0] * scale)))
+            canvas = np.full((OUT, OUT, 3), 20, dtype=np.uint8)
+            oy, ox = (OUT - win.shape[0]) // 2, (OUT - win.shape[1]) // 2
+            canvas[oy:oy + win.shape[0], ox:ox + win.shape[1]] = win
+            # Box in canvas coords.
+            bx1 = int((b["x"] * W - max(0, x1) + pad_l) * scale) + ox
+            by1 = int((b["y"] * H - max(0, y1) + pad_t) * scale) + oy
+            bx2 = int(((b["x"] + b["w"]) * W - max(0, x1) + pad_l) * scale) + ox
+            by2 = int(((b["y"] + b["h"]) * H - max(0, y1) + pad_t) * scale) + oy
+            cv2.rectangle(canvas, (bx1, by1), (bx2, by2), (0, 235, 255), 2)
+            cv2.putText(canvas, str(idx), (6, OUT - 8), cv2.FONT_HERSHEY_SIMPLEX,
+                        0.45, (200, 200, 200), 1, cv2.LINE_AA)
+            writer.write(canvas)
+            written += 1
+        idx += 1
+    cap.release()
+    writer.release()
+    if not written or not tmp.exists():
+        return Response(status_code=404)
+    tmp.replace(cached)
+    return Response(content=cached.read_bytes(), media_type="video/mp4")
 
 
 @router.post("/pair")
@@ -254,10 +429,13 @@ async def submit_review(body: dict) -> dict:
         tracklet=tracklet,
         checked_intervals=intervals,
         split_at=[int(f) for f in body.get("split_at", [])],
+        unsure=bool(body.get("unsure", False)),
+        jersey_number=(str(body.get("jersey_number") or "").strip() or None),
         annotator=body.get("annotator", "human"),
     )
     append_tracklet_review(_labels_dir(), review)
-    return {"ok": True, "is_pure": review.is_pure(),
+    return {"ok": True, "is_pure": review.is_pure(), "unsure": review.unsure,
+            "jersey_number": review.jersey_number,
             "checked_frames": review.checked_frame_count()}
 
 

@@ -134,6 +134,8 @@ def append_tracklet_review(
                 [iv.start_frame, iv.end_frame] for iv in review.checked_intervals
             ],
             "split_at": list(review.split_at),
+            "unsure": bool(review.unsure),
+            "jersey_number": review.jersey_number,
             "annotator": review.annotator,
             "ts": ts if ts is not None else time.time(),
         },
@@ -174,6 +176,8 @@ def load_tracklet_reviews(dir_path: Path) -> list[TrackletReview]:
                 if int(e) >= int(s)
             ],
             split_at=[int(f) for f in d.get("split_at", [])],
+            unsure=bool(d.get("unsure", False)),
+            jersey_number=(d.get("jersey_number") or None),
             annotator=d.get("annotator", "human"),
         )
         latest[tracklet.key()] = review
