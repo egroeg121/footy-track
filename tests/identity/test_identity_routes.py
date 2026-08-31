@@ -328,3 +328,25 @@ def test_short_tracklets_are_hidden_and_longest_come_first(client, tmp_path):
     assert body["hidden_short"] == 1
     assert len(client.get(
         "/identity/tracklets?clip=seg020&min_frames=0").json()["tracklets"]) == 3
+
+
+def test_pages_have_no_dangling_element_or_function_refs(client):
+    """The review and merge pages share one script but not their controls.
+
+    A single reference to an element the page does not own threw a TypeError
+    and aborted the whole script before loadClips() ran, so the page served
+    HTTP 200 with empty dropdowns and a black video. HTTP 200 is not evidence
+    that a page works.
+    """
+    import re
+
+    for path in ("/identity", "/identity/merge"):
+        html = client.get(path).text
+        ids = set(re.findall(r'id="([A-Za-z0-9_]+)"', html))
+        refs = set(re.findall(r'\$\("([A-Za-z0-9_]+)"\)\.', html))
+        assert not refs - ids, f"{path} references missing elements: {sorted(refs - ids)}"
+        called = set(re.findall(
+            r'\b(loadPair|labelPair|refreshClusters|loadStrip|saveReview|advance'
+            r'|loadTracklets|loadClips)\s*\(', html))
+        defined = set(re.findall(r'function\s+(\w+)\s*\(', html))
+        assert not called - defined, f"{path} calls undefined: {sorted(called - defined)}"

@@ -94,15 +94,20 @@
 
 <script>
 const $ = (id) => document.getElementById(id);
+// The review and merge pages share this script but not their controls, so
+// every lookup must tolerate a missing element. One null reference used to
+// abort the script before loadClips() ran.
+function on(id, ev, fn) { const el = $(id); if (el) el[ev] = fn; }
+function set(id, prop, val) { const el = $(id); if (el) el[prop] = val; }
 let clips = [], current = null, riskyFrames = [], cuts = new Set(), dets = {};
 
-function status(msg, cls) { $("status").innerHTML = cls ? `<span class="${cls}">${msg}</span>` : msg; }
+function status(msg, cls) { if (!$("status")) return; $("status").innerHTML = cls ? `<span class="${cls}">${msg}</span>` : msg; }
 
 async function loadClips() {
   const r = await fetch("/clips").then(r => r.json());
   clips = (r.clips || []).map(c => c.name.replace(/\.[^.]+$/, ""));
   for (const sel of [$("clipSel"), $("clipA"), $("clipB")]) {
-    sel.innerHTML = clips.map(c => `<option>${c}</option>`).join("");
+    if (sel) sel.innerHTML = clips.map(c => `<option>${c}</option>`).join("");
   }
   if (clips.length) { current = clips[0]; loadTracklets(); }
 }
@@ -217,54 +222,16 @@ async function advance() {
   status("all clips reviewed", "ok");
 }
 
-async function loadPair() {
-  for (const side of ["A", "B"]) {
-    const clip = $("clip" + side).value, tid = $("track" + side).value;
-    if (!tid) continue;
-    const r = await fetch(`/identity/risky-frames?clip=${encodeURIComponent(clip)}&track_id=${tid}&k=1`)
-      .then(r => r.json());
-    const f = (r.frames || [0])[0] || 0;
-    const b = (r.boxes || [])[0];
-    const q = b ? `?x=${b.x}&y=${b.y}&w=${b.w}&h=${b.h}` : "";
-    $("img" + side).src = `/identity/crop/${encodeURIComponent(clip)}/${f}.jpg${q}`;
-    $("cap" + side).textContent = `${clip} · #${tid} · frame ${f}`;
-  }
-}
 
-async function labelPair(verdict) {
-  const body = { a: { clip: $("clipA").value, track_id: +$("trackA").value },
-                 b: { clip: $("clipB").value, track_id: +$("trackB").value }, verdict };
-  const r = await fetch("/identity/pair", { method: "POST",
-    headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)}).then(r => r.json());
-  refreshClusters();
-}
 
-async function refreshClusters() {
-  const r = await fetch("/identity/clusters").then(r => r.json());
-  let msg = `${r.n_labels} labels · ${r.n_clusters} clusters · ${r.n_unknown} unknown`;
-  if (!r.is_consistent) {
-    msg += ` · <span class="warn">${r.contradictions.length} CONTRADICTION(S) — a verdict is wrong, re-check before trusting clusters</span>`;
-  }
-  $("clusterInfo").innerHTML = msg;
-}
 
-$("clipSel").onchange = loadTracklets;
-$("trackSel").onchange = loadStrip;
-$("btnPure").onclick = () => saveReview(true);
-$("btnSplit").onclick = () => saveReview(false);
-$("btnUnsure").onclick = () => saveReview(false, true);
-$("btnLoadPair").onclick = loadPair;
-$("btnSame").onclick = () => labelPair("same");
-$("btnDiff").onclick = () => labelPair("different");
-$("btnUnk").onclick  = () => labelPair("unknown");
-document.addEventListener("keydown", e => {
-  if (e.target.tagName === "INPUT") return;
-  if (e.key === "s") labelPair("same");
-  if (e.key === "d") labelPair("different");
-  if (e.key === "u") labelPair("unknown");
-});
+on("clipSel", "onchange", loadTracklets);
+on("trackSel", "onchange", loadStrip);
+on("btnPure", "onclick", () => saveReview(true));
+on("btnSplit", "onclick", () => saveReview(false));
+on("btnUnsure", "onclick", () => saveReview(false, true));
 
-loadClips().then(refreshClusters);
+loadClips();
 </script>
 </body>
 </html>

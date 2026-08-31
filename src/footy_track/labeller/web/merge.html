@@ -86,15 +86,20 @@
 
 <script>
 const $ = (id) => document.getElementById(id);
+// The review and merge pages share this script but not their controls, so
+// every lookup must tolerate a missing element. One null reference used to
+// abort the script before loadClips() ran.
+function on(id, ev, fn) { const el = $(id); if (el) el[ev] = fn; }
+function set(id, prop, val) { const el = $(id); if (el) el[prop] = val; }
 let clips = [], current = null, riskyFrames = [], cuts = new Set(), dets = {};
 
-function status(msg, cls) { $("status").innerHTML = cls ? `<span class="${cls}">${msg}</span>` : msg; }
+function status(msg, cls) { if (!$("status")) return; $("status").innerHTML = cls ? `<span class="${cls}">${msg}</span>` : msg; }
 
 async function loadClips() {
   const r = await fetch("/clips").then(r => r.json());
   clips = (r.clips || []).map(c => c.name.replace(/\.[^.]+$/, ""));
   for (const sel of [$("clipSel"), $("clipA"), $("clipB")]) {
-    sel.innerHTML = clips.map(c => `<option>${c}</option>`).join("");
+    if (sel) sel.innerHTML = clips.map(c => `<option>${c}</option>`).join("");
   }
   if (clips.length) current = clips[0];
 }
@@ -135,21 +140,22 @@ async function refreshClusters() {
   if (!r.is_consistent) {
     msg += ` · <span class="warn">${r.contradictions.length} CONTRADICTION(S) — a verdict is wrong, re-check before trusting clusters</span>`;
   }
-  $("clusterInfo").innerHTML = msg;
+  set("clusterInfo", "innerHTML", msg);
 }
 
-$("btnLoadPair").onclick = loadPair;
-$("btnSame").onclick = () => labelPair("same");
-$("btnDiff").onclick = () => labelPair("different");
-$("btnUnk").onclick  = () => labelPair("unknown");
+on("btnLoadPair", "onclick", loadPair);
+on("btnSame", "onclick", () => labelPair("same"));
+on("btnDiff", "onclick", () => labelPair("different"));
+on("btnUnk", "onclick", () => labelPair("unknown"));
 document.addEventListener("keydown", e => {
   if (e.target.tagName === "INPUT") return;
+  if (!$("btnSame")) return;
   if (e.key === "s") labelPair("same");
   if (e.key === "d") labelPair("different");
   if (e.key === "u") labelPair("unknown");
 });
 
-loadClips().then(refreshClusters);
+loadClips().then(() => { if ($("clusterInfo")) refreshClusters(); });
 </script>
 </body>
 </html>
