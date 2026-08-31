@@ -266,9 +266,26 @@ async def best_frame(clip: str, track_id: int, n: int = 3) -> dict:
         both.sort()
         return both[len(both) // 2]
 
+    def usable_for_reading(b: dict) -> bool:
+        """Reject boxes that cannot show a number regardless of size.
+
+        A box clipped at the frame edge is a sliver of a player, and clipping
+        also inflates the motion estimate (the box shrinks against the edge),
+        so these score highly on 'facing away' while being unreadable. An
+        implausible aspect ratio catches the same thing from the other side: a
+        standing person is roughly 0.3-0.6 wide per unit tall.
+        """
+        if b["x"] <= 0.003 or (b["x"] + b["w"]) >= 0.997:
+            return False
+        if b["y"] <= 0.003 or (b["y"] + b["h"]) >= 0.997:
+            return False
+        return b["h"] > 0 and 0.25 <= (b["w"] / b["h"]) <= 1.2
+
     W = 3
     cands = []
     for r in rows:
+        if not usable_for_reading(r["bbox"]):
+            continue
         f = int(r["frame_index"])
         f0, f1 = f - W, f + W
         if f0 not in track_cy or f1 not in track_cy:
@@ -279,7 +296,8 @@ async def best_frame(clip: str, track_id: int, n: int = 3) -> dict:
         cands.append((f, r["bbox"], h_px, away))
 
     if not cands:  # too short to measure motion — fall back to size alone
-        best = max(rows, key=lambda r: r["bbox"]["h"])
+        pool = [r for r in rows if usable_for_reading(r["bbox"])] or rows
+        best = max(pool, key=lambda r: r["bbox"]["h"])
         return {"clip": safe, "track_id": track_id, "heuristic": "size-only",
                 "candidates": [{"frame": int(best["frame_index"]), "bbox": best["bbox"],
                                 "height_px": round(best["bbox"]["h"] * 1080),

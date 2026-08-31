@@ -151,9 +151,13 @@ async function loadStrip() {
           + `?x=${b.x}&y=${b.y}&w=${b.w}&h=${b.h}&pad=0.25">
           <figcaption>${c.frame} · ${c.height_px}px${away}</figcaption></figure>`;
       }).join("") || '<span class="hint">no candidates</span>';
-      const top = cs[0];
-      $("bestPx").textContent = top
-        ? (top.height_px >= 150 ? "· may be readable" : "· likely too small")
+      // Judge the SET, not the top-ranked one: the ranking optimises for
+      // facing-away, so a readable frame often sits second or third and
+      // labelling the whole set by candidate #1 reads the wrong way round.
+      const best = cs.reduce((m, c) => Math.max(m, c.height_px), 0);
+      $("bestPx").textContent = cs.length
+        ? (best >= 120 ? `· best ${best}px — try to read it`
+                       : `· best ${best}px — probably unreadable`)
         : "";
     });
   const r = await fetch(`/identity/risky-frames?clip=${encodeURIComponent(current)}&track_id=${tid}&k=12`)

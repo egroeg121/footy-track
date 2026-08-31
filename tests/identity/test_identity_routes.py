@@ -350,3 +350,29 @@ def test_pages_have_no_dangling_element_or_function_refs(client):
             r'|loadTracklets|loadClips)\s*\(', html))
         defined = set(re.findall(r'function\s+(\w+)\s*\(', html))
         assert not called - defined, f"{path} calls undefined: {sorted(called - defined)}"
+
+
+def test_best_frame_rejects_edge_clipped_slivers(client, tmp_path):
+    """A clipped box cannot show a number, and clipping inflates 'facing away'.
+
+    The box shrinks against the frame edge, which reads as motion, so these
+    slivers outrank genuinely readable frames while being useless.
+    """
+    rows = []
+    for f in range(40):
+        # track 5: a clipped sliver hard against the right edge
+        rows.append({"frame_index": f, "track_id": 5, "tags": ["player"],
+                     "confidence": 0.9,
+                     "bbox": {"x": 0.985, "y": 0.4, "w": 0.015, "h": 0.18}})
+        # track 6: a normal, well-proportioned box moving up-screen
+        rows.append({"frame_index": f, "track_id": 6, "tags": ["player"],
+                     "confidence": 0.9,
+                     "bbox": {"x": 0.5, "y": round(0.6 - f * 0.004, 4),
+                              "w": 0.06, "h": 0.16}})
+    _write_tracklets(tmp_path, "seg030", rows)
+    assert client.get(
+        "/identity/best-frame?clip=seg030&track_id=5").json()["candidates"] == [] or \
+        client.get("/identity/best-frame?clip=seg030&track_id=5"
+                   ).json()["heuristic"] == "size-only"
+    good = client.get("/identity/best-frame?clip=seg030&track_id=6&n=1").json()
+    assert good["candidates"], "a well-proportioned box must survive the filter"
