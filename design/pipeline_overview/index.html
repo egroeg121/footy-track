@@ -1,0 +1,882 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Tracking players, actions, and events in football matches.">
+      
+      
+      
+        <link rel="canonical" href="https://egroeg121.github.io/footy-track/design/pipeline_overview/">
+      
+      
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.6.20">
+    
+    
+      
+        <title>Pipeline overview: from broadcast video to "who did what" - Footy Scan</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.e53b48f4.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+    
+  </head>
+  
+  
+    <body dir="ltr">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#pipeline-overview-from-broadcast-video-to-who-did-what" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="Footy Scan" class="md-header__button md-logo" aria-label="Footy Scan" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Footy Scan
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Pipeline overview: from broadcast video to "who did what"
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="Footy Scan" class="md-nav__button md-logo" aria-label="Footy Scan" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Footy Scan
+  </label>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Home
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    Development
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            Development
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../system_design/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    System Design
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../system_overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    System Overview
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Getting Started
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../pipeline_architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Pipeline Architecture
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../timings/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Time Formats
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../data_formats/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Data Formats
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../training/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Training
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../training/notable_runs/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Notable Training Runs
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    Contributing
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            Contributing
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../agent_guidelines/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Agent Guidelines
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#the-goal-split-into-three-problems" class="md-nav__link">
+    <span class="md-ellipsis">
+      The goal, split into three problems
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#data-flow" class="md-nav__link">
+    <span class="md-ellipsis">
+      Data flow
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#which-model-does-what" class="md-nav__link">
+    <span class="md-ellipsis">
+      Which model does what
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-gets-labelled-and-by-whom" class="md-nav__link">
+    <span class="md-ellipsis">
+      What gets labelled, and by whom
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#auto-labelling-and-the-improvement-loop" class="md-nav__link">
+    <span class="md-ellipsis">
+      Auto-labelling and the improvement loop
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#open-questions-in-the-order-they-should-be-answered" class="md-nav__link">
+    <span class="md-ellipsis">
+      Open questions, in the order they should be answered
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+
+<h1 id="pipeline-overview-from-broadcast-video-to-who-did-what">Pipeline overview: from broadcast video to "who did what"<a class="headerlink" href="#pipeline-overview-from-broadcast-video-to-who-did-what" title="Permanent link">&para;</a></h1>
+<p>Where each model sits, what is measured, what is labelled, and how the loop
+improves. Every number here was measured in this project; anything unmeasured is
+marked as such.</p>
+<h2 id="the-goal-split-into-three-problems">The goal, split into three problems<a class="headerlink" href="#the-goal-split-into-three-problems" title="Permanent link">&para;</a></h2>
+<ol>
+<li><strong>Where is the ball</strong>, every frame.</li>
+<li><strong>Where are the players</strong>, every frame.</li>
+<li><strong>Which player is which</strong>, within a segment and then across segments.</li>
+</ol>
+<p>These are not one problem. The ball is a single ~16 px object with no identity —
+there is only one, so "which ball" never arises, and the hard part is not losing
+it. Players are ~20 near-identical objects where identity is the entire problem
+and localisation is comparatively easy.</p>
+<p>Treating them with one pipeline is the main modelling mistake available here.</p>
+<h2 id="data-flow">Data flow<a class="headerlink" href="#data-flow" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code>broadcast video
+      |
+      v
+  [segmenter]  ── already cut on shot boundaries: 0 interior camera cuts
+      |            measured across 3,175 frames / 5 clips
+      v
+   162 clips (one match), 97,625 frames
+      |
+      v
+  [RT-DETR-L]  ── per-frame detection: player / referee / in_play_ball
+      |            2,767,151 detections, ~19.8 fps on a 3060 @ imgsz=1280
+      v
+  detections (TIER 3, machine-only)
+      |
+      +──────────────► ball path ──► [temporal/ball tracker]  ── UNSOLVED
+      |
+      v
+  [LapTracker]  ── IoU + Hungarian association -&gt; track_id
+      |             ~540 fps on CPU; no training, no GPU
+      v
+  tracklets  (~5,249 over 40 clips; median length 13-31 frames)
+      |
+      +──► [kit-colour clustering] ──► team_id      ~99% separable, free
+      |
+      +──► [human review] ──────────► purity + jersey numbers
+      |
+      v
+  [identity / ReID]  ── UNPROVEN: cluster tracklets into players
+      |
+      v
+  player_id per detection ──► feature store ──► match data
+</code></pre></div>
+<h2 id="which-model-does-what">Which model does what<a class="headerlink" href="#which-model-does-what" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Stage</th>
+<th>Model</th>
+<th>Trained?</th>
+<th>Status</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Detection</td>
+<td>RT-DETR-L, <code>imgsz=1280</code></td>
+<td>fine-tuned on v11</td>
+<td><strong>Works.</strong> Ball mAP50 disputed — code comment says .221/.209, handoff says .665/.591; <strong>re-measure before citing</strong></td>
+</tr>
+<tr>
+<td>Player tracking</td>
+<td>LapTracker (IoU + Hungarian)</td>
+<td>training-free</td>
+<td><strong>Works, fragments.</strong> Consecutive-frame IoU median 0.72, only 4–6% below the 0.3 threshold; spawn rate 4.2% matches that tail. Fragmentation is a <em>detection dropout</em> problem, not an association problem</td>
+</tr>
+<tr>
+<td>Ball tracking</td>
+<td>VitTrack</td>
+<td>training-free</td>
+<td><strong>Fails.</strong> Holds the ball for 5% of frames; confidence is a constant 0.119 and cannot separate on-ball from drifted. Do not tune — replace</td>
+</tr>
+<tr>
+<td>Team assignment</td>
+<td>k=2 on torso HSV</td>
+<td>none</td>
+<td><strong>Works.</strong> 1.0% ambiguous (n=1,253). Hue 185° vs 23°</td>
+</tr>
+<tr>
+<td>Identity / ReID</td>
+<td>—</td>
+<td>—</td>
+<td><strong>Unproven.</strong> Generic ImageNet features score AUC 0.43–0.49 (chance) because they encode background, not person. ReID-trained weights untested</td>
+</tr>
+<tr>
+<td>Purity pre-filter</td>
+<td>Gemini Flash</td>
+<td>—</td>
+<td><strong>Not usable yet.</strong> 70% agreement, confidence collapsed into 0.65–0.80 so there is no bucket to trust</td>
+</tr>
+</tbody>
+</table>
+<p>Two consequences worth stating plainly:</p>
+<ul>
+<li><strong>Tracker fragmentation is a detector problem.</strong> Association is near the limit
+  of what the detections allow, so effort belongs in detection consistency
+  (or interpolation across dropouts), not in a cleverer tracker.</li>
+<li><strong>The ball needs a different mechanism entirely.</strong> A single-object appearance
+  tracker cannot follow a 16 px ball through broadcast motion. The candidates
+  are per-frame detection plus motion-model interpolation, or a
+  prior-conditioned detector — not another SOT tracker.</li>
+</ul>
+<h2 id="what-gets-labelled-and-by-whom">What gets labelled, and by whom<a class="headerlink" href="#what-gets-labelled-and-by-whom" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Label</th>
+<th>Who</th>
+<th>Cost</th>
+<th>Feeds</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Ball position</td>
+<td>human, per frame</td>
+<td>expensive</td>
+<td>detector training + ball eval</td>
+</tr>
+<tr>
+<td>Detections</td>
+<td>RT-DETR</td>
+<td>free</td>
+<td>everything</td>
+</tr>
+<tr>
+<td><code>track_id</code></td>
+<td>LapTracker</td>
+<td>free</td>
+<td>tracklets</td>
+</tr>
+<tr>
+<td><code>team_id</code></td>
+<td>kit colour</td>
+<td>free</td>
+<td>identity constraint</td>
+</tr>
+<tr>
+<td><strong>Tracklet purity</strong></td>
+<td>human, per tracklet</td>
+<td>~30/clip vs ~6,500 boxes — <strong>250× cheaper than per-box</strong></td>
+<td>tracker eval <strong>and</strong> free identity pairs</td>
+</tr>
+<tr>
+<td><strong>Jersey number</strong></td>
+<td>human, when legible</td>
+<td>seconds</td>
+<td>identity anchor</td>
+</tr>
+<tr>
+<td>Tracklet merges</td>
+<td>human, pairwise</td>
+<td>expensive without proposals</td>
+<td>identity clusters</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Purity review is the keystone.</strong> It is the tracker's benchmark <em>and</em> the gate
+on identity training data: a pure tracklet is a free bag of same-player pairs,
+but one undetected switch injects thousands of false positives that teach the
+model two players are one person.</p>
+<p><strong>Provenance tiers hold throughout.</strong> TIER 1 human, TIER 2 machine + human
+checked, TIER 3 machine only. For tracklets the tier attaches to <em>frame
+intervals</em>, not whole tracks: a human reviewing 288 frames sees ~12, so claiming
+the whole tracklet is checked is a false claim.</p>
+<h2 id="auto-labelling-and-the-improvement-loop">Auto-labelling and the improvement loop<a class="headerlink" href="#auto-labelling-and-the-improvement-loop" title="Permanent link">&para;</a></h2>
+<p>The pipeline already auto-labels — 2.77M TIER-3 detections exist. The loop is
+about promoting that output to trustworthy labels without a human touching
+every frame.</p>
+<div class="highlight"><pre><span></span><code>      machine labels (TIER 3)
+             |
+             v
+   propose  ──►  human verifies  ──►  TIER 2  ──►  retrain
+      ^                 |
+      |                 v
+      └────── uncertainty sampling ◄── model disagreement / low margin
+</code></pre></div>
+<p><strong>Three grounding mechanisms, cheapest first:</strong></p>
+<ol>
+<li><strong>Kit colour</strong> — free, ~99% accurate, and a <em>hard constraint</em>: two tracklets
+   of different teams can never be the same player. Deletes a large slice of the
+   pairwise space with no model and no labels.</li>
+<li><strong>Jersey number</strong> — one legible frame anchors a whole cluster, because number</li>
+<li>team is unique within a match. ~40% of tracklets contain a frame ≥110 px,
+   and numbers have been read by a human at 102 px, so the addressable pool is
+   far larger than first estimated. This is the highest-value label per second.</li>
+<li><strong>Pairwise merge</strong> — general but expensive; only worthwhile once a model can
+   propose candidates and the human just confirms.</li>
+</ol>
+<p><strong>Active learning, per stage:</strong></p>
+<ul>
+<li><em>Detection</em> — sample frames where tracking implies a detection should exist but
+  none was produced (dropouts are the measured bottleneck), label those, retrain.</li>
+<li><em>Tracking</em> — no training; purity review tunes <code>iou_threshold</code>/<code>max_age</code>.
+  Note the asymmetry: <strong>fragments are harmless, switches poison.</strong> Optimise
+  purity, use coverage only as a guard against one-frame tracklets.</li>
+<li><em>Identity</em> — uncertainty sampling on embedding margin, constrained to
+  same-team pairs. Cross-team pairs are trivial negatives and teach nothing.</li>
+</ul>
+<p><strong>The discipline that makes this safe:</strong> never let machine output promote itself.
+A pre-filter is only usable if its confidence is <em>calibrated</em> — high-confidence
+answers reliable enough to accept unreviewed, errors concentrated where the human
+is looking anyway. Gemini Flash currently fails that test not on accuracy but on
+calibration, which is why it is not in the loop.</p>
+<h2 id="open-questions-in-the-order-they-should-be-answered">Open questions, in the order they should be answered<a class="headerlink" href="#open-questions-in-the-order-they-should-be-answered" title="Permanent link">&para;</a></h2>
+<ol>
+<li><strong>Does a ReID-trained embedding separate same-player pairs here?</strong> Everything
+   downstream depends on it. Untested — the two failures so far were ImageNet
+   backbones, which is not the same claim.</li>
+<li><strong>What is the tracker's real purity?</strong> Being measured now. Needs <em>complete</em>
+   clips; partial coverage biases toward whatever was reviewed first.</li>
+<li><strong>What replaces VitTrack for the ball?</strong></li>
+<li><strong>Which ball mAP figure is true?</strong> <code>.221</code> vs <code>.665</code> for the same weights.</li>
+<li><strong>Is per-player identity even needed downstream</strong>, or is team + role enough
+   for the questions being asked of the data?</li>
+</ol>
+<p>Question 5 is worth an hour before answering 1–3: it can delete a workstream.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      <script id="__config" type="application/json">{"base": "../..", "features": [], "search": "../../assets/javascripts/workers/search.973d3a69.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.f55a23d4.min.js"></script>
+      
+    
+  </body>
+</html>
