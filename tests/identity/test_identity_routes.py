@@ -312,3 +312,18 @@ def test_unsure_review_is_not_pure(client):
         "clip": "seg000", "track_id": 9, "checked": [[1, 1]], "unsure": True}).json()
     assert r["unsure"] is True
     assert r["is_pure"] is False, "unsure carries no positive claim"
+
+
+def test_short_tracklets_are_hidden_and_longest_come_first(client, tmp_path):
+    """~1400 tracklets per clip, only ~640 usable; the rest is detection noise."""
+    rows = [{"frame_index": 0, "track_id": 1, "tags": ["player"], "confidence": 0.9}]
+    rows += [{"frame_index": f, "track_id": 2, "tags": ["player"], "confidence": 0.9}
+             for f in range(30)]
+    rows += [{"frame_index": f, "track_id": 3, "tags": ["player"], "confidence": 0.9}
+             for f in range(60)]
+    _write_tracklets(tmp_path, "seg020", rows)
+    body = client.get("/identity/tracklets?clip=seg020&min_frames=25").json()
+    assert [t["track_id"] for t in body["tracklets"]] == [3, 2], "longest first"
+    assert body["hidden_short"] == 1
+    assert len(client.get(
+        "/identity/tracklets?clip=seg020&min_frames=0").json()["tracklets"]) == 3

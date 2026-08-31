@@ -119,7 +119,7 @@ async def merge_page() -> HTMLResponse:
 
 
 @router.get("/tracklets")
-async def list_tracklets(clip: str) -> dict:
+async def list_tracklets(clip: str, min_frames: int = 25) -> dict:
     """Summarise the tracklets in one clip, with review state attached.
 
     ``checked_fraction`` is deliberately surfaced: it turns "I reviewed this"
@@ -137,9 +137,17 @@ async def list_tracklets(clip: str) -> dict:
             continue
         by_track.setdefault(int(tid), []).append(r)
 
+    # Drop very short tracklets by default. A clip yields ~1400 tracklets of
+    # which ~640 last a second or more; the rest are single-frame detection
+    # noise. Offering them all spends the reviewer's attention on fragments
+    # that carry no identity information and cannot be judged anyway.
     reviews = {rv.tracklet.key(): rv for rv in load_tracklet_reviews(_labels_dir())}
     out = []
+    n_hidden = 0
     for tid, dets in sorted(by_track.items()):
+        if len(dets) < max(0, min_frames):
+            n_hidden += 1
+            continue
         frames = sorted(int(d["frame_index"]) for d in dets)
         ref = TrackletRef(clip=safe, track_id=tid)
         rv = reviews.get(ref.key())
@@ -161,7 +169,11 @@ async def list_tracklets(clip: str) -> dict:
                 ),
             }
         )
-    return {"clip": safe, "tracklets": out}
+    # Longest first: they cover the most detections per decision, and a switch
+    # in a long tracklet corrupts far more training pairs than one in a short.
+    out.sort(key=lambda t: -t["n_detections"])
+    return {"clip": safe, "tracklets": out, "hidden_short": n_hidden,
+            "min_frames": min_frames}
 
 
 @router.get("/risky-frames")
