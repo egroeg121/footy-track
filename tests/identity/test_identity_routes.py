@@ -118,7 +118,8 @@ def test_tracklets_groups_detections_by_track(client, tmp_path):
             {"frame_index": 0, "track_id": 2, "tags": ["player"], "confidence": 0.7},
         ],
     )
-    body = client.get("/identity/tracklets?clip=seg000").json()
+    # min_frames=0: this test is about grouping, not the length filter.
+    body = client.get("/identity/tracklets?clip=seg000&min_frames=0").json()
     assert len(body["tracklets"]) == 2
     t1 = next(t for t in body["tracklets"] if t["track_id"] == 1)
     assert t1["n_detections"] == 2
