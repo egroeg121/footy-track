@@ -13,7 +13,7 @@
          justify-content:center; min-height:100vh; gap:0; }
   h1 { font-size:28px; margin:0 0 8px; }
   p { color:var(--muted); margin:0 0 40px; }
-  .cards { display:flex; gap:20px; }
+  .cards { display:flex; gap:20px; flex-wrap:wrap; justify-content:center; }
   .card { display:flex; flex-direction:column; align-items:center; gap:10px;
           background:var(--panel); border:1px solid var(--border); border-radius:12px;
           padding:32px 40px; text-decoration:none; color:var(--ink);
@@ -37,6 +37,11 @@
       <div class="icon">🃏</div>
       <div class="label">Object Review</div>
       <div class="desc">Correct object labels across all clips</div>
+    </a>
+    <a class="card" href="/ball_check">
+      <div class="icon">&#9917;</div>
+      <div class="label">Ball Check</div>
+      <div class="desc">Phone-friendly yes/no on machine ball boxes</div>
     </a>
     <a class="card" href="/ingest">
       <div class="icon">📥</div>

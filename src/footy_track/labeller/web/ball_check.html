@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+<meta name="theme-color" content="#0f1419" />
+<meta name="mobile-web-app-capable" content="yes" />
+<title>Ball Check</title>
+<style>
+  :root { --bg:#0f1419; --panel:#1a2129; --ink:#e6edf3; --muted:#9bb0c0;
+          --accent:#1e90ff; --green:#3fb950; --red:#f85149; --amber:#d29922;
+          --border:#2d3742; }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html, body { height:100%; }
+  body { margin:0; background:var(--bg); color:var(--ink); overflow:hidden;
+         font:15px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+         display:flex; flex-direction:column;
+         padding:env(safe-area-inset-top) env(safe-area-inset-right)
+                 env(safe-area-inset-bottom) env(safe-area-inset-left); }
+
+  header { display:flex; align-items:center; gap:10px; padding:10px 14px;
+           border-bottom:1px solid var(--border); flex:none; }
+  header a { color:var(--muted); text-decoration:none; font-size:20px; }
+  #progress { font-weight:600; }
+  #precision { color:var(--muted); font-size:13px; margin-left:auto; }
+
+  main { flex:1; position:relative; display:flex; align-items:center;
+         justify-content:center; padding:10px; min-height:0; }
+  #card { position:relative; width:100%; max-width:560px; max-height:100%;
+          background:var(--panel); border:1px solid var(--border);
+          border-radius:16px; overflow:hidden; display:flex;
+          flex-direction:column; touch-action:pan-y; }
+  #shot { width:100%; display:block; background:#000; object-fit:contain;
+          max-height:calc(100vh - 230px); image-rendering:auto; }
+  #meta { padding:8px 12px; font-size:12px; color:var(--muted);
+          display:flex; gap:10px; justify-content:space-between; }
+  #verdictFlash { position:absolute; inset:0; display:flex; align-items:center;
+                  justify-content:center; font-size:64px; opacity:0;
+                  pointer-events:none; transition:opacity .12s; }
+
+  footer { flex:none; padding:8px 12px 16px; display:flex; flex-direction:column; gap:8px; }
+  .row { display:flex; gap:10px; }
+  button { flex:1; border:none; border-radius:14px; padding:18px 8px;
+           font-size:17px; font-weight:700; color:#06121c; background:var(--muted);
+           cursor:pointer; }
+  button:active { filter:brightness(.85); }
+  button.no { background:var(--red); color:#fff; }
+  button.yes { background:var(--green); }
+  .small { flex:1; padding:11px 8px; font-size:13px; font-weight:600;
+           background:transparent; color:var(--muted); border:1px solid var(--border); }
+  #status { text-align:center; color:var(--muted); font-size:13px; min-height:18px; }
+  #empty { display:none; text-align:center; color:var(--muted); padding:40px 20px; }
+</style>
+</head>
+<body>
+  <header>
+    <a href="/" title="Home">&#8592;</a>
+    <span id="progress">&hellip;</span>
+    <span id="precision"></span>
+  </header>
+
+  <main>
+    <div id="card">
+      <img id="shot" alt="candidate ball crop" />
+      <div id="meta"><span id="clipName"></span><span id="provName"></span></div>
+      <div id="verdictFlash"></div>
+    </div>
+    <div id="empty">
+      <p>Nothing left to check.</p>
+      <p>Every machine ball box in the sidecars has a verdict.</p>
+    </div>
+  </main>
+
+  <footer>
+    <div class="row">
+      <button class="no" id="btnNo">Not a ball</button>
+      <button class="yes" id="btnYes">Ball</button>
+    </div>
+    <div class="row">
+      <button class="small" id="btnUnsure">Unsure</button>
+      <button class="small" id="btnZoom">Zoom out</button>
+      <button class="small" id="btnUndo">Undo</button>
+    </div>
+    <div id="status">Swipe right = ball, left = not a ball.</div>
+  </footer>
+
+<script>
+const PADS = [6, 14, 30];      // context steps for the "Zoom out" button
+const REFILL_AT = 5;           // fetch more cards when the buffer runs low
+const PREFETCH = 4;            // crops to warm ahead of the current card
+
+let queue = [];                // items not yet judged, current one at [0]
+let remaining = 0;             // server-side count of unjudged boxes
+let judged = 0;
+let padIdx = 0;
+let history = [];              // for undo
+let busy = false;
+
+const $ = (id) => document.getElementById(id);
+
+function cropUrl(item, pad) {
+  return `${item.image_url}?pad=${pad}`;
+}
+
+function prefetch() {
+  for (const item of queue.slice(1, 1 + PREFETCH)) {
+    const img = new Image();
+    img.src = cropUrl(item, PADS[padIdx]);
+  }
+}
+
+function render() {
+  const item = queue[0];
+  if (!item) {
+    $('card').style.display = 'none';
+    $('empty').style.display = 'block';
+    $('progress').textContent = `${judged} checked`;
+    return;
+  }
+  $('card').style.display = 'flex';
+  $('empty').style.display = 'none';
+  $('shot').src = cropUrl(item, PADS[padIdx]);
+  $('clipName').textContent = `${item.clip} · f${item.frame_index}`;
+  $('provName').textContent = `${item.label} · ${item.provenance}`;
+  $('progress').textContent = `${judged} checked · ${remaining} left`;
+  prefetch();
+}
+
+async function loadQueue(reset) {
+  const res = await fetch('/ball_check/queue?limit=60');
+  const data = await res.json();
+  remaining = data.remaining;
+  judged = data.judged;
+  const seen = new Set(queue.map(keyOf));
+  const fresh = data.items.filter((i) => !seen.has(keyOf(i)));
+  queue = reset ? data.items : queue.concat(fresh);
+  render();
+}
+
+function keyOf(i) { return `${i.clip}|${i.frame_index}|${i.box_index}`; }
+
+function flash(symbol, colour) {
+  const el = $('verdictFlash');
+  el.textContent = symbol;
+  el.style.color = colour;
+  el.style.opacity = '1';
+  setTimeout(() => { el.style.opacity = '0'; }, 120);
+}
+
+async function judge(verdict) {
+  const item = queue[0];
+  if (!item || busy) return;
+  busy = true;
+  flash(verdict === 'ball' ? '✔' : verdict === 'not_ball' ? '✖' : '?',
+        verdict === 'ball' ? '#3fb950' : verdict === 'not_ball' ? '#f85149' : '#d29922');
+  queue.shift();
+  history.push(item);
+  judged += 1;
+  remaining = Math.max(0, remaining - 1);
+  render();
+  try {
+    await fetch('/ball_check/verdict', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        clip: item.clip, frame_index: item.frame_index, box_index: item.box_index,
+        bbox: item.bbox, label: item.label, provenance: item.provenance, verdict,
+      }),
+    });
+    $('status').textContent = '';
+  } catch (err) {
+    // The card is already gone from the buffer; put it back rather than
+    // pretend a verdict was recorded.
+    queue.unshift(item);
+    history.pop();
+    judged -= 1;
+    $('status').textContent = 'Offline — verdict not saved, try again.';
+    render();
+  }
+  busy = false;
+  if (queue.length < REFILL_AT) loadQueue(false);
+  refreshStats();
+}
+
+async function undo() {
+  const item = history.pop();
+  if (!item) return;
+  await fetch('/ball_check/undo', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      clip: item.clip, frame_index: item.frame_index, box_index: item.box_index,
+    }),
+  });
+  queue.unshift(item);
+  judged = Math.max(0, judged - 1);
+  remaining += 1;
+  $('status').textContent = 'Undone.';
+  render();
+}
+
+async function refreshStats() {
+  try {
+    const s = await (await fetch('/ball_check/stats')).json();
+    $('precision').textContent =
+      s.precision === null ? '' : `precision ${(s.precision * 100).toFixed(0)}%`;
+  } catch (err) { /* stats are decoration — never block labelling */ }
+}
+
+$('btnYes').onclick = () => judge('ball');
+$('btnNo').onclick = () => judge('not_ball');
+$('btnUnsure').onclick = () => judge('unsure');
+$('btnUndo').onclick = undo;
+$('btnZoom').onclick = () => {
+  padIdx = (padIdx + 1) % PADS.length;
+  $('btnZoom').textContent = padIdx === PADS.length - 1 ? 'Zoom in' : 'Zoom out';
+  render();
+};
+
+// Swipe: horizontal drag on the card, with the card following the finger.
+let startX = null, startY = null, dx = 0;
+const card = $('card');
+card.addEventListener('touchstart', (e) => {
+  startX = e.touches[0].clientX; startY = e.touches[0].clientY; dx = 0;
+}, { passive: true });
+card.addEventListener('touchmove', (e) => {
+  if (startX === null) return;
+  dx = e.touches[0].clientX - startX;
+  const dy = e.touches[0].clientY - startY;
+  if (Math.abs(dx) < Math.abs(dy)) return;   // vertical scroll, not a swipe
+  card.style.transform = `translateX(${dx}px) rotate(${dx / 40}deg)`;
+}, { passive: true });
+card.addEventListener('touchend', () => {
+  card.style.transform = '';
+  if (startX !== null && Math.abs(dx) > 70) judge(dx > 0 ? 'ball' : 'not_ball');
+  startX = null;
+});
+
+// Keyboard, for the same queue on a desktop.
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'ArrowRight' || e.key === 'y') judge('ball');
+  else if (e.key === 'ArrowLeft' || e.key === 'n') judge('not_ball');
+  else if (e.key === 'ArrowDown' || e.key === 'u') judge('unsure');
+  else if (e.key === 'z') undo();
+});
+
+loadQueue(true);
+refreshStats();
+</script>
+</body>
+</html>

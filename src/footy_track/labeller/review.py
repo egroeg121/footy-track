@@ -31,6 +31,7 @@ from footy_track.labeller.constants import (
     PROV_LABELLER,
     PROV_SAM3,
     PROV_YOLO,
+    PROVENANCE_TAGS,
     REVIEW_LABELS_SET,
 )
 
@@ -101,6 +102,10 @@ def _parse_jsonl_box(raw: str, clip_stem: str, video_path: Path | None) -> dict 
     label = next((t for t in tags if t in REVIEW_LABELS_SET), "player")
     confidence = 1.0 if PROV_LABELLER in tags else 0.5
     provenance = next((t for t in tags if t in _PROV_TAGS), PROV_LABELLER)
+    # `provenance` deliberately mis-reports vittrack as 'labeller' (OPEN-3,
+    # pinned by tests). `provenance_tag` is the honest read of the tags, for
+    # consumers that must not mistake machine output for GT (ball_check).
+    provenance_tag = next((t for t in tags if t in PROVENANCE_TAGS), PROV_LABELLER)
     return {
         "clip": clip_stem,
         "video_path": str(video_path) if video_path else None,
@@ -109,6 +114,7 @@ def _parse_jsonl_box(raw: str, clip_stem: str, video_path: Path | None) -> dict 
         "label": label,
         "confidence": confidence,
         "provenance": provenance,
+        "provenance_tag": provenance_tag,
     }
 
 

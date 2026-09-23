@@ -42,6 +42,7 @@ from footy_track.labeller.constants import (  # noqa: E402
     PROV_VITTRACK,
     PROV_YOLO,
 )
+from footy_track.labeller.ball_check import router as ball_check_router  # noqa: E402
 from footy_track.labeller.ingest import router as ingest_router  # noqa: E402
 from footy_track.labeller.review import router as review_router  # noqa: E402
 from footy_track.labeller.run_stream import stream_frames  # noqa: E402
@@ -135,6 +136,11 @@ async def labeller_page() -> HTMLResponse:
 @app.get("/object_review", response_class=HTMLResponse)
 async def review_page() -> HTMLResponse:
     return HTMLResponse((_STATIC_DIR / "review.html").read_text())
+
+
+@app.get("/ball_check", response_class=HTMLResponse)
+async def ball_check_page() -> HTMLResponse:
+    return HTMLResponse((_STATIC_DIR / "ball_check.html").read_text())
 
 
 @app.get("/ingest", response_class=HTMLResponse)
@@ -568,6 +574,7 @@ async def ws(websocket: WebSocket) -> None:
 
 
 app.include_router(review_router)
+app.include_router(ball_check_router)
 app.include_router(ingest_router)
 
 # Mount static assets (JS/CSS) if any beyond index.html.

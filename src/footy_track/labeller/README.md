@@ -6,7 +6,7 @@ labeller.** Every feature and behavior is captured as a numbered requirement
 test(s) that pin it. Requirements with no server-side test are marked
 `UNTESTED`; behaviors that live only in the browser JS (no JS test runner in
 this repo) are marked `UNTESTED-FRONTEND` — their *server contract* is tested
-instead. Known defects and gaps are tracked as `OPEN-n` items in §12.
+instead. Known defects and gaps are tracked as `OPEN-n` items in §13.
 
 Snapshot: origin/main `95b60cc`. Change process: a behavior change MUST update
 the corresponding requirement (and its tests) in the same PR; new behavior
@@ -34,6 +34,7 @@ uv run uvicorn footy_track.labeller.server:app --reload
 | `/` (alias `/main`) | Hub |
 | `/labeller` | Frame labeller (mark + propagate) |
 | `/object_review` | Tinder-style crop review/correction |
+| `/ball_check` | Mobile ball verification (swipe yes/no) |
 | `/ingest` | Clip ingestion (page currently broken — OPEN-1) |
 
 Test suite: `tests/labeller/` (run `uv run pytest tests/labeller/`). Test
@@ -82,7 +83,7 @@ persisted in the JSONL sidecar as the second tag (`tags: [label, model]`):
   - Tests: UNTESTED-FRONTEND (`promoteToGT` in `web/index.html`; server leg is LAB-003)
 - **LAB-006** (MUST) Undo restores each box with its own `model` tag — undo
   must not promote machine boxes to GT (fixed on main, `95b60cc`; previously
-  OPEN, see §12).
+  OPEN, see §13).
   - Tests: UNTESTED-FRONTEND (`undoLast` passes `o.model` back to `addRect`)
 - **LAB-007** (MUST) The legacy `sam3` model tag keeps round-tripping through
   sidecars and surfaces in review (old sidecars contain it), even though SAM3
@@ -657,7 +658,86 @@ their server contract is §§3–7. Verify by hand when touching the frontend.
   there is any letterboxing.
   - Tests: UNTESTED-FRONTEND
 
-## 11. Operational notes (informative)
+## 11. Ball Check — mobile ball verification (LAB-10xx)
+
+Phone-sized yes/no verification of machine ball boxes: one zoomed, reticled
+crop per card, swipe or tap to answer. It reads the same sidecars as review
+and shares review's `(clip, frame_index, box_index)` box identity, but writes
+**only** to its own append-only log — a yes/no answer does not check box
+geometry, so it may not promote a machine box to `labeller` GT (LAB-002), and
+an append-only side file cannot truncate hand labels.
+
+Backend `ball_check.py`, page `web/ball_check.html` (no framework, no Konva).
+Verdicts live in `<gt dir>/ball_checks/<clip>.jsonl`, one JSON object per
+line: `{clip, frame_index, box_index, verdict, bbox, label, provenance, ts}`.
+
+- **LAB-1001** (MUST) `GET /ball_check/queue` returns only ball-class boxes
+  (`BALL_LABELS`) whose provenance tag is machine (`yolo`/`vittrack`/`sam3`),
+  as `{remaining, judged, items: [{clip, frame_index, box_index, bbox, label,
+  provenance, image_url}]}`. `remaining` counts the whole queue, `items` is
+  capped at `limit` (default 50, max 500).
+  - Tests: `test_ball_check.py::test_queue_only_machine_ball_boxes`,
+    `test_ball_check.py::test_queue_order_is_stable_and_respects_limit`
+- **LAB-1002** (MUST) Provenance here is read from the sidecar tags
+  (`review._parse_jsonl_box`'s `provenance_tag`), not review's `provenance`
+  field — the latter reports `vittrack` boxes as `labeller` (OPEN-3), which
+  would silently hide machine output from the queue.
+  - Tests: `test_ball_check.py::test_queue_only_machine_ball_boxes`
+- **LAB-1003** (SHOULD) Queue order is a deterministic hash of
+  (clip, frame, box), not file order: precision is a property of the detector,
+  so a short session should sample the whole corpus, and the order must be
+  stable across restarts. `?clip=` narrows to one clip; `?include_gt=true`
+  also surfaces `labeller` boxes.
+  - Tests: `test_ball_check.py::test_queue_order_is_stable_and_respects_limit`,
+    `test_ball_check.py::test_queue_include_gt_and_clip_filters`
+- **LAB-1004** (MUST) `POST /ball_check/verdict` appends one record to the
+  clip's verdict log and leaves the GT sidecar byte-identical. `verdict` must
+  be `ball` | `not_ball` | `unsure`; anything else, or a missing identity
+  field, returns `{ok: false}` and writes nothing. `unsure` is kept distinct
+  so ambiguous crops never become negatives.
+  - Tests: `test_ball_check.py::test_verdict_appends_to_log_and_leaves_sidecar_untouched`,
+    `test_ball_check.py::test_verdict_rejects_unknown_value`,
+    `test_ball_check.py::test_verdict_rejects_missing_fields`
+- **LAB-1005** (MUST) A box with a verdict leaves the queue; the last line for
+  a key wins, so re-judging corrects a mistake without editing history.
+  - Tests: `test_ball_check.py::test_judged_boxes_leave_the_queue`,
+    `test_ball_check.py::test_latest_verdict_wins`
+- **LAB-1006** (MUST) `POST /ball_check/undo` appends a tombstone
+  (`verdict: null`) rather than rewriting the log; the box returns to the
+  queue and both lines stay on disk. Undo with no log for the clip is an
+  error.
+  - Tests: `test_ball_check.py::test_undo_returns_the_card_to_the_queue`,
+    `test_ball_check.py::test_undo_without_verdicts_is_an_error`
+- **LAB-1007** (SHOULD) `GET /ball_check/stats` returns per-verdict counts and
+  `precision = ball / (ball + not_ball)`, `null` before any decided verdict.
+  `unsure` is excluded from the denominator.
+  - Tests: `test_ball_check.py::test_stats_precision_excludes_unsure`,
+    `test_ball_check.py::test_stats_precision_none_before_any_decision`
+- **LAB-1008** (MUST) `GET /ball_check/crop/{clip}/{frame}/{box}.jpg` returns
+  a centred window of `1 + 2*pad` box sides, floored to 160 px and upscaled to
+  640 px wide (an ~11 px ball is otherwise unjudgeable), with a yellow reticle
+  drawn on the claimed box — without it a crop holding two round bright things
+  is ambiguous. `?pad=` (default 6.0) is clamped to 40.0. 404 when the clip
+  video or the box is missing.
+  - Tests: `test_ball_check.py::test_crop_window_floors_tiny_boxes_and_clamps_to_edges`,
+    `test_ball_check.py::test_crop_404s_for_missing_clip_or_box`,
+    `test_ball_check.py::test_pad_is_clamped_to_max`
+- **LAB-1009** (SHOULD) Crops are cached in a 200-entry LRU keyed by
+  (clip, frame, box, pad) — a different pad is a separate entry, never a stale
+  hit.
+  - Tests: `test_ball_check.py::test_crop_returns_jpeg_and_caches`
+- **LAB-1010** (MUST) `GET /ball_check` serves the page and the hub links to
+  it; the page carries a mobile viewport meta.
+  - Tests: `test_ball_check.py::test_ball_check_page_served_and_linked_from_hub`
+- **LAB-1011** (SHOULD) Frontend: swipe right = ball, left = not a ball (the
+  card follows the finger; vertical drags are ignored); buttons for
+  unsure/zoom/undo; arrow keys and y/n/u/z on a desktop. The next crops are
+  prefetched and the queue refills below 5 cards. A failed verdict POST puts
+  the card back rather than reporting a saved verdict.
+  - Tests: UNTESTED-FRONTEND (`web/ball_check.html`; the server contract is
+    LAB-1004..1009)
+
+## 12. Operational notes (informative)
 
 - Single global session; no auth; intended for one local user.
 - Downstream, sidecars + Roboflow datasets are ingested into the DuckDB
@@ -668,7 +748,7 @@ their server contract is §§3–7. Verify by hand when touching the frontend.
 - The torch.compile (Inductor) cache is pinned to
   `~/.cache/footy_torch_inductor` before torch import (macOS purges $TMPDIR).
 
-## 12. Known gaps — OPEN items
+## 13. Known gaps — OPEN items
 
 Tracked against this spec; burn these down by fixing the behavior AND
 updating/adding the corresponding LAB requirement + tests.
@@ -704,7 +784,7 @@ updating/adding the corresponding LAB requirement + tests.
   machine "fixes" them; needs per-machine config + regeneration script.
 - GPU propagation loop (`ft-8vx` epic): paused by request.
 
-## 13. Traceability summary
+## 14. Traceability summary
 
 | Section | Requirements | Tested | UNTESTED | UNTESTED-FRONTEND |
 |---|---|---|---|---|
@@ -718,8 +798,9 @@ updating/adding the corresponding LAB requirement + tests.
 | 8. Backend (LAB-7xx) | 11 | 8 | 3 | 0 |
 | 9. Labeller UI (LAB-8xx) | 11 | 0 | 0 | 11 |
 | 10. Review UI (LAB-9xx) | 7 | 0 | 0 | 7 |
-| **Total** | **84** | **55** | **8** | **21** |
+| 11. Ball Check (LAB-10xx) | 11 | 10 | 0 | 1 |
+| **Total** | **95** | **65** | **8** | **22** |
 
 Open items: 4 (OPEN-1..4) + 1 fixed on main (undo provenance, `95b60cc`).
-Test suite: 103 tests in `tests/labeller/` (all green), plus the
+Test suite: 137 tests in `tests/labeller/` (all green), plus the
 feature-store round-trip fidelity leg in `tests/feature_store/`.
