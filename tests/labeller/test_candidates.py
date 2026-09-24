@@ -147,15 +147,16 @@ def test_sampling_weight_peaks_at_tau_and_never_reaches_zero():
     assert w_far >= 1.0 - cand.DEFAULT_FOCUS
 
 
-def test_stratified_order_concentrates_near_tau_but_covers_the_range():
+def test_stratified_order_concentrates_hard_on_the_boundary():
     order = cand.stratified_order(_pool(), tau=0.25)
     first = order[:200]
     near = sum(1 for r in first if abs(r["confidence"] - 0.25) <= 0.1)
-    # Borderline band is 20% of the range; heavy over-sampling is the point.
-    assert near > 100
-    # ...but the first 200 still touch most of the range, so no band is starved.
-    bands = {cand.band_of(r["confidence"]) for r in first}
-    assert len(bands) >= 7
+    # sigma is 0.10, so ~2/3 of the weighted stream lands within one sigma of
+    # the boundary — the Gaussian shape, not an arbitrary number. Coverage of
+    # the rest of the range is the uniform stream's job (see the select tests).
+    assert near > 110
+    within_two_sigma = sum(1 for r in first if abs(r["confidence"] - 0.25) <= 0.2)
+    assert within_two_sigma > 170
 
 
 def test_stratified_order_is_deterministic():
@@ -245,7 +246,7 @@ def test_binned_pool_matches_a_full_race():
     # The fast path must be an optimisation, not a different sampler.
     pool_records = _pool(600)
     weight = lambda c: cand.sampling_weight(c, tau=0.25)  # noqa: E731
-    fast = cand.BinnedPool(pool_records).select(weight, top=50)
+    fast = cand.BinnedPool(pool_records).select(weight, top=50, uniform_share=0)
     slow = cand._race(pool_records, lambda r: weight(cand.bin_centre(r["confidence"])))[
         :50
     ]
@@ -259,6 +260,37 @@ def test_binned_pool_skips_judged_and_still_fills_the_page():
         lambda c: cand.sampling_weight(c, tau=0.25),
         top=40,
         skip=lambda r: r["frame_index"] in skip_ids,
+        uniform_share=0,
     )
     assert len(out) == 40
     assert not any(r["frame_index"] in skip_ids for r in out)
+
+
+def test_select_serves_about_one_quarter_uniform_cards():
+    # A lopsided pool, like the real one (201k of 357k candidates sit in one
+    # band): a weight-expressed "25% uniform" would not deliver 25% uniform
+    # cards, because a big band floods the weighted stream by sheer count.
+    lopsided = [
+        {"clip": "clip", "frame_index": i, "cand_index": 0, "confidence": 0.25}
+        for i in range(400)
+    ] + [
+        {"clip": "clip", "frame_index": 10_000 + i, "cand_index": 0, "confidence": 0.95}
+        for i in range(5000)
+    ]
+    page = cand.BinnedPool(lopsided).select(
+        lambda c: cand.sampling_weight(c, tau=0.25), top=40
+    )
+    assert len(page) == 40
+    # Distinct cards only: the two streams must not serve the same candidate.
+    assert len({(r["frame_index"], r["cand_index"]) for r in page}) == 40
+    far = sum(1 for r in page if r["confidence"] > 0.9)
+    # The far band can only reach the page through the uniform quarter, which
+    # it dominates (5000 of 5400 rows) — so ~10 of 40, never most of the page.
+    assert 6 <= far <= 14
+
+
+def test_select_mix_holds_for_a_short_page():
+    page = cand.BinnedPool(_pool(2000)).select(
+        lambda c: cand.sampling_weight(c, tau=0.25), top=8
+    )
+    assert len(page) == 8

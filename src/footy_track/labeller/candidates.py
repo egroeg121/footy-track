@@ -47,9 +47,18 @@ DEFAULT_TAU = 0.25
 #: Width of the borderline window (in confidence units, one sigma).
 DEFAULT_SIGMA = 0.10
 
-#: Share of sampling weight spent near the threshold; the rest is spread
-#: uniformly so every confidence band still gets measured.
-DEFAULT_FOCUS = 0.7
+#: Share of served cards drawn uniformly at random from the whole pool,
+#: rather than from the borderline window. This is a share of *cards*, not a
+#: weight: one card in four is uniform, by construction (see ``select``).
+UNIFORM_SHARE = 0.25
+
+#: How sharply the weighted stream favours the boundary. The floor is
+#: deliberately tiny (1 - focus = 0.02): coverage of the rest of the range is
+#: the uniform stream's job, not the weight's. With a meaningful floor a huge
+#: band floods the weighted stream purely by count — measured on a pool with
+#: 5,000 far-from-boundary rows against 400 near it, a 0.3 floor let the
+#: far band take 23 of 40 supposedly-borderline cards.
+DEFAULT_FOCUS = 0.98
 
 #: Height of the borderline peak relative to the uniform floor. With the
 #: defaults the peak is ~13x the tail, which puts roughly two thirds of early
@@ -386,8 +395,48 @@ class BinnedPool:
         self.bins = bins
         self.total = len(records)
 
-    def select(self, weight_of, top: int, skip=None) -> list[dict]:
-        """Top ``top`` of the weighted order, skipping anything ``skip`` rejects."""
+    def select(
+        self,
+        weight_of,
+        top: int,
+        skip=None,
+        uniform_share: float = UNIFORM_SHARE,
+    ) -> list[dict]:
+        """A page of cards: mostly borderline, with a fixed uniform fraction.
+
+        The two streams are drawn separately and interleaved so the uniform
+        fraction is exactly ``uniform_share`` of the page. Expressing it as a
+        weight instead makes the realised share depend on the shape of the
+        pool — which here is wildly lopsided (201k of 357k candidates sit in
+        the 0.1-0.2 band), so a "25% uniform" weight would not deliver 25%
+        uniform cards.
+        """
+        if uniform_share <= 0:
+            return self._stream(weight_of, top, skip)
+        n_uniform = int(round(top * uniform_share))
+        n_focus = top - n_uniform
+        focused = self._stream(weight_of, n_focus, skip)
+        seen = {id(r) for r in focused}
+        uniform = [
+            r
+            for r in self._stream(lambda _c: 1.0, n_uniform + len(focused), skip)
+            if id(r) not in seen
+        ][:n_uniform]
+        out: list[dict] = []
+        fi = ui = 0
+        # 3 borderline : 1 uniform, so the mix holds for any prefix of the page.
+        while fi < len(focused) or ui < len(uniform):
+            for _ in range(3):
+                if fi < len(focused):
+                    out.append(focused[fi])
+                    fi += 1
+            if ui < len(uniform):
+                out.append(uniform[ui])
+                ui += 1
+        return out
+
+    def _stream(self, weight_of, top: int, skip=None) -> list[dict]:
+        """Top ``top`` of one weighted order, skipping anything ``skip`` rejects."""
         heap: list[tuple[float, int, int]] = []
         weights = []
         for b, bucket in enumerate(self.bins):

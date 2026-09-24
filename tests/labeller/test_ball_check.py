@@ -470,3 +470,149 @@ def test_step_on_a_candidate_reads_the_candidate_file(
     assert out["frame_index"] == 8
     assert out["confidence"] == pytest.approx(0.28)
     assert "src=cand" in out["image_url"]
+
+
+# ---------------------------------------------------------------------------
+# Saving a corrected box (LAB-1013)
+# ---------------------------------------------------------------------------
+
+
+def test_save_box_appends_gt_for_a_candidate_with_no_sidecar(
+    client, clips_dir, gt_marks_dir, cand_dir
+):
+    # The reported bug: candidate clips usually have no sidecar at all, so
+    # rewrite-by-index could only fail with "clip not found".
+    (clips_dir / "newclip.mp4").touch()
+    (cand_dir / "newclip.jsonl").write_text(
+        json.dumps(
+            {
+                "frame_index": 3,
+                "bbox": {"x": 0.2, "y": 0.2, "w": 0.01, "h": 0.01},
+                "tags": ["in_play_ball", "rtdetr"],
+                "confidence": 0.4,
+            }
+        )
+        + "\n"
+    )
+    assert not (gt_marks_dir / "newclip.jsonl").exists()
+
+    out = client.post(
+        "/ball_check/save_box",
+        json={
+            "clip": "newclip",
+            "frame_index": 3,
+            "box_index": 0,
+            "source": "cand",
+            "label": "in_play_ball",
+            "bbox": {"x": 0.21, "y": 0.22, "w": 0.012, "h": 0.013},
+        },
+    ).json()
+    assert out["ok"] is True
+
+    rec = json.loads((gt_marks_dir / "newclip.jsonl").read_text().splitlines()[0])
+    assert rec["tags"] == ["in_play_ball", "labeller"]
+    assert rec["frame_index"] == 3
+    assert rec["bbox"]["x"] == pytest.approx(0.21)
+    assert rec["center"]["x"] == pytest.approx(0.21 + 0.012 / 2)
+
+
+def test_save_box_appends_without_corrupting_a_file_lacking_a_trailing_newline(
+    client, clips_dir, gt_marks_dir, cand_dir
+):
+    (clips_dir / "clip.mp4").touch()
+    (gt_marks_dir / "clip.jsonl").write_text(_line(0, ["in_play_ball", "labeller"]))
+    (cand_dir / "clip.jsonl").write_text(
+        json.dumps(
+            {
+                "frame_index": 9,
+                "bbox": {"x": 0.3, "y": 0.3, "w": 0.01, "h": 0.01},
+                "tags": ["in_play_ball", "rtdetr"],
+                "confidence": 0.4,
+            }
+        )
+        + "\n"
+    )
+    client.post(
+        "/ball_check/save_box",
+        json={
+            "clip": "clip",
+            "frame_index": 9,
+            "box_index": 0,
+            "source": "cand",
+            "bbox": {"x": 0.3, "y": 0.3, "w": 0.01, "h": 0.01},
+        },
+    )
+    lines = (gt_marks_dir / "clip.jsonl").read_text().splitlines()
+    assert len(lines) == 2
+    assert [json.loads(line)["frame_index"] for line in lines] == [0, 9]
+
+
+def test_save_box_rewrites_in_place_for_a_sidecar_box(client, clips_dir, gt_marks_dir):
+    (clips_dir / "clip.mp4").touch()
+    _write_sidecar(
+        gt_marks_dir,
+        "clip",
+        [_line(0, ["in_play_ball", "yolo"]), _line(0, ["player", "yolo"])],
+    )
+    client.post(
+        "/ball_check/save_box",
+        json={
+            "clip": "clip",
+            "frame_index": 0,
+            "box_index": 0,
+            "source": "sidecar",
+            "label": "in_play_ball",
+            "bbox": {"x": 0.44, "y": 0.44, "w": 0.02, "h": 0.02},
+        },
+    )
+    lines = (gt_marks_dir / "clip.jsonl").read_text().splitlines()
+    assert len(lines) == 2  # rewritten, not appended
+    first = json.loads(lines[0])
+    assert first["tags"] == ["in_play_ball", "labeller"]
+    assert first["bbox"]["x"] == pytest.approx(0.44)
+
+
+def test_save_box_rejects_a_zero_area_box(client, gt_marks_dir):
+    out = client.post(
+        "/ball_check/save_box",
+        json={
+            "clip": "clip",
+            "frame_index": 0,
+            "box_index": 0,
+            "source": "cand",
+            "bbox": {"x": 0.5, "y": 0.5, "w": 0.0, "h": 0.01},
+        },
+    ).json()
+    assert out["ok"] is False
+    assert not (gt_marks_dir / "clip.jsonl").exists()
+
+
+def test_step_ignores_a_far_away_box(client, clips_dir, gt_marks_dir, fake_cv2):
+    # A detection on the other side of the pitch is not this ball one frame
+    # later; showing it would imply a continuity that does not exist.
+    (clips_dir / "clip.mp4").touch()
+    _write_sidecar(
+        gt_marks_dir,
+        "clip",
+        [
+            _line(4, ["in_play_ball", "yolo"], x=0.10, y=0.10),
+            _line(5, ["in_play_ball", "yolo"], x=0.90, y=0.80),
+        ],
+    )
+    out = client.get("/ball_check/step/clip/4/0?delta=1").json()
+    assert out["ok"] is True
+    assert out["bbox"] is None
+
+
+def test_step_keeps_a_nearby_box(client, clips_dir, gt_marks_dir, fake_cv2):
+    (clips_dir / "clip.mp4").touch()
+    _write_sidecar(
+        gt_marks_dir,
+        "clip",
+        [
+            _line(4, ["in_play_ball", "yolo"], x=0.10, y=0.10),
+            _line(5, ["in_play_ball", "yolo"], x=0.12, y=0.11),
+        ],
+    )
+    out = client.get("/ball_check/step/clip/4/0?delta=1").json()
+    assert out["bbox"]["x"] == pytest.approx(0.12)

@@ -336,12 +336,12 @@ async function saveBox() {
   };
   // A hand-dragged box is real human geometry, so it goes back to the sidecar
   // as labeller GT through the review endpoint — not just a verdict.
-  const res = await (await fetch('/review/correct', {
+  const res = await (await fetch('/ball_check/save_box', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       clip: item.clip, frame_index: item.frame_index, box_index: item.box_index,
-      label: item.label, bbox,
+      source: srcOf(item), label: item.label, bbox,
     }),
   })).json();
   if (!res.ok) { $('status').textContent = `Could not save: ${res.error || 'error'}`; return; }

@@ -59,6 +59,12 @@ BALL_PRESENT_VERDICTS = ("ball", "box_off", "corrected")
 #: geometry, written back through ``/review/correct`` as TIER 1 GT.
 CLEAN_VERDICTS = ("ball", "corrected")
 
+#: How far a neighbouring-frame box may sit from the anchor centre and still
+#: be treated as the same object, in normalized frame units. A ball crosses
+#: at most a few percent of the frame per frame at 25 fps; beyond that it is
+#: a different detection, not this one moving.
+_NEIGHBOUR_MAX_DIST = 0.06
+
 #: Zoom level. The crop window is a FIXED fraction of the frame (below),
 #: scaled by ``pad / _PAD_FACTOR`` — deliberately NOT a multiple of the box.
 #:
@@ -613,7 +619,13 @@ async def ball_check_step(
             b = r["bbox"]
             return (b["x"] + b["w"] / 2 - acx) ** 2 + (b["y"] + b["h"] / 2 - acy) ** 2
 
-        return min(rows, key=dist)
+        best = min(rows, key=dist)
+        # Only show it if it is plausibly the same object. A detection on the
+        # far side of the pitch is not this ball one frame later, and drawing
+        # it would suggest a continuity that is not there.
+        if dist(best) > _NEIGHBOUR_MAX_DIST**2:
+            return None
+        return best
 
     near = await asyncio.to_thread(_neighbour)
     return {
@@ -628,6 +640,72 @@ async def ball_check_step(
             f"?src={src}&at={target}&reticle=false"
         ),
     }
+
+
+@router.post("/ball_check/save_box")
+async def ball_check_save_box(body: dict) -> dict:
+    """Write a hand-corrected box to the clip's GT sidecar as labeller GT.
+
+    Candidates come from the detector's own output and most of their clips
+    have no sidecar at all, so the review endpoint's rewrite-by-index could
+    only ever fail with "clip not found". A dragged box is real hand
+    geometry, so for a candidate we append a new GT line (creating the file
+    if needed); for a sidecar box we rewrite that box in place, which keeps
+    review's box_index numbering stable.
+    """
+    try:
+        clip = str(body["clip"])
+        frame_index = int(body["frame_index"])
+        box_index = int(body["box_index"])
+        bbox = body["bbox"]
+        bx = max(0.0, min(1.0, float(bbox["x"])))
+        by = max(0.0, min(1.0, float(bbox["y"])))
+        bw = max(0.0, min(1.0 - bx, float(bbox["w"])))
+        bh = max(0.0, min(1.0 - by, float(bbox["h"])))
+    except (KeyError, TypeError, ValueError):
+        return {"ok": False, "error": "clip, frame_index, box_index and bbox required"}
+    if bw <= 0 or bh <= 0:
+        return {"ok": False, "error": "box has no area"}
+
+    label = body.get("label") or "in_play_ball"
+    if label not in BALL_LABELS:
+        label = "in_play_ball"
+    src = body.get("source") or "sidecar"
+
+    if src == "sidecar":
+        from footy_track.labeller.review import review_correct  # noqa: PLC0415
+
+        return await review_correct(
+            {
+                "clip": clip,
+                "frame_index": frame_index,
+                "box_index": box_index,
+                "label": label,
+                "bbox": {"x": bx, "y": by, "w": bw, "h": bh},
+            }
+        )
+
+    def _append_gt() -> None:
+        marks_dir = _gt_marks_dir()
+        marks_dir.mkdir(parents=True, exist_ok=True)
+        path = marks_dir / f"{clip}.jsonl"
+        line = json.dumps(
+            {
+                "frame_index": frame_index,
+                "bbox": {"x": bx, "y": by, "w": bw, "h": bh},
+                "center": {"x": bx + bw / 2, "y": by + bh / 2},
+                "tags": [label, PROV_LABELLER],
+            }
+        )
+        # Append-only, and newline-safe: a sidecar written elsewhere may not
+        # end in one, and joining onto it would corrupt the last record.
+        existing = path.read_text() if path.exists() else ""
+        prefix = "" if (not existing or existing.endswith("\n")) else "\n"
+        with path.open("a") as fh:
+            fh.write(prefix + line + "\n")
+
+    await asyncio.to_thread(_append_gt)
+    return {"ok": True, "written": "appended"}
 
 
 # ---------------------------------------------------------------------------
