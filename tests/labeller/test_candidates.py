@@ -294,3 +294,103 @@ def test_select_mix_holds_for_a_short_page():
         lambda c: cand.sampling_weight(c, tau=0.25), top=8
     )
     assert len(page) == 8
+
+
+# ---------------------------------------------------------------------------
+# Repetition control (LAB-1106)
+# ---------------------------------------------------------------------------
+
+
+def _event_rows(cand_dir, stem="clip"):
+    """Three consecutive detections of one ball, then one far away."""
+    rows = [
+        {
+            "frame_index": 10,
+            "bbox": {"x": 0.50, "y": 0.50, "w": 0.01, "h": 0.01},
+            "tags": ["in_play_ball", "rtdetr"],
+            "confidence": 0.25,
+        },
+        {
+            "frame_index": 11,
+            "bbox": {"x": 0.505, "y": 0.502, "w": 0.01, "h": 0.01},
+            "tags": ["in_play_ball", "rtdetr"],
+            "confidence": 0.26,
+        },
+        {
+            "frame_index": 12,
+            "bbox": {"x": 0.51, "y": 0.504, "w": 0.01, "h": 0.01},
+            "tags": ["in_play_ball", "rtdetr"],
+            "confidence": 0.24,
+        },
+        {
+            "frame_index": 13,
+            "bbox": {"x": 0.10, "y": 0.80, "w": 0.01, "h": 0.01},
+            "tags": ["in_play_ball", "rtdetr"],
+            "confidence": 0.25,
+        },
+    ]
+    (cand_dir / f"{stem}.jsonl").write_text(
+        "\n".join(json.dumps(r) for r in rows) + "\n"
+    )
+
+
+def test_consecutive_detections_of_one_ball_are_one_event(cand_dir):
+    _event_rows(cand_dir)
+    rows = cand.read_candidates()
+    groups = {r["group"] for r in rows}
+    assert len(groups) == 2  # three frames of one ball, plus the distant one
+    assert rows[0]["group"] == rows[1]["group"] == rows[2]["group"]
+    assert rows[3]["group"] != rows[0]["group"]
+
+
+def test_a_page_shows_each_event_once(cand_dir):
+    _event_rows(cand_dir)
+    rows = cand.read_candidates()
+    page = cand.BinnedPool(rows).select(
+        lambda c: cand.sampling_weight(c, tau=0.25), top=10, uniform_share=0
+    )
+    assert len(page) == 2
+    assert len({r["group"] for r in page}) == 2
+
+
+def test_appearance_buckets_are_capped_but_never_shorten_a_page():
+    # Every candidate in one appearance bucket: the cap must not starve the
+    # page, only reorder what it can.
+    rows = [
+        {
+            "clip": "clip",
+            "frame_index": i,
+            "cand_index": 0,
+            "confidence": 0.25,
+            "group": f"clip:{i}",
+            "lsh": 7,
+        }
+        for i in range(200)
+    ]
+    page = cand.BinnedPool(rows).select(
+        lambda c: cand.sampling_weight(c, tau=0.25), top=20, uniform_share=0
+    )
+    assert len(page) == 20
+
+
+def test_appearance_buckets_spread_a_page():
+    rows = []
+    for bucket in range(4):
+        for i in range(100):
+            rows.append(
+                {
+                    "clip": "clip",
+                    "frame_index": bucket * 1000 + i,
+                    "cand_index": 0,
+                    "confidence": 0.25,
+                    "group": f"clip:{bucket}:{i}",
+                    # One bucket is 4x as common as the others.
+                    "lsh": 0 if bucket < 3 else 1,
+                }
+            )
+    page = cand.BinnedPool(rows).select(
+        lambda c: cand.sampling_weight(c, tau=0.25), top=20, uniform_share=0
+    )
+    rare = sum(1 for r in page if r["lsh"] == 1)
+    # Without the cap the rare bucket would be ~25% by chance; the cap lifts it.
+    assert rare >= 5

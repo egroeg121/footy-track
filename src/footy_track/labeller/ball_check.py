@@ -284,7 +284,10 @@ async def ball_check_queue(
         ]
         return {
             "source": "candidates",
-            "remaining": pool.total - len(judged),
+            # Events, not raw rows: consecutive detections of one ball are one
+            # card, so counting rows overstates the work left by ~2.7x.
+            "remaining": max(0, pool.events - len(judged)),
+            "rows": pool.total,
             "judged": len(judged),
             "items": items,
             "tau": round(tau_used, 4),

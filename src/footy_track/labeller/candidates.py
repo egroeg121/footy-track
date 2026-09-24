@@ -38,6 +38,8 @@ import json
 import math
 from pathlib import Path
 
+import numpy as np
+
 #: Ball classes as they appear in the detector's tags.
 BALL_TAGS = {"ball", "in_play_ball", "out_of_play_ball"}
 
@@ -87,6 +89,82 @@ def _candidates_dir() -> Path:
 _FILE_CACHE: dict[Path, tuple[int, int, list[dict]]] = {}
 
 
+#: Two candidates are the same *event* if they are within this many frames
+#: and this far apart. Consecutive detections of one ball produce visually
+#: identical cards; measured on 40 clips, collapsing them removes 2.7x
+#: redundancy (77,560 candidates -> 28,221 events).
+GROUP_FRAME_GAP = 3
+GROUP_DIST = 0.03
+
+#: Appearance buckets, from a random projection of the crop descriptor. Used
+#: to spread a page across the appearance range, not to recognise anything.
+LSH_BITS = 8
+_LSH_SEED = 20260924
+
+
+def _lsh_planes(dim: int) -> np.ndarray:
+    rng = np.random.default_rng(_LSH_SEED)
+    return rng.standard_normal((LSH_BITS, dim)).astype(np.float32)
+
+
+def _attach_groups(rows: list[dict]) -> None:
+    """Tag each row with an event id: one card per event, not per frame."""
+    rows.sort(key=lambda r: (r["frame_index"], r["cand_index"]))
+    open_events: list[tuple[int, float, float, int]] = []  # frame, cx, cy, gid
+    next_gid = 0
+    for r in rows:
+        b = r["bbox"]
+        cx, cy = b["x"] + b["w"] / 2, b["y"] + b["h"] / 2
+        f = r["frame_index"]
+        open_events = [e for e in open_events if f - e[0] <= GROUP_FRAME_GAP]
+        hit = next(
+            (
+                e
+                for e in open_events
+                if abs(cx - e[1]) < GROUP_DIST and abs(cy - e[2]) < GROUP_DIST
+            ),
+            None,
+        )
+        if hit is None:
+            gid = next_gid
+            next_gid += 1
+        else:
+            gid = hit[3]
+        r["group"] = f"{r['clip']}:{gid}"
+        open_events.append((f, cx, cy, gid))
+
+
+def _attach_appearance(clip_stem: str, rows: list[dict]) -> None:
+    """Attach an appearance bucket from the precomputed crop descriptors.
+
+    Absent descriptors are not an error: the pass runs offline and may lag
+    the candidates, so rows simply stay unbucketed and sampling falls back to
+    event-level dedupe alone.
+    """
+    path = _candidates_dir().parent / "ball_embeddings" / f"{clip_stem}.npz"
+    if not path.exists():
+        return
+    try:
+        with np.load(path) as data:
+            frames = data["frame_index"]
+            cands = data["cand_index"]
+            vecs = data["vec"].astype(np.float32)
+    except (OSError, ValueError, KeyError):
+        return
+    if len(vecs) == 0:
+        return
+    codes = (vecs @ _lsh_planes(vecs.shape[1]).T) > 0
+    packed = codes.dot(1 << np.arange(LSH_BITS))
+    lookup = {
+        (int(f), int(c)): int(code)
+        for f, c, code in zip(frames, cands, packed, strict=False)
+    }
+    for r in rows:
+        code = lookup.get((r["frame_index"], r["cand_index"]))
+        if code is not None:
+            r["lsh"] = code
+
+
 def _read_file(path: Path) -> list[dict]:
     try:
         st = path.stat()
@@ -96,6 +174,8 @@ def _read_file(path: Path) -> list[dict]:
     if cached and cached[0] == st.st_mtime_ns and cached[1] == st.st_size:
         return cached[2]
     rows = _parse_file(path)
+    _attach_groups(rows)
+    _attach_appearance(path.stem, rows)
     _FILE_CACHE[path] = (st.st_mtime_ns, st.st_size, rows)
     return rows
 
@@ -394,6 +474,8 @@ class BinnedPool:
             bucket.sort(key=_draw)
         self.bins = bins
         self.total = len(records)
+        # What is actually left to look at: one card per event, not per frame.
+        self.events = len({r.get("group", id(r)) for r in records})
 
     def select(
         self,
@@ -435,8 +517,17 @@ class BinnedPool:
                 ui += 1
         return out
 
-    def _stream(self, weight_of, top: int, skip=None) -> list[dict]:
-        """Top ``top`` of one weighted order, skipping anything ``skip`` rejects."""
+    def _stream(
+        self, weight_of, top: int, skip=None, diversify: bool = True
+    ) -> list[dict]:
+        """Top ``top`` of one weighted order, skipping anything ``skip`` rejects.
+
+        Two diversity rules ride along, because the pool is enormously
+        repetitive: at most one card per event (consecutive detections of one
+        ball are the same picture), and a cap per appearance bucket so a page
+        cannot fill up with twenty crowd crops. The cap is a *soft* one — it
+        is dropped once nothing else qualifies, so a page is never short.
+        """
         heap: list[tuple[float, int, int]] = []
         weights = []
         for b, bucket in enumerate(self.bins):
@@ -445,15 +536,37 @@ class BinnedPool:
             if bucket:
                 heapq.heappush(heap, (_draw(bucket[0]) / w, b, 0))
         out: list[dict] = []
+        seen_events: set[str] = set()
+        bucket_counts: dict[int, int] = {}
+        bucket_cap = max(2, int(top / 4)) if diversify else top
+        deferred: list[dict] = []
         while heap and len(out) < top:
             _key, b, i = heapq.heappop(heap)
             rec = self.bins[b][i]
-            if skip is None or not skip(rec):
-                out.append(rec)
             if i + 1 < len(self.bins[b]):
                 heapq.heappush(
                     heap, (_draw(self.bins[b][i + 1]) / weights[b], b, i + 1)
                 )
+            if skip is not None and skip(rec):
+                continue
+            if diversify:
+                event = rec.get("group")
+                if event is not None:
+                    if event in seen_events:
+                        continue
+                    seen_events.add(event)
+                bucket = rec.get("lsh")
+                if bucket is not None and bucket_counts.get(bucket, 0) >= bucket_cap:
+                    deferred.append(rec)
+                    continue
+                if bucket is not None:
+                    bucket_counts[bucket] = bucket_counts.get(bucket, 0) + 1
+            out.append(rec)
+        # Never return a short page just to honour a soft cap.
+        for rec in deferred:
+            if len(out) >= top:
+                break
+            out.append(rec)
         return out
 
 
