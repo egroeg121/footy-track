@@ -142,6 +142,7 @@ def _build_ball_queue(
     include_gt: bool = False,
 ) -> list[dict]:
     out = []
+    playable: dict[str, bool] = {}
     for r in records:
         if r["label"] not in BALL_LABELS:
             continue
@@ -150,6 +151,12 @@ def _build_ball_queue(
         if clip is not None and r["clip"] != clip:
             continue
         if (r["clip"], r["frame_index"], r["box_index"]) in judged:
+            continue
+        # A sidecar stem with no video on disk cannot be cropped (the clip
+        # naming schemes diverge), and a card that 404s is worse than no card.
+        if r["clip"] not in playable:
+            playable[r["clip"]] = _find_video(r["clip"]) is not None
+        if not playable[r["clip"]]:
             continue
         out.append(r)
     out.sort(key=_shuffle_key)

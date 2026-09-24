@@ -683,6 +683,10 @@ line: `{clip, frame_index, box_index, verdict, bbox, label, provenance, ts}`.
   field — the latter reports `vittrack` boxes as `labeller` (OPEN-3), which
   would silently hide machine output from the queue.
   - Tests: `test_ball_check.py::test_queue_only_machine_ball_boxes`
+- **LAB-1002a** (MUST) Boxes whose clip has no video on disk are dropped from
+  the queue: the sidecar stems and the clip filenames follow different naming
+  schemes, and a card that 404s is worse than no card.
+  - Tests: `test_ball_check.py::test_queue_skips_clips_with_no_video`
 - **LAB-1003** (SHOULD) Queue order is a deterministic hash of
   (clip, frame, box), not file order: precision is a property of the detector,
   so a short session should sample the whole corpus, and the order must be
@@ -798,9 +802,9 @@ updating/adding the corresponding LAB requirement + tests.
 | 8. Backend (LAB-7xx) | 11 | 8 | 3 | 0 |
 | 9. Labeller UI (LAB-8xx) | 11 | 0 | 0 | 11 |
 | 10. Review UI (LAB-9xx) | 7 | 0 | 0 | 7 |
-| 11. Ball Check (LAB-10xx) | 11 | 10 | 0 | 1 |
-| **Total** | **95** | **65** | **8** | **22** |
+| 11. Ball Check (LAB-10xx) | 12 | 11 | 0 | 1 |
+| **Total** | **96** | **66** | **8** | **22** |
 
 Open items: 4 (OPEN-1..4) + 1 fixed on main (undo provenance, `95b60cc`).
-Test suite: 137 tests in `tests/labeller/` (all green), plus the
+Test suite: 138 tests in `tests/labeller/` (all green), plus the
 feature-store round-trip fidelity leg in `tests/feature_store/`.

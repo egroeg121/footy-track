@@ -114,6 +114,15 @@ def test_queue_order_is_stable_and_respects_limit(client, clips_dir, gt_marks_di
     ]
 
 
+def test_queue_skips_clips_with_no_video(client, clips_dir, gt_marks_dir):
+    (clips_dir / "has_video.mp4").touch()  # no file for "orphan"
+    for stem in ("has_video", "orphan"):
+        _write_sidecar(gt_marks_dir, stem, [_line(0, ["in_play_ball", "yolo"])])
+    data = client.get("/ball_check/queue").json()
+    assert [i["clip"] for i in data["items"]] == ["has_video"]
+    assert data["remaining"] == 1
+
+
 # ---------------------------------------------------------------------------
 # Verdicts (LAB-1004..1006)
 # ---------------------------------------------------------------------------
