@@ -27,6 +27,7 @@ import asyncio
 import collections
 import hashlib
 import json
+import logging
 import time
 from pathlib import Path
 
@@ -42,6 +43,8 @@ from footy_track.labeller.constants import (
     PROV_LABELLER,
 )
 from footy_track.labeller.review import _find_video, _gt_marks_dir, _read_all_boxes
+
+LOGGER = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -675,7 +678,7 @@ async def ball_check_save_box(body: dict) -> dict:
     if src == "sidecar":
         from footy_track.labeller.review import review_correct  # noqa: PLC0415
 
-        return await review_correct(
+        result = await review_correct(
             {
                 "clip": clip,
                 "frame_index": frame_index,
@@ -683,6 +686,21 @@ async def ball_check_save_box(body: dict) -> dict:
                 "label": label,
                 "bbox": {"x": bx, "y": by, "w": bw, "h": bh},
             }
+        )
+        if result.get("ok"):
+            return {**result, "written": "rewritten"}
+        # Rewrite-in-place is only possible when that exact line exists. It
+        # does not when the card was really a candidate (a stale page can
+        # claim "sidecar", and candidate clips usually have no sidecar), or
+        # when the file was renumbered underneath us. Losing a hand-drawn box
+        # to a bookkeeping mismatch is the worst outcome available here, so
+        # fall through and append it as GT instead of failing.
+        LOGGER.info(
+            "save_box: rewrite failed for %s f%s box %s (%s) — appending instead",
+            clip,
+            frame_index,
+            box_index,
+            result.get("error"),
         )
 
     def _append_gt() -> None:

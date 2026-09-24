@@ -616,3 +616,52 @@ def test_step_keeps_a_nearby_box(client, clips_dir, gt_marks_dir, fake_cv2):
     )
     out = client.get("/ball_check/step/clip/4/0?delta=1").json()
     assert out["bbox"]["x"] == pytest.approx(0.12)
+
+
+def test_save_box_falls_back_to_append_when_the_rewrite_cannot_apply(
+    client, clips_dir, gt_marks_dir
+):
+    # The reported failure: a client (a cached page, say) claims "sidecar" for
+    # a card whose clip has no sidecar. Losing a hand-drawn box to that
+    # bookkeeping mismatch is the worst outcome available, so it is appended.
+    (clips_dir / "ghost.mp4").touch()
+    out = client.post(
+        "/ball_check/save_box",
+        json={
+            "clip": "ghost",
+            "frame_index": 5,
+            "box_index": 0,
+            "source": "sidecar",
+            "bbox": {"x": 0.4, "y": 0.4, "w": 0.01, "h": 0.01},
+        },
+    ).json()
+    assert out["ok"] is True
+    assert out["written"] == "appended"
+    rec = json.loads((gt_marks_dir / "ghost.jsonl").read_text().splitlines()[0])
+    assert rec["tags"] == ["in_play_ball", "labeller"]
+
+
+def test_save_box_falls_back_when_the_box_index_is_out_of_range(
+    client, clips_dir, gt_marks_dir
+):
+    (clips_dir / "clip.mp4").touch()
+    _write_sidecar(gt_marks_dir, "clip", [_line(0, ["in_play_ball", "yolo"])])
+    out = client.post(
+        "/ball_check/save_box",
+        json={
+            "clip": "clip",
+            "frame_index": 0,
+            "box_index": 99,
+            "source": "sidecar",
+            "bbox": {"x": 0.4, "y": 0.4, "w": 0.01, "h": 0.01},
+        },
+    ).json()
+    assert out["ok"] is True and out["written"] == "appended"
+    assert len((gt_marks_dir / "clip.jsonl").read_text().splitlines()) == 2
+
+
+def test_ball_check_page_is_not_cacheable(client):
+    # A cached page kept calling a replaced endpoint, which is invisible in
+    # the server log because the old route still answers 200.
+    res = client.get("/ball_check")
+    assert "no-store" in res.headers.get("cache-control", "")

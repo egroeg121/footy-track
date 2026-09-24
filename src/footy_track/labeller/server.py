@@ -34,6 +34,7 @@ from fastapi.responses import HTMLResponse, Response  # noqa: E402
 from fastapi.staticfiles import StaticFiles  # noqa: E402
 
 from footy_track.ball_eval.metrics import bbox_iou  # noqa: E402
+from footy_track.labeller.ball_check import router as ball_check_router  # noqa: E402
 from footy_track.labeller.constants import (  # noqa: E402
     BALL_LABELS,
     PLAYER_LABELS,
@@ -42,7 +43,6 @@ from footy_track.labeller.constants import (  # noqa: E402
     PROV_VITTRACK,
     PROV_YOLO,
 )
-from footy_track.labeller.ball_check import router as ball_check_router  # noqa: E402
 from footy_track.labeller.ingest import router as ingest_router  # noqa: E402
 from footy_track.labeller.review import router as review_router  # noqa: E402
 from footy_track.labeller.run_stream import stream_frames  # noqa: E402
@@ -148,7 +148,13 @@ async def review_page() -> HTMLResponse:
 
 @app.get("/ball_check", response_class=HTMLResponse)
 async def ball_check_page() -> HTMLResponse:
-    return HTMLResponse((_STATIC_DIR / "ball_check.html").read_text())
+    # no-store: a phone holding a cached copy of this page kept POSTing to an
+    # endpoint that had been replaced, which is invisible from the server log
+    # because the old route still answers 200.
+    return HTMLResponse(
+        (_STATIC_DIR / "ball_check.html").read_text(),
+        headers={"Cache-Control": "no-store, max-age=0"},
+    )
 
 
 @app.get("/ingest", response_class=HTMLResponse)
