@@ -49,6 +49,7 @@
   button.no { background:var(--red); color:#fff; }
   button.yes { background:var(--green); }
   button.save { background:var(--accent); color:#fff; }
+  button.size { background:#243041; color:var(--ink); padding:13px 8px; font-size:15px; }
   .small { flex:1; padding:11px 8px; font-size:13px; font-weight:600;
            background:transparent; color:var(--muted); border:1px solid var(--border); }
   #status { text-align:center; color:var(--muted); font-size:13px; min-height:18px; }
@@ -83,17 +84,18 @@
       <button class="no" id="btnNo">Not a ball</button>
       <button class="yes" id="btnYes">Ball</button>
     </div>
-    <div class="row hidden" id="rowEdit">
-      <button class="small" id="btnReset">Reset box</button>
-      <button class="save" id="btnSave">Save box</button>
+    <div class="row">
+      <button class="size" id="btnSmaller">&minus; Smaller</button>
+      <button class="size" id="btnBigger">+ Bigger</button>
     </div>
     <div class="row">
       <button class="small" id="btnBoxOff">Box off</button>
       <button class="small" id="btnUnsure">Unsure</button>
       <button class="small" id="btnZoom">Zoom out</button>
+      <button class="small" id="btnReset">Reset</button>
       <button class="small" id="btnUndo">Undo</button>
     </div>
-    <div id="status">Swipe right = ball, left = not a ball. Drag the box to fix it.</div>
+    <div id="status">Swipe right = ball, left = not a ball.</div>
   </footer>
 
 <script>
@@ -126,12 +128,20 @@ function prefetch() {
 
 function viewScale() {
   const shot = $('shot');
-  if (!meta || !shot.clientWidth) return null;
+  if (!meta || !shot.clientWidth || !shot.naturalWidth) return null;
   const winW = meta.window.x2 - meta.window.x1;
   const winH = meta.window.y2 - meta.window.y1;
+  // object-fit: contain letterboxes whenever the element and the image differ
+  // in aspect. Mapping against the element instead of the drawn image would
+  // stretch the overlay and make every box look wrong.
+  const fit = Math.min(shot.clientWidth / shot.naturalWidth,
+                       shot.clientHeight / shot.naturalHeight);
+  const drawnW = shot.naturalWidth * fit, drawnH = shot.naturalHeight * fit;
   return {
-    sx: shot.clientWidth / winW,
-    sy: shot.clientHeight / winH,
+    sx: drawnW / winW,
+    sy: drawnH / winH,
+    ox: (shot.clientWidth - drawnW) / 2,
+    oy: (shot.clientHeight - drawnH) / 2,
     w: shot.clientWidth,
     h: shot.clientHeight,
   };
@@ -139,11 +149,11 @@ function viewScale() {
 
 const toView = (px, py) => {
   const s = viewScale();
-  return [(px - meta.window.x1) * s.sx, (py - meta.window.y1) * s.sy];
+  return [(px - meta.window.x1) * s.sx + s.ox, (py - meta.window.y1) * s.sy + s.oy];
 };
 const toFrame = (vx, vy) => {
   const s = viewScale();
-  return [meta.window.x1 + vx / s.sx, meta.window.y1 + vy / s.sy];
+  return [meta.window.x1 + (vx - s.ox) / s.sx, meta.window.y1 + (vy - s.oy) / s.sy];
 };
 
 function norm(b) {
@@ -167,8 +177,11 @@ function drawBox() {
   const bracket = (cx, cy, sx, sy) =>
     `<path d="M ${cx + sx * gap + sx * arm} ${cy + sy * gap} H ${cx + sx * gap} V ${cy + sy * gap + sy * arm}"
        fill="none" stroke="${colour}" stroke-width="2.5" stroke-linecap="round"/>`;
+  // Corner grab-dots only when the box is big enough for corner dragging;
+  // on a ball-sized box they would bury the thing being judged.
+  const draggable = Math.min(x2 - x1, y2 - y1) >= 2.5 * HANDLE;
   const dot = (cx, cy) =>
-    `<circle cx="${cx}" cy="${cy}" r="7" fill="${colour}" fill-opacity="0.9"/>`;
+    draggable ? `<circle cx="${cx}" cy="${cy}" r="7" fill="${colour}" fill-opacity="0.9"/>` : '';
   svg.innerHTML = `
     <rect x="${x1}" y="${y1}" width="${x2 - x1}" height="${y2 - y1}"
           fill="none" stroke="${colour}" stroke-width="1.5"/>
@@ -179,8 +192,8 @@ function drawBox() {
 
 async function loadMeta(item) {
   meta = null; box = null; edited = false;
-  $('rowEdit').classList.add('hidden');
-  $('rowJudge').classList.remove('hidden');
+  $('btnYes').textContent = 'Ball';
+  $('btnYes').classList.remove('save');
   drawBox();
   const data = await (await fetch(metaUrl(item, PADS[padIdx]))).json();
   if (!data.ok || queue[0] !== item) return;
@@ -333,9 +346,22 @@ const pinchDist = () => {
 function markEdited() {
   if (edited) return;
   edited = true;
-  $('rowEdit').classList.remove('hidden');
-  $('rowJudge').classList.add('hidden');
-  $('status').textContent = 'Box edited — save it as ground truth, or reset.';
+  $('btnYes').textContent = 'Save ball';
+  $('btnYes').classList.add('save');
+  $('status').textContent = 'Box edited — "Save ball" stores it as ground truth.';
+}
+
+// One tap = one step. Scaling about the centre converges on the right size in
+// two or three taps without ever reloading the image, which keeps a single
+// decision fast even when it takes a few looks.
+function scaleBox(factor) {
+  if (!box) return;
+  const cx = (box.x1 + box.x2) / 2, cy = (box.y1 + box.y2) / 2;
+  const hw = ((box.x2 - box.x1) / 2) * factor, hh = ((box.y2 - box.y1) / 2) * factor;
+  if (Math.min(hw, hh) * 2 < 2) return;   // never shrink below 2 px
+  box = { x1: cx - hw, y1: cy - hh, x2: cx + hw, y2: cy + hh };
+  markEdited();
+  drawBox();
 }
 
 function cornerAt(vx, vy) {
@@ -414,12 +440,14 @@ $('overlay').addEventListener('pointercancel', endDrag);
 
 // ---- controls -------------------------------------------------------------
 
-$('btnYes').onclick = () => judge('ball');
+// Edited box => the tap that accepts it also saves the new geometry as GT.
+$('btnYes').onclick = () => (edited ? saveBox() : judge('ball'));
+$('btnSmaller').onclick = () => scaleBox(0.8);
+$('btnBigger').onclick = () => scaleBox(1.25);
 $('btnNo').onclick = () => judge('not_ball');
 $('btnBoxOff').onclick = () => judge('box_off');
 $('btnUnsure').onclick = () => judge('unsure');
 $('btnUndo').onclick = undo;
-$('btnSave').onclick = saveBox;
 $('btnReset').onclick = () => { if (queue[0]) loadMeta(queue[0]); $('status').textContent = ''; };
 $('btnZoom').onclick = () => {
   padIdx = (padIdx + 1) % PADS.length;
@@ -456,6 +484,8 @@ window.addEventListener('keydown', (e) => {
   else if (e.key === 'ArrowUp' || e.key === 'b') judge('box_off');
   else if (e.key === 'ArrowDown' || e.key === 'u') judge('unsure');
   else if (e.key === 's') saveBox();
+  else if (e.key === '[' || e.key === '-') scaleBox(0.8);
+  else if (e.key === ']' || e.key === '=') scaleBox(1.25);
   else if (e.key === 'z') undo();
 });
 

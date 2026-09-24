@@ -53,10 +53,19 @@ BALL_PRESENT_VERDICTS = ("ball", "box_off", "corrected")
 #: geometry, written back through ``/review/correct`` as TIER 1 GT.
 CLEAN_VERDICTS = ("ball", "corrected")
 
-#: Context around the box, as a multiple of the *longest* box side. A ball is
-#: ~11 px wide, so a proportional pad alone yields a postage stamp; the crop
-#: is also floored to _MIN_CONTEXT_PX and upscaled to _DISPLAY_W.
+#: Zoom level. The crop window is a FIXED fraction of the frame (below),
+#: scaled by ``pad / _PAD_FACTOR`` — deliberately NOT a multiple of the box.
+#:
+#: Sizing the window off the box was the original design and it hid the very
+#: defect this tool exists to catch: the window grew with the box, so a
+#: player-sized ball box and a correct 10 px one filled the card identically
+#: and looked equally plausible. A fixed window makes an oversized box
+#: visibly overflow, and makes every card directly comparable.
 _PAD_FACTOR = 6.0
+
+#: Base window as a fraction of frame width: 0.125 -> 160 px at 1280, about
+#: 15 ball-widths of context (median hand-labelled ball is 11 px at 1280).
+_WINDOW_FRAC = 0.125
 _MIN_CONTEXT_PX = 160
 _DISPLAY_W = 640
 _MAX_PAD_FACTOR = 40.0
@@ -233,15 +242,17 @@ async def ball_check_stats() -> dict:
 def _crop_window(
     bx: float, by: float, bw: float, bh: float, w_px: int, h_px: int, pad: float
 ) -> tuple[int, int, int, int]:
-    """Square-ish context window around a normalized box, in pixels.
+    """Fixed-scale context window centred on the box, in pixels.
 
     Floored to ``_MIN_CONTEXT_PX`` so an 11 px ball still lands in a crop the
-    eye can judge, and edge-clamped.
+    eye can judge, widened for outsized boxes, and edge-clamped.
     """
     cx = (bx + bw / 2) * w_px
     cy = (by + bh / 2) * h_px
-    side = max(bw * w_px, bh * h_px) * (1 + 2 * pad)
-    side = max(side, float(_MIN_CONTEXT_PX))
+    side = w_px * _WINDOW_FRAC * (pad / _PAD_FACTOR)
+    # A box bigger than the window would be cropped out of its own card, so
+    # the window still grows to contain an outlier box (plus a little air).
+    side = max(side, float(_MIN_CONTEXT_PX), max(bw * w_px, bh * h_px) * 1.6)
     half = side / 2
     x1 = max(0, int(cx - half))
     y1 = max(0, int(cy - half))
