@@ -284,11 +284,12 @@ def test_crop_returns_jpeg_and_caches(
         0,
         round(ball_check._PAD_FACTOR, 2),
         True,
+        0,
     ) in ball_check._BC_CROP_CACHE
 
     # A different pad is a different cache entry, not a stale hit.
     client.get("/ball_check/crop/clip/0/0.jpg?pad=20")
-    assert ("sidecar", "clip", 0, 0, 20.0, True) in ball_check._BC_CROP_CACHE
+    assert ("sidecar", "clip", 0, 0, 20.0, True, 0) in ball_check._BC_CROP_CACHE
 
     # reticle=false is its own entry: the page draws its own draggable box.
     client.get("/ball_check/crop/clip/0/0.jpg?reticle=false")
@@ -299,6 +300,7 @@ def test_crop_returns_jpeg_and_caches(
         0,
         round(ball_check._PAD_FACTOR, 2),
         False,
+        0,
     ) in ball_check._BC_CROP_CACHE
 
 
@@ -331,6 +333,7 @@ def test_pad_is_clamped_to_max(client, clips_dir, gt_marks_dir, fake_cv2, bc_cac
         0,
         ball_check._MAX_PAD_FACTOR,
         True,
+        0,
     ) in ball_check._BC_CROP_CACHE
 
 
@@ -385,3 +388,85 @@ def test_queue_candidates_source_and_namespaced_verdicts(
     assert client.get("/ball_check/queue").json()["remaining"] == 0
     sidecar = client.get("/ball_check/queue?source=sidecar").json()
     assert sidecar["remaining"] == 1
+
+
+# ---------------------------------------------------------------------------
+# Frame stepping (LAB-1012)
+# ---------------------------------------------------------------------------
+
+
+def test_step_returns_the_neighbour_box_when_one_exists(
+    client, clips_dir, gt_marks_dir, fake_cv2
+):
+    (clips_dir / "clip.mp4").touch()
+    _write_sidecar(
+        gt_marks_dir,
+        "clip",
+        [
+            _line(4, ["in_play_ball", "yolo"], x=0.50),
+            _line(5, ["in_play_ball", "yolo"], x=0.52),
+        ],
+    )
+    out = client.get("/ball_check/step/clip/4/0?delta=1").json()
+    assert out["ok"] is True
+    assert (out["frame_index"], out["delta"]) == (5, 1)
+    assert out["bbox"]["x"] == pytest.approx(0.52)
+    # The window still belongs to the anchor box, so the view does not jump.
+    assert "at=5" in out["image_url"] and "/crop/clip/4/0.jpg" in out["image_url"]
+
+
+def test_step_reports_a_frame_with_no_box(client, clips_dir, gt_marks_dir, fake_cv2):
+    (clips_dir / "clip.mp4").touch()
+    _write_sidecar(gt_marks_dir, "clip", [_line(4, ["in_play_ball", "yolo"])])
+    out = client.get("/ball_check/step/clip/4/0?delta=-1").json()
+    assert out["ok"] is True and out["bbox"] is None
+
+
+def test_step_picks_the_nearest_neighbour_box(
+    client, clips_dir, gt_marks_dir, fake_cv2
+):
+    (clips_dir / "clip.mp4").touch()
+    _write_sidecar(
+        gt_marks_dir,
+        "clip",
+        [
+            _line(4, ["in_play_ball", "yolo"], x=0.50),
+            _line(5, ["in_play_ball", "yolo"], x=0.90),
+            _line(5, ["in_play_ball", "yolo"], x=0.51),
+        ],
+    )
+    out = client.get("/ball_check/step/clip/4/0?delta=1").json()
+    assert out["bbox"]["x"] == pytest.approx(0.51)
+
+
+def test_step_does_not_run_off_the_start_of_the_clip(
+    client, clips_dir, gt_marks_dir, fake_cv2
+):
+    (clips_dir / "clip.mp4").touch()
+    _write_sidecar(gt_marks_dir, "clip", [_line(0, ["in_play_ball", "yolo"])])
+    out = client.get("/ball_check/step/clip/0/0?delta=-3").json()
+    assert out["frame_index"] == 0
+
+
+def test_step_on_a_candidate_reads_the_candidate_file(
+    client, clips_dir, gt_marks_dir, cand_dir, fake_cv2
+):
+    (clips_dir / "clip.mp4").touch()
+    (cand_dir / "clip.jsonl").write_text(
+        "\n".join(
+            json.dumps(
+                {
+                    "frame_index": f,
+                    "bbox": {"x": 0.3 + 0.01 * f, "y": 0.3, "w": 0.01, "h": 0.01},
+                    "tags": ["in_play_ball", "rtdetr"],
+                    "confidence": 0.2 + 0.01 * f,
+                }
+            )
+            for f in (7, 8)
+        )
+        + "\n"
+    )
+    out = client.get("/ball_check/step/clip/7/0?delta=1&src=cand").json()
+    assert out["frame_index"] == 8
+    assert out["confidence"] == pytest.approx(0.28)
+    assert "src=cand" in out["image_url"]

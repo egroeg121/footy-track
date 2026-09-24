@@ -30,17 +30,19 @@
           background:var(--panel); border:1px solid var(--border);
           border-radius:16px; overflow:hidden; display:flex;
           flex-direction:column; touch-action:pan-y; }
-  #stage { position:relative; line-height:0; }
-  #shot { width:100%; display:block; background:#000; object-fit:contain;
-          max-height:calc(100vh - 280px); }
+  #stage { position:relative; line-height:0; flex:1; min-height:0; }
+  #shot { width:100%; height:100%; display:block; background:#000;
+          object-fit:contain; }
   #overlay { position:absolute; inset:0; touch-action:none; }
-  #meta { padding:8px 12px; font-size:12px; color:var(--muted);
-          display:flex; gap:10px; justify-content:space-between; }
+  #meta { flex:none; padding:8px 12px; font-size:12px; color:var(--muted);
+          display:flex; gap:8px; justify-content:space-between;
+          white-space:nowrap; overflow:hidden; }
+  #meta span { overflow:hidden; text-overflow:ellipsis; }
   #verdictFlash { position:absolute; inset:0; display:flex; align-items:center;
                   justify-content:center; font-size:64px; opacity:0;
                   pointer-events:none; transition:opacity .12s; }
 
-  footer { flex:none; padding:8px 12px 16px; display:flex; flex-direction:column; gap:8px; }
+  footer { flex:none; padding:8px 12px 14px; display:flex; flex-direction:column; gap:7px; }
   .row { display:flex; gap:10px; }
   button { flex:1; border:none; border-radius:14px; padding:17px 8px;
            font-size:17px; font-weight:700; color:#06121c; background:var(--muted);
@@ -49,7 +51,10 @@
   button.no { background:var(--red); color:#fff; }
   button.yes { background:var(--green); }
   button.save { background:var(--accent); color:#fff; }
-  button.size { background:#243041; color:var(--ink); padding:13px 8px; font-size:15px; }
+  button.size { background:#243041; color:var(--ink); padding:13px 6px; font-size:17px; }
+  button.step { background:#1b2430; color:var(--muted); padding:13px 6px; font-size:15px;
+                font-weight:600; }
+  button.step.active { color:var(--ink); background:#2b3a4d; }
   .small { flex:1; padding:11px 8px; font-size:13px; font-weight:600;
            background:transparent; color:var(--muted); border:1px solid var(--border); }
   #status { text-align:center; color:var(--muted); font-size:13px; min-height:18px; }
@@ -85,13 +90,16 @@
       <button class="yes" id="btnYes">Ball</button>
     </div>
     <div class="row">
-      <button class="size" id="btnSmaller">&minus; Smaller</button>
-      <button class="size" id="btnBigger">+ Bigger</button>
+      <button class="size" id="btnSmaller">&minus;</button>
+      <button class="step" id="btnPrev">&#9664;</button>
+      <button class="step" id="btnHome">&#8226;</button>
+      <button class="step" id="btnNext">&#9654;</button>
+      <button class="size" id="btnBigger">+</button>
     </div>
     <div class="row">
       <button class="small" id="btnBoxOff">Box off</button>
       <button class="small" id="btnUnsure">Unsure</button>
-      <button class="small" id="btnZoom">Zoom out</button>
+      <button class="small" id="btnZoom">Zoom</button>
       <button class="small" id="btnReset">Reset</button>
       <button class="small" id="btnUndo">Undo</button>
     </div>
@@ -112,12 +120,15 @@ let history = [];
 let busy = false;
 let tau = null;                // boundary the queue is currently sampling around
 let sinceRefresh = 0;
+let offset = 0;                // frames stepped away from the card's frame
 let meta = null;               // crop geometry for the current card
 let box = null;                // live box in frame pixels {x1,y1,x2,y2}
 let edited = false;
 
 const $ = (id) => document.getElementById(id);
 const srcOf = (item) => item.source || 'sidecar';
+// Clip stems carry a date that eats the width the confidence needs.
+const shortClip = (c) => c.replace(/_20\d{6}/, '');
 const cropUrl = (item, pad) => {
   const join = item.image_url.includes('?') ? '&' : '?';
   return `${item.image_url}${join}pad=${pad}&reticle=false`;
@@ -200,7 +211,8 @@ function drawBox() {
 }
 
 async function loadMeta(item) {
-  meta = null; box = null; edited = false;
+  meta = null; box = null; edited = false; offset = 0;
+  $('btnHome').classList.remove('active');
   $('btnYes').textContent = 'Ball';
   $('btnYes').classList.remove('save');
   drawBox();
@@ -223,7 +235,7 @@ function render() {
   $('card').style.display = 'flex';
   $('empty').style.display = 'none';
   $('shot').src = cropUrl(item, PADS[padIdx]);
-  $('clipName').textContent = `${item.clip} · f${item.frame_index}`;
+  $('clipName').textContent = `${shortClip(item.clip)} · f${item.frame_index}`;
   $('provName').textContent = item.confidence === null || item.confidence === undefined
     ? `${item.label} · ${item.provenance}`
     : `${item.label} · conf ${item.confidence.toFixed(2)}`;
@@ -311,6 +323,10 @@ async function judge(verdict, extra) {
 async function saveBox() {
   const item = queue[0];
   if (!item || !box || !meta || busy) return;
+  if (offset !== 0) {
+    $('status').textContent = 'Back to the card\u2019s own frame before saving a box.';
+    return;
+  }
   const f = meta.frame;
   const bbox = {
     x: Math.min(box.x1, box.x2) / f.w,
@@ -405,7 +421,7 @@ function cornerAt(vx, vy) {
 }
 
 $('overlay').addEventListener('pointerdown', (e) => {
-  if (!box || !meta) return;
+  if (!box || !meta || offset !== 0) return;   // off-anchor view is read-only
   const r = $('overlay').getBoundingClientRect();
   const vx = e.clientX - r.left, vy = e.clientY - r.top;
   pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
@@ -469,6 +485,40 @@ $('overlay').addEventListener('pointercancel', endDrag);
 // Edited box => the tap that accepts it also saves the new geometry as GT.
 $('btnYes').onclick = () => (edited ? saveBox() : judge('ball'));
 $('btnSmaller').onclick = () => scaleBox(0.8);
+
+// Stepping shows the neighbouring frame through THIS card's window, with that
+// frame's own box if the source has one. A detection that vanishes next frame
+// reads very differently from one that tracks smoothly. Editing is disabled
+// off-anchor: the verdict belongs to the card's own frame.
+async function step(delta) {
+  const item = queue[0];
+  if (!item || !meta) return;
+  const target = delta === 0 ? 0 : offset + delta;
+  const res = await (await fetch(
+    `/ball_check/step/${item.clip}/${item.frame_index}/${item.box_index}` +
+    `?delta=${target}&src=${srcOf(item)}&pad=${PADS[padIdx]}`)).json();
+  if (!res.ok) return;
+  offset = res.delta;
+  $('shot').src = res.image_url + `&pad=${PADS[padIdx]}`;
+  const f = meta.frame;
+  box = res.bbox
+    ? { x1: res.bbox.x * f.w, y1: res.bbox.y * f.h,
+        x2: (res.bbox.x + res.bbox.w) * f.w, y2: (res.bbox.y + res.bbox.h) * f.h }
+    : null;
+  drawBox();
+  $('btnHome').classList.toggle('active', offset !== 0);
+  $('clipName').textContent =
+    `${shortClip(item.clip)} · f${res.frame_index}` +
+    (offset ? ` (${offset > 0 ? '+' : ''}${offset})` : '');
+  $('status').textContent = offset === 0
+    ? ''
+    : (res.bbox ? `Frame ${offset > 0 ? '+' : ''}${offset}: box present`
+                : `Frame ${offset > 0 ? '+' : ''}${offset}: no box on this frame`);
+}
+
+$('btnPrev').onclick = () => step(-1);
+$('btnNext').onclick = () => step(1);
+$('btnHome').onclick = () => { if (queue[0]) { loadMeta(queue[0]); render(); } };
 $('btnBigger').onclick = () => scaleBox(1.25);
 $('btnNo').onclick = () => judge('not_ball');
 $('btnBoxOff').onclick = () => judge('box_off');
@@ -477,7 +527,7 @@ $('btnUndo').onclick = undo;
 $('btnReset').onclick = () => { if (queue[0]) loadMeta(queue[0]); $('status').textContent = ''; };
 $('btnZoom').onclick = () => {
   padIdx = (padIdx + 1) % PADS.length;
-  $('btnZoom').textContent = padIdx === PADS.length - 1 ? 'Zoom in' : 'Zoom out';
+  $('btnZoom').textContent = padIdx === PADS.length - 1 ? 'Zoom in' : 'Zoom';
   render();
 };
 
@@ -510,6 +560,8 @@ window.addEventListener('keydown', (e) => {
   else if (e.key === 'ArrowUp' || e.key === 'b') judge('box_off');
   else if (e.key === 'ArrowDown' || e.key === 'u') judge('unsure');
   else if (e.key === 's') saveBox();
+  else if (e.key === ',') step(-1);
+  else if (e.key === '.') step(1);
   else if (e.key === '[' || e.key === '-') scaleBox(0.8);
   else if (e.key === ']' || e.key === '=') scaleBox(1.25);
   else if (e.key === 'z') undo();

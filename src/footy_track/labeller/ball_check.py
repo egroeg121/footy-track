@@ -35,7 +35,12 @@ from fastapi import APIRouter
 from fastapi.responses import Response
 
 from footy_track.labeller import candidates as cand
-from footy_track.labeller.constants import BALL_LABELS, PROV_LABELLER
+from footy_track.labeller.constants import (
+    BALL_LABELS,
+    NO_BALL_TAG,
+    NOT_BROADCAST_TAG,
+    PROV_LABELLER,
+)
 from footy_track.labeller.review import _find_video, _gt_marks_dir, _read_all_boxes
 
 router = APIRouter()
@@ -448,6 +453,7 @@ async def ball_check_crop(
     pad: float = _PAD_FACTOR,
     reticle: bool = True,
     src: str = "sidecar",
+    at: int = -1,
 ) -> Response:
     """Zoomed JPEG crop, with an optional reticle drawn on the claimed ball.
 
@@ -455,7 +461,18 @@ async def ball_check_crop(
     instead, so what you see is the live box you are about to correct.
     """
     pad = max(0.0, min(float(pad), _MAX_PAD_FACTOR))
-    cache_key = (src, clip_stem, frame_idx, box_idx, round(pad, 2), bool(reticle))
+    # ``at`` renders a neighbouring frame through THIS box's window, so
+    # stepping moves the football, not the camera.
+    at_frame = frame_idx if at < 0 else at
+    cache_key = (
+        src,
+        clip_stem,
+        frame_idx,
+        box_idx,
+        round(pad, 2),
+        bool(reticle),
+        at_frame,
+    )
     cached = _BC_CROP_CACHE.get(cache_key)
     if cached is not None:
         _BC_CROP_CACHE.move_to_end(cache_key)
@@ -473,7 +490,7 @@ async def ball_check_crop(
     def _render() -> bytes | None:
         cap = cv2.VideoCapture(str(video_path))
         try:
-            cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
+            cap.set(cv2.CAP_PROP_POS_FRAMES, at_frame)
             ok, frame = cap.read()
         finally:
             cap.release()
@@ -514,6 +531,103 @@ async def ball_check_crop(
     if len(_BC_CROP_CACHE) > _BC_CROP_CACHE_MAX:
         _BC_CROP_CACHE.popitem(last=False)
     return Response(content=data, media_type="image/jpeg")
+
+
+def _sidecar_ball_boxes(clip_stem: str, frame_index: int) -> list[dict]:
+    """Ball boxes on one frame of a clip's sidecar, with review's box_index."""
+    path = _gt_marks_dir() / f"{clip_stem}.jsonl"
+    if not path.exists():
+        return []
+    try:
+        lines = path.read_text().splitlines()
+    except OSError:
+        return []
+    out: list[dict] = []
+    box_idx = 0
+    for raw in lines:
+        line = raw.strip()
+        if not line:
+            continue
+        try:
+            rec = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        tags = rec.get("tags") or []
+        if NO_BALL_TAG in tags or NOT_BROADCAST_TAG in tags or rec.get("bbox") is None:
+            continue
+        if int(rec.get("frame_index", -1)) != frame_index:
+            continue
+        # box_index counts every box on the frame, not just ball ones, to stay
+        # in step with review's numbering.
+        label = next((t for t in tags if t in BALL_LABELS), None)
+        if label is not None:
+            b = rec["bbox"]
+            if isinstance(b, dict):
+                bbox = {"x": b["x"], "y": b["y"], "w": b["w"], "h": b["h"]}
+            else:
+                bbox = {"x": b[0], "y": b[1], "w": b[2], "h": b[3]}
+            out.append({"bbox": bbox, "label": label, "box_index": box_idx})
+        box_idx += 1
+    return out
+
+
+@router.get("/ball_check/step/{clip_stem}/{frame_idx}/{box_idx}")
+async def ball_check_step(
+    clip_stem: str,
+    frame_idx: int,
+    box_idx: int,
+    delta: int = 0,
+    pad: float = _PAD_FACTOR,
+    src: str = "sidecar",
+) -> dict:
+    """The neighbouring frame, viewed through this card's window.
+
+    Returns the box on that frame if the source has one — that is the point:
+    a detection that vanishes on the next frame reads very differently from
+    one that tracks smoothly, and at 11 px that is often the only way to tell.
+    The verdict still belongs to the anchor frame.
+    """
+    target = max(0, frame_idx + int(delta))
+    anchor = await asyncio.to_thread(_read_box, src, clip_stem, frame_idx, box_idx)
+    if anchor is None:
+        return {"ok": False, "error": "anchor box not found"}
+
+    def _neighbour() -> dict | None:
+        ax, ay, aw, ah = anchor
+        acx, acy = ax + aw / 2, ay + ah / 2
+        if src == "cand":
+            rows = [
+                r for r in cand.read_candidates(clip_stem) if r["frame_index"] == target
+            ]
+        else:
+            rows = [
+                {**r, "confidence": None}
+                for r in _sidecar_ball_boxes(clip_stem, target)
+            ]
+        if not rows:
+            return None
+
+        # Nearest to the anchor centre: on a frame with two ball candidates the
+        # one being stepped through is the one that stayed put.
+        def dist(r: dict) -> float:
+            b = r["bbox"]
+            return (b["x"] + b["w"] / 2 - acx) ** 2 + (b["y"] + b["h"] / 2 - acy) ** 2
+
+        return min(rows, key=dist)
+
+    near = await asyncio.to_thread(_neighbour)
+    return {
+        "ok": True,
+        "frame_index": target,
+        "delta": target - frame_idx,
+        "bbox": near["bbox"] if near else None,
+        "label": near.get("label") if near else None,
+        "confidence": (near.get("confidence") if near else None),
+        "image_url": (
+            f"/ball_check/crop/{clip_stem}/{frame_idx}/{box_idx}.jpg"
+            f"?src={src}&at={target}&reticle=false"
+        ),
+    }
 
 
 # ---------------------------------------------------------------------------
