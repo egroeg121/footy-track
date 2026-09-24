@@ -86,7 +86,7 @@ def _candidates_dir() -> Path:
 #: corpus is ~357k rows across 162 files; re-parsing it on every queue fetch
 #: (which now happens every ~15 verdicts, so the sampling can adapt) would
 #: make the UI unusable. Invalidated by mtime+size, so a re-pull is picked up.
-_FILE_CACHE: dict[Path, tuple[int, int, list[dict]]] = {}
+_FILE_CACHE: dict[Path, tuple[tuple[int, int], int, list[dict]]] = {}
 
 
 #: Two candidates are the same *event* if they are within this many frames
@@ -141,7 +141,7 @@ def _attach_appearance(clip_stem: str, rows: list[dict]) -> None:
     the candidates, so rows simply stay unbucketed and sampling falls back to
     event-level dedupe alone.
     """
-    path = _candidates_dir().parent / "ball_embeddings" / f"{clip_stem}.npz"
+    path = _embeddings_path(clip_stem)
     if not path.exists():
         return
     try:
@@ -165,18 +165,27 @@ def _attach_appearance(clip_stem: str, rows: list[dict]) -> None:
             r["lsh"] = code
 
 
+def _embeddings_path(clip_stem: str) -> Path:
+    return _candidates_dir().parent / "ball_embeddings" / f"{clip_stem}.npz"
+
+
 def _read_file(path: Path) -> list[dict]:
     try:
         st = path.stat()
     except OSError:
         return []
+    # The descriptor pass runs offline and lands files while the server is up.
+    # Keying the cache on the candidates file alone would pin the first read
+    # forever, so a clip embedded after startup would never gain its buckets.
+    emb = _embeddings_path(path.stem)
+    emb_sig = emb.stat().st_mtime_ns if emb.exists() else 0
     cached = _FILE_CACHE.get(path)
-    if cached and cached[0] == st.st_mtime_ns and cached[1] == st.st_size:
+    if cached and cached[0] == (st.st_mtime_ns, emb_sig) and cached[1] == st.st_size:
         return cached[2]
     rows = _parse_file(path)
     _attach_groups(rows)
     _attach_appearance(path.stem, rows)
-    _FILE_CACHE[path] = (st.st_mtime_ns, st.st_size, rows)
+    _FILE_CACHE[path] = ((st.st_mtime_ns, emb_sig), st.st_size, rows)
     return rows
 
 
@@ -586,7 +595,14 @@ def binned_pool(clip: str | None = None) -> BinnedPool:
     sig = (
         clip,
         tuple(
-            (p.name, p.stat().st_mtime_ns, p.stat().st_size)
+            (
+                p.name,
+                p.stat().st_mtime_ns,
+                p.stat().st_size,
+                _embeddings_path(p.stem).stat().st_mtime_ns
+                if _embeddings_path(p.stem).exists()
+                else 0,
+            )
             for p in paths
             if p.exists()
         ),
