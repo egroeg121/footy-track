@@ -34,6 +34,7 @@ import cv2
 from fastapi import APIRouter
 from fastapi.responses import Response
 
+from footy_track.labeller import candidates as cand
 from footy_track.labeller.constants import BALL_LABELS, PROV_LABELLER
 from footy_track.labeller.review import _find_video, _gt_marks_dir, _read_all_boxes
 
@@ -119,6 +120,9 @@ def _read_verdicts(clip_stem: str | None = None) -> dict[tuple, dict]:
                 continue
             try:
                 key = (
+                    # Records written before candidates existed have no source
+                    # and always referred to sidecar boxes.
+                    rec.get("source") or "sidecar",
                     rec["clip"],
                     int(rec["frame_index"]),
                     int(rec["box_index"]),
@@ -172,7 +176,7 @@ def _build_ball_queue(
             continue
         if clip is not None and r["clip"] != clip:
             continue
-        if (r["clip"], r["frame_index"], r["box_index"]) in judged:
+        if ("sidecar", r["clip"], r["frame_index"], r["box_index"]) in judged:
             continue
         # A sidecar stem with no video on disk cannot be cropped (the clip
         # naming schemes diverge), and a card that 404s is worse than no card.
@@ -185,30 +189,127 @@ def _build_ball_queue(
     return out
 
 
+def _build_candidate_queue(
+    records: list[dict],
+    judged: dict[tuple, dict],
+    *,
+    clip: str | None = None,
+    tau: float = cand.DEFAULT_TAU,
+    sigma: float = cand.DEFAULT_SIGMA,
+    focus: float = cand.DEFAULT_FOCUS,
+) -> list[dict]:
+    pool = [
+        r
+        for r in records
+        if (clip is None or r["clip"] == clip)
+        and ("cand", r["clip"], r["frame_index"], r["cand_index"]) not in judged
+    ]
+    return cand.stratified_order(pool, tau=tau, sigma=sigma, focus=focus)
+
+
 @router.get("/ball_check/queue")
 async def ball_check_queue(
-    limit: int = 50, clip: str | None = None, include_gt: bool = False
+    limit: int = 50,
+    clip: str | None = None,
+    include_gt: bool = False,
+    source: str = "auto",
+    tau: float = -1.0,
+    sigma: float = cand.DEFAULT_SIGMA,
+    focus: float = cand.DEFAULT_FOCUS,
 ) -> dict:
-    """Unjudged machine ball boxes, hash-ordered, newest verdicts excluded."""
-    records = await asyncio.to_thread(_read_all_boxes)
+    """Unjudged ball boxes to review.
+
+    ``source=candidates`` draws from the detector's own output, which carries
+    real confidences, and orders them by confidence-stratified sampling.
+    ``source=sidecar`` reviews the boxes already in the GT sidecars.
+    ``auto`` (default) prefers candidates when any have been pulled down.
+    """
     judged = await asyncio.to_thread(_read_verdicts)
-    queue = _build_ball_queue(records, judged, clip=clip, include_gt=include_gt)
     limit = max(1, min(int(limit), 500))
+
+    if source == "auto":
+        have_cands = await asyncio.to_thread(
+            lambda: cand._candidates_dir().exists()
+            and any(cand._candidates_dir().glob("*.jsonl"))
+        )
+        source = "candidates" if have_cands else "sidecar"
+
+    if source == "candidates":
+        pool = await asyncio.to_thread(cand.binned_pool, clip)
+        stats = cand.band_stats(list(judged.values()), BALL_PRESENT_VERDICTS)
+        # tau < 0 means "measure it": the boundary is re-estimated from the
+        # verdicts so far on every fetch, so the queue follows the labeller.
+        tau_used = cand.estimate_tau(stats) if tau < 0 else tau
+
+        def _judged(rec: dict) -> bool:
+            key = ("cand", rec["clip"], rec["frame_index"], rec["cand_index"])
+            return key in judged
+
+        queue = await asyncio.to_thread(
+            pool.select,
+            lambda c: cand.adaptive_weight(c, tau_used, stats, sigma, focus),
+            limit,
+            _judged,
+        )
+        items = [
+            {
+                "clip": r["clip"],
+                "frame_index": r["frame_index"],
+                "box_index": r["cand_index"],
+                "source": "cand",
+                "bbox": r["bbox"],
+                "label": r["label"],
+                "provenance": r["provenance"],
+                "confidence": round(r["confidence"], 4),
+                "image_url": (
+                    f"/ball_check/crop/{r['clip']}/{r['frame_index']}"
+                    f"/{r['cand_index']}.jpg?src=cand"
+                ),
+            }
+            for r in queue[:limit]
+        ]
+        return {
+            "source": "candidates",
+            "remaining": pool.total - len(judged),
+            "judged": len(judged),
+            "items": items,
+            "tau": round(tau_used, 4),
+            "bands": stats,
+            "histogram": [
+                {"lo": round(i / 10, 2), "hi": round((i + 1) / 10, 2), "n": n}
+                for i, n in enumerate(
+                    [
+                        sum(len(b) for b in pool.bins[i * 10 : (i + 1) * 10])
+                        for i in range(10)
+                    ]
+                )
+            ],
+        }
+
+    records = await asyncio.to_thread(_read_all_boxes)
+    queue = _build_ball_queue(records, judged, clip=clip, include_gt=include_gt)
     items = [
         {
             "clip": r["clip"],
             "frame_index": r["frame_index"],
             "box_index": r["box_index"],
+            "source": "sidecar",
             "bbox": r["bbox"],
             "label": r["label"],
             "provenance": r["provenance_tag"],
+            "confidence": None,
             "image_url": (
                 f"/ball_check/crop/{r['clip']}/{r['frame_index']}/{r['box_index']}.jpg"
             ),
         }
         for r in queue[:limit]
     ]
-    return {"remaining": len(queue), "judged": len(judged), "items": items}
+    return {
+        "source": "sidecar",
+        "remaining": len(queue),
+        "judged": len(judged),
+        "items": items,
+    }
 
 
 @router.get("/ball_check/stats")
@@ -239,6 +340,17 @@ async def ball_check_stats() -> dict:
 # ---------------------------------------------------------------------------
 
 
+def _read_box(
+    src: str, clip_stem: str, frame_idx: int, box_idx: int
+) -> tuple[float, float, float, float] | None:
+    """Resolve a box from whichever source the card came from."""
+    if src == "cand":
+        return cand.read_candidate_box(clip_stem, frame_idx, box_idx)
+    from footy_track.labeller.review import _read_frame_box  # noqa: PLC0415
+
+    return _read_frame_box(clip_stem, frame_idx, box_idx)
+
+
 def _crop_window(
     bx: float, by: float, bw: float, bh: float, w_px: int, h_px: int, pad: float
 ) -> tuple[int, int, int, int]:
@@ -263,7 +375,11 @@ def _crop_window(
 
 @router.get("/ball_check/crop_meta/{clip_stem}/{frame_idx}/{box_idx}")
 async def ball_check_crop_meta(
-    clip_stem: str, frame_idx: int, box_idx: int, pad: float = _PAD_FACTOR
+    clip_stem: str,
+    frame_idx: int,
+    box_idx: int,
+    pad: float = _PAD_FACTOR,
+    src: str = "sidecar",
 ) -> dict:
     """Geometry the page needs to overlay (and drag) the box on the crop.
 
@@ -275,9 +391,7 @@ async def ball_check_crop_meta(
     if video_path is None:
         return {"ok": False, "error": "video not found"}
 
-    from footy_track.labeller.review import _read_frame_box  # noqa: PLC0415
-
-    bbox_raw = _read_frame_box(clip_stem, frame_idx, box_idx)
+    bbox_raw = await asyncio.to_thread(_read_box, src, clip_stem, frame_idx, box_idx)
     if bbox_raw is None:
         return {"ok": False, "error": "box not found"}
     bx, by, bw, bh = bbox_raw
@@ -333,6 +447,7 @@ async def ball_check_crop(
     box_idx: int,
     pad: float = _PAD_FACTOR,
     reticle: bool = True,
+    src: str = "sidecar",
 ) -> Response:
     """Zoomed JPEG crop, with an optional reticle drawn on the claimed ball.
 
@@ -340,7 +455,7 @@ async def ball_check_crop(
     instead, so what you see is the live box you are about to correct.
     """
     pad = max(0.0, min(float(pad), _MAX_PAD_FACTOR))
-    cache_key = (clip_stem, frame_idx, box_idx, round(pad, 2), bool(reticle))
+    cache_key = (src, clip_stem, frame_idx, box_idx, round(pad, 2), bool(reticle))
     cached = _BC_CROP_CACHE.get(cache_key)
     if cached is not None:
         _BC_CROP_CACHE.move_to_end(cache_key)
@@ -350,9 +465,7 @@ async def ball_check_crop(
     if video_path is None:
         return Response(status_code=404)
 
-    from footy_track.labeller.review import _read_frame_box  # noqa: PLC0415
-
-    bbox_raw = _read_frame_box(clip_stem, frame_idx, box_idx)
+    bbox_raw = await asyncio.to_thread(_read_box, src, clip_stem, frame_idx, box_idx)
     if bbox_raw is None:
         return Response(status_code=404)
     bx, by, bw, bh = bbox_raw
@@ -425,6 +538,10 @@ async def ball_check_verdict(body: dict) -> dict:
         "clip": clip,
         "frame_index": frame_index,
         "box_index": box_index,
+        "source": body.get("source") or "sidecar",
+        # The confidence the box carried when judged: without it the running
+        # per-band precision estimate has nothing to bin on.
+        "confidence": body.get("confidence"),
         "verdict": verdict,
         "bbox": body.get("bbox"),
         "label": body.get("label"),
@@ -455,6 +572,7 @@ async def ball_check_undo(body: dict) -> dict:
             "clip": clip,
             "frame_index": frame_index,
             "box_index": box_index,
+            "source": body.get("source") or "sidecar",
             "verdict": None,
             "ts": round(time.time(), 3),
         },

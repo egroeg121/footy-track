@@ -278,6 +278,7 @@ def test_crop_returns_jpeg_and_caches(
     assert res.status_code == 200
     assert res.content == FAKE_JPEG
     assert (
+        "sidecar",
         "clip",
         0,
         0,
@@ -287,11 +288,12 @@ def test_crop_returns_jpeg_and_caches(
 
     # A different pad is a different cache entry, not a stale hit.
     client.get("/ball_check/crop/clip/0/0.jpg?pad=20")
-    assert ("clip", 0, 0, 20.0, True) in ball_check._BC_CROP_CACHE
+    assert ("sidecar", "clip", 0, 0, 20.0, True) in ball_check._BC_CROP_CACHE
 
     # reticle=false is its own entry: the page draws its own draggable box.
     client.get("/ball_check/crop/clip/0/0.jpg?reticle=false")
     assert (
+        "sidecar",
         "clip",
         0,
         0,
@@ -323,6 +325,7 @@ def test_pad_is_clamped_to_max(client, clips_dir, gt_marks_dir, fake_cv2, bc_cac
     _write_sidecar(gt_marks_dir, "clip", [_line(0, ["in_play_ball", "yolo"])])
     assert client.get("/ball_check/crop/clip/0/0.jpg?pad=9999").status_code == 200
     assert (
+        "sidecar",
         "clip",
         0,
         0,
@@ -342,3 +345,43 @@ def test_ball_check_page_served_and_linked_from_hub(client):
     assert "Ball Check" in page.text
     assert 'name="viewport"' in page.text  # mobile-first: must scale to a phone
     assert 'href="/ball_check"' in client.get("/").text
+
+
+def test_queue_candidates_source_and_namespaced_verdicts(
+    client, clips_dir, gt_marks_dir, cand_dir
+):
+    (clips_dir / "clip.mp4").touch()
+    # Same (clip, frame, index) in both sources: the namespaces must not collide.
+    _write_sidecar(gt_marks_dir, "clip", [_line(0, ["in_play_ball", "yolo"])])
+    (cand_dir / "clip.jsonl").write_text(
+        json.dumps(
+            {
+                "frame_index": 0,
+                "bbox": {"x": 0.2, "y": 0.2, "w": 0.01, "h": 0.01},
+                "tags": ["in_play_ball", "rtdetr"],
+                "confidence": 0.22,
+            }
+        )
+        + "\n"
+    )
+    data = client.get("/ball_check/queue").json()
+    assert data["source"] == "candidates"  # auto prefers candidates
+    assert data["items"][0]["source"] == "cand"
+    assert data["items"][0]["confidence"] == pytest.approx(0.22)
+    assert "tau" in data and "bands" in data
+
+    client.post(
+        "/ball_check/verdict",
+        json={
+            "clip": "clip",
+            "frame_index": 0,
+            "box_index": 0,
+            "source": "cand",
+            "confidence": 0.22,
+            "verdict": "ball",
+        },
+    )
+    # The candidate is judged; the identically-keyed sidecar box is not.
+    assert client.get("/ball_check/queue").json()["remaining"] == 0
+    sidecar = client.get("/ball_check/queue?source=sidecar").json()
+    assert sidecar["remaining"] == 1

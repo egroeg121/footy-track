@@ -172,6 +172,15 @@ def gt_marks_dir(tmp_path, monkeypatch) -> Path:
 
 
 @pytest.fixture
+def cand_dir(tmp_path, monkeypatch) -> Path:
+    """Redirect the ball-candidates dir (detector output with confidences)."""
+    d = tmp_path / "ball_candidates"
+    d.mkdir()
+    patch_labeller_attr(monkeypatch, "_CANDIDATES_DIR", d)
+    return d
+
+
+@pytest.fixture
 def clips_dir(tmp_path, monkeypatch) -> Path:
     d = tmp_path / "clips"
     d.mkdir()

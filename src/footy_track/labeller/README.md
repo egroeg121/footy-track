@@ -6,7 +6,7 @@ labeller.** Every feature and behavior is captured as a numbered requirement
 test(s) that pin it. Requirements with no server-side test are marked
 `UNTESTED`; behaviors that live only in the browser JS (no JS test runner in
 this repo) are marked `UNTESTED-FRONTEND` — their *server contract* is tested
-instead. Known defects and gaps are tracked as `OPEN-n` items in §13.
+instead. Known defects and gaps are tracked as `OPEN-n` items in §14.
 
 Snapshot: origin/main `95b60cc`. Change process: a behavior change MUST update
 the corresponding requirement (and its tests) in the same PR; new behavior
@@ -83,7 +83,7 @@ persisted in the JSONL sidecar as the second tag (`tags: [label, model]`):
   - Tests: UNTESTED-FRONTEND (`promoteToGT` in `web/index.html`; server leg is LAB-003)
 - **LAB-006** (MUST) Undo restores each box with its own `model` tag — undo
   must not promote machine boxes to GT (fixed on main, `95b60cc`; previously
-  OPEN, see §13).
+  OPEN, see §14).
   - Tests: UNTESTED-FRONTEND (`undoLast` passes `o.model` back to `addRect`)
 - **LAB-007** (MUST) The legacy `sam3` model tag keeps round-tripping through
   sidecars and surfaces in review (old sidecars contain it), even though SAM3
@@ -741,7 +741,62 @@ line: `{clip, frame_index, box_index, verdict, bbox, label, provenance, ts}`.
   - Tests: UNTESTED-FRONTEND (`web/ball_check.html`; the server contract is
     LAB-1004..1009)
 
-## 12. Operational notes (informative)
+## 12. Confidence sampling — candidates (LAB-11xx)
+
+`candidates.py`. The GT sidecars cannot drive confidence-aware review (they
+never persist confidence — LAB-104), so cards are drawn from the detector's
+own output: one JSONL per clip under `server._CANDIDATES_DIR`, ball rows
+only, pulled from `s3://…/footy_data/machine_labels` (run
+`rtdetr-l_1920_v11`, emitted at `conf_threshold` 0.1 — borderline detections
+are already there, nothing needs re-running). Corpus on the Mac mini:
+356,812 ball candidates over 162 clips.
+
+- **LAB-1101** (MUST) `read_candidates` keeps only ball-class rows and
+  numbers them per frame in file order (`cand_index`), giving the identity
+  `(clip, frame_index, cand_index)` in a namespace separate from sidecar
+  boxes. Malformed lines, missing bbox and missing frame_index are skipped.
+  - Tests: `test_candidates.py::test_read_candidates_keeps_ball_rows_and_numbers_them`,
+    `test_candidates.py::test_read_candidates_skips_malformed_lines`,
+    `test_candidates.py::test_read_candidate_box_round_trips`
+- **LAB-1102** (MUST) Sampling weight is a Gaussian bump on the threshold
+  plus a uniform floor (`PEAK_GAIN` 5.0, `focus` 0.7, `sigma` 0.10 → peak
+  ~13x the tail). Order is a weighted sample without replacement via the
+  exponential race, with the uniform drawn from a hash of the candidate's
+  identity so the queue does not reshuffle under a labeller mid-session.
+  Uniform sampling would spend nearly all effort where the model is already
+  certain; a pure-boundary sampler would leave every other band unmeasured.
+  - Tests: `test_candidates.py::test_sampling_weight_peaks_at_tau_and_never_reaches_zero`,
+    `test_candidates.py::test_stratified_order_concentrates_near_tau_but_covers_the_range`,
+    `test_candidates.py::test_stratified_order_is_deterministic`,
+    `test_candidates.py::test_stratified_order_is_a_permutation`
+- **LAB-1103** (MUST) Adaptive mode (`tau` < 0, the default): per-band
+  precision is recomputed from the verdicts so far, the boundary is estimated
+  where precision crosses 0.5, and bands with little evidence are up-weighted
+  (`1/sqrt(1+decided)`). Falls back to `DEFAULT_TAU` until at least two bands
+  have 3+ decided verdicts — a boundary from two labels is worse than a prior.
+  `unsure` carries no information and is excluded; `box_off` counts as found.
+  - Tests: `test_candidates.py::test_band_stats_counts_decided_and_ignores_unsure`,
+    `test_candidates.py::test_estimate_tau_finds_the_measured_crossing`,
+    `test_candidates.py::test_estimate_tau_falls_back_until_there_is_evidence`,
+    `test_candidates.py::test_adaptive_order_follows_the_measured_boundary`,
+    `test_candidates.py::test_adaptive_weight_boosts_bands_with_little_evidence`,
+    `test_candidates.py::test_box_off_counts_as_found_for_the_boundary_estimate`
+- **LAB-1104** (MUST) `BinnedPool` buckets candidates by confidence
+  (`SAMPLE_BINS` 100) with each bucket pre-sorted by its draw, so a page is
+  selected in `bins x page` instead of racing 357k rows (measured: 1.45 s →
+  0.018 s). Weights are quantised to the bin centre in *both* paths, so the
+  fast path is exactly equivalent to the full race, not merely close.
+  - Tests: `test_candidates.py::test_binned_pool_matches_a_full_race`,
+    `test_candidates.py::test_binned_pool_skips_judged_and_still_fills_the_page`
+- **LAB-1105** (MUST) `GET /ball_check/queue?source=candidates` serves
+  candidate cards (`source: "cand"`, with `confidence`) and returns the
+  current `tau`, per-band `bands` and the pool `histogram`; `source=auto`
+  (default) prefers candidates when any exist. Verdict identity is namespaced
+  by source, and records written before candidates existed are read as
+  `sidecar`.
+  - Tests: `test_ball_check.py::test_queue_candidates_source_and_namespaced_verdicts`
+
+## 13. Operational notes (informative)
 
 - Single global session; no auth; intended for one local user.
 - Downstream, sidecars + Roboflow datasets are ingested into the DuckDB
@@ -752,7 +807,7 @@ line: `{clip, frame_index, box_index, verdict, bbox, label, provenance, ts}`.
 - The torch.compile (Inductor) cache is pinned to
   `~/.cache/footy_torch_inductor` before torch import (macOS purges $TMPDIR).
 
-## 13. Known gaps — OPEN items
+## 14. Known gaps — OPEN items
 
 Tracked against this spec; burn these down by fixing the behavior AND
 updating/adding the corresponding LAB requirement + tests.
@@ -788,7 +843,7 @@ updating/adding the corresponding LAB requirement + tests.
   machine "fixes" them; needs per-machine config + regeneration script.
 - GPU propagation loop (`ft-8vx` epic): paused by request.
 
-## 14. Traceability summary
+## 15. Traceability summary
 
 | Section | Requirements | Tested | UNTESTED | UNTESTED-FRONTEND |
 |---|---|---|---|---|
@@ -803,7 +858,8 @@ updating/adding the corresponding LAB requirement + tests.
 | 9. Labeller UI (LAB-8xx) | 11 | 0 | 0 | 11 |
 | 10. Review UI (LAB-9xx) | 7 | 0 | 0 | 7 |
 | 11. Ball Check (LAB-10xx) | 12 | 11 | 0 | 1 |
-| **Total** | **96** | **66** | **8** | **22** |
+| 12. Confidence sampling (LAB-11xx) | 5 | 5 | 0 | 0 |
+| **Total** | **101** | **71** | **8** | **22** |
 
 Open items: 4 (OPEN-1..4) + 1 fixed on main (undo provenance, `95b60cc`).
 Test suite: 138 tests in `tests/labeller/` (all green), plus the

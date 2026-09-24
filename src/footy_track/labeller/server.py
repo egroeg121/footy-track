@@ -104,6 +104,14 @@ _GT_MARKS_DIR = _env_dir(
     / "footy_data"
     / "ball_gt_marks",
 )
+#: Machine detections with real confidences (one JSONL per clip, ball rows
+#: only), pulled from s3://…/footy_data/machine_labels. The GT sidecars cannot
+#: serve this purpose: they never persist confidence (LAB-104 synthesizes
+#: 1.0/0.5), so confidence-stratified sampling is impossible from them.
+_CANDIDATES_DIR = _env_dir(
+    "FOOTY_BALL_CANDIDATES_DIR",
+    Path.home() / "footy" / "footy_data" / "ball_candidates",
+)
 
 
 from footy_track.labeller import identity_routes  # noqa: E402
