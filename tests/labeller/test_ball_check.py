@@ -165,7 +165,8 @@ def test_latest_verdict_wins(client, clips_dir, gt_marks_dir):
     _verdict(client, "clip", 0, 0, "ball")
     _verdict(client, "clip", 0, 0, "not_ball")
     stats = client.get("/ball_check/stats").json()
-    assert stats["counts"] == {"ball": 0, "not_ball": 1, "unsure": 0}
+    assert stats["counts"]["ball"] == 0
+    assert stats["counts"]["not_ball"] == 1
 
 
 def test_verdict_rejects_unknown_value(client, gt_marks_dir):
@@ -220,8 +221,43 @@ def test_stats_precision_excludes_unsure(client, clips_dir, gt_marks_dir):
     for box_idx, verdict in enumerate(["ball", "ball", "not_ball", "unsure"]):
         _verdict(client, "clip", box_idx, 0, verdict)
     stats = client.get("/ball_check/stats").json()
-    assert stats["counts"] == {"ball": 2, "not_ball": 1, "unsure": 1}
+    assert stats["counts"] == {
+        "ball": 2,
+        "not_ball": 1,
+        "box_off": 0,
+        "corrected": 0,
+        "unsure": 1,
+    }
     assert stats["precision"] == pytest.approx(2 / 3, abs=1e-4)
+
+
+def test_stats_box_off_counts_as_found_but_not_clean(client, clips_dir, gt_marks_dir):
+    (clips_dir / "clip.mp4").touch()
+    _write_sidecar(
+        gt_marks_dir, "clip", [_line(i, ["in_play_ball", "yolo"]) for i in range(4)]
+    )
+    for box_idx, verdict in enumerate(["ball", "box_off", "corrected", "not_ball"]):
+        _verdict(client, "clip", box_idx, 0, verdict)
+    stats = client.get("/ball_check/stats").json()
+    # found: ball + box_off + corrected = 3 of 4 decided; clean drops box_off.
+    assert stats["precision"] == pytest.approx(3 / 4, abs=1e-4)
+    assert stats["clean_precision"] == pytest.approx(2 / 4, abs=1e-4)
+
+
+def test_crop_meta_gives_window_and_box(client, clips_dir, gt_marks_dir, fake_cv2):
+    (clips_dir / "clip.mp4").touch()
+    _write_sidecar(gt_marks_dir, "clip", [_line(0, ["in_play_ball", "yolo"])])
+    meta = client.get("/ball_check/crop_meta/clip/0/0").json()
+    assert meta["ok"] is True
+    assert meta["frame"] == {"w": 640, "h": 360}
+    w = meta["window"]
+    assert 0 <= w["x1"] < w["x2"] <= 640
+    assert 0 <= w["y1"] < w["y2"] <= 360
+    assert meta["bbox"]["w"] == pytest.approx(0.02)
+
+
+def test_crop_meta_404s_softly_for_missing_clip(client, clips_dir, gt_marks_dir):
+    assert client.get("/ball_check/crop_meta/nope/0/0").json()["ok"] is False
 
 
 def test_stats_precision_none_before_any_decision(client, gt_marks_dir):
@@ -241,11 +277,27 @@ def test_crop_returns_jpeg_and_caches(
     res = client.get("/ball_check/crop/clip/0/0.jpg")
     assert res.status_code == 200
     assert res.content == FAKE_JPEG
-    assert ("clip", 0, 0, round(ball_check._PAD_FACTOR, 2)) in ball_check._BC_CROP_CACHE
+    assert (
+        "clip",
+        0,
+        0,
+        round(ball_check._PAD_FACTOR, 2),
+        True,
+    ) in ball_check._BC_CROP_CACHE
 
     # A different pad is a different cache entry, not a stale hit.
     client.get("/ball_check/crop/clip/0/0.jpg?pad=20")
-    assert ("clip", 0, 0, 20.0) in ball_check._BC_CROP_CACHE
+    assert ("clip", 0, 0, 20.0, True) in ball_check._BC_CROP_CACHE
+
+    # reticle=false is its own entry: the page draws its own draggable box.
+    client.get("/ball_check/crop/clip/0/0.jpg?reticle=false")
+    assert (
+        "clip",
+        0,
+        0,
+        round(ball_check._PAD_FACTOR, 2),
+        False,
+    ) in ball_check._BC_CROP_CACHE
 
 
 def test_crop_404s_for_missing_clip_or_box(client, clips_dir, gt_marks_dir, fake_cv2):
@@ -270,7 +322,13 @@ def test_pad_is_clamped_to_max(client, clips_dir, gt_marks_dir, fake_cv2, bc_cac
     (clips_dir / "clip.mp4").touch()
     _write_sidecar(gt_marks_dir, "clip", [_line(0, ["in_play_ball", "yolo"])])
     assert client.get("/ball_check/crop/clip/0/0.jpg?pad=9999").status_code == 200
-    assert ("clip", 0, 0, ball_check._MAX_PAD_FACTOR) in ball_check._BC_CROP_CACHE
+    assert (
+        "clip",
+        0,
+        0,
+        ball_check._MAX_PAD_FACTOR,
+        True,
+    ) in ball_check._BC_CROP_CACHE
 
 
 # ---------------------------------------------------------------------------

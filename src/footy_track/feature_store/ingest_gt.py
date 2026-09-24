@@ -70,6 +70,11 @@ DEFAULT_HEIGHT = 1080
 
 _SKIP_TAGS = {"no_ball", "not_broadcast"}
 _PROVENANCE_TAGS = {"labeller", "vittrack", "yolo", "sam3"}
+#: Review marker written alongside a provenance tag: a human looked at this
+#: machine box and kept it. It is NOT a provenance and NOT an object class —
+#: 15,377 sidecar lines already carry it, and before this was recognised
+#: ``_split_tags`` returned it *as the object class*, destroying the real one.
+CHECKED_TAG = "human_checked"
 _PROVENANCE_TO_SOURCE = {
     "labeller": "hand_label",
     "vittrack": "vittrack",
@@ -118,16 +123,24 @@ def _video_meta(video_path: Path) -> tuple[float, int, int]:
     return float(fps), width, height
 
 
-def _split_tags(tags: list[str]) -> tuple[str | None, str | None]:
-    """Return (object_class_tag, provenance_tag) from a GT-mark tags list."""
+def _split_tags(tags: list[str]) -> tuple[str | None, str | None, bool]:
+    """Return (object_class_tag, provenance_tag, human_checked) from a tags list.
+
+    The object class is the *first* non-provenance, non-marker tag: a sidecar
+    line is written ``[label, provenance, *markers]``, so scanning to the end
+    would let a trailing marker masquerade as the class.
+    """
     obj_tag = None
     prov_tag = None
+    checked = False
     for t in tags:
         if t in _PROVENANCE_TAGS:
             prov_tag = t
-        elif t not in _SKIP_TAGS:
+        elif t == CHECKED_TAG:
+            checked = True
+        elif t not in _SKIP_TAGS and obj_tag is None:
             obj_tag = t
-    return obj_tag, prov_tag
+    return obj_tag, prov_tag, checked
 
 
 def ingest_gt_jsonl(
@@ -166,13 +179,20 @@ def ingest_gt_jsonl(
         if any(t in _SKIP_TAGS for t in tags):
             continue  # frame recorded on the spine, no detection
 
-        obj_tag, prov_tag = _split_tags(tags)
+        obj_tag, prov_tag, checked = _split_tags(tags)
         bbox = rec.get("bbox")
         if obj_tag is None or prov_tag is None or bbox is None:
             continue
 
         source = _PROVENANCE_TO_SOURCE[prov_tag]
-        reviewed = True if legacy_all_reviewed else _PROVENANCE_TO_REVIEWED[prov_tag]
+        # A human-checked machine box is TIER 2: the machine drew the geometry
+        # (source stays vittrack/yolo) but a human confirmed it, so it counts
+        # as reviewed. Promoting it to hand_label would claim a human drew it.
+        reviewed = (
+            True
+            if (legacy_all_reviewed or checked)
+            else _PROVENANCE_TO_REVIEWED[prov_tag]
+        )
         ct = frame_index / fps
         run_id = f"gt_import_{prov_tag}"
         key = (frame_index, source)
@@ -282,7 +302,9 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--video-dir", type=Path, required=True)
     parser.add_argument("--db", type=Path, required=True)
     parser.add_argument("--dry-run", action="store_true")
-    parser.add_argument("--clip", type=str, default=None, help="only ingest this clip stem")
+    parser.add_argument(
+        "--clip", type=str, default=None, help="only ingest this clip stem"
+    )
     parser.add_argument(
         "--roboflow-dir",
         type=Path,
@@ -323,7 +345,9 @@ def main(argv: list[str] | None = None) -> None:
             f"detections={roboflow_report.detections_written}"
         )
     print(f"gt-marks games={len(gt_report.games)} frames={gt_report.frames_written}")
-    print(f"gt-marks detections={gt_report.detections_written} by_source={dict(gt_report.by_source)}")
+    print(
+        f"gt-marks detections={gt_report.detections_written} by_source={dict(gt_report.by_source)}"
+    )
     if gt_report.clips_missing_video:
         print(
             f"WARNING: {len(gt_report.clips_missing_video)} clip(s) had no local video "
@@ -332,8 +356,10 @@ def main(argv: list[str] | None = None) -> None:
         )
 
     if not args.dry_run:
-        print(f"store totals: games={store.count('game')} frames={store.count('frame')} "
-              f"detections={store.count('detection')} runs={store.count('run')}")
+        print(
+            f"store totals: games={store.count('game')} frames={store.count('frame')} "
+            f"detections={store.count('detection')} runs={store.count('run')}"
+        )
 
 
 if __name__ == "__main__":

@@ -104,6 +104,7 @@ def make_fake_cv2() -> types.SimpleNamespace:
         imwrite=lambda _path, _frame, *args: True,
         rectangle=lambda _img, _pt1, _pt2, _colour, *args: _img,
         resize=lambda img, _dsize, **_kw: img,
+        line=lambda _img, _pt1, _pt2, _colour, *args: _img,
         INTER_NEAREST=0,
         CAP_PROP_FPS=CAP_PROP_FPS,
         CAP_PROP_FRAME_COUNT=CAP_PROP_FRAME_COUNT,

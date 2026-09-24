@@ -20,14 +20,23 @@ def _write_jsonl(path, records):
 def _marks(stem, tmp_path):
     records = [
         # ball, labeller -> hand_label
-        {"frame_index": 0, "bbox": {"x": 0.5, "y": 0.5, "w": 0.02, "h": 0.03},
-         "tags": ["in_play_ball", "labeller"]},
+        {
+            "frame_index": 0,
+            "bbox": {"x": 0.5, "y": 0.5, "w": 0.02, "h": 0.03},
+            "tags": ["in_play_ball", "labeller"],
+        },
         # player, labeller
-        {"frame_index": 0, "bbox": {"x": 0.1, "y": 0.2, "w": 0.05, "h": 0.1},
-         "tags": ["player", "labeller"]},
+        {
+            "frame_index": 0,
+            "bbox": {"x": 0.1, "y": 0.2, "w": 0.05, "h": 0.1},
+            "tags": ["player", "labeller"],
+        },
         # yolo provenance -> yolo source
-        {"frame_index": 1, "bbox": {"x": 0.3, "y": 0.3, "w": 0.04, "h": 0.09},
-         "tags": ["player", "yolo"]},
+        {
+            "frame_index": 1,
+            "bbox": {"x": 0.3, "y": 0.3, "w": 0.04, "h": 0.09},
+            "tags": ["player", "yolo"],
+        },
         # skip markers -> frame recorded, no detection
         {"frame_index": 2, "bbox": None, "tags": ["no_ball"]},
         {"frame_index": 3, "bbox": None, "tags": ["not_broadcast"]},
@@ -40,14 +49,23 @@ def _marks(stem, tmp_path):
 def _marks_with_vittrack(stem, tmp_path):
     records = [
         # ball, labeller -> hand_label, reviewed
-        {"frame_index": 0, "bbox": {"x": 0.5, "y": 0.5, "w": 0.02, "h": 0.03},
-         "tags": ["in_play_ball", "labeller"]},
+        {
+            "frame_index": 0,
+            "bbox": {"x": 0.5, "y": 0.5, "w": 0.02, "h": 0.03},
+            "tags": ["in_play_ball", "labeller"],
+        },
         # ball, vittrack -> vittrack source, unreviewed
-        {"frame_index": 1, "bbox": {"x": 0.5, "y": 0.5, "w": 0.02, "h": 0.03},
-         "tags": ["in_play_ball", "vittrack"]},
+        {
+            "frame_index": 1,
+            "bbox": {"x": 0.5, "y": 0.5, "w": 0.02, "h": 0.03},
+            "tags": ["in_play_ball", "vittrack"],
+        },
         # player, yolo -> yolo source, unreviewed
-        {"frame_index": 2, "bbox": {"x": 0.3, "y": 0.3, "w": 0.04, "h": 0.09},
-         "tags": ["player", "yolo"]},
+        {
+            "frame_index": 2,
+            "bbox": {"x": 0.3, "y": 0.3, "w": 0.04, "h": 0.09},
+            "tags": ["player", "yolo"],
+        },
     ]
     path = tmp_path / f"{stem}.jsonl"
     _write_jsonl(path, records)
@@ -55,10 +73,55 @@ def _marks_with_vittrack(stem, tmp_path):
 
 
 def test_split_tags() -> None:
-    assert _split_tags(["in_play_ball", "labeller"]) == ("in_play_ball", "labeller")
-    assert _split_tags(["player", "yolo"]) == ("player", "yolo")
-    assert _split_tags(["in_play_ball", "vittrack"]) == ("in_play_ball", "vittrack")
-    assert _split_tags(["no_ball"]) == (None, None)
+    assert _split_tags(["in_play_ball", "labeller"]) == (
+        "in_play_ball",
+        "labeller",
+        False,
+    )
+    assert _split_tags(["player", "yolo"]) == ("player", "yolo", False)
+    assert _split_tags(["in_play_ball", "vittrack"]) == (
+        "in_play_ball",
+        "vittrack",
+        False,
+    )
+    assert _split_tags(["no_ball"]) == (None, None, False)
+
+
+def test_split_tags_human_checked_is_a_marker_not_a_class() -> None:
+    # 15,377 real sidecar lines look like this. The marker used to be returned
+    # as the object class, silently destroying the real one.
+    assert _split_tags(["in_play_ball", "vittrack", "human_checked"]) == (
+        "in_play_ball",
+        "vittrack",
+        True,
+    )
+
+
+def test_human_checked_machine_box_is_reviewed_but_keeps_its_source(tmp_path) -> None:
+    path = tmp_path / "checked_demo.jsonl"
+    _write_jsonl(
+        path,
+        [
+            {
+                "frame_index": 0,
+                "bbox": {"x": 0.5, "y": 0.5, "w": 0.02, "h": 0.03},
+                "tags": ["in_play_ball", "vittrack", "human_checked"],
+            },
+            {
+                "frame_index": 1,
+                "bbox": {"x": 0.4, "y": 0.4, "w": 0.02, "h": 0.03},
+                "tags": ["in_play_ball", "vittrack"],
+            },
+        ],
+    )
+    store = FeatureStore.open(":memory:")
+    ingest_gt_jsonl(store, path, video_dir=tmp_path)
+    df = store.query(
+        "SELECT frame_index, label, source, reviewed FROM detection ORDER BY frame_index"
+    )
+    assert list(df["label"]) == ["in_play_ball", "in_play_ball"]
+    assert list(df["source"]) == ["vittrack", "vittrack"]
+    assert list(df["reviewed"]) == [True, False]
 
 
 def test_ingest_maps_provenance_and_flags(tmp_path) -> None:
@@ -71,7 +134,9 @@ def test_ingest_maps_provenance_and_flags(tmp_path) -> None:
     # all 4 distinct frame indices recorded on the spine (0,1,2,3)
     assert report.frames_written == 4
 
-    df = store.query("SELECT source, label, reviewed, dataset_tag FROM detection ORDER BY source, label")
+    df = store.query(
+        "SELECT source, label, reviewed, dataset_tag FROM detection ORDER BY source, label"
+    )
     assert set(df["source"]) == {"hand_label", "yolo"}
     # per-tag tiering (default): only hand_label rows are reviewed
     reviewed_by_source = dict(zip(df["source"], df["reviewed"], strict=True))
@@ -171,10 +236,16 @@ def test_canonical_keeps_coexisting_machine_rows_from_same_sidecar_flush(
     only the hand_label row.
     """
     records = [
-        {"frame_index": 0, "bbox": {"x": 0.5, "y": 0.5, "w": 0.02, "h": 0.03},
-         "tags": ["in_play_ball", "labeller"]},
-        {"frame_index": 0, "bbox": {"x": 0.51, "y": 0.51, "w": 0.02, "h": 0.03},
-         "tags": ["player", "yolo"]},
+        {
+            "frame_index": 0,
+            "bbox": {"x": 0.5, "y": 0.5, "w": 0.02, "h": 0.03},
+            "tags": ["in_play_ball", "labeller"],
+        },
+        {
+            "frame_index": 0,
+            "bbox": {"x": 0.51, "y": 0.51, "w": 0.02, "h": 0.03},
+            "tags": ["player", "yolo"],
+        },
     ]
     path = tmp_path / "arsenal_demo.jsonl"
     _write_jsonl(path, records)
@@ -207,26 +278,61 @@ def test_canonical_sidecar_with_hand_label_beats_roboflow_on_same_frame(
 
     # Fabricate a roboflow-style import for the same frame the sidecar
     # will also cover, without needing a real dataset dir on disk.
-    store.upsert_games([GameRow(game_id="arsenal_demo", fps=25.0, width=1920, height=1080)])
+    store.upsert_games(
+        [GameRow(game_id="arsenal_demo", fps=25.0, width=1920, height=1080)]
+    )
     store.upsert_frames(
-        [FrameRow(game_id="arsenal_demo", frame_index=0, frame_uri="x", width=1920,
-                   height=1080, continuous_time_s=0.0)]
+        [
+            FrameRow(
+                game_id="arsenal_demo",
+                frame_index=0,
+                frame_uri="x",
+                width=1920,
+                height=1080,
+                continuous_time_s=0.0,
+            )
+        ]
     )
     store.upsert_runs(
-        [RunRow(run_id="roboflow_v1", stage=Stage.DETECTION, source="hand_label", model_name="human")]
+        [
+            RunRow(
+                run_id="roboflow_v1",
+                stage=Stage.DETECTION,
+                source="hand_label",
+                model_name="human",
+            )
+        ]
     )
     store.upsert_detections(
-        [DetectionRow(game_id="arsenal_demo", frame_index=0, continuous_time_s=0.0,
-                       detection_id=0, source="hand_label", run_id="roboflow_v1",
-                       label="in_play_ball", bbox_x=0.2, bbox_y=0.2, bbox_w=0.02, bbox_h=0.03)]
+        [
+            DetectionRow(
+                game_id="arsenal_demo",
+                frame_index=0,
+                continuous_time_s=0.0,
+                detection_id=0,
+                source="hand_label",
+                run_id="roboflow_v1",
+                label="in_play_ball",
+                bbox_x=0.2,
+                bbox_y=0.2,
+                bbox_w=0.02,
+                bbox_h=0.03,
+            )
+        ]
     )
 
     # Sidecar flush covering the same frame, with a hand label.
     records = [
-        {"frame_index": 0, "bbox": {"x": 0.5, "y": 0.5, "w": 0.02, "h": 0.03},
-         "tags": ["in_play_ball", "labeller"]},
-        {"frame_index": 0, "bbox": {"x": 0.51, "y": 0.51, "w": 0.02, "h": 0.03},
-         "tags": ["player", "yolo"]},
+        {
+            "frame_index": 0,
+            "bbox": {"x": 0.5, "y": 0.5, "w": 0.02, "h": 0.03},
+            "tags": ["in_play_ball", "labeller"],
+        },
+        {
+            "frame_index": 0,
+            "bbox": {"x": 0.51, "y": 0.51, "w": 0.02, "h": 0.03},
+            "tags": ["player", "yolo"],
+        },
     ]
     path = tmp_path / "arsenal_demo.jsonl"
     _write_jsonl(path, records)

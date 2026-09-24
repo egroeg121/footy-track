@@ -30,8 +30,10 @@
           background:var(--panel); border:1px solid var(--border);
           border-radius:16px; overflow:hidden; display:flex;
           flex-direction:column; touch-action:pan-y; }
+  #stage { position:relative; line-height:0; }
   #shot { width:100%; display:block; background:#000; object-fit:contain;
-          max-height:calc(100vh - 230px); image-rendering:auto; }
+          max-height:calc(100vh - 280px); }
+  #overlay { position:absolute; inset:0; touch-action:none; }
   #meta { padding:8px 12px; font-size:12px; color:var(--muted);
           display:flex; gap:10px; justify-content:space-between; }
   #verdictFlash { position:absolute; inset:0; display:flex; align-items:center;
@@ -40,16 +42,18 @@
 
   footer { flex:none; padding:8px 12px 16px; display:flex; flex-direction:column; gap:8px; }
   .row { display:flex; gap:10px; }
-  button { flex:1; border:none; border-radius:14px; padding:18px 8px;
+  button { flex:1; border:none; border-radius:14px; padding:17px 8px;
            font-size:17px; font-weight:700; color:#06121c; background:var(--muted);
            cursor:pointer; }
   button:active { filter:brightness(.85); }
   button.no { background:var(--red); color:#fff; }
   button.yes { background:var(--green); }
+  button.save { background:var(--accent); color:#fff; }
   .small { flex:1; padding:11px 8px; font-size:13px; font-weight:600;
            background:transparent; color:var(--muted); border:1px solid var(--border); }
   #status { text-align:center; color:var(--muted); font-size:13px; min-height:18px; }
   #empty { display:none; text-align:center; color:var(--muted); padding:40px 20px; }
+  .hidden { display:none !important; }
 </style>
 </head>
 <body>
@@ -61,7 +65,10 @@
 
   <main>
     <div id="card">
-      <img id="shot" alt="candidate ball crop" />
+      <div id="stage">
+        <img id="shot" alt="candidate ball crop" />
+        <svg id="overlay" xmlns="http://www.w3.org/2000/svg"></svg>
+      </div>
       <div id="meta"><span id="clipName"></span><span id="provName"></span></div>
       <div id="verdictFlash"></div>
     </div>
@@ -72,41 +79,115 @@
   </main>
 
   <footer>
-    <div class="row">
+    <div class="row" id="rowJudge">
       <button class="no" id="btnNo">Not a ball</button>
       <button class="yes" id="btnYes">Ball</button>
     </div>
+    <div class="row hidden" id="rowEdit">
+      <button class="small" id="btnReset">Reset box</button>
+      <button class="save" id="btnSave">Save box</button>
+    </div>
     <div class="row">
+      <button class="small" id="btnBoxOff">Box off</button>
       <button class="small" id="btnUnsure">Unsure</button>
       <button class="small" id="btnZoom">Zoom out</button>
       <button class="small" id="btnUndo">Undo</button>
     </div>
-    <div id="status">Swipe right = ball, left = not a ball.</div>
+    <div id="status">Swipe right = ball, left = not a ball. Drag the box to fix it.</div>
   </footer>
 
 <script>
 const PADS = [6, 14, 30];      // context steps for the "Zoom out" button
 const REFILL_AT = 5;           // fetch more cards when the buffer runs low
 const PREFETCH = 4;            // crops to warm ahead of the current card
+const HANDLE = 22;             // corner hit radius in CSS px (fingers are fat)
 
 let queue = [];                // items not yet judged, current one at [0]
-let remaining = 0;             // server-side count of unjudged boxes
-let judged = 0;
-let padIdx = 0;
-let history = [];              // for undo
+let remaining = 0, judged = 0, padIdx = 0;
+let history = [];
 let busy = false;
+let meta = null;               // crop geometry for the current card
+let box = null;                // live box in frame pixels {x1,y1,x2,y2}
+let edited = false;
 
 const $ = (id) => document.getElementById(id);
-
-function cropUrl(item, pad) {
-  return `${item.image_url}?pad=${pad}`;
-}
+const cropUrl = (item, pad) => `${item.image_url}?pad=${pad}&reticle=false`;
+const metaUrl = (item, pad) =>
+  `/ball_check/crop_meta/${item.clip}/${item.frame_index}/${item.box_index}?pad=${pad}`;
 
 function prefetch() {
   for (const item of queue.slice(1, 1 + PREFETCH)) {
     const img = new Image();
     img.src = cropUrl(item, PADS[padIdx]);
   }
+}
+
+// ---- geometry: frame pixels <-> displayed image pixels ---------------------
+
+function viewScale() {
+  const shot = $('shot');
+  if (!meta || !shot.clientWidth) return null;
+  const winW = meta.window.x2 - meta.window.x1;
+  const winH = meta.window.y2 - meta.window.y1;
+  return {
+    sx: shot.clientWidth / winW,
+    sy: shot.clientHeight / winH,
+    w: shot.clientWidth,
+    h: shot.clientHeight,
+  };
+}
+
+const toView = (px, py) => {
+  const s = viewScale();
+  return [(px - meta.window.x1) * s.sx, (py - meta.window.y1) * s.sy];
+};
+const toFrame = (vx, vy) => {
+  const s = viewScale();
+  return [meta.window.x1 + vx / s.sx, meta.window.y1 + vy / s.sy];
+};
+
+function norm(b) {
+  return { x1: Math.min(b.x1, b.x2), y1: Math.min(b.y1, b.y2),
+           x2: Math.max(b.x1, b.x2), y2: Math.max(b.y1, b.y2) };
+}
+
+function drawBox() {
+  const svg = $('overlay');
+  const s = viewScale();
+  if (!box || !s) { svg.innerHTML = ''; return; }
+  box = norm(box);
+  svg.setAttribute('viewBox', `0 0 ${s.w} ${s.h}`);
+  svg.setAttribute('width', s.w);
+  svg.setAttribute('height', s.h);
+  const [x1, y1] = toView(box.x1, box.y1);
+  const [x2, y2] = toView(box.x2, box.y2);
+  const colour = edited ? '#1e90ff' : '#ffff00';
+  const gap = Math.max(4, Math.min(x2 - x1, y2 - y1) * 0.35);
+  const arm = Math.max(7, (x2 - x1) * 0.5);
+  const bracket = (cx, cy, sx, sy) =>
+    `<path d="M ${cx + sx * gap + sx * arm} ${cy + sy * gap} H ${cx + sx * gap} V ${cy + sy * gap + sy * arm}"
+       fill="none" stroke="${colour}" stroke-width="2.5" stroke-linecap="round"/>`;
+  const dot = (cx, cy) =>
+    `<circle cx="${cx}" cy="${cy}" r="7" fill="${colour}" fill-opacity="0.9"/>`;
+  svg.innerHTML = `
+    <rect x="${x1}" y="${y1}" width="${x2 - x1}" height="${y2 - y1}"
+          fill="none" stroke="${colour}" stroke-width="1.5"/>
+    ${bracket(x1, y1, -1, -1)}${bracket(x2, y1, 1, -1)}
+    ${bracket(x1, y2, -1, 1)}${bracket(x2, y2, 1, 1)}
+    ${dot(x1, y1)}${dot(x2, y1)}${dot(x1, y2)}${dot(x2, y2)}`;
+}
+
+async function loadMeta(item) {
+  meta = null; box = null; edited = false;
+  $('rowEdit').classList.add('hidden');
+  $('rowJudge').classList.remove('hidden');
+  drawBox();
+  const data = await (await fetch(metaUrl(item, PADS[padIdx]))).json();
+  if (!data.ok || queue[0] !== item) return;
+  meta = data;
+  const f = data.frame, b = data.bbox;
+  box = { x1: b.x * f.w, y1: b.y * f.h, x2: (b.x + b.w) * f.w, y2: (b.y + b.h) * f.h };
+  drawBox();
 }
 
 function render() {
@@ -123,36 +204,42 @@ function render() {
   $('clipName').textContent = `${item.clip} · f${item.frame_index}`;
   $('provName').textContent = `${item.label} · ${item.provenance}`;
   $('progress').textContent = `${judged} checked · ${remaining} left`;
+  loadMeta(item);
   prefetch();
 }
 
+$('shot').addEventListener('load', drawBox);
+window.addEventListener('resize', drawBox);
+
+// ---- queue ----------------------------------------------------------------
+
 async function loadQueue(reset) {
-  const res = await fetch('/ball_check/queue?limit=60');
-  const data = await res.json();
+  const data = await (await fetch('/ball_check/queue?limit=60')).json();
   remaining = data.remaining;
   judged = data.judged;
   const seen = new Set(queue.map(keyOf));
-  const fresh = data.items.filter((i) => !seen.has(keyOf(i)));
-  queue = reset ? data.items : queue.concat(fresh);
+  queue = reset ? data.items : queue.concat(data.items.filter((i) => !seen.has(keyOf(i))));
   render();
 }
 
-function keyOf(i) { return `${i.clip}|${i.frame_index}|${i.box_index}`; }
+const keyOf = (i) => `${i.clip}|${i.frame_index}|${i.box_index}`;
 
-function flash(symbol, colour) {
+function flash(verdict) {
+  const marks = { ball: '✔', not_ball: '✖', box_off: '□', corrected: '✎', unsure: '?' };
+  const colours = { ball: '#3fb950', not_ball: '#f85149', box_off: '#d29922',
+                    corrected: '#1e90ff', unsure: '#d29922' };
   const el = $('verdictFlash');
-  el.textContent = symbol;
-  el.style.color = colour;
+  el.textContent = marks[verdict];
+  el.style.color = colours[verdict];
   el.style.opacity = '1';
   setTimeout(() => { el.style.opacity = '0'; }, 120);
 }
 
-async function judge(verdict) {
+async function judge(verdict, extra) {
   const item = queue[0];
   if (!item || busy) return;
   busy = true;
-  flash(verdict === 'ball' ? '✔' : verdict === 'not_ball' ? '✖' : '?',
-        verdict === 'ball' ? '#3fb950' : verdict === 'not_ball' ? '#f85149' : '#d29922');
+  flash(verdict);
   queue.shift();
   history.push(item);
   judged += 1;
@@ -164,7 +251,8 @@ async function judge(verdict) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         clip: item.clip, frame_index: item.frame_index, box_index: item.box_index,
-        bbox: item.bbox, label: item.label, provenance: item.provenance, verdict,
+        bbox: item.bbox, label: item.label, provenance: item.provenance,
+        verdict, ...(extra || {}),
       }),
     });
     $('status').textContent = '';
@@ -180,6 +268,30 @@ async function judge(verdict) {
   busy = false;
   if (queue.length < REFILL_AT) loadQueue(false);
   refreshStats();
+}
+
+async function saveBox() {
+  const item = queue[0];
+  if (!item || !box || !meta || busy) return;
+  const f = meta.frame;
+  const bbox = {
+    x: Math.min(box.x1, box.x2) / f.w,
+    y: Math.min(box.y1, box.y2) / f.h,
+    w: Math.abs(box.x2 - box.x1) / f.w,
+    h: Math.abs(box.y2 - box.y1) / f.h,
+  };
+  // A hand-dragged box is real human geometry, so it goes back to the sidecar
+  // as labeller GT through the review endpoint — not just a verdict.
+  const res = await (await fetch('/review/correct', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      clip: item.clip, frame_index: item.frame_index, box_index: item.box_index,
+      label: item.label, bbox,
+    }),
+  })).json();
+  if (!res.ok) { $('status').textContent = `Could not save: ${res.error || 'error'}`; return; }
+  judge('corrected', { corrected_bbox: bbox });
 }
 
 async function undo() {
@@ -202,29 +314,128 @@ async function undo() {
 async function refreshStats() {
   try {
     const s = await (await fetch('/ball_check/stats')).json();
-    $('precision').textContent =
-      s.precision === null ? '' : `precision ${(s.precision * 100).toFixed(0)}%`;
+    $('precision').textContent = s.precision === null ? ''
+      : `found ${Math.round(s.precision * 100)}% · clean ${Math.round(s.clean_precision * 100)}%`;
   } catch (err) { /* stats are decoration — never block labelling */ }
 }
 
+// ---- box dragging ---------------------------------------------------------
+
+let drag = null;      // {corner, startX, startY, orig}
+let pinch = null;     // {startDist, orig}
+const pointers = new Map();
+
+const pinchDist = () => {
+  const [a, b] = [...pointers.values()];
+  return Math.hypot(a.x - b.x, a.y - b.y);
+};
+
+function markEdited() {
+  if (edited) return;
+  edited = true;
+  $('rowEdit').classList.remove('hidden');
+  $('rowJudge').classList.add('hidden');
+  $('status').textContent = 'Box edited — save it as ground truth, or reset.';
+}
+
+function cornerAt(vx, vy) {
+  const [x1, y1] = toView(box.x1, box.y1);
+  const [x2, y2] = toView(box.x2, box.y2);
+  // Too small to have an interior: every press would land on a corner and the
+  // box could never be moved. Pinch resizes these instead.
+  if (Math.min(x2 - x1, y2 - y1) < 2.5 * HANDLE) return null;
+  const corners = [[x1, y1, 'x1', 'y1'], [x2, y1, 'x2', 'y1'],
+                   [x1, y2, 'x1', 'y2'], [x2, y2, 'x2', 'y2']];
+  for (const [cx, cy, kx, ky] of corners) {
+    if (Math.hypot(vx - cx, vy - cy) <= HANDLE) return [kx, ky];
+  }
+  return null;
+}
+
+$('overlay').addEventListener('pointerdown', (e) => {
+  if (!box || !meta) return;
+  const r = $('overlay').getBoundingClientRect();
+  const vx = e.clientX - r.left, vy = e.clientY - r.top;
+  pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (pointers.size === 2) {
+    drag = null;
+    pinch = { startDist: pinchDist() || 1, orig: { ...box } };
+    e.preventDefault();
+    return;
+  }
+  const corner = cornerAt(vx, vy);
+  const [x1, y1] = toView(box.x1, box.y1);
+  const [x2, y2] = toView(box.x2, box.y2);
+  const inside = vx >= x1 - HANDLE && vx <= x2 + HANDLE && vy >= y1 - HANDLE && vy <= y2 + HANDLE;
+  if (!corner && !inside) return;       // let the card handle the swipe
+  e.preventDefault();
+  $('overlay').setPointerCapture(e.pointerId);
+  drag = { corner, startX: vx, startY: vy, orig: { ...box } };
+});
+
+$('overlay').addEventListener('pointermove', (e) => {
+  if (pointers.has(e.pointerId)) pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (pinch && pointers.size === 2) {
+    e.preventDefault();
+    const factor = Math.max(0.2, Math.min(5, pinchDist() / pinch.startDist));
+    const o = pinch.orig;
+    const cx = (o.x1 + o.x2) / 2, cy = (o.y1 + o.y2) / 2;
+    const hw = ((o.x2 - o.x1) / 2) * factor, hh = ((o.y2 - o.y1) / 2) * factor;
+    box = { x1: cx - hw, y1: cy - hh, x2: cx + hw, y2: cy + hh };
+    markEdited();
+    drawBox();
+    return;
+  }
+  if (!drag) return;
+  e.preventDefault();
+  const r = $('overlay').getBoundingClientRect();
+  const vx = e.clientX - r.left, vy = e.clientY - r.top;
+  const [fx, fy] = toFrame(vx, vy);
+  const [ox, oy] = toFrame(drag.startX, drag.startY);
+  if (drag.corner) {
+    const [kx, ky] = drag.corner;
+    box = { ...drag.orig, [kx]: fx, [ky]: fy };
+  } else {
+    const dx = fx - ox, dy = fy - oy;
+    box = { x1: drag.orig.x1 + dx, y1: drag.orig.y1 + dy,
+            x2: drag.orig.x2 + dx, y2: drag.orig.y2 + dy };
+  }
+  markEdited();
+  drawBox();
+});
+
+const endDrag = (e) => {
+  if (e && e.pointerId !== undefined) pointers.delete(e.pointerId);
+  drag = null;
+  if (pointers.size < 2) pinch = null;
+};
+$('overlay').addEventListener('pointerup', endDrag);
+$('overlay').addEventListener('pointercancel', endDrag);
+
+// ---- controls -------------------------------------------------------------
+
 $('btnYes').onclick = () => judge('ball');
 $('btnNo').onclick = () => judge('not_ball');
+$('btnBoxOff').onclick = () => judge('box_off');
 $('btnUnsure').onclick = () => judge('unsure');
 $('btnUndo').onclick = undo;
+$('btnSave').onclick = saveBox;
+$('btnReset').onclick = () => { if (queue[0]) loadMeta(queue[0]); $('status').textContent = ''; };
 $('btnZoom').onclick = () => {
   padIdx = (padIdx + 1) % PADS.length;
   $('btnZoom').textContent = padIdx === PADS.length - 1 ? 'Zoom in' : 'Zoom out';
   render();
 };
 
-// Swipe: horizontal drag on the card, with the card following the finger.
+// Swipe: horizontal drag on the card, ignored while the box is being dragged.
 let startX = null, startY = null, dx = 0;
 const card = $('card');
 card.addEventListener('touchstart', (e) => {
+  if (drag) return;
   startX = e.touches[0].clientX; startY = e.touches[0].clientY; dx = 0;
 }, { passive: true });
 card.addEventListener('touchmove', (e) => {
-  if (startX === null) return;
+  if (startX === null || drag) return;
   dx = e.touches[0].clientX - startX;
   const dy = e.touches[0].clientY - startY;
   if (Math.abs(dx) < Math.abs(dy)) return;   // vertical scroll, not a swipe
@@ -232,7 +443,9 @@ card.addEventListener('touchmove', (e) => {
 }, { passive: true });
 card.addEventListener('touchend', () => {
   card.style.transform = '';
-  if (startX !== null && Math.abs(dx) > 70) judge(dx > 0 ? 'ball' : 'not_ball');
+  if (startX !== null && !drag && Math.abs(dx) > 70 && !edited) {
+    judge(dx > 0 ? 'ball' : 'not_ball');
+  }
   startX = null;
 });
 
@@ -240,7 +453,9 @@ card.addEventListener('touchend', () => {
 window.addEventListener('keydown', (e) => {
   if (e.key === 'ArrowRight' || e.key === 'y') judge('ball');
   else if (e.key === 'ArrowLeft' || e.key === 'n') judge('not_ball');
+  else if (e.key === 'ArrowUp' || e.key === 'b') judge('box_off');
   else if (e.key === 'ArrowDown' || e.key === 'u') judge('unsure');
+  else if (e.key === 's') saveBox();
   else if (e.key === 'z') undo();
 });
 
