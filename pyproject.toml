@@ -78,6 +78,7 @@ exclude = [
   "yolo11n.pt",
 ]
 
+[tool.ruff.lint]
 # Enable common rule sets: E,F (pycodestyle/pyflakes), I (isort), B (flake8-bugbear),
 # UP (pyupgrade), SIM (flake8-simplify), PL (pylint), C4 (flake8-comprehensions)
 select = [
