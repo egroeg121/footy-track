@@ -110,6 +110,9 @@ changed:
 
 - `ruff` checks the Python for mistakes and fixes what it safely can.
 - `ruff-format` lays the code out in the project style.
+- `codespell` spell-checks code and docs. Project terms such as MOT are
+  allowed.
+- `nbstripout` strips outputs from notebooks so they do not bloat the repo.
 - Small file checks: a newline at the end of each file, no trailing spaces,
   valid YAML and TOML, no leftover merge-conflict markers, and no file over
   500 KB.
