@@ -51,6 +51,7 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from footy_track.feature_store.ball_checks import import_ball_checks
 from footy_track.feature_store.importers import import_roboflow
 from footy_track.feature_store.schema import (
     DetectionRow,
@@ -62,6 +63,9 @@ from footy_track.feature_store.schema import (
 from footy_track.feature_store.store import FeatureStore
 
 DATASET_TAG = "ball_gt_marks"
+
+#: run_id prefix of every GT-sidecar import run; the only runs a replace touches.
+GT_RUN_PREFIX = "gt_import_"
 
 # Degrade-gracefully defaults when no local video is found for a clip.
 DEFAULT_FPS = 25.0
@@ -99,6 +103,7 @@ class GtImportReport:
     detections_written: int = 0
     by_source: dict[str, int] = field(default_factory=lambda: defaultdict(int))
     clips_missing_video: set[str] = field(default_factory=set)
+    detections_deleted: int = 0
 
 
 def _find_video(video_dir: Path, stem: str) -> Path | None:
@@ -150,8 +155,17 @@ def ingest_gt_jsonl(
     video_dir: Path,
     dry_run: bool = False,
     legacy_all_reviewed: bool = False,
+    replace: bool = True,
 ) -> GtImportReport:
-    """Import one ``<clip_stem>.jsonl`` GT-marks file into the store."""
+    """Import one ``<clip_stem>.jsonl`` GT-marks file into the store.
+
+    With ``replace`` (default) the sidecar is the source of truth for the clip:
+    in one transaction every existing ``gt_import_*`` detection/track_meta row
+    for the game is deleted, then the freshly parsed rows are inserted, so
+    corrections and deletions in the sidecar leave no ghost rows. Other runs
+    (roboflow, sam3, ...) are untouched. ``replace=False`` keeps the old
+    merge-only upsert behaviour.
+    """
     stem = jsonl_path.stem
     report = GtImportReport()
 
@@ -194,7 +208,7 @@ def ingest_gt_jsonl(
             else _PROVENANCE_TO_REVIEWED[prov_tag]
         )
         ct = frame_index / fps
-        run_id = f"gt_import_{prov_tag}"
+        run_id = f"{GT_RUN_PREFIX}{prov_tag}"
         key = (frame_index, source)
         det_id = len(dets_by_frame_source[key])
         dets_by_frame_source[key].append(
@@ -224,44 +238,49 @@ def ingest_gt_jsonl(
             report.by_source[source] += len(rows)
         return report
 
-    store.upsert_games([GameRow(game_id=stem, fps=fps, width=width, height=height)])
-    report.games.add(stem)
+    with store.transaction():
+        if replace:
+            report.detections_deleted = store.delete_run_rows(stem, GT_RUN_PREFIX)[
+                "detection"
+            ]
+        store.upsert_games([GameRow(game_id=stem, fps=fps, width=width, height=height)])
+        report.games.add(stem)
 
-    store.upsert_frames(
-        [
-            FrameRow(
-                game_id=stem,
-                frame_index=fi,
-                frame_uri=f"{stem}_frame_{fi:06d}",
-                width=width,
-                height=height,
-                continuous_time_s=fi / fps,
-            )
-            for fi in sorted(frame_indices)
-        ]
-    )
-    report.frames_written = len(frame_indices)
-
-    # One run row per provenance actually seen in this file.
-    seen_sources = {source for (_, source) in dets_by_frame_source}
-    for prov_tag, source in _PROVENANCE_TO_SOURCE.items():
-        if source not in seen_sources:
-            continue
-        store.upsert_runs(
+        store.upsert_frames(
             [
-                RunRow(
-                    run_id=f"gt_import_{prov_tag}",
-                    stage=Stage.DETECTION,
-                    source=source,
-                    model_name=prov_tag,
+                FrameRow(
+                    game_id=stem,
+                    frame_index=fi,
+                    frame_uri=f"{stem}_frame_{fi:06d}",
+                    width=width,
+                    height=height,
+                    continuous_time_s=fi / fps,
                 )
+                for fi in sorted(frame_indices)
             ]
         )
+        report.frames_written = len(frame_indices)
 
-    for (_, source), rows in dets_by_frame_source.items():
-        store.upsert_detections(rows)
-        report.detections_written += len(rows)
-        report.by_source[source] += len(rows)
+        # One run row per provenance actually seen in this file.
+        seen_sources = {source for (_, source) in dets_by_frame_source}
+        for prov_tag, source in _PROVENANCE_TO_SOURCE.items():
+            if source not in seen_sources:
+                continue
+            store.upsert_runs(
+                [
+                    RunRow(
+                        run_id=f"{GT_RUN_PREFIX}{prov_tag}",
+                        stage=Stage.DETECTION,
+                        source=source,
+                        model_name=prov_tag,
+                    )
+                ]
+            )
+
+        for (_, source), rows in dets_by_frame_source.items():
+            store.upsert_detections(rows)
+            report.detections_written += len(rows)
+            report.by_source[source] += len(rows)
 
     return report
 
@@ -274,6 +293,7 @@ def ingest_gt_dir(
     clip: str | None = None,
     dry_run: bool = False,
     legacy_all_reviewed: bool = False,
+    replace: bool = True,
 ) -> GtImportReport:
     total = GtImportReport()
     paths = sorted(gt_dir.glob("*.jsonl"))
@@ -286,7 +306,9 @@ def ingest_gt_dir(
             video_dir=video_dir,
             dry_run=dry_run,
             legacy_all_reviewed=legacy_all_reviewed,
+            replace=replace,
         )
+        total.detections_deleted += r.detections_deleted
         total.games |= r.games
         total.frames_written += r.frames_written
         total.detections_written += r.detections_written
@@ -312,12 +334,31 @@ def main(argv: list[str] | None = None) -> None:
         help="Roboflow YOLO dataset dir to import as source=hand_label (skipped if omitted)",
     )
     parser.add_argument(
+        "--ball-checks-dir",
+        type=Path,
+        default=None,
+        help=(
+            "Ball Check verdict logs (<clip>.jsonl). Default: <gt-dir>/ball_checks "
+            "if it exists. Applied after the sidecars: ball/corrected -> reviewed, "
+            "not_ball -> rejected negative (excluded from exported positives)."
+        ),
+    )
+    parser.add_argument(
         "--legacy-all-reviewed",
         action="store_true",
         help=(
             "Reproduce the original flush behavior: stamp reviewed=True on every "
             "imported row regardless of provenance tier. Default is per-tag tiering "
             "(labeller=reviewed, vittrack/yolo/sam3=unreviewed)."
+        ),
+    )
+    parser.add_argument(
+        "--replace",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help=(
+            "Default: a clip's sidecar replaces all its existing gt_import_* rows "
+            "(no ghost rows after corrections/deletions). --no-replace merges only."
         ),
     )
     args = parser.parse_args(argv)
@@ -335,7 +376,11 @@ def main(argv: list[str] | None = None) -> None:
         clip=args.clip,
         dry_run=args.dry_run,
         legacy_all_reviewed=args.legacy_all_reviewed,
+        replace=args.replace,
     )
+
+    bc_dir = args.ball_checks_dir or (args.gt_dir / "ball_checks")
+    bc_report = import_ball_checks(store, bc_dir, clip=args.clip, dry_run=args.dry_run)
 
     print("=== ingest_gt import report ===")
     if roboflow_report is not None:
@@ -348,6 +393,18 @@ def main(argv: list[str] | None = None) -> None:
     print(
         f"gt-marks detections={gt_report.detections_written} by_source={dict(gt_report.by_source)}"
     )
+    if gt_report.detections_deleted:
+        print(
+            f"replaced: deleted {gt_report.detections_deleted} existing gt_import_* detections"
+        )
+    if bc_report.clips:
+        print(
+            f"ball-checks clips={bc_report.clips} verdicts={bc_report.verdicts} "
+            f"by_verdict={dict(bc_report.by_verdict)} matched={bc_report.matched} "
+            f"unmatched={bc_report.unmatched} reviewed_marked={bc_report.reviewed_marked} "
+            f"rejected={bc_report.rejected} "
+            f"hand_label_conflicts={bc_report.hand_label_conflicts}"
+        )
     if gt_report.clips_missing_video:
         print(
             f"WARNING: {len(gt_report.clips_missing_video)} clip(s) had no local video "

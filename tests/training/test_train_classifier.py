@@ -7,9 +7,12 @@ returns a non-zero top-1 accuracy.
 
 from pathlib import Path
 
+import pytest
+
 from footy_track.scripts.train_classifier import train_classifier
 
 
+@pytest.mark.slow
 def test_train_classifier_smoke(classifier_dataset: Path, staged_workdir: Path) -> None:
     accuracy, weights_path = train_classifier(
         model_name="yolo11n-cls",

@@ -17,7 +17,7 @@ import json
 from io import StringIO
 from pathlib import Path
 
-from footy_track.trackers.base import TrackMeta, TrackedDetection
+from footy_track.trackers.base import TrackedDetection, TrackMeta
 
 
 class TrackingWriter:
@@ -96,9 +96,7 @@ class TrackingWriter:
                 "height": height,
                 "fps": fps,
             },
-            "tracks": {
-                str(m.track_id): m.to_dict() for m in meta
-            },
+            "tracks": {str(m.track_id): m.to_dict() for m in meta},
         }
         meta_path = output_dir / "tracks_meta.json"
         meta_path.write_text(json.dumps(sidecar, indent=2))

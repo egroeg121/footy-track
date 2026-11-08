@@ -15,6 +15,7 @@ from pathlib import Path
 
 import fiftyone as fo
 import pandas as pd
+import pytest
 
 from footy_track.output.exporters import SCHEMA_VERSION, MatchExporter
 from tests.output.conftest import MATCH_ID
@@ -216,6 +217,7 @@ class TestToCsv:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.slow  # fiftyone startup costs ~6-18s on first use
 class TestToFiftyOne:
     def _unique_name(self, suffix: str = "") -> str:
         return f"test_footy_track_{uuid.uuid4().hex[:8]}{suffix}"

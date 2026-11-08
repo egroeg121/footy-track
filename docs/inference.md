@@ -82,7 +82,7 @@ ground truth.
 
 ### Open decisions / revisit later
 
-Each of these has a `NOTE(revisit)` comment in the code where the decision lives.
+Each open item below has a `NOTE(revisit)` comment in the code where the decision lives (the last item is already fixed, so it has none).
 
 - **Ball start threshold (0.6).** A track only starts on a detection of 0.6 or
   more, because the 0.5-0.6 band is only about 42% precise. This and the other
@@ -97,6 +97,7 @@ Each of these has a `NOTE(revisit)` comment in the code where the decision lives
   detections-based tracker appears.
 - **`ball_track.jsonl` has no shared schema.** It stays a documented minimal
   format until the projection step needs to read it.
-- **Labeller detector ignores `predict_kwargs`.** `predict_from_path` in the
-  labeller's detector does not pass the configured confidence and image size.
-  That is being fixed in a separate change, not in this pipeline.
+- **Labeller detector ignored `predict_kwargs` (fixed).** `predict_from_path`
+  in the labeller's detector used to skip the configured confidence and image
+  size. That was fixed in a separate change (PR #29, merged), so the labeller
+  detector now honours them.

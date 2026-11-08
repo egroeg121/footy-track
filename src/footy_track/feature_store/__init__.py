@@ -6,7 +6,11 @@ detections from multiple sources, and tracks. See
 ``docs/design/feature_store.md``.
 """
 
-from footy_track.feature_store.difficulty import DifficultyReport, flag_for_review, score_detections
+from footy_track.feature_store.difficulty import (
+    DifficultyReport,
+    flag_for_review,
+    score_detections,
+)
 from footy_track.feature_store.importers import (
     ImportReport,
     import_labeller_json,
