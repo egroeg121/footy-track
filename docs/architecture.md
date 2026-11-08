@@ -1,239 +1,270 @@
-# Current architecture: what is wired, what works, what is unsolved
+# Architecture
 
-**Snapshot:** `origin/main` @ `658d63d` (2026-09-01), plus unmerged branches
-`feat/ball-check-mobile` (`5d4fc90`) and `fix/train-workers-cache` (`a9baacb`).
-**Written:** 2026-10-25, from reading the code. Where a doc and the code disagree,
-this page follows the code.
+_Reviewed against `main` @ 26d2506, 2026-11-08. Where a doc and the code disagree, this page follows the code. Open work is in the [TODO list](todo.md); measured numbers are in [Best pipeline and label needs](pipeline-and-labels.md); datasets are in [Datasets and labels](data.md)._
 
-**Rules for this page.** Every performance number has a source next to it: a file
-path, a results file, a commit, or a knowledge-base page (written `KB:<page>`, from
-George's `~/knowledge/wiki/`, which is not in this repo). A number with no artifact
-behind it is marked **unverified**. A number from a superseded setup is marked
-**superseded**. Stages with no working method are marked **UNSOLVED**.
+Every number has a source next to it (a file, a results file, a commit, or a knowledge-base page written `KB:<page>`; the knowledge base is George's `~/knowledge/wiki/` and is not in this repo). A number with no artifact behind it is **unverified**; one from a superseded setup is **superseded**. Stages with no working method are **UNSOLVED**. "Wired" means a script or server path actually reaches the code.
 
-A lot of code here is scaffolding that nothing calls. "Wired" means a script or
-server path actually reaches it.
+## 1. Overview
 
----
+footy-track turns broadcast football video into ball and player data. Today it is a set of scripts run by hand plus one FastAPI labelling server. There is no orchestrator (`metaflow/docker/Dockerfile` exists, no flow is defined).
 
-## 1. Pipeline
-
-```mermaid
-flowchart TD
-    V[Broadcast match video] --> SEG
-
-    subgraph OFFLINE["Batch path (scripts, run by hand)"]
-        SEG["split_broadcast_segments.py<br/>yolo11n-cls broadcast classifier<br/>(classifier.py, 0.987.pt)"]
-        SEG --> CLIPS[("Shot clips<br/>162 clips / 97,625 frames, ONE match")]
-        CLIPS --> DET["RT-DETR-L @ imgsz 1280<br/>rtdetr_1920_v11/best.pt<br/>(batch inference script NOT in repo)"]
-        DET --> ML[("machine_labels/*.jsonl on S3<br/>2,767,151 detections, conf >= 0.1<br/>TIER 3")]
-        ML --> TD["track_detections.py<br/>LapTracker: IoU + Hungarian<br/>conf 0.5, iou 0.15, max_age 90"]
-        TD --> TRK[("tracklets JSONL<br/>player + referee only")]
-        TRK --> SL["score_links.py + identity/linker.py<br/>gap bridging, ImageNet ResNet50<br/>merge / reject / ask"]
-        ML -. ball rows .-> BALL["Ball tracking<br/>UNSOLVED"]
-    end
-
-    subgraph HUMAN["Labelling server (labeller/server.py, FastAPI)"]
-        LAB["/labeller<br/>mark boxes, propagate with VitTrack"]
-        REV["/object_review<br/>crop review / correction"]
-        IDR["/identity, /identity/merge<br/>tracklet purity + pairwise merges"]
-        BC["/ball_check (branch only)<br/>phone yes/no on machine ball boxes"]
-    end
-
-    TRK --> IDR
-    SL --> IDR
-    ML -. candidates .-> BC
-    LAB --> GT[("ball_gt_marks/*.jsonl sidecars<br/>TIER 1 / 2")]
-    REV --> GT
-    BC --> GT
-    IDR --> IDL[("identity labels<br/>append-only log")]
-
-    GT --> FS[("Feature store<br/>DuckDB, feature_store/")]
-    RF[("Roboflow footy-track-detection<br/>v3, v11")] --> FS
-    FS --> EXP["export_training_dataset.py<br/>by-clip split, eval clips excluded"]
-    EXP --> TR["train_object_detector.py<br/>(ultralytics)"]
-    RF --> TR
-    TR --> DET
-
-    IDL -. "no consumer yet" .-> REID["Cross-clip identity / ReID<br/>UNSOLVED"]
-    REID -.-> PROJ["Projection to pitch<br/>scaffold, not wired"]
-    BALL -.-> PROJ
-    PROJ -.-> EVT["Event extraction<br/>not started"]
-    EVT -.-> OUT["output/exporters.py<br/>scaffold, not wired"]
-```
-
-Solid arrows are paths that run today. Dotted arrows are designed but not wired, or
-not working.
+1. A classifier cuts the match into broadcast-only shot clips.
+2. RT-DETR-L runs on every frame and writes **machine labels** (tier 3).
+3. Humans label and review in the labeller, writing GT sidecars (tier 1 and 2).
+4. GT sidecars and Roboflow sets go into a DuckDB **feature store**, which exports a by-clip YOLO dataset for training.
+5. Serving, projection to the pitch, event extraction and output are scaffolds that nothing calls.
 
 Two facts shape everything below:
 
-* **The corpus is one match.** All 162 clips in `machine_labels/` are
-  `arsenal_mancity_20250925` (`docs/design/player_reid.md` §0, M7). No number on
-  this page has been shown to generalise across matches.
-* **The live pipeline is a set of scripts run by hand.** There is no orchestrator.
-  `metaflow/docker/Dockerfile` and the `metaflow` dependency group exist, but no flow
-  is defined.
+- **The machine-labelled corpus is one match.** All 162 clips in `machine_labels/` are `arsenal_mancity_20250925` (`docs/design/player_reid.md` section 0, M7). No corpus-level number has been shown to generalise across matches.
+- **The production inputs are not in git.** The RT-DETR training command, the batch inference script, the machine-labels to ball-candidates filter and the clip-alias symlinks live outside the repo ([T-09](todo.md)).
 
----
+Provenance tiers (`labeller/README.md` section 1, `feature_store/ingest_gt.py:73-77`): `labeller` is tier 1 (human), `vittrack` plus the `human_checked` tag is tier 2, anything machine-only is tier 3.
 
-## 2. Per-stage status
+## 2. End-to-end data flow
 
-| Stage | Wired / best component | Numbers (source) | Alternatives that lost or are untested |
+Legend: grey is data on disk or S3, blue is code in the repo, orange dashed is a step that is not in git, red is an output nothing reads, purple is the `/ball_check` path.
+
+```mermaid
+flowchart TB
+  classDef code fill:#dbeafe,stroke:#2563eb,color:#111
+  classDef data fill:#e5e7eb,stroke:#6b7280,color:#111
+  classDef missing fill:#ffedd5,stroke:#ea580c,stroke-dasharray:5 3,color:#111
+  classDef dead fill:#fee2e2,stroke:#dc2626,color:#111
+  classDef bc fill:#ede9fe,stroke:#7c3aed,color:#111
+
+  VID[("Full match video")]:::data
+
+  subgraph INGEST["Ingest"]
+    SEG["split_broadcast_segments<br/>yolo11n-cls classifier"]:::code
+    CLIPS[("Shot clips .mp4<br/>3 name aliases")]:::data
+  end
+
+  subgraph MACHINE["Machine labels"]
+    RTD["RT-DETR-L batch inference<br/>imgsz 1280"]:::missing
+    ML[("machine_labels/*.jsonl<br/>2.77M boxes, S3")]:::data
+    FILT["ball row filter"]:::missing
+    CAND[("ball_candidates/*.jsonl<br/>357k rows")]:::data
+    EMB["embed_ball_candidates"]:::code
+    TRK["track_detections<br/>LapTracker"]:::code
+    TL[("tracklets/*.jsonl")]:::data
+    LINK["score_links"]:::code
+    LP[("link_proposals/")]:::dead
+  end
+
+  subgraph LABEL["Labeller server (FastAPI)"]
+    LAB["/labeller<br/>VitTrack propagation"]:::code
+    REV["/object_review"]:::code
+    BC["/ball_check<br/>mobile verdict page"]:::bc
+    IDR["/identity"]:::code
+  end
+
+  GT[("ball_gt_marks/&lt;clip&gt;.jsonl<br/>45 files, 22.6k rows")]:::data
+  VERD[("ball_checks/&lt;clip&gt;.jsonl<br/>364 verdicts")]:::dead
+  IDL[("identity_labels/")]:::dead
+
+  subgraph STORE["Feature store (DuckDB)"]
+    ING["ingest_gt<br/>top-level files only"]:::code
+    RFI["importers: Roboflow"]:::code
+    DB[("detection table<br/>26k rows, stale since Aug 4<br/>canonical view")]:::data
+  end
+
+  EXP["export_training_dataset<br/>split by clip name"]:::code
+  YOLO[("YOLO dataset")]:::data
+  TRAIN["train_object_detector<br/>defaults: imgsz 640, mps"]:::code
+  W[("best.pt / W&amp;B")]:::data
+  EVAL["ball_eval + run_bakeoff"]:::code
+  SERVE["Serving / output<br/>scaffolds, not wired"]:::dead
+
+  style INGEST fill:none,stroke:#9ca3af
+  style MACHINE fill:none,stroke:#9ca3af
+  style LABEL fill:none,stroke:#9ca3af
+  style STORE fill:none,stroke:#9ca3af
+
+  VID --> SEG --> CLIPS
+  CLIPS --> RTD --> ML
+  ML --> FILT --> CAND --> EMB
+  ML --> TRK --> TL
+  TL --> LINK --> LP
+  TL --> IDR --> IDL
+
+  CLIPS --> LAB
+  LAB --> GT
+  REV <--> GT
+  CAND --> BC
+  GT --> BC
+  EMB --> BC
+  BC -- "verdicts, append-only" --> VERD
+  BC -- "dragged box, tag labeller" --> GT
+
+  GT --> ING --> DB
+  RF[("Roboflow YOLO sets")]:::data --> RFI --> DB
+  DB -- "WHERE canonical" --> EXP --> YOLO --> TRAIN --> W
+  W --> EVAL
+  W -.-> SERVE
+```
+
+## 3. Where the pipeline silently goes wrong
+
+```mermaid
+flowchart TB
+  classDef bad fill:#fee2e2,stroke:#dc2626,color:#111
+  classDef ok fill:#e5e7eb,stroke:#6b7280,color:#111
+
+  V["ball_check verdict:<br/>not_ball"]:::ok --> VF[("ball_checks/*.jsonl")]:::ok
+  VF -. "ingest_gt never globs ball_checks/" .-> X1["verdict ignored"]:::bad
+  SC[("sidecar still holds the box")]:::ok --> EXPQ["export filters on canonical only"]:::ok --> POS["exported as a POSITIVE ball"]:::bad
+
+  S1["Labeller session edit"]:::ok --> STRIP["session.py keeps only label, model<br/>drops human_checked"]:::bad --> T3["every tier-2 box in the clip<br/>reverts to tier 3"]:::bad
+
+  RI["Re-ingest after a correction"]:::ok --> GH["old vittrack row stays canonical<br/>upsert never deletes"]:::bad --> BOTH["old and corrected box<br/>both exported"]:::bad
+
+  A1["mancity_seg050"]:::ok --- A2["arsenal_mancity_seg050"]:::ok --- A3["arsenal_mancity_20250925_seg050"]:::ok
+  A3 --> LEAK["split and eval exclusion use exact names<br/>eval footage can leak into training"]:::bad
+```
+
+Details and fixes are in section 7.
+
+## 4. Per-stage reference
+
+### 4.1 Status by stage
+
+| Stage | Wired component | Numbers (source) | Alternatives that lost or are untested |
 |---|---|---|---|
-| **Broadcast-frame filtering / shot segmentation** | `scripts/split_broadcast_segments.py` → `classifier.get_current_best_guess_classifier()` → yolo11n-cls `model_saves/classifier/20251226-yolo11n-cls/0.987.pt` | The "0.987" accuracy exists only in the filename (**unverified**; `notes.txt` says it was trained on dataset v6). Output quality: **0 interior camera cuts** in 3,175 frames over 5 clips (`player_reid.md` M1). | W&B run `aakevy06` (top1 0.981, v10 binary, `docs/training/notable_runs.md`). Its checkpoint dir `20260125-yolo11n-cls/` holds only a `.gitignore`, so it is not the one in use. The April Roboflow v10 reproductions reached 0.413 to 0.433 because of a train/val class mismatch (`notable_runs.md`, `docs/training.md`). `split_video.py` makes fixed-length chunks and is superseded. |
-| **Object detection** (player / referee / `in_play_ball`) | RT-DETR-L at `imgsz=1280`, `CURRENT_BEST_DETECTOR_CHECKPOINT = model_saves/detector/rtdetr_1920_v11/best.pt` (`detectors/ultralytics.py:36`; the weights are not in git) | **Ball:** mAP50 **.221** / recall **.209** on v11-val, 211 ball instances (code comment `detectors/ultralytics.py:37`; KB:footy-ball-detection-findings). **Disputed:** a handoff doc outside the repo gives .665 / .591 for the same weights. Neither figure has been re-measured (KB:footy-ball-detection-findings, "UNRESOLVED"). **Players:** median conf 0.919, 74.3% ≥ 0.5 on seg002 (`player_reid.md` M8). No player mAP for RT-DETR is recorded (**unverified**). **Throughput:** ~19.8 fps on an RTX 3060, `half=True, batch=8`; 97,625 frames → 2,767,151 detections in 82 min (KB:footy-labeller-gotchas). | yolo11s v3 @ 640 (`optuna_trial_1_…/best.pt`, still in git): ball recall **0.000** at 640 (code comment, bead ft-90o). yolo11n @ 1280, 3 epochs: ball mAP50 0.202, player 0.974 (KB:footy-ball-detection-findings, 2026-08-31). The v3-trained model scores 0.250 / 0.209 on v11-val against v11-trained 0.221 / 0.209, so 5.7× more ball labels bought nothing (same KB page). RT-DETR-L after 9 epochs: 0.314 / 0.283 (same KB page; which checkpoint that was is **unverified**). The SAM3 text-prompt detector (`UltralyticsSam3Detector`, used by `scripts/detect_objects.py`) has no metric (**unverified**). yolo11s/m/l at 1280, which would separate model size from architecture, are **untested**. |
-| **Ball tracking** (temporal) | **UNSOLVED.** Nothing is wired into the batch path. The only temporal ball component in use is VitTrack propagation inside the labeller (`labeller/video_utils.py`, `BackgroundLabeller` → `VitTrackVideoLabeller`). | VitTrack seeded from GT on `arsenal_example` stays on the ball for **9/176 frames (5%)**. Its confidence is a **constant 0.119**, the same on-ball and drifted (KB:footy-labeller-gotchas, measured 2026-08-29; also `pipeline_overview.md`). | Bake-off (`docs/bakeoff_results.json`, 2026-06-21): ROI-YOLO recall 1.4%, VitTrack 0%. **Invalid / superseded**: both ran on the 640px yolo11s checkpoint, which is blind to the ball, and VitTrack's `mean_fps` of 1,829,132 shows it never really ran. `MotionGuidedTracker` (`labeller/motion_tracker.py`): Kalman plus crop runner, not wired, no metric. SAM3 propagation (`Sam3VideoLabeller`): dead code. LapTracker on the ball made 82 track IDs over 90 tracked frames (`docs/ball_tracker_failure_analysis.md`, old detector, **superseded**). ByteTrack's low-confidence second pass and temporal heatmap models (TrackNet, YOLOFT) are **untested**, research only (KB:footy-ball-detection-findings; `docs/design/bidirectional_tracking_research.md`). |
-| **Player tracking within a clip** | `scripts/track_detections.py` → `trackers/lap.py::LapTracker` (IoU + `lap.lapjv`), defaults conf 0.5, iou 0.15, max_age 90, on precomputed RT-DETR detections, CPU only | seg000 (38k detections, 2,534 frames): **157 tracklets, median length 31, 9% singletons**, against 397 / 5 / 22% with the library defaults (`track_detections.py` docstring). Association failure: **4.5% of 1,604,326** consecutive-frame pairs across 162 clips (`identity/linker.py` docstring). Speed ~650 fps on a laptop CPU (`track_detections.py`; `pipeline_overview.md` says ~540). **Purity: unmeasured.** No ID-switch rate, HOTA or IDF1 exists. | `UltralyticsTracker` (ByteTrack / BoT-SORT, `trackers/ultralytics.py`, `scripts/track_objects.py`) has never been run against GT (**unverified**; `player_reid.md` §1). It also re-runs detection rather than reusing `machine_labels`. |
-| **Tracklet gap bridging** | `identity/linker.py` (temporal, spatial and team gates) + `scripts/score_links.py` (ImageNet ResNet50 cosine on crops next to the gap). Thresholds: merge ≥ 0.80, reject < 0.55, ask in between. max gap 12 frames. | Embedding AUC against guaranteed negatives, by gap: **0.912 @ 4 frames, 0.867 @ 12, 0.761 @ 25, 0.634 @ 200** (`identity/linker.py` docstring; the measurement script and data are not in the repo). The 0.55 / 0.80 thresholds have not been calibrated against human verdicts (**unverified**). | ReID-trained backbone: **untested** ("one-line swap", `score_links.py`). **Caveat:** the team gate is inert. `tracklets_from_rows()` never sets `Tracklet.team`, so `respect_team=True` filters nothing. |
-| **Team assignment** | **Not implemented in code.** | k=2 on torso HSV: **1.0% ambiguous**, n=1,253 crops, *one clip* (seg002) (`player_reid.md` M6). This was a one-off measurement; no module computes `team_id`. | None. |
-| **Cross-clip identity / ReID** | **UNSOLVED.** Only the human side exists: `/identity` review and merge pages (`labeller/identity_routes.py`), union-find with contradiction reporting (`identity/clusters.py`), and an append-only label store (`identity/store.py`). | ImageNet backbones give AUC 0.43 to 0.49 (chance) on cross-clip pairs (`pipeline_overview.md` only; no script or results, **unverified**). Jersey OCR is ruled out: median player box 52×111 px, so digits are about 10 to 18 px (`player_reid.md` M3). `pipeline_overview.md` says ~40% of tracklets have a frame ≥ 110 px and a human read a number at 102 px (**unverified**, no artifact). | ReID-trained embeddings (OSNet, SoccerNet-ReID): **untested**. A Gemini Flash purity pre-filter showed 70% agreement with collapsed confidence (`pipeline_overview.md` only; no code in the repo, **unverified**). |
-| **Pitch projection / calibration** | **UNSOLVED.** `projection/projector.py::PitchProjector` applies a given homography, but no calibration stage produces one, and nothing calls it. | None. | None. |
-| **Event extraction** | **Not started.** No code. | None. | None. |
-| **Output** | `output/exporters.py::MatchExporter` (parquet to FiftyOne / JSON / CSV) is a scaffold; nothing calls it. | None. | None. |
+| **Shot segmentation** | `scripts/split_broadcast_segments.py` with `classifier.get_current_best_guess_classifier()` (yolo11n-cls `model_saves/classifier/20251226-yolo11n-cls/0.987.pt`). Also run by the labeller `/ingest/run`. | The "0.987" exists only in the filename (**unverified**). Output quality: 0 interior cuts in 3,175 frames over 5 clips (`player_reid.md` M1). | W&B run `aakevy06` (top1 0.981, `docs/training/notable_runs.md`); its checkpoint dir holds only a `.gitignore`. `split_video.py` makes fixed-length chunks and is superseded. |
+| **Object detection** (player, referee, `in_play_ball`) | RT-DETR-L, `CURRENT_BEST_DETECTOR_CHECKPOINT = model_saves/detector/rtdetr_1920_v11/best.pt`, `DEFAULT_IMGSZ = 1280` (`detectors/ultralytics.py:36-43`). Weights are not in git. | **Ball: mAP50 .665, recall .591** on v11-val (211 balls), trained and validated at imgsz 1920 rect (`/mnt/storage/backups/vast5090_final_20260828-195228/exp5090_results.json`). Not measured at the served 1280 or on the v11 test split. 74% of v11-val balls are one clip. Players: median conf 0.919 on seg002 (`player_reid.md` M8); no RT-DETR player mAP recorded. Throughput about 19.8 fps on an RTX 3060, 97,625 frames to 2,767,151 detections in 82 min (KB:footy-labeller-gotchas). | yolo11n/m/l at 1280 scored .221/.451/.364 and lost to RT-DETR-L (.668) on the same split; the old ".221" attributed to this checkpoint was yolo11n. yolo11s v3 at 640 has ball recall 0.000 (still in git). The SAM3 text-prompt detector (`UltralyticsSam3Detector`) has no metric. Full table: [Best pipeline](pipeline-and-labels.md). |
+| **Ball tracking** | **UNSOLVED.** Nothing is wired into the batch path. Only temporal component: VitTrack propagation in the labeller (`labeller/video_utils.py`). | VitTrack seeded from GT stays on the ball for 9/176 frames (5%) with a constant confidence of 0.119 (KB:footy-labeller-gotchas). | Bake-off (`docs/bakeoff_results.json`) is **invalid**: it ran the 640px checkpoint, blind to the ball, and VitTrack's `mean_fps` of 1,829,132 shows it never ran. `MotionGuidedTracker` is not wired. ByteTrack second pass, Kalman and temporal heatmap models are **untested**. |
+| **Player tracking** (within a clip) | `scripts/track_detections.py` with `trackers/lap.py::LapTracker` (IoU and Hungarian, conf 0.5, iou 0.15, max_age 90) over machine labels, CPU. | seg000: 157 tracklets, median 31 frames, 9% singletons (against 397, 5, 22% with defaults). 4.5% of 1,604,326 consecutive-frame associations fail. About 650 fps (`track_detections.py:5`). **Purity, IDF1, HOTA: unmeasured.** | `trackers/ultralytics.py` (ByteTrack, BoT-SORT) re-runs detection and has never been run against GT. |
+| **Gap bridging** | `identity/linker.py` plus `scripts/score_links.py` (ImageNet ResNet50 cosine). Merge at 0.80 or more, reject below 0.55, max gap 12 frames. | AUC by gap: 0.912 at 4 frames, 0.867 at 12, 0.761 at 25, 0.634 at 200 (`linker.py` docstring; script and data not in repo). Thresholds uncalibrated. | ReID-trained backbone **untested**. Team gate is inert: `linker.py:125` needs `team`, which no code sets. |
+| **Team assignment** | Not implemented. | k=2 on torso HSV, 1.0% ambiguous, n=1,253 crops, one clip (`player_reid.md` M6). One-off measurement; no module sets `team_id`. | None. |
+| **Cross-clip identity / ReID** | **UNSOLVED.** Human side only: `/identity` and `/identity/merge` (`labeller/identity_routes.py`), union-find (`identity/clusters.py`), append-only store (`identity/store.py`). | ImageNet backbones give AUC 0.43-0.49, chance, cross-clip (`pipeline_overview.md`, **unverified**). Jersey OCR ruled out: median box 52x111 px (`player_reid.md` M3). | OSNet, SoccerNet-ReID: untested. |
+| **Projection, events, output** | `projection/projector.py`, `output/exporters.py`, `input/streams.py` are scaffolds nothing calls. Event extraction is not started. | None. | None. See [T-17](todo.md). |
 
----
+### 4.2 Entry points and formats
 
-## 3. Labellers, feature store, training, GPU
+| Stage | Entry points | Inputs | Outputs |
+|---|---|---|---|
+| Segmentation | `python -m footy_track.scripts.split_broadcast_segments`; labeller `/ingest/upload`, `/ingest/run` (`labeller/ingest.py`) | match video | broadcast-only MP4 runs plus manifest JSON |
+| Frame extraction | `python -m footy_track.scripts.extract_frames`, `split_video` | video | JPEG frames `<stem>_%06d` |
+| Batch detection | **not in repo** | clips | `machine_labels/<raw_stem>.jsonl` on S3 |
+| In-repo detection | `scripts/detect_objects.py` (SAM3 prompts, optional `--store_path`); labeller `/autodetect`, `/review/yolo` | frames | `FrameDetections` (pydantic, `schema.py`). Only the SAM3 script writes to the store. |
+| Player tracking | `scripts/track_detections.py`; `scripts/track_objects.py` (superseded) | machine labels JSONL | `tracklets/<clip>.jsonl`; neither writes to the store (`track_meta` has no writer) |
+| Gap bridging | `scripts/score_links.py` | tracklets, clips | `link_proposals/` (read by nothing) |
+| Box labeller | `uv run uvicorn footy_track.labeller.server:app`, or `python -m footy_track.labeller [--debug]` | clip MP4 (`FOOTY_CLIPS_DIR`), sidecar | `ball_gt_marks/<stem>.jsonl` |
+| Review | `/object_review` (`review.py`) | all sidecars | same sidecars, rewritten in place |
+| Ball check | `/ball_check` (`ball_check.py`, `candidates.py`, `web/ball_check.html`, `scripts/embed_ball_candidates.py`) | sidecars or `FOOTY_BALL_CANDIDATES_DIR`, `ball_embeddings/*.npz` | verdict log `ball_checks/<stem>.jsonl`; corrected boxes to the sidecar as `[label, "labeller"]` |
+| Identity | `/identity`, `/identity/merge` | `tracklets/` | `identity_labels/` (append-only) |
+| Feature store | `python -m footy_track.feature_store.ingest_gt --gt-dir --video-dir --db [--roboflow-dir]` | sidecars, Roboflow dir | DuckDB |
+| Export | `python -m footy_track.scripts.export_training_dataset` | store | YOLO dataset plus `data.yaml`; writes `dataset_tag` back to the store |
+| Training | `scripts/train_object_detector.py`, `train_classifier.py`, `optuna_sweep_object_detector.py` | Roboflow or local YOLO dir | weights, W&B |
+| Evaluation | `scripts/run_bakeoff.py`, `analyse_ball_tracker.py`, `build_eval_sidecars.py` (`ball_eval/`) | `eval_data/clips/*.jsonl` plus MP4 | `docs/bakeoff_results.json` |
 
-### Labellers
+## 5. Subsystems
 
-One FastAPI app, `src/footy_track/labeller/server.py`, started with
-`uv run uvicorn footy_track.labeller.server:app` or
-`python -m footy_track.labeller [--debug]`. Its canonical spec is
-`src/footy_track/labeller/README.md` (requirements LAB-nnn, linked to tests).
+### 5.1 Labeller
+
+One FastAPI app, `src/footy_track/labeller/server.py`. Its canonical spec is `src/footy_track/labeller/README.md` (requirements LAB-nnn, linked to tests); it is outside `docs_dir`, so it is not published here.
 
 | Page | What it does | State |
 |---|---|---|
-| `/labeller` | Hand-mark boxes, then propagate them with **VitTrack** (one SOT per object) over a WebSocket run | Works mechanically. For the ball, Run halts at frame 1 because the ball's confidence sits at 0.119 against a 0.30 threshold. This is the *safe* behaviour, because lowering the threshold would write off-ball boxes into GT (KB:footy-labeller-gotchas). |
-| `/object_review` | Grid and modal crop review, edit, re-run the detector | Works. Uses `get_current_best_detector`. |
-| `/ingest` | Clip ingestion | Broken (OPEN-1 in the labeller README). |
-| `/identity`, `/identity/merge` | Tracklet purity review, jersey grounding, pairwise merges | Works (commits `ceafa7a`..`8c78711`). No labels have been reported back as a metric yet. |
-| `/ball_check` | **Branch `feat/ball-check-mobile` only.** Phone-sized yes/no and drag-to-correct on RT-DETR ball candidates (356,812 candidates over 162 clips), confidence-stratified and self-steering (75% near the boundary, 25% uniform), with event dedupe (77,560 → 28,221 events on 40 clips) | Ten commits, about 3.6k lines with tests, not merged. Verdicts append to `<gt>/ball_checks/<clip>.jsonl`. It also fixes a real ingest bug: the `human_checked` tag was being read as the object class, which would have dropped 831 ball boxes (`ingest_gt.py` diff on the branch, commit messages). |
+| `/labeller` | Hand-mark boxes, propagate with VitTrack over a WebSocket run | Works mechanically. For the ball, Run halts at frame 1 (confidence 0.119 against the 0.30 handback in `video_utils.py:51,55`). This is the safe behaviour: lowering the threshold would write off-ball boxes into GT. |
+| `/object_review` | Grid and modal crop review, edit, re-run the detector | Works. |
+| `/ball_check` | Phone-sized yes/no and drag-to-correct on RT-DETR ball candidates (356,812 over 162 clips), confidence-stratified, 75% near the boundary and 25% uniform, event dedupe | Works. Its verdicts reach nothing downstream ([T-02](todo.md)). |
+| `/identity`, `/identity/merge` | Tracklet purity, jersey grounding, pairwise merges | Human side only. |
+| `/ingest` | Clip ingestion | Returns 500: `labeller/web/ingest.html` is missing (`server.py:160-162`, [T-18](todo.md)). |
 
-**Provenance** (labeller README §1; `identity/labels.py`): `labeller` is TIER 1
-(human), `vittrack` + `human_checked` is TIER 2, and anything machine-only is TIER 3.
-**Gotcha:** `review._parse_jsonl_box` reports `vittrack` boxes as provenance
-`labeller` (OPEN-3, pinned by tests), so filter on tags, not on that field
-(KB:footy-labeller-gotchas).
+Gotcha: `review._parse_jsonl_box` reports `vittrack` boxes as provenance `labeller` (OPEN-3, pinned by tests), so filter on tags, not on that field (KB:footy-labeller-gotchas).
 
-**Dead labeller code:** `labeller/app.py` (the old Streamlit "SAM3 Video Labeller",
-reached only from `scripts/run_labeller.py`), `Sam3VideoLabeller` in `video_utils.py`,
-and `_default_model_uri()`, which looks for SAM3 weights in iCloud paths.
-`BackgroundLabeller.submit()` ignores its `model_uri` and `imgsz` arguments.
+### 5.2 Feature store
 
-### Feature store (`src/footy_track/feature_store/`)
+DuckDB. Tables `game`, `frame`, `detection`, `track_meta`, `run`; views `frame_features`, `detections_enriched`, `tracks_enriched`. Detection key is `(game_id, source, run_id, frame_index, detection_id)` (`schema.py:301`). The `canonical` flag arbitrates per run group, not per row (`schema.py:19-71` docstring); all `gt_import_*` runs of a clip form one group (`schema.py:40-48`). Importers cover Roboflow YOLO sets (`hand_label`), labeller/SAM3 JSON and GT sidecars (`ingest_gt.py`). `export_training_dataset.py` writes a by-clip train/val[/test] split excluding eval clips, tested in `tests/feature_store/`. Parquet export exists (`store.py:270-326`) but no workflow uses it; DuckDB is primary. `game_id` is a clip stem for GT imports (`ingest_gt.py:202,227`), not a match.
 
-DuckDB over Parquet. Tables `game`, `frame`, `detection`, `track_meta` and `run`;
-views `frame_features`, `detections_enriched` and `tracks_enriched`. The detection key
-is `(game_id, source, run_id, frame_index, detection_id)`. The `canonical` flag
-arbitrates per run-batch, not per row (`schema.py` docstring, fix `d5d27e2`).
-Importers cover Roboflow YOLO datasets (`hand_label`), labeller/SAM3 JSON, and GT
-sidecars (`ingest_gt.py`). `export_training_dataset.py` writes a by-clip
-train/val[/test] split that excludes every eval clip; the split is tested in
-`tests/feature_store/test_roundtrip_fidelity.py` and
-`test_export_training_dataset.py`.
+Not ingested: the 2.77M machine labels, ball candidates, verdicts, tracklets, identity labels. `detection_id` is positional (`importers.py:228`, `ingest_gt.py:199`); the content-hash fix in `identity/stable_id.py` is never called. `difficulty.py` is never called.
 
-Gaps:
+### 5.3 Training
 
-* **The 2.77M RT-DETR detections are not ingested.** They live as JSONL on S3, and as
-  of 2026-09-24 no `feature_store.duckdb` existed on the Mac mini
-  (KB:footy-labeller-gotchas).
-* **`detection_id` is positional.** `importers.py` uses the row ordinal. The
-  content-hash fix in `identity/stable_id.py` exists, but nothing calls it.
-* **`difficulty.py`** (flagging rows for review) is not called by any script.
+- `scripts/train_object_detector.py` pulls Roboflow `footy-track-detection` or a `--local-dataset`. **Defaults are traps:** `--imgsz 640` (blind to the ball, `:56`) and `--device mps`; pass `--imgsz 1280` and your device ([T-06](todo.md)). It includes an MPS assigner workaround (`209f1bb`). `--workers` (default 8) and `--cache {ram,disk,none}` were added in 26d2506, whose message says "default 0 under WSL" while the code defaults to 8.
+- The RT-DETR-L training command that made the production checkpoint is not in any branch.
+- `scripts/optuna_sweep_object_detector.py` and `train_classifier.py` are older and unverified.
+- `.dvc/config:4` points at a macOS path (`/Users/georgebarnett/code/dvc-remote`).
+- The Vast.ai scripts KB:vast-ai-gpu-rental describes (`scripts/vast/*.sh`) are not in `main` or any remote branch (checked 2026-10-25).
 
-### Training
+## 6. Data formats that cross stage boundaries
 
-* `scripts/train_object_detector.py` uses the ultralytics `YOLO(...)` class and pulls
-  Roboflow `footy-track-detection` or a `--local-dataset`. **Defaults are traps:**
-  `--imgsz 640` (blind to the ball) and `--device mps`. Always pass `--imgsz 1280`.
-  It includes an MPS assigner workaround (`209f1bb`).
-* **The RT-DETR-L training command and the batch-inference script that produced
-  `machine_labels/` are not in any branch.** The production checkpoint cannot be
-  reproduced from the repo.
-* Branch `fix/train-workers-cache` (`a9baacb`, one file): adds `--workers` (default 8)
-  and `--cache {ram,disk,none}`, both behaviour-preserving. Measured on an RTX 2070:
-  workers 8 → 58.5 s, workers 12 → 57.6 s for 3 epochs at 640px, so the loader is not
-  the bottleneck (commit message). It is based on `8c78711` but conflicts with nothing
-  on main. Safe to merge.
-* `scripts/optuna_sweep_object_detector.py` and `scripts/train_classifier.py` are
-  older but still functional (**unverified**: not run for this page).
-* The DVC remote (`.dvc/config`) points at `/Users/georgebarnett/code/dvc-remote`, a
-  macOS path that does not exist on Linux (KB:footy-data-plane-reconciliation).
+There are six ball and box label formats and no module owns them:
 
-### Vast.ai GPU scripts
+1. **Labeller sidecar** `ball_gt_marks/<stem>.jsonl`: `bbox` and `center` as dicts, `tags = [label, provenance, *markers]`. Written by `session._box_line` (`session.py:309-317`), `review_correct` (`review.py:335-344`) and `ball_check._append_gt` (`ball_check.py:713-720`). Read by session, review, ball_check, `ingest_gt` and `build_eval_sidecars.py`, each with its own parser. Skip markers: `{bbox: null, tags: ["no_ball" | "not_broadcast"]}`.
+2. **Sparse centre GT** (`scripts/label_ball_centers.py`): `center` as a `[x, y]` list.
+3. **Eval sidecar** `eval_data/clips/<stem>.jsonl` (`ball_eval/dataset.py`): one row per frame, list `bbox` and `center`.
+4. **Machine labels and candidates**: dict `bbox`, plus `confidence`, `model_id`, `run_id`, `reviewed`, `tags = [label, "rtdetr"]`.
+5. **Verdict log** `ball_checks/<stem>.jsonl`: `{clip, frame_index, box_index, source, confidence, verdict, bbox, label, provenance, corrected_bbox, ts}`. Verdicts are `ball`, `not_ball`, `box_off`, `corrected`, `unsure`; undo appends a `verdict: null` tombstone.
+6. **Tracklets JSONL** and **identity label** logs.
 
-KB:vast-ai-gpu-rental describes `scripts/vast/{up,sync,down,provision,fix_dataset_paths}.sh`
-"in the footy-track repo". **They are not in `main` or in any remote branch** (checked
-every `origin/*` tree on 2026-10-25). They exist, if anywhere, only in a local clone.
-The recorded baseline from that page is: yolo11n, `imgsz=1280`, 1× RTX A4000 at about
-12 s/epoch with 2.0 of 16 GB used, which is about $0.02 for 50 epochs (not reproducible
-from this repo). Key design rules from the same page: install into the image's
-`/venv/main`, never a fresh venv; rsync the exact Roboflow v11 split rather than
-re-downloading it; and rewrite the absolute `path:` in `data.yaml` after every push.
+The parsers disagree. `review._parse_jsonl_box` and `session._restore_box_line` accept a list `bbox`; `ingest_gt` does `bbox["x"]` (`ingest_gt.py:210`), so a list bbox aborts the whole ingest, and it drops centre-only rows (`ingest_gt.py:184`) ([T-14](todo.md)).
 
----
+Environment variables: `FOOTY_CLIPS_DIR`, `FOOTY_GT_MARKS_DIR`, `FOOTY_BALL_CANDIDATES_DIR`, `FOOTY_MAX_CLIPS`, `FOOTY_DEBUG`. The data plane is `~/footy/footy_data` or `/mnt/storage/footy_data` (see [Datasets and labels](data.md)).
 
-## 4. Stale docs and unused code to ignore
+## 7. Known seams and risks
 
-**Docs that describe a pipeline that does not exist, or is superseded.** Trust this
-page, `docs/design/pipeline_overview.md`, `docs/design/player_reid.md` and
-`src/footy_track/labeller/README.md` over them.
+Severity: **H** silently corrupts training data or GT; **M** wrong results or lost work in a foreseeable workflow; **L** friction. Item ids link to the [TODO list](todo.md).
 
-| Doc | Why it is stale |
+| # | Sev | Seam | Where | TODO |
+|---|---|---|---|---|
+| S1 | H | The labeller session drops `human_checked`: it keeps only label and provenance on load and writes `[label, model]` on flush, so one edit in a clip turns every tier-2 box in it into tier 3. No test covers it. | `session.py:156-161, 309-317`; `ingest_gt.py:191-195` | T-01 |
+| S2 | H | Ball Check verdicts are not consumed. `ingest_gt` globs top-level `*.jsonl` only, and the export keeps `not_ball` and `box_off` boxes as positives (it filters on `canonical`, not on review status). | `ingest_gt.py:279`; `export_training_dataset.py:91-128` | T-02 |
+| S3 | H | Clip identity is not canonical. The same footage has up to three stems (`mancity_seg050`, `arsenal_mancity_seg050`, `arsenal_mancity_20250925_seg050`); the eval exclusion and by-clip split use exact names, so eval footage can reach training and one clip can sit in both train and val. | `ball_check.py:709-728`; `export_training_dataset.py:78-80, 362-368, 385-387` | T-03 |
+| S4 | H | Re-ingest leaves ghost rows: `_upsert` never deletes, and all `gt_import_*` runs of a clip are one canonical group, so the old row stays canonical next to the corrected box. | `store.py:197-220`; `schema.py:40-48`; `review.py:312-370` | T-04 |
+| S5 | M | Undoing a `corrected` card appends a tombstone but leaves the box written by `save_box`; re-correcting appends a second box. | `ball_check.html:351-365`; `ball_check.py:771-793` | T-05 |
+| S6 | M | Concurrent writers clobber each other: the session flush rewrites the whole sidecar from memory; review and ball_check rewrite or append to it; review's rewrites are not atomic. | `session.py:252-301`; `review.py:344, 367` | T-05 |
+| S7 | M | Box identity is positional (`(source, clip, frame, box_index)`), so deletes or reordering repoint old verdicts. | `ball_check.py:135-149`; `candidates.py:17-20` | T-04 |
+| S8 | M | The `reviewed` column has no consumer; tier-3 machine rows export by default, and `--sources` is the only tier control. | `export_training_dataset.py:32-34, 91-128` | T-02 |
+| S9 | M | `run_id` cannot separate machines: `ingest_gt` hardcodes `gt_import_<prov>`, so two machines' sidecars overwrite each other. | `ingest_gt.py:197, 253` | T-04 |
+| S10 | M | OPEN-3: provenance of vittrack reported as `labeller` in review. | `review.py:54-57, 104-108` | T-14 |
+| S11 | M | Producers not in git: RT-DETR batch inference, ball row filter, RT-DETR training command, clip-alias symlinks (`ballcheck_clips/`). | section 2 diagram | T-09 |
+| S12 | M | No committed eval for the production detector. The only eval GT clip, `eval_data/clips/mancity_seg104.jsonl`, has no MP4 next to it, and the bake-off used the 640 checkpoint. | `eval_data/clips/` | T-10 |
+| S13 | L | Unknown-tag fallbacks disagree: session `in_play_ball` (`session.py:156`), review `player` (`review.py:102`), `ingest_gt` the raw tag (`ingest_gt.py:141`). Session drops boxes on a `no_ball` frame; `ingest_gt` imports them. | as cited | T-14 |
+| S14 | L | Ball Check `remaining` subtracts rows from events (`ball_check.py:289`). | | |
+| S15 | L | A verdict POST failure (`{ok: false}`) is silently dropped by the page. | `ball_check.html:289-308` | T-05 |
+| S16 | L | `--legacy-all-reviewed` stamps everything reviewed; harmless only while `reviewed` is unused. | `ingest_gt.py:314-322` | |
+
+Outputs nothing consumes: `ball_checks/` verdicts, `identity_labels/` (except the clusters view), `link_proposals/`, `tracklets/` (identity pages only), the `reviewed` column, `difficulty.flag_for_review`, and the 2.77M machine labels (except as the Ball Check pool).
+
+Test gaps at stage boundaries: no CI runs tests ([T-08](todo.md)); no sidecar-to-store test; no session round-trip test for `human_checked`; no test that a verdict affects the store or export; no test for clip-alias leakage, for re-ingest after a correction, for undo of `corrected`, for concurrent flushes, or for list-`bbox` sidecars. 22 labeller requirements are marked UNTESTED-FRONTEND.
+
+## 8. Dead code, duplication, hardcoded paths
+
+**Nothing on a live path reaches** ([T-16](todo.md), [T-17](todo.md)): `labeller/app.py` (Streamlit), `labeller/_canvas_compat.py`, `scripts/run_labeller.py` and the streamlit dependencies; `Sam3VideoLabeller` and `_default_model_uri` (iCloud path, `video_utils.py:121`); `labeller/motion_tracker.py::MotionGuidedTracker`; `ball_trackers/roi_yolo.py` and `scripts/run_bakeoff.py`; `projection/`, `output/`, `input/streams.py`, `metaflow/`; `footy_track/logging.py`; the hello-world `footy_track:main`; `labelling.py`, `scripts/upload_*_frames.py`, `scripts/create_roboflow_v11.py`; `trackers/ultralytics.py`, `trackers/writer.py`, `scripts/track_objects.py`; `feature_store/difficulty.py`, `identity/stable_id.py`; `.playwright-mcp/` logs.
+
+`classifier.get_current_best_guess_classifier()` silently falls back to random labels if the checkpoint fails to load (`classifier.py:30-33`), loads at import time (`:148`), and hardcodes `device="mps"` (`:128`).
+
+**Duplicated helpers** ([T-14](todo.md)): box numbering in `review._read_all_boxes`, `review._iter_frame_box_lines` and `ball_check._sidecar_ball_boxes`; ball label sets in four places; provenance tag sets in three (`human_checked` is known only to `ingest_gt`); video lookup by stem in three places; the crop window in review and ball_check.
+
+**Hardcoded paths** ([T-19](todo.md)): `.dvc/config:4`; `scripts/run_bakeoff.py:26,28`; `labeller/video_utils.py:121`; `labeller/server.py:97-106` (iCloud GT fallback); `feature_store/ingest_gt.py:6-7` docstring (a Gas Town worktree); `scripts/export_training_dataset.py:179-212,509`; `scripts/embed_ball_candidates.py:18-20`; `scripts/score_links.py:167-171`; `eval_data/clips/*.mp4` (40 absolute symlinks); `classifier.py:128`.
+
+## 9. Docs that still disagree with the code
+
+These were checked on 2026-11-08 and are not fixed by this page ([T-11](todo.md)). Trust this page, [Best pipeline](pipeline-and-labels.md), `docs/design/pipeline_overview.md`, `docs/design/player_reid.md` and `labeller/README.md` over them.
+
+| Doc | Problem |
 |---|---|
-| `README.md` "Pipeline" section, `docs/pipeline_architecture.md`, `docs/index.md`, `docs/agent_guidelines.md` | 2025 InputConsumer → Processor → OutputProducer model. None of those classes exist. |
-| `docs/system_overview.md`, `docs/approach.md`, `docs/interfaces.md`, `docs/problem.md`, `docs/doc_review.md` | April 2026, before RT-DETR, 1280px, the labeller and identity work. `doc_review.md` audits only those April docs. |
-| `docs/system_design.md`, `docs/pipelines.md` | June 2026 "living" design, with OCR, calibration and event stages that have no code. Useful as intent, not as status. |
-| `docs/training.md` | 5-epoch and 50-epoch baselines at 640px, and classifier regressions. Superseded by the resolution findings. |
-| `docs/ball_tracker_failure_analysis.md`, `docs/bakeoff_results.json` | Run with the 640px yolo11s checkpoint, which is blind to the ball. The bake-off VitTrack row is empty (fps 1.8M). |
-| `docs/design/sam3_ball_labelling_gpu.md`, `docs/labeller_web_app_design.md`, `docs/labeller_timeline_design.md`, `docs/design/labeller_review_2026-06.md`, `docs/design/autolabelling_architecture_review.md` | SAM3-era labeller design. SAM3 was replaced by VitTrack (`f38ca2b`) and the motion-guided loop was never wired. `labeller_requirements.md` already redirects to the labeller README. |
-| `docs/design/tracking.md`, `docs/design/player_tracking_format.md` | April drafts. Partly implemented in `trackers/`, but `player_reid.md` replaces their reasoning. |
-| `docs/design/projection.md`, `docs/design/output.md`, `docs/design/input_live_stream.md` | Specs for scaffolds that nothing calls. |
-| `docs/development.md`, `src/footy_track/scripts/README.md` | Cover only `split_video` and `extract_frames`, with `uvx`/macOS instructions. |
-| `mkdocs.yml` nav | Publishes only the stale April docs listed above. |
+| `README.md` pipeline section, `docs/pipeline_architecture.md`, `docs/system_overview.md`, `docs/interfaces.md`, `docs/approach.md`, `docs/development.md:83-86` | Describe an InputConsumer, Processor, OutputProducer model; none of those classes exist. `development.md:67` names `main_entrypoint.py`, which does not exist. |
+| `README.md`, `docs/index.md:31` | `footy-track` is said to run the pipeline; it prints "Hello from footy-track!". |
+| `docs/data_formats.md:35`, `src/footy_track/scripts/README.md:21-60` | Name `footy-track-extract-frames` and `footy-track-split-video`; the only console script is `footy-track` (`pyproject.toml:44`). |
+| `docs/data_formats.md:11-20, 83-86` | Describe `data/<match>/...` and dataset version 3; the live layout is in [Datasets and labels](data.md) and v11 is in use. |
+| `docs/training.md:60-67` | Lists four trainer arguments; `--imgsz`, `--device`, `--batch`, `--no-amp`, `--local-dataset`, `--workers`, `--cache` are undocumented. |
+| `labeller/README.md` sections 11-12 | Say Ball Check writes nothing to the sidecars (it does, via `save_box`, `ball_check.py:651-729`); wrong verdict set, precision formula and crop window; focus 0.7 (code `candidates.py:63`: 0.98); handback 0.5 (code: 0.30); 138 tests (177 test functions); `step`, `save_box`, `crop_meta` endpoints undocumented. It also never mentions `human_checked`. |
+| `docs/design/feature_store.md:85-93, 117` | Say Parquet is the source of truth and `game` is a match. |
+| `docs/design/pipeline_overview.md:41, 45, 53` | LapTracker about 540 fps (code: 650); kit colour to `team_id` and per-player ids in the store are not implemented. |
+| `eval_data/README.md` | Says clips are MP4 plus JSONL pairs; `mancity_seg104.jsonl` has no MP4. |
+| `ingest_gt.py` docstring, `ball_check.py:11-15` docstring | Outdated tag form and "writes only to its own log". |
+| April docs: `approach.md`, `problem.md`, `doc_review.md`, `ball_tracker_failure_analysis.md`, `system_design.md`, `pipelines.md` and the SAM3-era labeller designs | Historical; `bakeoff_results.json` and the failure analysis rest on the 640px checkpoint. |
 
-**Code that nothing in the live path reaches:**
+## 10. Open questions
 
-* `labeller/app.py`, `scripts/run_labeller.py`, and `Sam3VideoLabeller` /
-  `_default_model_uri` in `labeller/video_utils.py` (old Streamlit / SAM3 path)
-* `labeller/motion_tracker.py::MotionGuidedTracker` (only its `Box`/`Detection` types are imported)
-* `ball_trackers/roi_yolo.py` and `scripts/run_bakeoff.py` (hardcoded macOS paths, 640px checkpoint)
-* `projection/`, `output/`, `input/streams.py` (live stream backend unimplemented), and `metaflow/`
-* `labelling.py` (Roboflow / SAM3 upload handler, used by notebooks and tests only), `scripts/upload_*_frames.py`, `scripts/create_roboflow_v11.py` (one-off)
-* `feature_store/difficulty.py`, `identity/stable_id.py` (correct, but unused)
-* `classifier.RandomClassifier`: `get_current_best_guess_classifier()` **silently falls back to random labels** if the checkpoint fails to load (for example a git-lfs pointer file). It is also evaluated at import time (`CURRENT_BEST_GUESS_CLASSIFIER_CLASS`), and `_model_infer` hardcodes `device="mps"`, so the segmenter is likely to fail or misbehave off a Mac (**unverified** at runtime).
-* `.playwright-mcp/` logs, and about 70 stale `origin/polecat/*` and `origin/georgeb/*` branches
-* Hardcoded macOS / iCloud paths remain in `scripts/run_bakeoff.py` and `video_utils._default_model_uri`. `eval_data/clips/*.mp4` are absolute symlinks to `/mnt/storage/footy_data`.
-
----
-
-## 5. Open questions, ranked
-
-1. **Is per-player identity actually needed downstream, or is team + role enough?**
-   This is cheap to answer and can delete the most expensive unsolved workstream
-   (`pipeline_overview.md` makes the same point).
-2. **What is the true ball detector number?** Re-measure `rtdetr_1920_v11/best.pt` at
-   `imgsz=1280` on a named, leak-free split with the `in_play_ball` instance count:
-   .221 or .665? Every ball decision depends on it. Also check `astonvilla_seg080` and
-   `bournemouth_1st_seg070`, which are in the training set (KB:footy-ball-detection-findings).
-3. **What replaces VitTrack for the ball?** The candidates are a ByteTrack-style
-   low-confidence second pass over the existing conf ≥ 0.1 detections (inference only,
-   no retrain), or a temporal multi-frame detector. Ball Check verdicts give the
-   per-confidence-band precision needed to choose the threshold. Merge
-   `feat/ball-check-mobile` first.
-4. **Is it model capacity or architecture?** Train yolo11s/m/l at 1280 against
-   RT-DETR-L on the same split. On Vast this is cheap (KB:vast-ai-gpu-rental).
-5. **What is LapTracker's real tracklet purity and ID-switch rate?** Only fragmentation
-   has been measured. The `/identity` review pages exist to measure purity, but no
-   result is recorded. Purity gates whether tracklets can be trusted as identity
-   training data.
-6. **Does a ReID-trained embedding separate same-team players across gaps longer than
-   0.5 s?** ImageNet AUC falls to 0.76 at 1 s and 0.63 at 8 s (`identity/linker.py`).
-   Also wire in team assignment, so the linker's team gate does something.
-7. **Can any of this be reproduced from the repo?** The RT-DETR training command, the
-   batch-inference script, the Vast scripts and the production checkpoint are all
-   outside git, and the DVC remote is a macOS path. Every result above currently
-   rests on one person's machines.
-8. **Generalisation:** every corpus-level number comes from one match
-   (Arsenal v Man City).
+1. Is per-player identity needed downstream, or are team and role enough? Cheap to answer, and could delete the most expensive unsolved workstream (`pipeline_overview.md`).
+2. What is the ball detector's number at the served resolution, on a split that spans matches? See [T-10](todo.md).
+3. What replaces VitTrack for the ball? A ByteTrack-style second pass over the stored conf 0.1+ detections is inference-only; see [Best pipeline](pipeline-and-labels.md).
+4. What are LapTracker's purity and ID-switch rates? Only fragmentation has been measured.
+5. Does a ReID-trained embedding separate same-team players across gaps longer than 0.5 s?
+6. Can any of this be reproduced from the repo? Not today ([T-09](todo.md)).
+7. Generalisation: every corpus-level number comes from one match.

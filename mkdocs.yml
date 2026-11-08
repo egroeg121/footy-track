@@ -6,31 +6,26 @@ theme:
 plugins:
   - search
 nav:
-  - Home: index.md
-  - Project status:
-      - TODO list: todo.md
-      - 2026-11 review:
-          - Overview: reviews/2026-11/index.md
-          - Architecture review: reviews/2026-11/architecture-review.md
-          - Architecture diagram: reviews/2026-11/architecture-diagram.md
-          - Dataset inventory: reviews/2026-11/dataset-inventory.md
-          - KB vs reality: reviews/2026-11/kb-vs-reality.md
-      - Current architecture: architecture.md
-  - Development:
-      - System Design: system_design.md
-      - System Overview: system_overview.md
-      - Getting Started: development.md
-      - Pipeline Architecture: pipeline_architecture.md
-      - Time Formats: timings.md
-      - Data Formats: data_formats.md
+  - Overview: index.md
+  - Architecture: architecture.md
+  - Pipeline and labels: pipeline-and-labels.md
+  - Data: data.md
+  - Training:
       - Training: training.md
       - Notable Training Runs: training/notable_runs.md
+  - Feature store: design/feature_store.md
   - Design:
       - Pipeline Overview: design/pipeline_overview.md
       - Player Re-ID: design/player_reid.md
-      - Feature Store: design/feature_store.md
-  - Contributing:
+      - System Design: system_design.md
+      - System Overview: system_overview.md
+      - Pipeline Architecture: pipeline_architecture.md
+      - Time Formats: timings.md
+      - Data Formats: data_formats.md
+  - Development:
+      - Getting Started: development.md
       - Agent Guidelines: agent_guidelines.md
+  - TODO: todo.md
 markdown_extensions:
   - admonition
   - toc:

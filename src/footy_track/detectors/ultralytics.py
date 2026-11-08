@@ -34,7 +34,11 @@ from .utils import (
 # experiment using it measured a detector effectively blind to the ball (bead ft-90o).
 # The metric is in the comment so a defeated checkpoint cannot quietly stay the default.
 CURRENT_BEST_DETECTOR_CHECKPOINT = (
-    "model_saves/detector/rtdetr_1920_v11/best.pt"  # v11 @1280: ball mAP50 .221 / recall .209
+    "model_saves/detector/rtdetr_1920_v11/best.pt"
+    # Trained at imgsz 1920 (rect), served at 1280. Ball mAP50 .665 / recall .591 on
+    # v11-val (211 balls, 74% from the one clip arsenal_example), from the training run's
+    # own validation at 1920. The old ".221 / .209" here was yolo11n on v11, not this
+    # checkpoint. Not yet measured at 1280 or on the v11 test split (docs/todo.md T-10).
 )
 
 # Resolution is the single biggest measured lever for ball detection (640 -> 1280 took
