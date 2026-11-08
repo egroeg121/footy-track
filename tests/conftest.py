@@ -4,7 +4,10 @@ Provides repository root, sample image path, and detector instances. Skips
 cleanly if the sample image or optional `transformers` dependency is missing.
 """
 
+import contextlib
 import random
+import shutil
+import tempfile
 from pathlib import Path
 
 import numpy as np
@@ -54,22 +57,31 @@ def extracted_frames(repo_root: Path) -> list[Path]:
     if frames_dir.exists() and any(frames_dir.iterdir()):
         return list(frames_dir.glob("*.png"))
 
-    frames_dir.mkdir(parents=True, exist_ok=True)
-    extract_frames.extract_frames(
-        input_path=video,
-        output_dir=frames_dir,
-        fps=1,
-        img_format="png",
-        quality=None,
-        start=None,
-        duration=None,
-        width=None,
-        height=None,
-        prefix=None,
-        start_number=0,
-        keyframes_only=False,
-        extra_ffmpeg_args=[],
-    )
+    # Several pytest-xdist workers can reach this point at once. Extract into a
+    # private directory and rename it into place, so no worker ever sees a
+    # half-filled frames directory (which gave 29 instead of 30 frames).
+    tmp_dir = Path(tempfile.mkdtemp(prefix="frames_", dir=frames_dir.parent))
+    try:
+        extract_frames.extract_frames(
+            input_path=video,
+            output_dir=tmp_dir,
+            fps=1,
+            img_format="png",
+            quality=None,
+            start=None,
+            duration=None,
+            width=None,
+            height=None,
+            prefix=None,
+            start_number=0,
+            keyframes_only=False,
+            extra_ffmpeg_args=[],
+        )
+        # If another worker won the race, use its directory.
+        with contextlib.suppress(OSError):
+            tmp_dir.rename(frames_dir)
+    finally:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
     return list(frames_dir.glob("*.png"))
 
 
