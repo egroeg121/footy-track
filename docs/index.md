@@ -59,6 +59,7 @@ uv run footy-track
   - Roboflow dataset structure (detection + classifier)
   - Required environment variables
 
+- **[How to contribute to the docs](contributing-docs.md)**
 - **[Agent Guidelines](agent_guidelines.md)**
   - Automated tooling rules
   - Repository conventions

@@ -25,6 +25,7 @@ nav:
   - Development:
       - Getting Started: development.md
       - Agent Guidelines: agent_guidelines.md
+      - How to contribute to the docs: contributing-docs.md
   - TODO: todo.md
 markdown_extensions:
   - admonition

@@ -89,3 +89,6 @@ See [Pipeline Architecture](pipeline_architecture.md) for detailed design inform
 
 ### Automated Tools
 When using automated tools or agents with this codebase, follow the guidelines in [Agent Guidelines](agent_guidelines.md) to maintain consistency.
+
+### Docs
+To change the docs, read [How to contribute to the docs](contributing-docs.md).

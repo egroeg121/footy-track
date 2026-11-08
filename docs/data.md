@@ -1,19 +1,19 @@
 # Datasets and labels
 
-_State as of 2026-11-08, checked on the Mac mini (host `mac-mini-i7`) against `main` @ 26d2506. Counts will drift; re-run the checks before relying on them._ For how the data moves through the system see [Architecture](architecture.md); for what is missing see the [TODO list](todo.md).
+_State as of 2026-11-08, checked on the Mac mini against `main` @ 26d2506. Counts will drift; re-run the checks before relying on them._ For how the data moves through the system see [Architecture](architecture.md); for what is missing see the [TODO list](todo.md).
 
 ## Where things live
 
 | Place | Contents |
 |---|---|
-| `/mnt/storage/footy_data` (45 GB, 18,716 files) | The real data root on the Mac mini. |
+| The data root (a local disk, 45 GB, 18,716 files) | The real data root on the main workstation. |
 | `~/code/footy_data` | A **dangling symlink** into iCloud. Do not use. |
-| `s3://georgebarnett-general-purpose/footy_data/` | 18,147 objects, 47.88 GB. Sibling prefixes `gpu_runs/` (18 objects, 795 MB), `models/` (3, 67 MB), `backups/`. |
+| `the private S3 bucket (prefix `footy_data/`)` | 18,147 objects, 47.88 GB. Sibling prefixes `gpu_runs/` (18 objects, 795 MB), `models/` (3, 67 MB), `backups/`. |
 | Desktop (WSL / Ubuntu) `~/code/footy_data` | About 44 GB per the KB; not checked here. The KB records the two machines diverging on `ball_gt_marks` in August; unverified. |
 | `~/footy/footy_data` | Where the labeller looks by default; override with `FOOTY_CLIPS_DIR`, `FOOTY_GT_MARKS_DIR`, `FOOTY_BALL_CANDIDATES_DIR` (`labeller/server.py:92-114`). |
-| `/home/george/code/data` | Only `arsenal_mancity_example_video.mp4` (1920x1080, 25 fps, 250 frames, 10 s). |
+| A `data/` directory beside the repo checkout | Only `arsenal_mancity_example_video.mp4` (1920x1080, 25 fps, 250 frames, 10 s). |
 
-Model weights are not in git: `rtdetr_1920_v11/best.pt` (66.8 MB) is on S3 `models/` and `gpu_runs/` and at `/mnt/storage/models/`. The SAM3 weights are in `model_saves/sam3/` (S3 has the complete `sam3.1_multiplex.pt`; the local copy is a partial download).
+Model weights are not in git: `rtdetr_1920_v11/best.pt` (66.8 MB) is on S3 `models/` and `gpu_runs/` and at `<storage>/models/`. The SAM3 weights are in `model_saves/sam3/` (S3 has the complete `sam3.1_multiplex.pt`; the local copy is a partial download).
 
 ## Datasets
 
@@ -49,7 +49,7 @@ Roboflow v11 `in_play_ball` instances, counted per file: train 1,010, valid 211,
 
 DuckDB (`duckdb==1.3.2`; open with `read_only=True`). Schema and rules are in [Architecture, section 5.2](architecture.md#52-feature-store) and [Feature store design](design/feature_store.md).
 
-- Newest copy: 2026-08-04, 4.2 MB, at `~/jobs/.mirror/footy_track/refinery/rig/data/feature_store.duckdb` (older: 2026-07-05, 3.4 MB, under `~/code/footy_track/refinery/rig/data/`). **Local only, not on S3, stale.**
+- Newest copy: 2026-08-04, 4.2 MB, in a local job-mirror directory (older: 2026-07-05, 3.4 MB, in the old rig data directory). **Local only, not on S3, stale.**
 - Contents: `detection` 26,364 rows; 34 of 41 games have detections; `frame` 1,869; 4 runs (`roboflow_v3`, `gt_import_labeller`, `gt_import_vittrack`, `gt_import_yolo`); `track_meta` 0 rows.
 - Ball rows: `vittrack` 857 (`reviewed=False`), `hand_label` reviewed 612, `roboflow_v3` 235, `yolo` 6, `ball` 1.
 - `game_id` is the clip stem (GT) or frame-filename stem (Roboflow). `game.source_video_uri` and `match_date` are NULL; `frame_uri` is NULL in samples. Clips are linked only by naming.

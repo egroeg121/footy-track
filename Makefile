@@ -65,3 +65,8 @@ pre-commit-staged: ## Run pre-commit on staged files only
 pcra: pre-commit-all
 pre-commit-all: ## Run pre-commit on all files
 	$(UV) run pre-commit run --all-files
+
+.PHONY: docs-check
+docs-check: ## Check Mermaid diagrams in docs/ and build the site
+	python3 scripts/check_docs_diagrams.py
+	uvx --with mkdocs-material mkdocs build -d /tmp/footy-site

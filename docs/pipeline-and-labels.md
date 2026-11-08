@@ -1,6 +1,6 @@
 # Best pipeline and label needs
 
-_Research of 2026-11-08 against `main` @ 26d2506. Evidence tags: **[V]** verified against code, data or run logs; **[H]** stated only in `/mnt/storage/tools/HANDOFF.md` (2026-08-28) or a doc, not re-checked; **[I]** inference._ Context: [Architecture](architecture.md), [Datasets and labels](data.md), [TODO list](todo.md).
+_Research of 2026-11-08 against `main` @ 26d2506. Evidence tags: **[V]** verified against code, data or run logs; **[H]** stated only in `<storage>/tools/HANDOFF.md` (2026-08-28) or a doc, not re-checked; **[I]** inference._ Context: [Architecture](architecture.md), [Datasets and labels](data.md), [TODO list](todo.md).
 
 ## Summary
 
@@ -26,7 +26,7 @@ Players are the easy part: yolo11n at 1280 reaches player mAP50 0.974 (KB:footy-
 
 ### Ball detector leaderboard
 
-v11-val, 215 images, 211 `in_play_ball`; Ultralytics val [V: `/mnt/storage/backups/vast_run_20260827-*/exp.log`, `vast5090_final_20260828-195228/exp5090.log`, `20260826-214555/trainlogs/{xeval.log,rtdetr_ep9_val.json}`].
+v11-val, 215 images, 211 `in_play_ball`; Ultralytics val [V: `<storage>/backups/vast_run_20260827-*/exp.log`, `vast5090_final_20260828-195228/exp5090.log`, `20260826-214555/trainlogs/{xeval.log,rtdetr_ep9_val.json}`].
 
 | Model, train imgsz, data, epochs | ball mAP50 | mAP50-95 | P | R | Weights exist? |
 |---|---|---|---|---|---|
@@ -75,7 +75,7 @@ Partly. The instance count is reasonable and val clips are disjoint from train a
 
 What the data says [H + I]: misses are dominated by long blind spells (one 51-frame gap holds 70% of `arsenal_example` misses; only 7% fall in 1-2 frame gaps), so a t-1 prior is estimated to buy about 0.585 to 0.62 recall. The larger lever is diversity; a tracker mainly buys precision. The CenterTrack run reached epoch 11/80 before the desktop reset and **no result is recorded**.
 
-Gaps between today and the target: no committed ball eval; no ball tracker in code; the producers are outside git (training command, batch inference, candidate filter, the temporal package, which exists only in `/mnt/storage/backups/temporal_work.tgz`, and the ft-1zq code, only on desktop-ubuntu); the held-out dense GT is too narrow to see a 0.03 gain; the label-plumbing seams corrupt exports; the 1920-train versus 1280-serve mismatch is unmeasured.
+Gaps between today and the target: no committed ball eval; no ball tracker in code; the producers are outside git (training command, batch inference, candidate filter, the temporal package, which exists only in `<storage>/backups/temporal_work.tgz`, and the ft-1zq code, only on the desktop machine); the held-out dense GT is too narrow to see a 0.03 gain; the label-plumbing seams corrupt exports; the 1920-train versus 1280-serve mismatch is unmeasured.
 
 ## 3. Label needs and gaps
 
@@ -114,7 +114,7 @@ The newest feature store (2026-08-04) predates the `human_checked` ingest fix, t
 3. **ByteTrack/Kalman ball association over existing machine labels**, with thresholds from the precision bands (0.7 or more near-certain; 0.6-0.7 about 0.79; below 0.6 at most 0.42). Run `analyse_ball_tracker.py` first to split detector misses from tracker misses ([T-20](todo.md)).
 4. **Diversity labelling on new matches** (Aston Villa, Bournemouth 2nd half, Norwich) with `/ball_check`, holding one full match out for eval; at about 3.3 s per card, 1,000 cards is about an hour ([T-13](todo.md), [T-21](todo.md)). Look at the 51-frame `arsenal_example` gap first.
 5. **Before any retrain through the store**, fix S1 to S4 ([T-01 to T-04](todo.md)) and make the export default to tier 1/2 ([T-22](todo.md)).
-6. Commit the missing producers and recover the ft-1zq code from desktop-ubuntu ([T-09](todo.md), [T-23](todo.md)); retrain RT-DETR-L at 1280 on v11 plus new-match labels and compare on the step 2 eval.
+6. Commit the missing producers and recover the ft-1zq code from the desktop machine ([T-09](todo.md), [T-23](todo.md)); retrain RT-DETR-L at 1280 on v11 plus new-match labels and compare on the step 2 eval.
 7. Only then: finish ft-1zq on a rented GPU, or a heatmap/YOLOFT detector if the tracker and diversity plateau.
 
 Do not bother with: tuning VitTrack thresholds or SAM3 (measured dead ends), 1920 resolution or bigger GPUs (1920 is about 1280), scaling YOLO (yolo11m/l lost), RF-DETR (caps below 1280).
