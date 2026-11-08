@@ -26,6 +26,9 @@ flowchart LR
     B --> BT[ball_track.jsonl]
 ```
 
+To use the pipeline from a browser (upload a whole match, get it cut into shots
+and tracked per clip), see [Inference web app](inference-web.md).
+
 ## Outputs
 
 All files are in `--out`. `frame_index` is the index in the source video.

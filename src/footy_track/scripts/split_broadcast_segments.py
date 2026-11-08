@@ -42,6 +42,7 @@ from rich.logging import RichHandler
 from tqdm import tqdm
 
 from footy_track.classifier import get_current_best_guess_classifier
+from footy_track.inference.pipeline import select_device
 from footy_track.schema import EnumBroadcastClassification
 
 logging.basicConfig(
@@ -62,7 +63,9 @@ def _check_ffmpeg() -> str:
 
 def _classify_frame(model, frame: np.ndarray) -> bool:
     """Return True if the classifier labels this frame as broadcast."""
-    result = model.predict(source=frame, device="mps", verbose=False)[0]
+    # Was hard-coded to "mps", which fails on every non-Apple machine (e.g. the
+    # CUDA box the inference web app runs on).
+    result = model.predict(source=frame, device=select_device(), verbose=False)[0]
     label = model.names[result.probs.top1]
     return label == EnumBroadcastClassification.YES.value
 

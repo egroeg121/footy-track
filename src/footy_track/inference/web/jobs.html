@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#0f1419" />
+<title>Inference jobs</title>
+<link rel="stylesheet" href="/infer/static/infer.css" />
+</head>
+<body>
+<header></header>
+<main>
+  <p id="empty" class="muted hidden">No jobs yet. <a href="/infer">Upload a video</a>.</p>
+  <table id="tbl" class="hidden">
+    <thead><tr><th>Video</th><th>Status</th><th class="hide-m">Clips</th>
+      <th class="hide-m">Started</th><th></th></tr></thead>
+    <tbody id="rows"></tbody>
+  </table>
+  <p id="error" class="err"></p>
+</main>
+<script src="/infer/static/infer.js"></script>
+<script>
+renderHeader("Jobs");
+const $ = (id) => document.getElementById(id);
+async function load() {
+  try {
+    const jobs = await api("/jobs");
+    $("empty").classList.toggle("hidden", jobs.length > 0);
+    $("tbl").classList.toggle("hidden", jobs.length === 0);
+    const rows = $("rows");
+    rows.replaceChildren();
+    for (const j of jobs) {
+      const del = el("button", { class: "secondary", onclick: async () => {
+        if (confirm("Delete this job and its files?")) {
+          try { await api("/jobs/" + j.id, { method: "DELETE" }); load(); }
+          catch (e) { $("error").textContent = e.message; }
+        } } }, "Delete");
+      del.disabled = ["queued", "running"].includes(j.status);
+      rows.append(el("tr", {},
+        el("td", {}, el("a", { href: "/infer/jobs/" + j.id }, j.name)),
+        el("td", {}, el("span", { class: "badge " + j.status }, j.status),
+           " ", el("span", { class: "muted" }, stageLine(j))),
+        el("td", { class: "hide-m" }, String(j.clips)),
+        el("td", { class: "hide-m" }, fmtDate(j.created)),
+        el("td", {}, del)));
+    }
+    $("error").textContent = "";
+  } catch (e) { $("error").textContent = e.message; }
+}
+load();
+setInterval(load, 3000);
+</script>
+</body>
+</html>

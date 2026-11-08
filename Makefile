@@ -46,6 +46,18 @@ docs-deploy: ## Deploy MkDocs to GitHub Pages
 	$(UV) run mkdocs gh-deploy
 
 # -----------------------------
+# Inference web app
+# -----------------------------
+
+.PHONY: infer-web
+infer-web: ## Serve the inference web app (HOST/PORT; needs detector weights)
+	$(UV) run python -m footy_track.inference.web --host $(or $(HOST),127.0.0.1) --port $(or $(PORT),8080)
+
+.PHONY: infer-web-fake
+infer-web-fake: ## DEV ONLY: serve the inference web app with a fake detector (no weights or GPU)
+	FOOTY_INFERENCE_FAKE=1 $(UV) run python -m footy_track.inference.web --port $(or $(PORT),8080)
+
+# -----------------------------
 # Tests
 # -----------------------------
 
