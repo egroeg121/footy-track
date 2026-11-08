@@ -64,7 +64,9 @@ class BallCheckReport:
     unmatched_keys: list[tuple] = field(default_factory=list)
 
 
-def _iou(a: tuple[float, float, float, float], b: tuple[float, float, float, float]) -> float:
+def _iou(
+    a: tuple[float, float, float, float], b: tuple[float, float, float, float]
+) -> float:
     ax, ay, aw, ah = a
     bx, by, bw, bh = b
     iw = min(ax + aw, bx + bw) - max(ax, bx)
@@ -114,69 +116,73 @@ def read_latest_verdicts(path: Path) -> dict[tuple[str, int, int], dict]:
     return out
 
 
-def _import_clip(
-    store: FeatureStore, clip: str, verdicts: dict, report: BallCheckReport, dry_run: bool
-) -> None:
-    conn = store._conn  # noqa: SLF001 - same package; needs UPDATE/DELETE
+def _load_ball_detections(store: FeatureStore, clip: str) -> dict[int, list[tuple]]:
+    """Ball-class detections of *clip* by frame: (source, run_id, det_id, x, y, w, h)."""
     in_clause = ", ".join("?" for _ in BALL_LABELS)
-    dets_by_frame: dict[int, list[tuple]] = defaultdict(list)
-    for row in conn.execute(
+    by_frame: dict[int, list[tuple]] = defaultdict(list)
+    rows = store._conn.execute(  # noqa: SLF001 - same package
         f"SELECT frame_index, source, run_id, detection_id, bbox_x, bbox_y, bbox_w, bbox_h "
         f"FROM detection WHERE game_id = ? AND lower(label) IN ({in_clause})",
         [clip, *BALL_LABELS],
-    ).fetchall():
-        dets_by_frame[row[0]].append(row[1:])
+    ).fetchall()
+    for row in rows:
+        by_frame[row[0]].append(row[1:])
+    return by_frame
 
-    review_rows: list[list] = []
-    reviewed_keys: set[tuple] = set()
-    for (vsource, frame_index, box_index), rec in sorted(verdicts.items()):
-        verdict = rec["verdict"]
-        report.verdicts += 1
-        report.by_verdict[verdict] += 1
-        bbox = _xywh(rec.get("bbox"))
-        probes = [b for b in (_xywh(rec.get("corrected_bbox")), bbox) if b is not None]
 
-        best: tuple[float, tuple] | None = None
-        for det in dets_by_frame.get(frame_index, ()):
-            dbox = (det[3], det[4], det[5], det[6])
-            iou = max((_iou(p, dbox) for p in probes), default=0.0)
-            if iou >= MATCH_IOU and (best is None or iou > best[0]):
-                best = (iou, det)
+def _best_match(rec: dict, dets: list[tuple]) -> tuple[float, tuple] | None:
+    """Highest-IoU detection (>= MATCH_IOU) for a verdict record, or None."""
+    probes = [
+        b for b in (_xywh(rec.get("corrected_bbox")), _xywh(rec.get("bbox"))) if b
+    ]
+    best: tuple[float, tuple] | None = None
+    for det in dets:
+        iou = max((_iou(p, det[3:7]) for p in probes), default=0.0)
+        if iou >= MATCH_IOU and (best is None or iou > best[0]):
+            best = (iou, det)
+    return best
 
-        m_source = m_run = m_id = m_iou = None
-        if best is None:
-            report.unmatched += 1
-            report.unmatched_keys.append((clip, vsource, frame_index, box_index, verdict))
-            LOGGER.info(
-                "ball_check verdict %s has no matching detection: %s f%s %s#%s",
-                verdict, clip, frame_index, vsource, box_index,
-            )
-        else:
-            m_iou, det = best
-            m_source, m_run, m_id = det[0], det[1], det[2]
-            if verdict == "not_ball" and vsource == "cand" and m_source == "hand_label":
-                # Verdict was on a detector candidate; the matching box is
-                # human-drawn GT. Don't let one demote the other.
-                report.hand_label_conflicts += 1
-                m_source = m_run = m_id = None
-                m_iou = None
-                report.unmatched += 1
-            else:
-                report.matched += 1
-                if verdict == "not_ball":
-                    report.rejected += 1
-                elif verdict in REVIEWED_VERDICTS:
-                    reviewed_keys.add((m_source, m_run, m_id, frame_index))
 
-        bx = bbox or (None, None, None, None)
-        review_rows.append(
-            [clip, vsource, frame_index, box_index, verdict, rec.get("ts"),
-             rec.get("label"), *bx, m_source, m_run, m_id, m_iou]
+def _resolve_verdict(
+    key: tuple[str, int, int],
+    rec: dict,
+    dets: list[tuple],
+    report: BallCheckReport,
+    clip: str,
+) -> tuple[tuple | None, float | None]:
+    """Match one verdict, update the report; return (matched det, iou)."""
+    vsource, frame_index, box_index = key
+    verdict = rec["verdict"]
+    best = _best_match(rec, dets)
+    if best is None:
+        report.unmatched += 1
+        report.unmatched_keys.append((clip, vsource, frame_index, box_index, verdict))
+        LOGGER.info(
+            "ball_check verdict %s has no matching detection: %s f%s %s#%s",
+            verdict,
+            clip,
+            frame_index,
+            vsource,
+            box_index,
         )
+        return None, None
+    iou, det = best
+    if verdict == "not_ball" and vsource == "cand" and det[0] == "hand_label":
+        # Verdict was on a detector candidate; the matching box is human-drawn
+        # GT. Don't let one demote the other.
+        report.hand_label_conflicts += 1
+        report.unmatched += 1
+        return None, None
+    report.matched += 1
+    if verdict == "not_ball":
+        report.rejected += 1
+    return det, iou
 
-    report.reviewed_marked += len(reviewed_keys)
-    if dry_run:
-        return
+
+def _write_clip(
+    store: FeatureStore, clip: str, review_rows: list[list], reviewed: set[tuple]
+) -> None:
+    conn = store._conn  # noqa: SLF001 - same package; needs UPDATE/DELETE
     conn.execute("BEGIN")
     try:
         conn.execute("DELETE FROM detection_review WHERE game_id = ?", [clip])
@@ -185,16 +191,57 @@ def _import_clip(
                 "INSERT INTO detection_review VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 review_rows,
             )
-        for src, run, did, fi in reviewed_keys:
+        for src, run, did, fi in reviewed:
             conn.execute(
-                "UPDATE detection SET reviewed = TRUE WHERE game_id = ? AND frame_index = ? "
-                "AND source = ? AND run_id = ? AND detection_id = ?",
+                "UPDATE detection SET reviewed = TRUE WHERE game_id = ? "
+                "AND frame_index = ? AND source = ? AND run_id = ? AND detection_id = ?",
                 [clip, fi, src, run, did],
             )
         conn.execute("COMMIT")
     except Exception:
         conn.execute("ROLLBACK")
         raise
+
+
+def _import_clip(
+    store: FeatureStore,
+    clip: str,
+    verdicts: dict,
+    report: BallCheckReport,
+    dry_run: bool,
+) -> None:
+    dets_by_frame = _load_ball_detections(store, clip)
+    review_rows: list[list] = []
+    reviewed: set[tuple] = set()
+    for key, rec in sorted(verdicts.items()):
+        vsource, frame_index, box_index = key
+        verdict = rec["verdict"]
+        report.verdicts += 1
+        report.by_verdict[verdict] += 1
+        det, iou = _resolve_verdict(
+            key, rec, dets_by_frame.get(frame_index, []), report, clip
+        )
+        if det is not None and verdict in REVIEWED_VERDICTS:
+            reviewed.add((det[0], det[1], det[2], frame_index))
+        bx = _xywh(rec.get("bbox")) or (None, None, None, None)
+        m = det[:3] if det is not None else (None, None, None)
+        review_rows.append(
+            [
+                clip,
+                vsource,
+                frame_index,
+                box_index,
+                verdict,
+                rec.get("ts"),
+                rec.get("label"),
+                *bx,
+                *m,
+                iou,
+            ]
+        )
+    report.reviewed_marked += len(reviewed)
+    if not dry_run:
+        _write_clip(store, clip, review_rows, reviewed)
 
 
 def import_ball_checks(

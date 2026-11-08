@@ -337,6 +337,7 @@ store/
   frame/game_id=<id>/part.parquet
   detection/game_id=<id>/source=<src>/run_id=<rid>/part.parquet
   track_meta/game_id=<id>/source=<src>/run_id=<rid>/part.parquet
+  detection_review/game_id=<id>/part.parquet   # Ball Check verdicts, see 6.2
   frame_embedding/game_id=<id>/part.parquet
   masks/game_id=<id>/<frame>__<detection_id>.png   # mask_ref targets
 ```
@@ -396,6 +397,15 @@ positives by default (the exporter has no negatives/background concept, so they
 are just dropped); `--include-rejected` keeps them. Rows with no verdict are
 unaffected.
 
+**Known limitation.** The exclusion joins on the *stored* `detection_id`
+(positional per frame/source). If a sidecar is edited so boxes shift position
+and is re-ingested without re-running the verdict importer, a `not_ball`
+verdict can point at the wrong box. Re-run `ingest_gt` (which re-imports
+verdicts) to refresh. The follow-up TODO "match verdicts to detections at
+export time (by overlap) instead of by stored detection_id" removes this;
+`test_export_survives_reingest_after_boxes_shift` (strict xfail) encodes the
+intended behaviour.
+
 ---
 
 ## 7. Idempotency, keys, and write protocol
@@ -405,6 +415,7 @@ unaffected.
   - `frame(game_id, frame_index)`
   - `detection(game_id, source, run_id, frame_index, detection_id)`
   - `track_meta(game_id, source, run_id, track_id)`
+  - `detection_review(game_id, vsource, frame_index, box_index)` (§6.2)
   - `run(run_id)`
 - **Upsert semantics**: ingestion is `INSERT … ON CONFLICT DO UPDATE`
   (DuckDB) / partition-replace (Parquet). Re-ingesting an identical run is a

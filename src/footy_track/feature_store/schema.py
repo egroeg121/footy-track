@@ -429,4 +429,11 @@ VIEWS: tuple[str, ...] = (
 )
 
 # Logical order in which tables are exported/imported as Parquet partitions.
-TABLES: tuple[str, ...] = ("game", "run", "frame", "detection", "track_meta")
+TABLES: tuple[str, ...] = (
+    "game",
+    "run",
+    "frame",
+    "detection",
+    "track_meta",
+    "detection_review",
+)
