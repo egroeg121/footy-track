@@ -480,6 +480,15 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#checks-before-you-commit" class="md-nav__link">
+    <span class="md-ellipsis">
+      Checks before you commit
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -807,6 +816,15 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#checks-before-you-commit" class="md-nav__link">
+    <span class="md-ellipsis">
+      Checks before you commit
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -868,8 +886,11 @@ uv<span class="w"> </span>run<span class="w"> </span>mkdocs<span class="w"> </sp
 </code></pre></div>
 <p>The documentation will be available at http://127.0.0.1:8000 when serving locally.</p>
 <h3 id="running-tests">Running Tests<a class="headerlink" href="#running-tests" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code>uv<span class="w"> </span>run<span class="w"> </span>pytest
+<div class="highlight"><pre><span></span><code>uv<span class="w"> </span>run<span class="w"> </span>pytest<span class="w">        </span><span class="c1"># everything (also: make tests)</span>
+make<span class="w"> </span>test-fast<span class="w">       </span><span class="c1"># skips tests marked slow or needs_weights</span>
 </code></pre></div>
+<p>Tests marked <code>needs_weights</code> skip themselves when the model weights
+(e.g. <code>model_saves/sam3/sam3.pt</code>) have not been pulled from DVC/LFS.</p>
 <h3 id="code-organization">Code Organization<a class="headerlink" href="#code-organization" title="Permanent link">&para;</a></h3>
 <div class="highlight"><pre><span></span><code>football-scan/
 ├── docs/               # Documentation
@@ -895,6 +916,74 @@ uv<span class="w"> </span>run<span class="w"> </span>mkdocs<span class="w"> </sp
 <p>See <a href="../pipeline_architecture/">Pipeline Architecture</a> for detailed design information.</p>
 <h3 id="automated-tools">Automated Tools<a class="headerlink" href="#automated-tools" title="Permanent link">&para;</a></h3>
 <p>When using automated tools or agents with this codebase, follow the guidelines in <a href="../agent_guidelines/">Agent Guidelines</a> to maintain consistency.</p>
+<h2 id="checks-before-you-commit">Checks before you commit<a class="headerlink" href="#checks-before-you-commit" title="Permanent link">&para;</a></h2>
+<p>Two kinds of automatic check protect <code>main</code>: small, fast ones that run on your
+machine each time you commit, and a fuller set that runs on GitHub for every
+pull request (PR). The fast ones catch most mistakes before anyone else sees
+them.</p>
+<p><strong>One-time setup.</strong> Run <code>make hooks</code>. This installs a git hook using
+<code>uvx pre-commit</code>, so there is nothing new to add to the project.</p>
+<p><strong>What runs when you commit.</strong> Each commit runs these hooks on the files you
+changed:</p>
+<ul>
+<li><code>ruff</code> checks the Python for mistakes and fixes what it safely can.</li>
+<li><code>ruff-format</code> lays the code out in the project style.</li>
+<li><code>codespell</code> spell-checks code and docs. Project terms such as MOT are
+  allowed.</li>
+<li><code>nbstripout</code> strips outputs from notebooks so they do not bloat the repo.</li>
+<li>Small file checks: a newline at the end of each file, no trailing spaces,
+  valid YAML and TOML, no leftover merge-conflict markers, and no file over
+  500 KB.</li>
+</ul>
+<p>If a hook changes a file, the commit stops. Look at the change, <code>git add</code> the
+files again and commit again. If a hook reports a problem it cannot fix, fix it
+by hand and commit again.</p>
+<p><strong>Run everything yourself.</strong></p>
+<div class="highlight"><pre><span></span><code>make<span class="w"> </span>check<span class="w">    </span><span class="c1"># lint + fast tests, the same things CI runs</span>
+make<span class="w"> </span>lint<span class="w">     </span><span class="c1"># ruff check + ruff format --check only</span>
+make<span class="w"> </span>format<span class="w">   </span><span class="c1"># let ruff fix formatting and simple lint problems</span>
+</code></pre></div>
+<p><strong>What runs on GitHub.</strong> Every PR, and every push to <code>main</code>, runs three jobs:</p>
+<table>
+<thead>
+<tr>
+<th>Job</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>lint</code></td>
+<td>Runs the pre-commit hooks on every file in the repo.</td>
+</tr>
+<tr>
+<td><code>tests</code></td>
+<td>Installs the project and runs <code>make test-fast</code> (skips slow tests and tests that need model weights or API keys).</td>
+</tr>
+<tr>
+<td><code>docs</code></td>
+<td>Builds the docs site, to catch broken pages. It is not strict yet, because <code>system_design.md</code> has two known broken links.</td>
+</tr>
+</tbody>
+</table>
+<p>A new push to the same branch cancels the run that is still going.</p>
+<pre class="mermaid"><code>flowchart TD
+  classDef you fill:#dbeafe,stroke:#2563eb,color:#111
+  classDef auto fill:#e5e7eb,stroke:#6b7280,color:#111
+  A["Edit code and docs"]:::you --&gt; B["git commit:&lt;br/&gt;pre-commit hooks run"]:::auto
+  B --&gt;|"a hook fails or fixes a file"| A
+  B --&gt;|"all hooks pass"| C["git push and open a PR"]:::you
+  C --&gt; D["CI runs: lint, tests, docs build"]:::auto
+  D --&gt;|"a job fails"| A
+  D --&gt;|"all jobs pass"| E["Review"]:::you
+  E --&gt; F["Merge to main"]:::you
+  F --&gt; G["Docs deploy to GitHub Pages"]:::auto</code></pre>
+<p>Legend: blue boxes are things you do; grey boxes happen by themselves. The
+arrows going back to "Edit" show that a failed check sends you back to fix it.</p>
+<p>Never skip the hooks with <code>git commit --no-verify</code>. If a check is wrong, fix
+the check in its own PR.</p>
+<p>Planned: once the docs branch with <code>scripts/check_docs_diagrams.py</code> is merged,
+add a hook that runs it on changed docs.</p>
 
 
 
