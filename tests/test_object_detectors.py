@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -28,6 +29,45 @@ def yolo_detector() -> UltralyticsObjectDetector:
 def sam3_detector() -> UltralyticsSam3Detector:
     """One SAM3 detector shared by all tests (CPU model build is ~40s+)."""
     return UltralyticsSam3Detector()
+
+
+class _FakeYOLO:
+    """Stand-in for ultralytics.YOLO: records predict() kwargs, needs no weights."""
+
+    names = {0: "person"}
+
+    def __init__(self, model_uri: str) -> None:
+        self.calls: list[dict] = []
+
+    def predict(self, source, **kwargs):
+        self.calls.append(kwargs)
+        return [SimpleNamespace(orig_shape=(720, 1280), boxes=None)]
+
+
+class TestUltralyticsPredictKwargs:
+    def test_predict_from_path_forwards_configured_kwargs(self, monkeypatch):
+        """Configured conf/iou/imgsz must reach model.predict (not library defaults)."""
+        monkeypatch.setattr("footy_track.detectors.ultralytics.YOLO", _FakeYOLO)
+        detector = UltralyticsObjectDetector(
+            min_confidence=0.12, iou_threshold=0.55, imgsz=1280
+        )
+        result = detector.predict_from_path(Path("frame.jpg"))
+
+        assert isinstance(result, FrameDetections)
+        assert (result.width, result.height) == (1280, 720)
+        (kwargs,) = detector.model.calls
+        assert kwargs["conf"] == 0.12
+        assert kwargs["iou"] == 0.55
+        assert kwargs["imgsz"] == 1280
+        assert kwargs["device"] == detector.device
+
+    def test_device_wins_over_predict_kwargs(self, monkeypatch):
+        """The device chosen at init is explicit and overrides a stray kwarg."""
+        monkeypatch.setattr("footy_track.detectors.ultralytics.YOLO", _FakeYOLO)
+        detector = UltralyticsObjectDetector()
+        detector.predict_kwargs["device"] = "not-a-device"
+        detector.predict_from_path(Path("frame.jpg"))
+        assert detector.model.calls[0]["device"] == detector.device
 
 
 class TestUltralyticsYOLODetector:

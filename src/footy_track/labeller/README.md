@@ -325,6 +325,13 @@ bbox-null lines excluded).
   missing.
   - Tests: `test_review_endpoints.py::test_review_yolo_returns_rounded_boxes`,
     `test_review_endpoints.py::test_review_yolo_missing_video`
+  - Note: the detector now actually uses its configured settings. Earlier,
+    `UltralyticsObjectDetector.predict_from_path` ignored them and ran with
+    the ultralytics defaults (imgsz 640, conf 0.25, iou 0.7). It now passes
+    the constructor's `min_confidence`, `iou_threshold` and `imgsz` (1280 by
+    default) through, so boxes from the labeller's YOLO seeding and review
+    calls can differ from ones produced before this fix (ball recall in
+    particular is much better at 1280).
 
 ## 6. Ingest API (LAB-5xx)
 
