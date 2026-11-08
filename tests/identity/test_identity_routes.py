@@ -143,10 +143,20 @@ def test_risky_frames_prefers_low_margin(client, tmp_path):
         tmp_path,
         "seg001",
         [
-            {"frame_index": 0, "track_id": 1, "tags": ["player"],
-             "confidence": 0.99, "association_margin": 0.99},
-            {"frame_index": 5, "track_id": 1, "tags": ["player"],
-             "confidence": 0.30, "association_margin": 0.01},
+            {
+                "frame_index": 0,
+                "track_id": 1,
+                "tags": ["player"],
+                "confidence": 0.99,
+                "association_margin": 0.99,
+            },
+            {
+                "frame_index": 5,
+                "track_id": 1,
+                "tags": ["player"],
+                "confidence": 0.30,
+                "association_margin": 0.01,
+            },
         ],
     )
     body = client.get("/identity/risky-frames?clip=seg001&track_id=1&k=1").json()
@@ -154,10 +164,14 @@ def test_risky_frames_prefers_low_margin(client, tmp_path):
 
 
 def test_pair_endpoint_records_and_clusters(client):
-    r = client.post("/identity/pair", json={
-        "a": {"clip": "seg000", "track_id": 1},
-        "b": {"clip": "seg001", "track_id": 4},
-        "verdict": "same"}).json()
+    r = client.post(
+        "/identity/pair",
+        json={
+            "a": {"clip": "seg000", "track_id": 1},
+            "b": {"clip": "seg001", "track_id": 4},
+            "verdict": "same",
+        },
+    ).json()
     assert r["ok"] is True
     assert r["n_clusters"] == 1
     assert r["contradictions"] == []
@@ -170,31 +184,45 @@ def test_pair_endpoint_surfaces_contradictions(client):
         ((("seg000", 2)), ("seg000", 3), "same"),
         ((("seg000", 1)), ("seg000", 3), "different"),
     ):
-        r = client.post("/identity/pair", json={
-            "a": {"clip": a[0], "track_id": a[1]},
-            "b": {"clip": b[0], "track_id": b[1]}, "verdict": v}).json()
+        r = client.post(
+            "/identity/pair",
+            json={
+                "a": {"clip": a[0], "track_id": a[1]},
+                "b": {"clip": b[0], "track_id": b[1]},
+                "verdict": v,
+            },
+        ).json()
     assert r["contradictions"], "contradiction must be surfaced to the human"
     assert client.get("/identity/clusters").json()["is_consistent"] is False
 
 
 def test_pair_endpoint_rejects_bad_payload(client):
-    r = client.post("/identity/pair", json={"a": {"clip": "x"}, "verdict": "same"}).json()
+    r = client.post(
+        "/identity/pair", json={"a": {"clip": "x"}, "verdict": "same"}
+    ).json()
     assert r["ok"] is False
 
 
 def test_review_endpoint_records_only_inspected_frames(client):
-    r = client.post("/identity/review", json={
-        "clip": "seg000", "track_id": 1,
-        "checked": [[10, 10], [11, 11], [40, 40]], "split_at": []}).json()
+    r = client.post(
+        "/identity/review",
+        json={
+            "clip": "seg000",
+            "track_id": 1,
+            "checked": [[10, 10], [11, 11], [40, 40]],
+            "split_at": [],
+        },
+    ).json()
     assert r["ok"] is True
     assert r["checked_frames"] == 3, "must not claim the whole tracklet span"
     assert r["is_pure"] is True
 
 
 def test_review_with_cuts_is_not_pure(client):
-    r = client.post("/identity/review", json={
-        "clip": "seg000", "track_id": 2,
-        "checked": [[0, 0]], "split_at": [7]}).json()
+    r = client.post(
+        "/identity/review",
+        json={"clip": "seg000", "track_id": 2, "checked": [[0, 0]], "split_at": [7]},
+    ).json()
     assert r["is_pure"] is False
 
 
@@ -208,8 +236,13 @@ def test_risky_frames_returns_boxes_for_cropping(client, tmp_path):
         tmp_path,
         "seg002",
         [
-            {"frame_index": 4, "track_id": 3, "tags": ["player"], "confidence": 0.9,
-             "bbox": {"x": 0.11, "y": 0.22, "w": 0.03, "h": 0.09}},
+            {
+                "frame_index": 4,
+                "track_id": 3,
+                "tags": ["player"],
+                "confidence": 0.9,
+                "bbox": {"x": 0.11, "y": 0.22, "w": 0.03, "h": 0.09},
+            },
         ],
     )
     body = client.get("/identity/risky-frames?clip=seg002&track_id=3&k=5").json()
@@ -230,10 +263,17 @@ def test_crop_draws_only_the_reviewed_box(client, tmp_path, monkeypatch):
     frame = np.zeros((1080, 1920, 3), dtype=np.uint8)
 
     class _Cap:
-        def __init__(self, *a, **k): pass
-        def set(self, *a): pass
-        def read(self): return True, frame.copy()
-        def release(self): pass
+        def __init__(self, *a, **k):
+            pass
+
+        def set(self, *a):
+            pass
+
+        def read(self):
+            return True, frame.copy()
+
+        def release(self):
+            pass
 
     monkeypatch.setattr(ir.cv2, "VideoCapture", _Cap)
     (tmp_path / "clips" / "seg009.mp4").write_bytes(b"stub")
@@ -247,12 +287,26 @@ def test_crop_draws_only_the_reviewed_box(client, tmp_path, monkeypatch):
 
 def test_best_frame_falls_back_to_size_when_motion_unmeasurable(client, tmp_path):
     """Too short to measure motion — size alone, and say so."""
-    _write_tracklets(tmp_path, "seg010", [
-        {"frame_index": 1, "track_id": 5, "tags": ["player"], "confidence": 0.9,
-         "bbox": {"x": 0.1, "y": 0.1, "w": 0.02, "h": 0.05}},
-        {"frame_index": 9, "track_id": 5, "tags": ["player"], "confidence": 0.9,
-         "bbox": {"x": 0.1, "y": 0.1, "w": 0.06, "h": 0.20}},
-    ])
+    _write_tracklets(
+        tmp_path,
+        "seg010",
+        [
+            {
+                "frame_index": 1,
+                "track_id": 5,
+                "tags": ["player"],
+                "confidence": 0.9,
+                "bbox": {"x": 0.1, "y": 0.1, "w": 0.02, "h": 0.05},
+            },
+            {
+                "frame_index": 9,
+                "track_id": 5,
+                "tags": ["player"],
+                "confidence": 0.9,
+                "bbox": {"x": 0.1, "y": 0.1, "w": 0.06, "h": 0.20},
+            },
+        ],
+    )
     b = client.get("/identity/best-frame?clip=seg010&track_id=5").json()
     assert b["heuristic"] == "size-only"
     assert b["candidates"][0]["frame"] == 9
@@ -269,13 +323,25 @@ def test_best_frame_prefers_player_moving_away_from_camera(client, tmp_path):
     rows = []
     for f in range(40):
         y = 0.60 - f * 0.004 if f < 20 else 0.20 + (f - 20) * 0.004
-        rows.append({"frame_index": f, "track_id": 5, "tags": ["player"],
-                     "confidence": 0.9,
-                     "bbox": {"x": 0.5, "y": round(y, 4), "w": 0.05, "h": 0.15}})
+        rows.append(
+            {
+                "frame_index": f,
+                "track_id": 5,
+                "tags": ["player"],
+                "confidence": 0.9,
+                "bbox": {"x": 0.5, "y": round(y, 4), "w": 0.05, "h": 0.15},
+            }
+        )
         # a second track holding still, so camera compensation sees no pan
-        rows.append({"frame_index": f, "track_id": 6, "tags": ["player"],
-                     "confidence": 0.9,
-                     "bbox": {"x": 0.1, "y": 0.5, "w": 0.05, "h": 0.15}})
+        rows.append(
+            {
+                "frame_index": f,
+                "track_id": 6,
+                "tags": ["player"],
+                "confidence": 0.9,
+                "bbox": {"x": 0.1, "y": 0.5, "w": 0.05, "h": 0.15},
+            }
+        )
     _write_tracklets(tmp_path, "seg011", rows)
     b = client.get("/identity/best-frame?clip=seg011&track_id=5&n=3").json()
     assert b["heuristic"] == "orientation+size"
@@ -286,15 +352,31 @@ def test_best_frame_compensates_for_camera_pan(client, tmp_path):
     """A pan moves every box together and must not read as running away."""
     rows = []
     for f in range(40):
-        pan = -f * 0.004                      # whole scene drifts up-screen
-        rows.append({"frame_index": f, "track_id": 5, "tags": ["player"],
-                     "confidence": 0.9,
-                     "bbox": {"x": 0.5, "y": round(0.5 + pan, 4), "w": 0.05, "h": 0.15}})
+        pan = -f * 0.004  # whole scene drifts up-screen
+        rows.append(
+            {
+                "frame_index": f,
+                "track_id": 5,
+                "tags": ["player"],
+                "confidence": 0.9,
+                "bbox": {"x": 0.5, "y": round(0.5 + pan, 4), "w": 0.05, "h": 0.15},
+            }
+        )
         for t in (6, 7, 8):
-            rows.append({"frame_index": f, "track_id": t, "tags": ["player"],
-                         "confidence": 0.9,
-                         "bbox": {"x": 0.1 * t, "y": round(0.5 + pan, 4),
-                                  "w": 0.05, "h": 0.15}})
+            rows.append(
+                {
+                    "frame_index": f,
+                    "track_id": t,
+                    "tags": ["player"],
+                    "confidence": 0.9,
+                    "bbox": {
+                        "x": 0.1 * t,
+                        "y": round(0.5 + pan, 4),
+                        "w": 0.05,
+                        "h": 0.15,
+                    },
+                }
+            )
     _write_tracklets(tmp_path, "seg012", rows)
     b = client.get("/identity/best-frame?clip=seg012&track_id=5&n=1").json()
     # Everything moves identically, so relative motion is zero everywhere.
@@ -302,15 +384,24 @@ def test_best_frame_compensates_for_camera_pan(client, tmp_path):
 
 
 def test_review_records_a_human_read_jersey_number(client):
-    r = client.post("/identity/review", json={
-        "clip": "seg000", "track_id": 8, "checked": [[3, 3]],
-        "split_at": [], "jersey_number": " 17 "}).json()
+    r = client.post(
+        "/identity/review",
+        json={
+            "clip": "seg000",
+            "track_id": 8,
+            "checked": [[3, 3]],
+            "split_at": [],
+            "jersey_number": " 17 ",
+        },
+    ).json()
     assert r["jersey_number"] == "17", "must be trimmed and stored"
 
 
 def test_unsure_review_is_not_pure(client):
-    r = client.post("/identity/review", json={
-        "clip": "seg000", "track_id": 9, "checked": [[1, 1]], "unsure": True}).json()
+    r = client.post(
+        "/identity/review",
+        json={"clip": "seg000", "track_id": 9, "checked": [[1, 1]], "unsure": True},
+    ).json()
     assert r["unsure"] is True
     assert r["is_pure"] is False, "unsure carries no positive claim"
 
@@ -318,16 +409,26 @@ def test_unsure_review_is_not_pure(client):
 def test_short_tracklets_are_hidden_and_longest_come_first(client, tmp_path):
     """~1400 tracklets per clip, only ~640 usable; the rest is detection noise."""
     rows = [{"frame_index": 0, "track_id": 1, "tags": ["player"], "confidence": 0.9}]
-    rows += [{"frame_index": f, "track_id": 2, "tags": ["player"], "confidence": 0.9}
-             for f in range(30)]
-    rows += [{"frame_index": f, "track_id": 3, "tags": ["player"], "confidence": 0.9}
-             for f in range(60)]
+    rows += [
+        {"frame_index": f, "track_id": 2, "tags": ["player"], "confidence": 0.9}
+        for f in range(30)
+    ]
+    rows += [
+        {"frame_index": f, "track_id": 3, "tags": ["player"], "confidence": 0.9}
+        for f in range(60)
+    ]
     _write_tracklets(tmp_path, "seg020", rows)
     body = client.get("/identity/tracklets?clip=seg020&min_frames=25").json()
     assert [t["track_id"] for t in body["tracklets"]] == [3, 2], "longest first"
     assert body["hidden_short"] == 1
-    assert len(client.get(
-        "/identity/tracklets?clip=seg020&min_frames=0").json()["tracklets"]) == 3
+    assert (
+        len(
+            client.get("/identity/tracklets?clip=seg020&min_frames=0").json()[
+                "tracklets"
+            ]
+        )
+        == 3
+    )
 
 
 def test_pages_have_no_dangling_element_or_function_refs(client):
@@ -344,12 +445,20 @@ def test_pages_have_no_dangling_element_or_function_refs(client):
         html = client.get(path).text
         ids = set(re.findall(r'id="([A-Za-z0-9_]+)"', html))
         refs = set(re.findall(r'\$\("([A-Za-z0-9_]+)"\)\.', html))
-        assert not refs - ids, f"{path} references missing elements: {sorted(refs - ids)}"
-        called = set(re.findall(
-            r'\b(loadPair|labelPair|refreshClusters|loadStrip|saveReview|advance'
-            r'|loadTracklets|loadClips)\s*\(', html))
-        defined = set(re.findall(r'function\s+(\w+)\s*\(', html))
-        assert not called - defined, f"{path} calls undefined: {sorted(called - defined)}"
+        assert not refs - ids, (
+            f"{path} references missing elements: {sorted(refs - ids)}"
+        )
+        called = set(
+            re.findall(
+                r"\b(loadPair|labelPair|refreshClusters|loadStrip|saveReview|advance"
+                r"|loadTracklets|loadClips)\s*\(",
+                html,
+            )
+        )
+        defined = set(re.findall(r"function\s+(\w+)\s*\(", html))
+        assert not called - defined, (
+            f"{path} calls undefined: {sorted(called - defined)}"
+        )
 
 
 def test_best_frame_rejects_edge_clipped_slivers(client, tmp_path):
@@ -361,18 +470,36 @@ def test_best_frame_rejects_edge_clipped_slivers(client, tmp_path):
     rows = []
     for f in range(40):
         # track 5: a clipped sliver hard against the right edge
-        rows.append({"frame_index": f, "track_id": 5, "tags": ["player"],
-                     "confidence": 0.9,
-                     "bbox": {"x": 0.985, "y": 0.4, "w": 0.015, "h": 0.18}})
+        rows.append(
+            {
+                "frame_index": f,
+                "track_id": 5,
+                "tags": ["player"],
+                "confidence": 0.9,
+                "bbox": {"x": 0.985, "y": 0.4, "w": 0.015, "h": 0.18},
+            }
+        )
         # track 6: a normal, well-proportioned box moving up-screen
-        rows.append({"frame_index": f, "track_id": 6, "tags": ["player"],
-                     "confidence": 0.9,
-                     "bbox": {"x": 0.5, "y": round(0.6 - f * 0.004, 4),
-                              "w": 0.06, "h": 0.16}})
+        rows.append(
+            {
+                "frame_index": f,
+                "track_id": 6,
+                "tags": ["player"],
+                "confidence": 0.9,
+                "bbox": {
+                    "x": 0.5,
+                    "y": round(0.6 - f * 0.004, 4),
+                    "w": 0.06,
+                    "h": 0.16,
+                },
+            }
+        )
     _write_tracklets(tmp_path, "seg030", rows)
-    assert client.get(
-        "/identity/best-frame?clip=seg030&track_id=5").json()["candidates"] == [] or \
-        client.get("/identity/best-frame?clip=seg030&track_id=5"
-                   ).json()["heuristic"] == "size-only"
+    assert (
+        client.get("/identity/best-frame?clip=seg030&track_id=5").json()["candidates"]
+        == []
+        or client.get("/identity/best-frame?clip=seg030&track_id=5").json()["heuristic"]
+        == "size-only"
+    )
     good = client.get("/identity/best-frame?clip=seg030&track_id=6&n=1").json()
     assert good["candidates"], "a well-proportioned box must survive the filter"

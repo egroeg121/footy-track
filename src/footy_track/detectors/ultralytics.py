@@ -33,9 +33,7 @@ from .utils import (
 # 2026-01 yolo11s on dataset v3, served at 640px where ball recall is 0.000 - so every
 # experiment using it measured a detector effectively blind to the ball (bead ft-90o).
 # The metric is in the comment so a defeated checkpoint cannot quietly stay the default.
-CURRENT_BEST_DETECTOR_CHECKPOINT = (
-    "model_saves/detector/rtdetr_1920_v11/best.pt"  # v11 @1280: ball mAP50 .221 / recall .209
-)
+CURRENT_BEST_DETECTOR_CHECKPOINT = "model_saves/detector/rtdetr_1920_v11/best.pt"  # v11 @1280: ball mAP50 .221 / recall .209
 
 # Resolution is the single biggest measured lever for ball detection (640 -> 1280 took
 # ball recall from 0.000). Keep it explicit; never inherit the library default.
@@ -49,7 +47,12 @@ def debug_mode() -> bool:
     and little RAM: it must never load a checkpoint, download weights, or touch
     CUDA. See ``python -m footy_track.labeller --debug``.
     """
-    return os.environ.get("FOOTY_DEBUG", "").strip().lower() in {"1", "true", "yes", "on"}
+    return os.environ.get("FOOTY_DEBUG", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
 
 
 def get_current_best_detector(

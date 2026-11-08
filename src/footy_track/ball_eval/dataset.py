@@ -60,7 +60,12 @@ class FrameLabel(NamedTuple):
         if raw_bbox is None:
             bbox: BBox | None = None
         elif isinstance(raw_bbox, dict):
-            bbox = (float(raw_bbox["x"]), float(raw_bbox["y"]), float(raw_bbox["w"]), float(raw_bbox["h"]))
+            bbox = (
+                float(raw_bbox["x"]),
+                float(raw_bbox["y"]),
+                float(raw_bbox["w"]),
+                float(raw_bbox["h"]),
+            )
         else:
             bbox = tuple(float(v) for v in raw_bbox)  # type: ignore[arg-type]
         raw_center = d.get("center")

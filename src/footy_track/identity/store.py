@@ -65,7 +65,9 @@ def _ref_from_dict(d: dict) -> TrackletRef:
     )
 
 
-def append_pair_label(dir_path: Path, label: PairLabel, *, ts: float | None = None) -> None:
+def append_pair_label(
+    dir_path: Path, label: PairLabel, *, ts: float | None = None
+) -> None:
     """Append one same/different/unknown verdict."""
     a, b = label.ordered()
     _append(

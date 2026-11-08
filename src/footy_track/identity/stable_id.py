@@ -104,6 +104,4 @@ def stable_id_for_row(row: dict[str, Any], *, digits: int = 16) -> str:
     bbox = row.get("bbox")
     if not isinstance(bbox, dict):
         raise ValueError(f"row has no usable bbox: {row!r}")
-    return stable_detection_id(
-        int(row["frame_index"]), label, bbox, digits=digits
-    )
+    return stable_detection_id(int(row["frame_index"]), label, bbox, digits=digits)

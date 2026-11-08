@@ -154,8 +154,13 @@ def score_clip(
         va = torch.nn.functional.normalize(E[ia].mean(0, keepdim=True), dim=1)
         vb = torch.nn.functional.normalize(E[ib].mean(0, keepdim=True), dim=1)
         scored.append(
-            Candidate(a=c.a, b=c.b, gap=c.gap, distance=c.distance,
-                      similarity=round(float(va @ vb.T), 4))
+            Candidate(
+                a=c.a,
+                b=c.b,
+                gap=c.gap,
+                distance=c.distance,
+                similarity=round(float(va @ vb.T), 4),
+            )
         )
     return scored
 
@@ -163,12 +168,15 @@ def score_clip(
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--clip", required=True)
-    ap.add_argument("--tracklets", type=Path,
-                    default=Path.home() / "footy/footy_data/tracklets")
-    ap.add_argument("--clips", type=Path,
-                    default=Path.home() / "footy/footy_data/clips")
-    ap.add_argument("--out", type=Path,
-                    default=Path.home() / "footy/footy_data/link_proposals")
+    ap.add_argument(
+        "--tracklets", type=Path, default=Path.home() / "footy/footy_data/tracklets"
+    )
+    ap.add_argument(
+        "--clips", type=Path, default=Path.home() / "footy/footy_data/clips"
+    )
+    ap.add_argument(
+        "--out", type=Path, default=Path.home() / "footy/footy_data/link_proposals"
+    )
     ap.add_argument("--max-gap", type=int, default=DEFAULT_MAX_GAP)
     args = ap.parse_args(argv)
 
@@ -179,13 +187,20 @@ def main(argv: list[str] | None = None) -> int:
     tmp = dst.with_suffix(".jsonl.tmp")
     with tmp.open("w") as fh:
         for c in scored:
-            fh.write(json.dumps({
-                "a": c.a, "b": c.b, "gap": c.gap,
-                "distance": round(c.distance, 4),
-                "similarity": c.similarity,
-                "decision": c.decision,
-                "uncertainty": round(c.uncertainty, 4),
-            }) + "\n")
+            fh.write(
+                json.dumps(
+                    {
+                        "a": c.a,
+                        "b": c.b,
+                        "gap": c.gap,
+                        "distance": round(c.distance, 4),
+                        "similarity": c.similarity,
+                        "decision": c.decision,
+                        "uncertainty": round(c.uncertainty, 4),
+                    }
+                )
+                + "\n"
+            )
         fh.flush()
         os.fsync(fh.fileno())
     tmp.replace(dst)

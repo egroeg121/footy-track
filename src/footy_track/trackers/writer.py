@@ -96,9 +96,7 @@ class TrackingWriter:
                 "height": height,
                 "fps": fps,
             },
-            "tracks": {
-                str(m.track_id): m.to_dict() for m in meta
-            },
+            "tracks": {str(m.track_id): m.to_dict() for m in meta},
         }
         meta_path = output_dir / "tracks_meta.json"
         meta_path.write_text(json.dumps(sidecar, indent=2))
