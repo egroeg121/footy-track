@@ -74,6 +74,19 @@ from footy_track.feature_store.store import FeatureStore
 BALL_LABELS = ("ball", "in_play_ball", "out_of_play_ball")
 BALL_CLASS_ID = 0
 
+# A box the user marked not_ball in Ball Check (feature_store/ball_checks.py)
+# must not be exported as a positive. No verdict -> row unaffected.
+_NOT_REJECTED = """
+          AND NOT EXISTS (
+              SELECT 1 FROM detection_review rv
+              WHERE rv.verdict = 'not_ball'
+                AND rv.game_id = detections_enriched.game_id
+                AND rv.frame_index = detections_enriched.frame_index
+                AND rv.matched_source = detections_enriched.source
+                AND rv.matched_run_id = detections_enriched.run_id
+                AND rv.matched_detection_id = detections_enriched.detection_id
+          )"""
+
 
 def _eval_clip_stems(eval_dir: Path) -> set[str]:
     """Clips the ball_eval harness scores on = those with a GT .jsonl sidecar."""
@@ -88,7 +101,12 @@ def _distinct_labels(store: FeatureStore) -> list[str]:
     return sorted(df["label"].tolist())
 
 
-def _query_ball_detections(store: FeatureStore, *, sources: list[str] | None = None):
+def _query_ball_detections(
+    store: FeatureStore,
+    *,
+    sources: list[str] | None = None,
+    include_rejected: bool = False,
+):
     placeholders = ", ".join("?" for _ in BALL_LABELS)
     params: list[object] = list(BALL_LABELS)
     source_clause = ""
@@ -96,19 +114,24 @@ def _query_ball_detections(store: FeatureStore, *, sources: list[str] | None = N
         source_placeholders = ", ".join("?" for _ in sources)
         source_clause = f" AND source IN ({source_placeholders})"
         params += sources
+    rejected_clause = "" if include_rejected else _NOT_REJECTED
     sql = f"""
         SELECT game_id, frame_index, detection_id, source, run_id, label,
                bbox_x, bbox_y, bbox_w, bbox_h, frame_uri, dataset_tag
         FROM detections_enriched
         WHERE canonical
-          AND lower(label) IN ({placeholders}){source_clause}
+          AND lower(label) IN ({placeholders}){source_clause}{rejected_clause}
         ORDER BY game_id, frame_index, detection_id
     """
     return store.query(sql, params)
 
 
 def _query_multiclass_detections(
-    store: FeatureStore, labels: list[str], *, sources: list[str] | None = None
+    store: FeatureStore,
+    labels: list[str],
+    *,
+    sources: list[str] | None = None,
+    include_rejected: bool = False,
 ):
     placeholders = ", ".join("?" for _ in labels)
     params: list[object] = list(labels)
@@ -117,12 +140,13 @@ def _query_multiclass_detections(
         source_placeholders = ", ".join("?" for _ in sources)
         source_clause = f" AND source IN ({source_placeholders})"
         params += sources
+    rejected_clause = "" if include_rejected else _NOT_REJECTED
     sql = f"""
         SELECT game_id, frame_index, detection_id, source, run_id, label,
                bbox_x, bbox_y, bbox_w, bbox_h, frame_uri, dataset_tag
         FROM detections_enriched
         WHERE canonical
-          AND label IN ({placeholders}){source_clause}
+          AND label IN ({placeholders}){source_clause}{rejected_clause}
         ORDER BY game_id, frame_index, detection_id
     """
     return store.query(sql, params)
@@ -334,6 +358,7 @@ def export(
     classes: list[str] | None = None,
     sources: list[str] | None = None,
     test_fraction: float = 0.0,
+    include_rejected: bool = False,
 ) -> dict:
     """Export a leakage-free YOLO dataset.
 
@@ -349,16 +374,24 @@ def export(
     by-clip split, output unchanged. Set > 0 for a three-way (train/val/test)
     by-clip split (recommended: ``val_fraction=0.2, test_fraction=0.1`` for a
     70/20/10 split); a clip never straddles any pair of splits.
+
+    Boxes the user marked ``not_ball`` in Ball Check are dropped from the
+    positives (the export has no negatives/background notion, so they are
+    simply excluded); ``include_rejected=True`` keeps them.
     """
     multiclass = classes is not None
     if multiclass:
         class_names = sorted(set(classes))
         class_id_for_label = {name: i for i, name in enumerate(class_names)}
-        df = _query_multiclass_detections(store, class_names, sources=sources)
+        df = _query_multiclass_detections(
+            store, class_names, sources=sources, include_rejected=include_rejected
+        )
     else:
         class_names = ["ball"]
         class_id_for_label = defaultdict(lambda: BALL_CLASS_ID)
-        df = _query_ball_detections(store, sources=sources)
+        df = _query_ball_detections(
+            store, sources=sources, include_rejected=include_rejected
+        )
     eval_clips = _eval_clip_stems(eval_dir)
     excluded = eval_clips | extra_exclude
 
@@ -526,6 +559,11 @@ def main(argv: list[str] | None = None) -> None:
         "(e.g. 'hand_label' or 'hand_label,vittrack'). Omit for unrestricted "
         "(all canonical sources, the original behavior).",
     )
+    parser.add_argument(
+        "--include-rejected",
+        action="store_true",
+        help="Keep boxes the user marked not_ball in Ball Check (default: drop).",
+    )
     args = parser.parse_args(argv)
 
     store = FeatureStore.open(args.db)
@@ -553,6 +591,7 @@ def main(argv: list[str] | None = None) -> None:
         tag=args.tag,
         classes=classes,
         sources=sources,
+        include_rejected=args.include_rejected,
     )
 
     print("=== export_training_dataset manifest ===")

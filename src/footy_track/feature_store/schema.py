@@ -319,6 +319,33 @@ DDL: tuple[str, ...] = (
         PRIMARY KEY (game_id, source, run_id, track_id)
     );
     """,
+    # Human Ball Check verdicts (see feature_store/ball_checks.py). Additive:
+    # nothing in the detection table changes, and re-running the importer
+    # rewrites a clip's rows wholesale. ``vsource`` is the Ball Check card
+    # source ('sidecar' | 'cand'); ``box_index`` is the card's index within
+    # that source, so (vsource, frame_index, box_index) is the verdict's
+    # identity. The matched_* columns point at the detection the verdict was
+    # resolved to by IoU (NULL when no stored box overlaps).
+    """
+    CREATE TABLE IF NOT EXISTS detection_review (
+        game_id            VARCHAR,
+        vsource            VARCHAR,
+        frame_index        INTEGER,
+        box_index          INTEGER,
+        verdict            VARCHAR,
+        ts                 DOUBLE,
+        label              VARCHAR,
+        bbox_x             DOUBLE,
+        bbox_y             DOUBLE,
+        bbox_w             DOUBLE,
+        bbox_h             DOUBLE,
+        matched_source     VARCHAR,
+        matched_run_id     VARCHAR,
+        matched_detection_id BIGINT,
+        match_iou          DOUBLE,
+        PRIMARY KEY (game_id, vsource, frame_index, box_index)
+    );
+    """,
 )
 
 # Convenience views — the "one wide table" ergonomics the design promises.
