@@ -10,6 +10,7 @@ nav:
   - Development:
       - System Design: system_design.md
       - System Overview: system_overview.md
+      - Tracking Pipeline Design: design/tracking-pipeline.md
       - Getting Started: development.md
       - Pipeline Architecture: pipeline_architecture.md
       - Time Formats: timings.md
@@ -24,7 +25,11 @@ markdown_extensions:
       permalink: true
   - tables
   - pymdownx.details
-  - pymdownx.superfences
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
 watch:
   - src
   - docs
