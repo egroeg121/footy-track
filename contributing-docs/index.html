@@ -1,0 +1,1331 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Tracking players, actions, and events in football matches.">
+      
+      
+      
+        <link rel="canonical" href="https://egroeg121.github.io/footy-track/contributing-docs/">
+      
+      
+        <link rel="prev" href="../agent_guidelines/">
+      
+      
+        <link rel="next" href="../todo/">
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.6.20">
+    
+    
+      
+        <title>How to contribute to the docs - Footy Scan</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.e53b48f4.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+    
+  </head>
+  
+  
+    <body dir="ltr">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#how-to-contribute-to-the-docs" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="Footy Scan" class="md-header__button md-logo" aria-label="Footy Scan" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Footy Scan
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              How to contribute to the docs
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="Footy Scan" class="md-nav__button md-logo" aria-label="Footy Scan" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Footy Scan
+  </label>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Overview
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Architecture
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../pipeline-and-labels/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Pipeline and labels
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../data/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Data
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    Training
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            Training
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../training/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Training
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../training/notable_runs/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Notable Training Runs
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../inference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Inference
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../design/feature_store/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Feature store
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_8" >
+        
+          
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    Design
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            Design
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../design/pipeline_overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Pipeline Overview
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../design/player_reid/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Player Re-ID
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../design/tracking-pipeline/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Tracking Pipeline Design
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../system_design/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    System Design
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../system_overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    System Overview
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../pipeline_architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Pipeline Architecture
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../timings/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Time Formats
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../data_formats/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Data Formats
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_9" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_9" id="__nav_9_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    Development
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_9_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_9">
+            <span class="md-nav__icon md-icon"></span>
+            Development
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../development/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Getting Started
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../agent_guidelines/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Agent Guidelines
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    How to contribute to the docs
+    
+  </span>
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    How to contribute to the docs
+    
+  </span>
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-the-workflow" class="md-nav__link">
+    <span class="md-ellipsis">
+      1. The workflow
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-where-does-my-change-go" class="md-nav__link">
+    <span class="md-ellipsis">
+      2. Where does my change go?
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-the-site-map" class="md-nav__link">
+    <span class="md-ellipsis">
+      3. The site map
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-add-a-page" class="md-nav__link">
+    <span class="md-ellipsis">
+      4. Add a page
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-build-and-preview" class="md-nav__link">
+    <span class="md-ellipsis">
+      5. Build and preview
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-writing-style" class="md-nav__link">
+    <span class="md-ellipsis">
+      6. Writing style
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-diagrams" class="md-nav__link">
+    <span class="md-ellipsis">
+      7. Diagrams
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-check-that-a-diagram-renders" class="md-nav__link">
+    <span class="md-ellipsis">
+      8. Check that a diagram renders
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#9-what-must-never-go-in-the-docs" class="md-nav__link">
+    <span class="md-ellipsis">
+      9. What must never go in the docs
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#10-agents" class="md-nav__link">
+    <span class="md-ellipsis">
+      10. Agents
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#11-before-you-open-the-pr" class="md-nav__link">
+    <span class="md-ellipsis">
+      11. Before you open the PR
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../todo/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    TODO
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-the-workflow" class="md-nav__link">
+    <span class="md-ellipsis">
+      1. The workflow
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-where-does-my-change-go" class="md-nav__link">
+    <span class="md-ellipsis">
+      2. Where does my change go?
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-the-site-map" class="md-nav__link">
+    <span class="md-ellipsis">
+      3. The site map
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-add-a-page" class="md-nav__link">
+    <span class="md-ellipsis">
+      4. Add a page
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-build-and-preview" class="md-nav__link">
+    <span class="md-ellipsis">
+      5. Build and preview
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-writing-style" class="md-nav__link">
+    <span class="md-ellipsis">
+      6. Writing style
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-diagrams" class="md-nav__link">
+    <span class="md-ellipsis">
+      7. Diagrams
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-check-that-a-diagram-renders" class="md-nav__link">
+    <span class="md-ellipsis">
+      8. Check that a diagram renders
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#9-what-must-never-go-in-the-docs" class="md-nav__link">
+    <span class="md-ellipsis">
+      9. What must never go in the docs
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#10-agents" class="md-nav__link">
+    <span class="md-ellipsis">
+      10. Agents
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#11-before-you-open-the-pr" class="md-nav__link">
+    <span class="md-ellipsis">
+      11. Before you open the PR
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+
+<h1 id="how-to-contribute-to-the-docs">How to contribute to the docs<a class="headerlink" href="#how-to-contribute-to-the-docs" title="Permanent link">&para;</a></h1>
+<p>This page is for anyone who changes footy-track: people and coding agents. It says where docs live, how to change them, and how to check your work. Read it before you open a pull request (PR). A PR is a request to merge your branch into <code>main</code>.</p>
+<p>The rule in one line: <strong>if your change would make a page wrong, fix the page in the same PR.</strong></p>
+<h2 id="1-the-workflow">1. The workflow<a class="headerlink" href="#1-the-workflow" title="Permanent link">&para;</a></h2>
+<p>The docs are plain Markdown files in <code>docs/</code>. A tool called MkDocs turns them into a website. When a change reaches <code>main</code>, GitHub builds the site and publishes it to GitHub Pages.</p>
+<pre class="mermaid"><code>flowchart TD
+  classDef step fill:#dbeafe,stroke:#2563eb,color:#111
+  classDef auto fill:#e5e7eb,stroke:#6b7280,color:#111
+  A["Change code or data"]:::step --&gt; B["Which page does it touch?&lt;br/&gt;(see section 2)"]:::step
+  B --&gt; C["Edit the page, or add a new one"]:::step
+  C --&gt; D["Build and look at it locally&lt;br/&gt;(see section 5)"]:::step
+  D --&gt; E["Open a PR with code and docs together"]:::step
+  E --&gt; F["Review and merge to main"]:::step
+  F --&gt; G["GitHub builds and publishes&lt;br/&gt;to GitHub Pages"]:::auto</code></pre>
+<p>Legend: blue boxes are things you do; the grey box happens by itself. The diagram shows the steps from changing code to a published page.</p>
+<h2 id="2-where-does-my-change-go">2. Where does my change go?<a class="headerlink" href="#2-where-does-my-change-go" title="Permanent link">&para;</a></h2>
+<p>Ask what changed, then follow the arrow.</p>
+<pre class="mermaid"><code>flowchart LR
+  Q{"What did you change?"}
+  Q --&gt;|"How the system fits together,&lt;br/&gt;a new stage, a known problem"| ARCH["architecture.md"]
+  Q --&gt;|"Where data lives, a new dataset,&lt;br/&gt;label counts"| DATA["data.md"]
+  Q --&gt;|"A measured result, a model&lt;br/&gt;comparison, label needs"| PL["pipeline-and-labels.md"]
+  Q --&gt;|"The feature store tables&lt;br/&gt;or importers"| FS["design/feature_store.md"]
+  Q --&gt;|"How to train, trainer options,&lt;br/&gt;a training run"| TR["training.md or&lt;br/&gt;training/notable_runs.md"]
+  Q --&gt;|"A plan or research for&lt;br/&gt;something not built yet"| DES["a page under design/"]
+  Q --&gt;|"Setup, tools, how to work&lt;br/&gt;on the repo"| DEV["development.md"]
+  Q --&gt;|"A task started, finished&lt;br/&gt;or newly found"| TODO["todo.md"]
+  Q --&gt;|"None of these"| NEW["Add a new page&lt;br/&gt;(see section 4)"]</code></pre>
+<p>The diagram sends each kind of change to one page. If a change fits two pages, put the detail in one and link to it from the other. Do not copy the same table twice.</p>
+<h2 id="3-the-site-map">3. The site map<a class="headerlink" href="#3-the-site-map" title="Permanent link">&para;</a></h2>
+<pre class="mermaid"><code>flowchart LR
+  ROOT["Docs site"] --&gt; OV["Overview&lt;br/&gt;start here"]
+  ROOT --&gt; AR["Architecture&lt;br/&gt;what is wired, what is broken"]
+  ROOT --&gt; PL["Pipeline and labels&lt;br/&gt;best results, label needs"]
+  ROOT --&gt; DA["Data&lt;br/&gt;datasets, labels, footage"]
+  ROOT --&gt; TRN["Training&lt;br/&gt;how to train, past runs"]
+  ROOT --&gt; FS["Feature store&lt;br/&gt;the annotation database"]
+  ROOT --&gt; DS["Design&lt;br/&gt;plans and research"]
+  ROOT --&gt; DV["Development&lt;br/&gt;setup, agents, this guide"]
+  ROOT --&gt; TD["TODO&lt;br/&gt;the only task list"]</code></pre>
+<p>The map shows the top-level sections of the site and what each one is for. The order matches <code>nav:</code> in <code>mkdocs.yml</code>.</p>
+<h2 id="4-add-a-page">4. Add a page<a class="headerlink" href="#4-add-a-page" title="Permanent link">&para;</a></h2>
+<ol>
+<li>Create <code>docs/&lt;name&gt;.md</code>. Use lower-case words, with <code>-</code> or <code>_</code> between them. Match the pages near it.</li>
+<li>Start with one <code>#</code> heading. Add one sentence under it saying who the page is for and why they would read it.</li>
+<li>Add <strong>one line</strong> to <code>nav:</code> in <code>mkdocs.yml</code>, under the right section: <code>- Title: file-name.md</code>.</li>
+<li>Link to it from at least one other page. A page nothing links to is hard to find.</li>
+<li>Build the site (section 5). The build prints a list of pages that are not in the nav. Yours must not be on it.</li>
+</ol>
+<p>Do not edit <code>pyproject.toml</code> or <code>uv.lock</code> to add docs tools.</p>
+<h2 id="5-build-and-preview">5. Build and preview<a class="headerlink" href="#5-build-and-preview" title="Permanent link">&para;</a></h2>
+<p>From the repo root:</p>
+<div class="highlight"><pre><span></span><code>uvx<span class="w"> </span>--with<span class="w"> </span>mkdocs-material<span class="w"> </span>mkdocs<span class="w"> </span>build<span class="w"> </span>-d<span class="w"> </span>/tmp/footy-site
+</code></pre></div>
+<p>This builds the site into <code>/tmp/footy-site</code> without changing the repo. Read the warnings. Do not add new ones. (<code>--strict</code> currently fails on two old links in <code>system_design.md</code>; that is known.)</p>
+<p>For a live preview, run <code>uvx --with mkdocs-material mkdocs serve</code>. It serves the site on <code>http://127.0.0.1:8000</code> and reloads when you save.</p>
+<h2 id="6-writing-style">6. Writing style<a class="headerlink" href="#6-writing-style" title="Permanent link">&para;</a></h2>
+<p>Write for a smart person who is new to the project.</p>
+<ul>
+<li><strong>Short, plain sentences.</strong> Say "use" and not "utilise". If you need a technical word, explain it the first time.</li>
+<li><strong>Say who the page is for</strong> in the first lines.</li>
+<li><strong>Lead with what and why.</strong> Put the answer first. Put the detail after it.</li>
+<li><strong>One idea per paragraph.</strong></li>
+<li><strong>Give an example</strong> when a rule is abstract. A command, a table row or a path is better than a description.</li>
+<li><strong>Use tables for reference material</strong> (options, paths, counts). Use sentences for reasoning.</li>
+<li><strong>Link to code by file path</strong>, for example <code>src/footy_track/labeller/session.py</code>. Add a line number only when it really matters. Line numbers go stale quickly.</li>
+<li><strong>Say what is measured and what is assumed.</strong> Write "measured" with its source, or "unverified". Do not mix them.</li>
+<li><strong>Date numbers that go stale</strong>, for example "18,147 objects (2026-11-08)".</li>
+<li><strong>No marketing words</strong> and no filler.</li>
+</ul>
+<h2 id="7-diagrams">7. Diagrams<a class="headerlink" href="#7-diagrams" title="Permanent link">&para;</a></h2>
+<p>Draw diagrams in Mermaid. Mermaid is text that the site turns into a picture, so a diagram is reviewed like code. Put it in a fenced block that starts with <code>```mermaid</code>.</p>
+<p>Pick the type by the job:</p>
+<table>
+<thead>
+<tr>
+<th>Job</th>
+<th>Use</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Data flow or steps</td>
+<td><code>flowchart</code></td>
+</tr>
+<tr>
+<td>Who calls whom, in order</td>
+<td><code>sequenceDiagram</code></td>
+</tr>
+<tr>
+<td>Something with states, such as a label going from draft to checked</td>
+<td><code>stateDiagram-v2</code></td>
+</tr>
+<tr>
+<td>A choice with branches</td>
+<td><code>flowchart</code> with a <code>{}</code> decision box</td>
+</tr>
+</tbody>
+</table>
+<p>Rules:</p>
+<ul>
+<li><strong>Keep it small.</strong> About 15 nodes at most. If it is bigger, split it into two diagrams.</li>
+<li><strong>Use the shared colours</strong> from the <a href="../architecture/">architecture page</a>. Define them with <code>classDef</code>: grey is data on disk or S3, blue is code in git, orange with a dashed border is a step that is not in git, red is dead code or an output nothing reads, purple is new.</li>
+<li><strong>Quote every label</strong>: <code>A["Some label"]</code>.</li>
+<li><strong>Break lines with <code>&lt;br/&gt;</code></strong>, not with a newline.</li>
+<li><strong>Escape special characters.</strong> Write <code>&amp;amp;</code> for <code>&amp;</code>, <code>&amp;lt;</code> for <code>&lt;</code> and <code>&amp;gt;</code> for <code>&gt;</code>. Avoid <code>#</code>, <code>;</code> and unbalanced quotes in labels.</li>
+<li><strong>Add a one-line legend</strong> under the diagram for the colours you used.</li>
+<li><strong>Add one sentence under the diagram</strong> saying what it shows. This is the text for people who cannot see the picture.</li>
+</ul>
+<p>A tiny example that follows the rules:</p>
+<pre class="mermaid"><code>flowchart LR
+  classDef code fill:#dbeafe,stroke:#2563eb,color:#111
+  classDef data fill:#e5e7eb,stroke:#6b7280,color:#111
+  V[("Match video")]:::data --&gt; S["Segmenter"]:::code --&gt; C[("Shot clips")]:::data</code></pre>
+<p>Legend: grey is data, blue is code in git. The diagram shows a video going through the segmenter into shot clips.</p>
+<h2 id="8-check-that-a-diagram-renders">8. Check that a diagram renders<a class="headerlink" href="#8-check-that-a-diagram-renders" title="Permanent link">&para;</a></h2>
+<p>A diagram with a syntax error shows an error box or nothing. Always look at it.</p>
+<ol>
+<li>Build the site: <code>uvx --with mkdocs-material mkdocs build -d /tmp/footy-site</code>.</li>
+<li>Serve it: <code>cd /tmp/footy-site &amp;&amp; python3 -m http.server 8911</code>.</li>
+<li>Open the page in a headless browser and take a screenshot. With Playwright (a browser-driving tool) for Node.js:</li>
+</ol>
+<div class="highlight"><pre><span></span><code><span class="kd">const</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">chromium</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">require</span><span class="p">(</span><span class="s1">&#39;playwright&#39;</span><span class="p">);</span>
+<span class="p">(</span><span class="k">async</span><span class="w"> </span><span class="p">()</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="kd">const</span><span class="w"> </span><span class="nx">b</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">await</span><span class="w"> </span><span class="nx">chromium</span><span class="p">.</span><span class="nx">launch</span><span class="p">({</span>
+<span class="w">    </span><span class="nx">executablePath</span><span class="o">:</span><span class="w"> </span><span class="nx">process</span><span class="p">.</span><span class="nx">env</span><span class="p">.</span><span class="nx">HOME</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="s1">&#39;/.cache/ms-playwright/chromium-1140/chrome-linux/chrome&#39;</span><span class="p">,</span>
+<span class="w">    </span><span class="nx">args</span><span class="o">:</span><span class="w"> </span><span class="p">[</span><span class="s1">&#39;--no-sandbox&#39;</span><span class="p">]</span><span class="w"> </span><span class="p">});</span>
+<span class="w">  </span><span class="kd">const</span><span class="w"> </span><span class="nx">p</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">await</span><span class="w"> </span><span class="nx">b</span><span class="p">.</span><span class="nx">newPage</span><span class="p">({</span><span class="w"> </span><span class="nx">viewport</span><span class="o">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">width</span><span class="o">:</span><span class="w"> </span><span class="mf">1300</span><span class="p">,</span><span class="w"> </span><span class="nx">height</span><span class="o">:</span><span class="w"> </span><span class="mf">900</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">});</span>
+<span class="w">  </span><span class="k">await</span><span class="w"> </span><span class="nx">p</span><span class="p">.</span><span class="kr">goto</span><span class="p">(</span><span class="s1">&#39;http://localhost:8911/contributing-docs/&#39;</span><span class="p">,</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">waitUntil</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;networkidle&#39;</span><span class="w"> </span><span class="p">});</span>
+<span class="w">  </span><span class="k">await</span><span class="w"> </span><span class="nx">p</span><span class="p">.</span><span class="nx">waitForTimeout</span><span class="p">(</span><span class="mf">8000</span><span class="p">);</span>
+<span class="w">  </span><span class="k">await</span><span class="w"> </span><span class="nx">p</span><span class="p">.</span><span class="nx">locator</span><span class="p">(</span><span class="s1">&#39;.mermaid&#39;</span><span class="p">).</span><span class="nx">nth</span><span class="p">(</span><span class="mf">0</span><span class="p">).</span><span class="nx">screenshot</span><span class="p">({</span><span class="w"> </span><span class="nx">path</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;diagram0.png&#39;</span><span class="w"> </span><span class="p">});</span>
+<span class="w">  </span><span class="k">await</span><span class="w"> </span><span class="nx">b</span><span class="p">.</span><span class="nx">close</span><span class="p">();</span>
+<span class="p">})();</span>
+</code></pre></div>
+<ol>
+<li>Open the PNG and look at it. Do this for every diagram you added or changed.</li>
+</ol>
+<p>Two things to know:</p>
+<ul>
+<li>Material draws Mermaid inside a closed shadow DOM, so <code>document.querySelectorAll('.mermaid svg')</code> finds nothing even when the picture is fine. Check the <strong>screenshot</strong>, not the page structure.</li>
+<li>The Mermaid script loads from a CDN (a public file host). The browser needs internet access.</li>
+</ul>
+<p>Optional: <code>make docs-check</code> runs <code>scripts/check_docs_diagrams.py</code> (a quick text check for empty diagrams, unbalanced quotes, loose <code>&amp;</code> or <code>&lt;</code>, and diagrams over 25 nodes) and then the build. It is not run in CI yet.</p>
+<h2 id="9-what-must-never-go-in-the-docs">9. What must never go in the docs<a class="headerlink" href="#9-what-must-never-go-in-the-docs" title="Permanent link">&para;</a></h2>
+<p>The repo and the site (https://egroeg121.github.io/footy-track/) are <strong>public</strong>. Anyone can read every page and every old version in git history.</p>
+<p>Never write:</p>
+<ul>
+<li>Keys, tokens or passwords of any kind.</li>
+<li>Private hostnames, IP addresses or Tailscale names.</li>
+<li>Cloud bucket names, account ids, or full private paths beyond what the page needs.</li>
+<li>Personal data: emails, phone numbers, names of people in footage who are not public figures.</li>
+<li>Screenshots of private tools (cloud consoles, dashboards, chats).</li>
+</ul>
+<p>Write this instead:</p>
+<table>
+<thead>
+<tr>
+<th>Instead of</th>
+<th>Write</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>A full home or disk path</td>
+<td>"the data directory" and name the setting that points to it, for example <code>FOOTY_GT_MARKS_DIR</code></td>
+</tr>
+<tr>
+<td>A bucket name</td>
+<td>"the private S3 bucket"</td>
+</tr>
+<tr>
+<td>A machine name</td>
+<td>"the workstation" or "the GPU box"</td>
+</tr>
+<tr>
+<td>A key</td>
+<td>"set <code>WANDB_API_KEY</code> in your environment" (the name, never the value)</td>
+</tr>
+</tbody>
+</table>
+<p>If you find one already in the docs, remove it and tell the owner. A leaked secret must also be revoked: deleting it from the page does not delete it from git history.</p>
+<h2 id="10-agents">10. Agents<a class="headerlink" href="#10-agents" title="Permanent link">&para;</a></h2>
+<p>An agent is an AI coding tool working from a brief. Agents follow the same rules. The steps are:</p>
+<pre class="mermaid"><code>sequenceDiagram
+  participant H as Person
+  participant A as Agent
+  participant R as Repo and docs
+  participant B as Build and browser
+  H-&gt;&gt;A: Brief
+  A-&gt;&gt;R: Read contributing-docs.md and the pages the brief touches
+  A-&gt;&gt;R: Change the code
+  A-&gt;&gt;R: Update the docs and todo.md in the same change
+  A-&gt;&gt;B: Build the site
+  A-&gt;&gt;B: Screenshot each new or changed diagram
+  B--&gt;&gt;A: Warnings and picture
+  A-&gt;&gt;R: Commit and push a branch
+  A-&gt;&gt;H: Open or offer a PR, with the checklist filled in</code></pre>
+<p>The diagram shows an agent reading the docs first, changing code and docs together, checking the build and the pictures, and only then pushing.</p>
+<h2 id="11-before-you-open-the-pr">11. Before you open the PR<a class="headerlink" href="#11-before-you-open-the-pr" title="Permanent link">&para;</a></h2>
+<ul>
+<li>[ ] The docs are in the same PR as the code.</li>
+<li>[ ] <code>docs/todo.md</code> is updated if a TODO item started, moved or finished.</li>
+<li>[ ] New pages have one <code>nav:</code> line in <code>mkdocs.yml</code> and a link from another page.</li>
+<li>[ ] The build runs with no new warnings.</li>
+<li>[ ] Every new or changed diagram was looked at in a screenshot.</li>
+<li>[ ] Each diagram has a legend and a one-sentence description.</li>
+<li>[ ] Numbers say whether they are measured or assumed, and have a date if they go stale.</li>
+<li>[ ] No keys, private hostnames, IPs, bucket names, emails or private paths (section 9).</li>
+<li>[ ] No change to <code>pyproject.toml</code> or <code>uv.lock</code> for docs.</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      <script id="__config" type="application/json">{"base": "..", "features": [], "search": "../assets/javascripts/workers/search.973d3a69.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.f55a23d4.min.js"></script>
+      
+    
+  </body>
+</html>

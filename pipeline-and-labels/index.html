@@ -1,0 +1,1505 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Tracking players, actions, and events in football matches.">
+      
+      
+      
+        <link rel="canonical" href="https://egroeg121.github.io/footy-track/pipeline-and-labels/">
+      
+      
+        <link rel="prev" href="../architecture/">
+      
+      
+        <link rel="next" href="../data/">
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.6.20">
+    
+    
+      
+        <title>Pipeline and labels - Footy Scan</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.e53b48f4.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+    
+  </head>
+  
+  
+    <body dir="ltr">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#best-pipeline-and-label-needs" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="Footy Scan" class="md-header__button md-logo" aria-label="Footy Scan" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Footy Scan
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Pipeline and labels
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="Footy Scan" class="md-nav__button md-logo" aria-label="Footy Scan" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Footy Scan
+  </label>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Overview
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Architecture
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    Pipeline and labels
+    
+  </span>
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    Pipeline and labels
+    
+  </span>
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#summary" class="md-nav__link">
+    <span class="md-ellipsis">
+      Summary
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#1-best-measured-pipeline" class="md-nav__link">
+    <span class="md-ellipsis">
+      1. Best measured pipeline
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="1. Best measured pipeline">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#ball-detector-leaderboard" class="md-nav__link">
+    <span class="md-ellipsis">
+      Ball detector leaderboard
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#held-out-recall-at-the-production-setting" class="md-nav__link">
+    <span class="md-ellipsis">
+      Held-out recall at the production setting
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#ball-check-precision-by-confidence-band" class="md-nav__link">
+    <span class="md-ellipsis">
+      Ball Check precision by confidence band
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#is-the-benchmark-trustworthy" class="md-nav__link">
+    <span class="md-ellipsis">
+      Is the benchmark trustworthy?
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-target-pipeline" class="md-nav__link">
+    <span class="md-ellipsis">
+      2. Target pipeline
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-label-needs-and-gaps" class="md-nav__link">
+    <span class="md-ellipsis">
+      3. Label needs and gaps
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-how-labels-are-created-today" class="md-nav__link">
+    <span class="md-ellipsis">
+      4. How labels are created today
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-recommendation-in-order" class="md-nav__link">
+    <span class="md-ellipsis">
+      5. Recommendation, in order
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-uncertainties" class="md-nav__link">
+    <span class="md-ellipsis">
+      6. Uncertainties
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../data/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Data
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    Training
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            Training
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../training/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Training
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../training/notable_runs/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Notable Training Runs
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../inference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Inference
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../design/feature_store/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Feature store
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_8" >
+        
+          
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    Design
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            Design
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../design/pipeline_overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Pipeline Overview
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../design/player_reid/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Player Re-ID
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../design/tracking-pipeline/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Tracking Pipeline Design
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../system_design/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    System Design
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../system_overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    System Overview
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../pipeline_architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Pipeline Architecture
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../timings/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Time Formats
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../data_formats/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Data Formats
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_9" >
+        
+          
+          <label class="md-nav__link" for="__nav_9" id="__nav_9_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    Development
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_9_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_9">
+            <span class="md-nav__icon md-icon"></span>
+            Development
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../development/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Getting Started
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../agent_guidelines/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Agent Guidelines
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../contributing-docs/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    How to contribute to the docs
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../todo/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    TODO
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#summary" class="md-nav__link">
+    <span class="md-ellipsis">
+      Summary
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#1-best-measured-pipeline" class="md-nav__link">
+    <span class="md-ellipsis">
+      1. Best measured pipeline
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="1. Best measured pipeline">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#ball-detector-leaderboard" class="md-nav__link">
+    <span class="md-ellipsis">
+      Ball detector leaderboard
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#held-out-recall-at-the-production-setting" class="md-nav__link">
+    <span class="md-ellipsis">
+      Held-out recall at the production setting
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#ball-check-precision-by-confidence-band" class="md-nav__link">
+    <span class="md-ellipsis">
+      Ball Check precision by confidence band
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#is-the-benchmark-trustworthy" class="md-nav__link">
+    <span class="md-ellipsis">
+      Is the benchmark trustworthy?
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-target-pipeline" class="md-nav__link">
+    <span class="md-ellipsis">
+      2. Target pipeline
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-label-needs-and-gaps" class="md-nav__link">
+    <span class="md-ellipsis">
+      3. Label needs and gaps
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-how-labels-are-created-today" class="md-nav__link">
+    <span class="md-ellipsis">
+      4. How labels are created today
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-recommendation-in-order" class="md-nav__link">
+    <span class="md-ellipsis">
+      5. Recommendation, in order
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-uncertainties" class="md-nav__link">
+    <span class="md-ellipsis">
+      6. Uncertainties
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+
+<h1 id="best-pipeline-and-label-needs">Best pipeline and label needs<a class="headerlink" href="#best-pipeline-and-label-needs" title="Permanent link">&para;</a></h1>
+<p><em>Research of 2026-11-08 against <code>main</code> @ 26d2506. Evidence tags: <strong>[V]</strong> verified against code, data or run logs; <strong>[H]</strong> stated only in <code>&lt;storage&gt;/tools/HANDOFF.md</code> (2026-08-28) or a doc, not re-checked; <strong>[I]</strong> inference.</em> Context: <a href="../architecture/">Architecture</a>, <a href="../data/">Datasets and labels</a>, <a href="../todo/">TODO list</a>.</p>
+<h2 id="summary">Summary<a class="headerlink" href="#summary" title="Permanent link">&para;</a></h2>
+<ul>
+<li>The best measured ball detector is <strong>RT-DETR-L trained at 1920 on Roboflow v11: ball mAP50 0.665, recall 0.591</strong> on v11-val [V]. The older ".221 / .209" quoted next to it was yolo11n on v11 (<code>xeval.log</code>); it was pasted next to the RT-DETR path by commit <code>24229bb</code> (2026-08-29). The comment in <code>detectors/ultralytics.py</code> and the docs now say so.</li>
+<li>The number is not a multi-match estimate: <strong>156 of the 211 val balls (74%) come from one 10-second clip</strong> (<code>arsenal_example</code>) [V]. The production machine labels were made at <strong>imgsz 1280</strong> while the checkpoint was trained at 1920 [V].</li>
+<li>No ball tracker exists in code. Misses are dominated by long blind spells [H], so the next gains are a tracker for precision and <strong>diversity of labels</strong>, not more frames from the same clips.</li>
+<li>Four label-pipeline bugs (<a href="../todo/">T-01 to T-04</a>) will corrupt the next training export; fix them before any retrain.</li>
+</ul>
+<h2 id="1-best-measured-pipeline">1. Best measured pipeline<a class="headerlink" href="#1-best-measured-pipeline" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Stage</th>
+<th>Component</th>
+<th>Status</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Shot segmentation</td>
+<td><code>split_broadcast_segments.py</code> with yolo11n-cls <code>0.987.pt</code></td>
+<td>Works; 0 interior cuts in 3,175 frames [H/doc]</td>
+</tr>
+<tr>
+<td>Detection (ball, players, refs)</td>
+<td>RT-DETR-L (<code>rtdetr-l.pt</code> init), fine-tuned on Roboflow v11, 50 epochs, imgsz 1920 rect, batch 4, RTX 5090, 2026-08-28. <code>rtdetr_1920_v11/best.pt</code>, 66.8 MB, not in git</td>
+<td>Measured [V]</td>
+</tr>
+<tr>
+<td>Tiling / ROI</td>
+<td>None. One full-frame pass.</td>
+<td></td>
+</tr>
+<tr>
+<td>Batch inference</td>
+<td>imgsz 1280, half, conf 0.1 or more; 162 Man City clips, 97,625 frames, 2,767,151 boxes. Script not in repo.</td>
+<td>Produced [V]</td>
+</tr>
+<tr>
+<td>Ball tracker</td>
+<td><strong>None wired.</strong> VitTrack (labeller only) stays on the ball 9/176 frames.</td>
+<td>UNSOLVED</td>
+</tr>
+<tr>
+<td>Confidence threshold</td>
+<td>No operating point chosen in code (<code>get_current_best_detector(min_confidence=0.3)</code>).</td>
+<td></td>
+</tr>
+<tr>
+<td>Player tracking</td>
+<td>LapTracker over machine labels. Fragmentation measured; purity, IDF1, HOTA unmeasured.</td>
+<td>Partial</td>
+</tr>
+<tr>
+<td>Team, gap bridging, ReID</td>
+<td>Team not computed; linker unproven; cross-clip ImageNet embeddings at chance.</td>
+<td>Unproven</td>
+</tr>
+</tbody>
+</table>
+<p>Players are the easy part: yolo11n at 1280 reaches player mAP50 0.974 (KB:footy-ball-detection-findings). RT-DETR's per-class player mAP was never logged.</p>
+<h3 id="ball-detector-leaderboard">Ball detector leaderboard<a class="headerlink" href="#ball-detector-leaderboard" title="Permanent link">&para;</a></h3>
+<p>v11-val, 215 images, 211 <code>in_play_ball</code>; Ultralytics val [V: <code>&lt;storage&gt;/backups/vast_run_20260827-*/exp.log</code>, <code>vast5090_final_20260828-195228/exp5090.log</code>, <code>20260826-214555/trainlogs/{xeval.log,rtdetr_ep9_val.json}</code>].</p>
+<table>
+<thead>
+<tr>
+<th>Model, train imgsz, data, epochs</th>
+<th>ball mAP50</th>
+<th>mAP50-95</th>
+<th>P</th>
+<th>R</th>
+<th>Weights exist?</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>RT-DETR-L @1280, v11, 50 ep (A4000)</td>
+<td>0.668</td>
+<td>0.364</td>
+<td>0.852</td>
+<td>0.602</td>
+<td>No, logs only</td>
+</tr>
+<tr>
+<td><strong>RT-DETR-L @1920 rect, v11, 50 ep (5090) = production</strong></td>
+<td><strong>0.665</strong></td>
+<td>0.360</td>
+<td>0.862</td>
+<td><strong>0.591</strong></td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>yolo11m @1280, v11</td>
+<td>0.451</td>
+<td>0.241</td>
+<td>0.775</td>
+<td>0.327</td>
+<td>No</td>
+</tr>
+<tr>
+<td>yolo11l @1280, v11</td>
+<td>0.364</td>
+<td>0.198</td>
+<td>0.894</td>
+<td>0.240</td>
+<td>No</td>
+</tr>
+<tr>
+<td>RT-DETR-L @1280, <strong>v3</strong>, 50 ep</td>
+<td>0.328</td>
+<td>0.166</td>
+<td>0.912</td>
+<td>0.244</td>
+<td>Yes (S3 <code>gpu_runs</code>)</td>
+</tr>
+<tr>
+<td>RT-DETR-L @1280, v11, 9 ep</td>
+<td>0.314</td>
+<td>0.176</td>
+<td>0.759</td>
+<td>0.283</td>
+<td>?</td>
+</tr>
+<tr>
+<td>yolo11n @1280, v3 / v11 trained</td>
+<td>0.250 / 0.221</td>
+<td></td>
+<td>0.846 / 0.763</td>
+<td>0.209 / 0.209</td>
+<td></td>
+</tr>
+<tr>
+<td>yolo11s v3 @640 (old default)</td>
+<td>about 0</td>
+<td></td>
+<td></td>
+<td>0.000</td>
+<td>in git</td>
+</tr>
+</tbody>
+</table>
+<p>The two top rows differ by noise (about 2 balls of 211). Corrections to the KB: (1) "more data did not help" holds for yolo11n only; with RT-DETR-L, v3 to v11 took mAP50 from 0.328 to 0.665 and recall from 0.244 to 0.59. (2) The capacity confound is tested: yolo11m/l lose clearly to RT-DETR-L. (3) v11 train has 1,010 balls, not 826.</p>
+<h3 id="held-out-recall-at-the-production-setting">Held-out recall at the production setting<a class="headerlink" href="#held-out-recall-at-the-production-setting" title="Permanent link">&para;</a></h3>
+<p>Machine labels (imgsz 1280) against tier 1/2 GT sidecars, Man City clips; a hit is a machine box within max(12 px, box size) of the GT centre [V, my matching rule]:</p>
+<table>
+<thead>
+<tr>
+<th>GT clips</th>
+<th>n balls</th>
+<th>r@0.1</th>
+<th>r@0.3</th>
+<th>r@0.5</th>
+<th>r@0.7</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Held out of v11 train</td>
+<td>74</td>
+<td>0.69</td>
+<td>0.62</td>
+<td>0.60</td>
+<td>0.51</td>
+</tr>
+<tr>
+<td>Overlap v11 train</td>
+<td>330</td>
+<td>0.96</td>
+<td>0.92</td>
+<td>0.88</td>
+<td>0.71</td>
+</tr>
+</tbody>
+</table>
+<p>Held-out recall at 1280 is about 0.6, consistent with 0.59 at 1920, but n=74 is dominated by one clip, and the overlap row shows memorisation.</p>
+<h3 id="ball-check-precision-by-confidence-band">Ball Check precision by confidence band<a class="headerlink" href="#ball-check-precision-by-confidence-band" title="Permanent link">&para;</a></h3>
+<p>257 decided verdicts on machine candidates (<code>ball</code>, <code>corrected</code> count as hits) [V]. The sampler oversamples near the boundary, so these are per band, not global precision.</p>
+<table>
+<thead>
+<tr>
+<th>conf</th>
+<th>0.1-0.2</th>
+<th>0.2-0.3</th>
+<th>0.3-0.4</th>
+<th>0.4-0.5</th>
+<th>0.5-0.6</th>
+<th>0.6-0.7</th>
+<th>0.7-0.8</th>
+<th>0.8-0.9</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>precision</td>
+<td>0.04</td>
+<td>0.29</td>
+<td>0.23</td>
+<td>0.36</td>
+<td>0.42</td>
+<td>0.79</td>
+<td>0.96</td>
+<td>1.00</td>
+</tr>
+<tr>
+<td>n</td>
+<td>52</td>
+<td>14</td>
+<td>26</td>
+<td>42</td>
+<td>48</td>
+<td>38</td>
+<td>26</td>
+<td>11</td>
+</tr>
+</tbody>
+</table>
+<p>Boxes at 0.7 or more are near-certain, 0.6-0.7 mostly right, below 0.6 mostly wrong. A low-confidence second pass must therefore rely on motion gating. Human-checked vittrack ball boxes are about 97% right (81 verdicts: 71 ball, 6 corrected, 2 not_ball, 2 unsure).</p>
+<h3 id="is-the-benchmark-trustworthy">Is the benchmark trustworthy?<a class="headerlink" href="#is-the-benchmark-trustworthy" title="Permanent link">&para;</a></h3>
+<p>Partly. The instance count is reasonable and val clips are disjoint from train at clip level [V], but 74% of val balls are one clip, so HANDOFF's "independent" confirmation (<code>arsenal_example</code> 0.585 against val 0.591) is the same clip. The <strong>v11 test split (268 images, 243 balls) has never been evaluated</strong>. Cross-match generalisation is unmeasured. Unverified: whether <code>arsenal_example</code> overlaps a Man City training clip in time.</p>
+<h2 id="2-target-pipeline">2. Target pipeline<a class="headerlink" href="#2-target-pipeline" title="Permanent link">&para;</a></h2>
+<ol>
+<li>Per-frame RT-DETR-L at 1280 (keep it).</li>
+<li>An inference-only ball association layer over the stored conf 0.1 or more detections: ByteTrack/BoT-SORT-style low-confidence second pass, Kalman with high process noise and camera-motion compensation, gap interpolation.</li>
+<li>Later, a temporal detector: prior-conditioned RT-DETR (CenterTrack, bead ft-1zq), a heatmap over a frame stack (TrackNetV3, WASB), or YOLOFT-style correlation. The segmenter already gives cut-free clips.</li>
+</ol>
+<p>What the data says [H + I]: misses are dominated by long blind spells (one 51-frame gap holds 70% of <code>arsenal_example</code> misses; only 7% fall in 1-2 frame gaps), so a t-1 prior is estimated to buy about 0.585 to 0.62 recall. The larger lever is diversity; a tracker mainly buys precision. The CenterTrack run reached epoch 11/80 before the desktop reset and <strong>no result is recorded</strong>.</p>
+<p>Gaps between today and the target: no committed ball eval; no ball tracker in code; the producers are outside git (training command, batch inference, candidate filter, the temporal package, which exists only in <code>&lt;storage&gt;/backups/temporal_work.tgz</code>, and the ft-1zq code, only on the desktop machine); the held-out dense GT is too narrow to see a 0.03 gain; the label-plumbing seams corrupt exports; the 1920-train versus 1280-serve mismatch is unmeasured.</p>
+<h2 id="3-label-needs-and-gaps">3. Label needs and gaps<a class="headerlink" href="#3-label-needs-and-gaps" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Need</th>
+<th>Have</th>
+<th>Does the gap matter?</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Ball training boxes (tier 1/2)</td>
+<td>v11 train 1,010; sidecars 692 T1 + 825 T2 over 45 clips; T3 machine 352k</td>
+<td><strong>Yes, for diversity not count.</strong> 520 of 1,035 v11 train images are one clip (<code>astonvilla_seg080</code>) and 212 another (<code>bournemouth_1st_seg070</code>). v3 to v11 doubled RT-DETR recall; more frames from the same long clips will not help.</td>
+</tr>
+<tr>
+<td>Player and referee boxes</td>
+<td>v11 15.5k player, 1.7k referee; sidecars 18.7k, 2.1k</td>
+<td>No. Players are about 0.97 mAP50.</td>
+</tr>
+<tr>
+<td>Hard negatives (<code>not_ball</code> verdicts, <code>no_ball</code> frames)</td>
+<td>144 <code>not_ball</code> verdicts; 68 <code>no_ball</code>, 138 <code>not_broadcast</code> markers</td>
+<td>Moderate. Unused today; below 0.6 confidence precision is 0.42 or less.</td>
+</tr>
+<tr>
+<td>Single-frame eval, 2 or more matches</td>
+<td>v11 val 211 (74% one clip); test 243 unused</td>
+<td><strong>Yes, highest.</strong> Every decision depends on it.</td>
+</tr>
+<tr>
+<td>Dense ball-tracker eval (contiguous frames, explicit <code>no_ball</code>)</td>
+<td><code>arsenal_example</code> (250 frames, 176 balls, video only as the example mp4), <code>mancity_seg031</code> (53). Other long clips are in train.</td>
+<td><strong>Yes.</strong> Needs about 5-10 held-out clips of 250+ frames from 2 or more matches, 1.5-3k balls [I].</td>
+</tr>
+<tr>
+<td>Temporal training</td>
+<td>About 1,450-1,520 ball frames; 942 in runs of 3 or more (KB)</td>
+<td>No new label type; only after the eval exists.</td>
+</tr>
+<tr>
+<td>Identity (purity, jersey, merges, team)</td>
+<td>9 reviews, 68 proposals, 0 team labels</td>
+<td>Defer; not needed for the ball.</td>
+</tr>
+</tbody>
+</table>
+<p>Do not bother: importing external single-frame ball sets at volume, more Man City or Aston Villa seg080-style frames, player boxes, identity labels for the ball pipeline.</p>
+<h2 id="4-how-labels-are-created-today">4. How labels are created today<a class="headerlink" href="#4-how-labels-are-created-today" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Route</th>
+<th>Tool</th>
+<th>Tier</th>
+<th>Path to training</th>
+<th>Problems</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>A. Hand labels</td>
+<td><code>/labeller</code> draws boxes into <code>ball_gt_marks/&lt;stem&gt;.jsonl</code></td>
+<td>T1 (692 ball)</td>
+<td><code>ingest_gt</code>, then <code>export_training_dataset</code>, then Roboflow or <code>--local-dataset</code></td>
+<td>S1 strips <code>human_checked</code>; S6 concurrent writers clobber.</td>
+</tr>
+<tr>
+<td>B. VitTrack propagation</td>
+<td>Labeller Run (<code>VitTrackVideoLabeller</code>)</td>
+<td>T3 when written</td>
+<td>as A</td>
+<td>Useless for the ball (5% on-ball; Run halts at frame 1). It became T2 only via a one-off backfill on 2026-08-23 (15,386 lines). <strong>No code in the repo writes <code>human_checked</code></strong> [V grep].</td>
+</tr>
+<tr>
+<td>C. <code>/object_review</code></td>
+<td>Grid crop review</td>
+<td>correct gives T1</td>
+<td>as A</td>
+<td>S4 ghost rows on re-ingest; OPEN-3.</td>
+</tr>
+<tr>
+<td>D. <code>/ball_check</code></td>
+<td>Phone yes/no on machine candidates or sidecar boxes; dragged box written to the sidecar</td>
+<td><code>corrected</code> is T1; <code>ball</code> and <code>not_ball</code> give nothing</td>
+<td>corrected boxes only; <strong>verdicts reach nothing</strong></td>
+<td>S2, S3, S5. Measured 364 verdicts in about 20 active minutes, about 3.3 s per card [V].</td>
+</tr>
+<tr>
+<td>E. Roboflow hand labels</td>
+<td>Roboflow web annotation</td>
+<td>treated as <code>hand_label</code></td>
+<td><strong>The route the best model actually used</strong>: download v11, train directly</td>
+<td>v11 was built 2026-08-04 from a store export; the uploader exists only on unmerged branches <code>feat/roboflow-dataset-export</code>, <code>feat/roboflow-upload-script</code>.</td>
+</tr>
+<tr>
+<td>F. Machine labels</td>
+<td>RT-DETR batch inference (script not in repo)</td>
+<td>T3</td>
+<td>Only the Ball Check pool and LapTracker input</td>
+<td>A <code>ball</code> verdict, the cheapest human signal, is thrown away.</td>
+</tr>
+<tr>
+<td>G. SAM3 text prompts</td>
+<td><code>scripts/detect_objects.py --store_path</code></td>
+<td>T3</td>
+<td>store, then export if selected</td>
+<td>No metric; effectively unused.</td>
+</tr>
+<tr>
+<td>H. Sparse centre GT</td>
+<td><code>scripts/label_ball_centers.py</code></td>
+<td></td>
+<td>dropped by <code>ingest_gt</code> (<code>:184</code>)</td>
+<td>Eval only; <code>mancity_seg104</code> has no mp4.</td>
+</tr>
+<tr>
+<td>I. Identity review</td>
+<td><code>/identity</code>, <code>/identity/merge</code></td>
+<td>T1</td>
+<td>none</td>
+<td>No consumer.</td>
+</tr>
+</tbody>
+</table>
+<p>The newest feature store (2026-08-04) predates the <code>human_checked</code> ingest fix, the Ball Check corrections and six new sidecars, so store, export and Roboflow is stale end to end (<a href="../todo/">T-07</a>).</p>
+<h2 id="5-recommendation-in-order">5. Recommendation, in order<a class="headerlink" href="#5-recommendation-in-order" title="Permanent link">&para;</a></h2>
+<ol>
+<li><strong>Fix the record.</strong> Done on this branch: the code comment and docs now cite .665 / .591 and the 74% caveat. The KB findings page still needs updating, with the maintainer's approval (<a href="../todo/">T-15</a>).</li>
+<li><strong>One committed ball eval</strong> over the v11 test split plus held-out dense clips (<code>arsenal_example</code> after checking it is not a sub-span of a training clip, and <code>mancity_seg031</code>), at 1280 and 1920, reporting instance counts and a per-match breakdown (<a href="../todo/">T-10</a>). The 1280 half needs no GPU for the sidecar clips.</li>
+<li><strong>ByteTrack/Kalman ball association over existing machine labels</strong>, with thresholds from the precision bands (0.7 or more near-certain; 0.6-0.7 about 0.79; below 0.6 at most 0.42). Run <code>analyse_ball_tracker.py</code> first to split detector misses from tracker misses (<a href="../todo/">T-20</a>).</li>
+<li><strong>Diversity labelling on new matches</strong> (Aston Villa, Bournemouth 2nd half, Norwich) with <code>/ball_check</code>, holding one full match out for eval; at about 3.3 s per card, 1,000 cards is about an hour (<a href="../todo/">T-13</a>, <a href="../todo/">T-21</a>). Look at the 51-frame <code>arsenal_example</code> gap first.</li>
+<li><strong>Before any retrain through the store</strong>, fix S1 to S4 (<a href="../todo/">T-01 to T-04</a>) and make the export default to tier 1/2 (<a href="../todo/">T-22</a>).</li>
+<li>Commit the missing producers and recover the ft-1zq code from the desktop machine (<a href="../todo/">T-09</a>, <a href="../todo/">T-23</a>); retrain RT-DETR-L at 1280 on v11 plus new-match labels and compare on the step 2 eval.</li>
+<li>Only then: finish ft-1zq on a rented GPU, or a heatmap/YOLOFT detector if the tracker and diversity plateau.</li>
+</ol>
+<p>Do not bother with: tuning VitTrack thresholds or SAM3 (measured dead ends), 1920 resolution or bigger GPUs (1920 is about 1280), scaling YOLO (yolo11m/l lost), RF-DETR (caps below 1280).</p>
+<h2 id="6-uncertainties">6. Uncertainties<a class="headerlink" href="#6-uncertainties" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Whether <code>arsenal_example</code> overlaps training footage.</li>
+<li>The CenterTrack result is not recorded; the HANDOFF temporal miss analysis was not reproduced.</li>
+<li>The recall matching rule (centre within max(12 px, box size)).</li>
+<li>The held-out GT mixes tier 1 and 2, and tier 2 is vittrack-derived (about 97% precise).</li>
+<li>WSL and desktop data copies were not inspected.</li>
+<li>Per-class player mAP for RT-DETR was never logged.</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      <script id="__config" type="application/json">{"base": "..", "features": [], "search": "../assets/javascripts/workers/search.973d3a69.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.f55a23d4.min.js"></script>
+      
+    
+  </body>
+</html>

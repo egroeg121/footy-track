@@ -13,6 +13,10 @@
         <link rel="canonical" href="https://egroeg121.github.io/footy-track/design/feature_store/">
       
       
+        <link rel="prev" href="../../inference/">
+      
+      
+        <link rel="next" href="../pipeline_overview/">
       
       
       <link rel="icon" href="../../assets/images/favicon.png">
@@ -20,7 +24,7 @@
     
     
       
-        <title>Feature Store — Design - Footy Scan</title>
+        <title>Feature store - Footy Scan</title>
       
     
     
@@ -98,7 +102,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Feature Store — Design
+              Feature store
             
           </span>
         </div>
@@ -199,7 +203,73 @@
   
   
   <span class="md-ellipsis">
-    Home
+    Overview
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Architecture
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../pipeline-and-labels/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Pipeline and labels
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../data/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Data
     
   </span>
   
@@ -224,15 +294,15 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
         
           
-          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
             
   
   
   <span class="md-ellipsis">
-    Development
+    Training
     
   </span>
   
@@ -240,10 +310,10 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_2">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
             <span class="md-nav__icon md-icon"></span>
-            Development
+            Training
           </label>
           <ul class="md-nav__list" data-md-scrollfix>
             
@@ -254,12 +324,12 @@
   
   
     <li class="md-nav__item">
-      <a href="../../system_design/" class="md-nav__link">
+      <a href="../../training/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
-    System Design
+    Training
     
   </span>
   
@@ -277,12 +347,465 @@
   
   
     <li class="md-nav__item">
-      <a href="../../system_overview/" class="md-nav__link">
+      <a href="../../training/notable_runs/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
-    System Overview
+    Notable Training Runs
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../inference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Inference
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    Feature store
+    
+  </span>
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    Feature store
+    
+  </span>
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-goals-and-non-goals" class="md-nav__link">
+    <span class="md-ellipsis">
+      1. Goals and non-goals
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-the-core-decision-one-store-not-one-table" class="md-nav__link">
+    <span class="md-ellipsis">
+      2. The core decision: one store, not one table
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="2. The core decision: one store, not one table">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#why-duckdb-as-the-store-parquet-as-the-substrate" class="md-nav__link">
+    <span class="md-ellipsis">
+      Why DuckDB as the store, Parquet as the substrate
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-schema-overview" class="md-nav__link">
+    <span class="md-ellipsis">
+      3. Schema overview
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="3. Schema overview">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#31-game-one-row-per-match" class="md-nav__link">
+    <span class="md-ellipsis">
+      3.1 game — one row per match
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#31a-clip-identity-canonical-clip-id" class="md-nav__link">
+    <span class="md-ellipsis">
+      3.1a Clip identity (canonical clip id)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#32-frame-one-row-per-game-frame" class="md-nav__link">
+    <span class="md-ellipsis">
+      3.2 frame — one row per (game, frame)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#33-detection-one-row-per-game-frame-source-object" class="md-nav__link">
+    <span class="md-ellipsis">
+      3.3 detection — one row per (game, frame, source, object)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#34-track_meta-one-row-per-track-8" class="md-nav__link">
+    <span class="md-ellipsis">
+      3.4 track_meta — one row per track (§8)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#35-run-one-row-per-processing-run-provenance" class="md-nav__link">
+    <span class="md-ellipsis">
+      3.5 run — one row per processing run (provenance)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#36-views-the-one-table-ergonomics" class="md-nav__link">
+    <span class="md-ellipsis">
+      3.6 Views (the "one table" ergonomics)
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-embeddings-live-outside-the-hot-path" class="md-nav__link">
+    <span class="md-ellipsis">
+      4. Embeddings live outside the hot path
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-how-each-requested-feature-maps-in" class="md-nav__link">
+    <span class="md-ellipsis">
+      5. How each requested feature maps in
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="5. How each requested feature maps in">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#51-per-frame-info-path-resolution-clock-frame-number" class="md-nav__link">
+    <span class="md-ellipsis">
+      5.1 Per-frame info (path, resolution, clock, frame number)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#52-broadcast-features-binary-yesno-confidence-model-version" class="md-nav__link">
+    <span class="md-ellipsis">
+      5.2 Broadcast features (binary yes/no, confidence, model version)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#53-pitch-segmentation-final-polygon-thresholdsallowances" class="md-nav__link">
+    <span class="md-ellipsis">
+      5.3 Pitch segmentation (final polygon + thresholds/allowances)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#54-calibration-homography" class="md-nav__link">
+    <span class="md-ellipsis">
+      5.4 Calibration / homography
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#55-object-detections-from-multiple-sources" class="md-nav__link">
+    <span class="md-ellipsis">
+      5.5 Object detections from multiple sources
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#56-tracking-longer-term" class="md-nav__link">
+    <span class="md-ellipsis">
+      5.6 Tracking (longer term)
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-multiple-sources-over-the-same-frames-the-central-pattern" class="md-nav__link">
+    <span class="md-ellipsis">
+      6. Multiple sources over the same frames — the central pattern
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="6. Multiple sources over the same frames — the central pattern">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#61-importing-existing-label-sets" class="md-nav__link">
+    <span class="md-ellipsis">
+      6.1 Importing existing label sets
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#62-ball-check-verdicts-detection_review" class="md-nav__link">
+    <span class="md-ellipsis">
+      6.2 Ball Check verdicts (detection_review)
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-idempotency-keys-and-write-protocol" class="md-nav__link">
+    <span class="md-ellipsis">
+      7. Idempotency, keys, and write protocol
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-tracking-integration-forward-compatible" class="md-nav__link">
+    <span class="md-ellipsis">
+      8. Tracking integration (forward-compatible)
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#9-relationship-to-existing-docs-what-this-changes" class="md-nav__link">
+    <span class="md-ellipsis">
+      9. Relationship to existing docs (what this changes)
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#10-why-this-over-the-alternatives" class="md-nav__link">
+    <span class="md-ellipsis">
+      10. Why this over the alternatives
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#11-open-questions-file-as-beads-before-building" class="md-nav__link">
+    <span class="md-ellipsis">
+      11. Open questions (file as beads before building)
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#12-summary" class="md-nav__link">
+    <span class="md-ellipsis">
+      12. Summary
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_8" >
+        
+          
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    Design
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            Design
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../pipeline_overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Pipeline Overview
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../player_reid/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Player Re-ID
     
   </span>
   
@@ -323,12 +846,35 @@
   
   
     <li class="md-nav__item">
-      <a href="../../development/" class="md-nav__link">
+      <a href="../../system_design/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
-    Getting Started
+    System Design
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../system_overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    System Overview
     
   </span>
   
@@ -408,75 +954,6 @@
 
               
             
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../training/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    Training
-    
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../inference/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    Inference
-    
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../training/notable_runs/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    Notable Training Runs
-    
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
           </ul>
         </nav>
       
@@ -499,15 +976,15 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_9" >
         
           
-          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_9" id="__nav_9_label" tabindex="0">
             
   
   
   <span class="md-ellipsis">
-    Contributing
+    Development
     
   </span>
   
@@ -515,12 +992,35 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_3">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_9_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_9">
             <span class="md-nav__icon md-icon"></span>
-            Contributing
+            Development
           </label>
           <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Getting Started
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
             
               
                 
@@ -545,9 +1045,54 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../contributing-docs/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    How to contribute to the docs
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../todo/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    TODO
+    
+  </span>
+  
+
+      </a>
     </li>
   
 

@@ -1,0 +1,1100 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Tracking players, actions, and events in football matches.">
+      
+      
+      
+        <link rel="canonical" href="https://egroeg121.github.io/footy-track/todo/">
+      
+      
+        <link rel="prev" href="../contributing-docs/">
+      
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.6.20">
+    
+    
+      
+        <title>TODO - Footy Scan</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.e53b48f4.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+    
+  </head>
+  
+  
+    <body dir="ltr">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#todo-list" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="Footy Scan" class="md-header__button md-logo" aria-label="Footy Scan" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Footy Scan
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              TODO
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="Footy Scan" class="md-nav__button md-logo" aria-label="Footy Scan" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Footy Scan
+  </label>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Overview
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Architecture
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../pipeline-and-labels/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Pipeline and labels
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../data/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Data
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    Training
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            Training
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../training/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Training
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../training/notable_runs/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Notable Training Runs
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../inference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Inference
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../design/feature_store/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Feature store
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_8" >
+        
+          
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    Design
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            Design
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../design/pipeline_overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Pipeline Overview
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../design/player_reid/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Player Re-ID
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../design/tracking-pipeline/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Tracking Pipeline Design
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../system_design/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    System Design
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../system_overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    System Overview
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../pipeline_architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Pipeline Architecture
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../timings/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Time Formats
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../data_formats/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Data Formats
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_9" >
+        
+          
+          <label class="md-nav__link" for="__nav_9" id="__nav_9_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    Development
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_9_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_9">
+            <span class="md-nav__icon md-icon"></span>
+            Development
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../development/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Getting Started
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../agent_guidelines/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Agent Guidelines
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../contributing-docs/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    How to contribute to the docs
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    TODO
+    
+  </span>
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    TODO
+    
+  </span>
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#merge-order" class="md-nav__link">
+    <span class="md-ellipsis">
+      Merge order
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#p1" class="md-nav__link">
+    <span class="md-ellipsis">
+      P1
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#p2" class="md-nav__link">
+    <span class="md-ellipsis">
+      P2
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#p3" class="md-nav__link">
+    <span class="md-ellipsis">
+      P3
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#environment-notes" class="md-nav__link">
+    <span class="md-ellipsis">
+      Environment notes
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#done-this-session" class="md-nav__link">
+    <span class="md-ellipsis">
+      Done this session
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#merge-order" class="md-nav__link">
+    <span class="md-ellipsis">
+      Merge order
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#p1" class="md-nav__link">
+    <span class="md-ellipsis">
+      P1
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#p2" class="md-nav__link">
+    <span class="md-ellipsis">
+      P2
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#p3" class="md-nav__link">
+    <span class="md-ellipsis">
+      P3
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#environment-notes" class="md-nav__link">
+    <span class="md-ellipsis">
+      Environment notes
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#done-this-session" class="md-nav__link">
+    <span class="md-ellipsis">
+      Done this session
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+
+<h1 id="todo-list">TODO list<a class="headerlink" href="#todo-list" title="Permanent link">&para;</a></h1>
+<p>Prioritised from the 2026-11 review of <code>main</code> @ 26d2506 (2026-11-08); the findings are in <a href="../architecture/">Architecture</a>, <a href="../data/">Datasets and labels</a> and <a href="../pipeline-and-labels/">Best pipeline and label needs</a>. This file is the only tracker: Gas Town is paused, so there are no beads. Tick the box and update the status when an item lands.</p>
+<p>Priority: P0 silent data corruption, P1 blocks reliable training or eval, P2 docs and gaps, P3 cleanup. Effort: S under half a day, M a day or two, L longer.</p>
+<h2 id="merge-order">Merge order<a class="headerlink" href="#merge-order" title="Permanent link">&para;</a></h2>
+<p>All the code PRs in flight on 2026-11-08 are now merged to <code>main</code>: #22 (lint), #24 (pre-commit and CI, which also carried <code>chore/faster-tests</code>), #25 (T-01), #26 (T-02), #28 (T-04), #27 (T-03), #29 (predict_kwargs) and #23 (simple inference pipeline). The docs branches <code>docs/review-2026-11</code> and <code>docs/review-content</code> land as squash-merged PRs.</p>
+<ul>
+<li>[x] <strong>T-01</strong> (P0, S) Labeller session drops <code>human_checked</code> on load and flush, which downgrades tier 2 to tier 3 for every box in the clip. Add a regression test. Ref: <code>src/footy_track/labeller/session.py:156-161</code>, <code>309-317</code> (<code>_box_line</code> writes only <code>label</code> and <code>model</code>). Status: done, PR #25 merged (2501e06).</li>
+<li>[x] <strong>T-02</strong> (P0, M) Ball Check verdicts reach nothing. <code>ingest_gt</code> globs only top-level <code>*.jsonl</code> so <code>ball_checks/</code> is skipped, and the export keeps <code>not_ball</code> boxes as positive balls. Write a verdicts importer and make the export filter on review status. Ref: <code>feature_store/ingest_gt.py:279</code>, <code>scripts/export_training_dataset.py:91-128</code>, <a href="../architecture/#7-known-seams-and-risks">Architecture, section 7</a>. Status: done, PR #26 merged (8ad1732). T-25 is the follow-up that makes it robust to re-ingest.</li>
+<li>[x] <strong>T-03</strong> (P0, M) One canonical clip id shared by the labeller, <code>ingest_gt</code> and the eval exclusion and split. Each clip has three aliases today (for example <code>mancity_seg050</code>, <code>arsenal_mancity_seg050</code>, <code>arsenal_mancity_20250925_seg050</code>), so eval footage can leak into training. Ref: <code>labeller/ball_check.py:709-728</code>, <code>scripts/export_training_dataset.py:78-80</code>, <code>362-368</code>, <a href="../data/">Datasets and labels</a>. Status: done, PR #27 merged (980e834).</li>
+<li>[x] <strong>T-04</strong> (P0, M) <code>ingest_gt</code> must replace the clip's rows rather than upsert, otherwise an old vittrack row stays canonical next to the corrected one (ghost rows, both exported). Ref: <code>feature_store/store.py:197-220</code>, <code>feature_store/schema.py:40-48</code>. Status: done, PR #28 merged (adcb818).</li>
+</ul>
+<h2 id="p1">P1<a class="headerlink" href="#p1" title="Permanent link">&para;</a></h2>
+<ul>
+<li>[ ] <strong>T-05</strong> (P1, M) Undoing a corrected Ball Check card must revert its box, and the sidecar needs one locked atomic writer (a session flush can overwrite Ball Check writes). Ref: <code>labeller/session.py:252-301</code>, <code>labeller/web/ball_check.html:351-365</code>. Status: open.</li>
+<li>[ ] <strong>T-06</strong> (P1, S) Trainer defaults: <code>--imgsz 640</code> is ball-blind and <code>--device</code> defaults to <code>mps</code>. Also <code>--workers</code> defaults to 8 while merge commit 26d2506 says "default 0 under WSL": reconcile the message and the code, and document <code>--workers</code> and <code>--cache</code> in <code>docs/training.md</code>. Ref: <code>scripts/train_object_detector.py</code> (<code>imgsz: int = 640</code>, argparse <code>--device</code>, <code>--workers</code>, <code>--cache</code>). Status: open.</li>
+<li>[ ] <strong>T-07</strong> (P1, M) Refresh the feature store. The newest copy is stale (4 Aug) and local-only, and lacks the Sep corrections, new label files, machine labels and Roboflow v11. <code>game.source_video_uri</code> and <code>match_date</code> are NULL. Ref: <a href="../data/">Datasets and labels</a>. Status: open. Do after T-02 to T-04.</li>
+<li>[x] <strong>T-08</strong> (P1, M) Test speed and CI. Done on branch <code>chore/faster-tests</code> (commit 9acf147, pushed, <strong>not merged</strong>): weight- and key-dependent tests are skipped, slow ones are marked, <code>make test-fast</code> added. Remaining: merge it. The CI part (a workflow that runs the tests; none does today, <code>.github/workflows/docs.yml</code> only deploys docs) is now covered by T-28. Status: done. <code>chore/faster-tests</code> came in with PR #24 (<code>make test-fast</code>, and CI runs it).</li>
+<li>[ ] <strong>T-09</strong> (P1, M) Commit the missing producers: RT-DETR batch inference, the machine_labels to ball_candidates filter, the RT-DETR training command, and the clip alias symlinks (<code>ballcheck_clips/</code>, 199 links). Ref: <a href="../architecture/#2-end-to-end-data-flow">Architecture, section 2</a>. Status: open.</li>
+<li>[ ] <strong>T-10</strong> (P1, M) One committed ball eval. The evidence dispute is settled: .221/.209 was yolo11n, and <code>rtdetr_1920_v11</code> scores mAP50 0.665 / recall 0.591 on v11-val at 1920 (211 balls, 74% from one clip). Remaining: commit one eval script that scores the checkpoint at <strong>both 1280 and 1920</strong> on the v11 test split (243 balls, never evaluated) plus held-out dense clips (<code>arsenal_example</code> after checking it is not a sub-span of a training clip, <code>mancity_seg031</code>), reporting instance counts and a per-match breakdown; record the results in <a href="../pipeline-and-labels/">Best pipeline</a>. Docs and the code comment at <code>detectors/ultralytics.py:37</code> are corrected on this branch. Ref: <a href="../pipeline-and-labels/">Best pipeline</a>. Status: docs fixed, eval open.</li>
+<li>[ ] <strong>T-25</strong> (P1, M, Data-correctness) Match Ball Check verdicts to detections at export time, by box overlap, not by the stored <code>detection_id</code>. Why: <code>detection_id</code> is positional, so after a re-ingest that shifts ids the stored <code>matched_detection_id</code> can point at the wrong box and the export can drop the wrong one. Ref: <code>feature_store/ball_checks.py</code> and the <code>_NOT_REJECTED</code> clause in <code>scripts/export_training_dataset.py</code>. Executable example: a strict-xfail test on branch <code>feat/ball-check-verdicts-to-store</code>, <code>tests/feature_store/test_ball_checks.py</code>. It puts three boxes A, B, C in one frame, records <code>not_ball</code> on B, then removes A and re-ingests without re-running the importer. The correct result is B excluded and C kept. Done when the xfail marker is removed and the test passes. Depends on T-02 and T-04 (replace on re-ingest). Status: open.</li>
+<li>[ ] <strong>T-26</strong> (P1, M, Training data) Use rejected candidates as hard negatives. 144 <code>not_ball</code> verdicts on detector candidates are stored in <code>detection_review</code>, and nothing consumes them. The research lists hard negatives as one of the label gaps that matters (<a href="../pipeline-and-labels/">Best pipeline</a>, section 3). Needs a design decision first: export them as background or negative boxes, or as crops; how they are weighted; and how to keep eval clips out. Ref: <code>feature_store/ball_checks.py</code>, <code>scripts/export_training_dataset.py</code>. Status: open, needs design.</li>
+<li>[ ] <strong>T-33</strong> (P1, M, Data-correctness) Define the eval set explicitly (from T-03). <code>export_training_dataset</code> decides eval clips from the <code>*.jsonl</code> files in <code>eval_data/clips</code>, but only <code>mancity_seg104.jsonl</code> is checked in, so a fresh checkout excludes almost nothing unless <code>build_eval_sidecars</code> has been run. Make the eval clip list explicit and checked in (or generated deterministically), and fail the export if it is empty. Also check the Roboflow match-level id (about 4,915 detections from the whole match): it may overlap eval clips in time, which names cannot catch, so exclude by time range or frame. Ref: <code>scripts/export_training_dataset.py</code>, <code>scripts/build_eval_sidecars.py</code>, <code>eval_data/clips/</code>. Status: open.</li>
+<li>[ ] <strong>T-34</strong> (P1, M, Ball tracking) The simple ball tracker follows a persistent false positive (found in the demo of inference PR #23): a player's head near the ad boards, confidence about 0.75, inside the 0.7-0.8 band, so 95% "coverage" is misleading. Add a defence, for example penalise or drop a ball track that moves with a player box. Measure it on a held-out eval with ground truth and report precision and recall, not coverage. Ref: branch <code>feat/simple-inference-pipeline</code>, T-20, T-21, <a href="../pipeline-and-labels/">Best pipeline</a>. Status: open.</li>
+<li>[ ] <strong>T-20</strong> (P1, M) Ball tracker: ByteTrack/Kalman association over the existing machine labels (conf 0.1 or more already stored), with high/low thresholds from the Ball Check precision bands (0.04 at conf 0.1-0.2, 0.42 at 0.5-0.6, 0.79 at 0.6-0.7, 0.96 at 0.7-0.8). Run <code>scripts/analyse_ball_tracker.py</code> first to split detector misses from tracker misses. Inference only; expect precision gains more than recall. Score it with the T-10 eval. Ref: <a href="../pipeline-and-labels/">Best pipeline</a>, section 5; the phased design is in <a href="../design/tracking-pipeline/">Tracking pipeline design</a> (that page is now on <code>main</code>, #21 merged as a82ec07). Status: open.</li>
+<li>[ ] <strong>T-21</strong> (P1, L) Label new matches with <code>/ball_check</code> (Aston Villa, Bournemouth 2nd half, Norwich; run the detector on them first, since only Man City has machine labels), holding one full match out for eval. About 3.3 s per card. Do after T-01 to T-04. Ref: <a href="../pipeline-and-labels/">Best pipeline</a>, section 3. Status: open.</li>
+<li>[ ] <strong>T-22</strong> (P1, S) Make <code>export_training_dataset</code> export only tier 1/2 by default, with explicit opt-in for tier 3. Part of the T-02 fix; listed separately so it is not missed. Ref: <code>export_training_dataset.py:32-34, 91-128</code>. Status: open.</li>
+</ul>
+<h2 id="p2">P2<a class="headerlink" href="#p2" title="Permanent link">&para;</a></h2>
+<ul>
+<li>[ ] <strong>T-11</strong> (P2, M) Docs refresh. README labeller sections 11-12 (verdicts, precision formula, crop window, focus 0.7 vs 0.98, handback 0.5 vs 0.30, test count 138 vs 177, undocumented step/save_box/crop_meta endpoints, and the claim that Ball Check writes nothing to the sidecars); <code>pipeline_architecture.md</code> and <code>system_overview.md</code> describe classes that do not exist; <code>docs/data_formats.md:35</code> and <code>scripts/README.md</code> name console scripts that do not exist (the only one is <code>footy-track</code>, <code>pyproject.toml:44</code>); the feature-store docs say <code>game_id</code> is a match when it is a clip stem. Ref: <a href="../architecture/#9-docs-that-still-disagree-with-the-code">Architecture, section 9</a>. Status: open.</li>
+<li>[x] <strong>T-12</strong> (P2, S) Publish current docs in <code>mkdocs.yml</code>. Done on branch <code>docs/review-2026-11</code>: one merged <a href="../architecture/">Architecture</a> page, <a href="../data/">Datasets and labels</a> and <a href="../pipeline-and-labels/">Best pipeline and label needs</a> are in the nav together with <code>pipeline_overview.md</code>, <code>player_reid.md</code> and <code>feature_store.md</code>; the Mermaid fence is enabled. Remaining: merge the branch. Status: done, with the docs PR that carries this file.</li>
+<li>[ ] <strong>T-23</strong> (P2, M) Get the remaining code into git: the temporal package (<code>src/footy_track/temporal/*</code>, <code>train/eval_temporal_detector.py</code>, only in an old backup tarball) and the ft-1zq CenterTrack code (only on the desktop machine; recover before that box fails). Together with T-09 this makes training, inference and the temporal work reproducible. Status: open.</li>
+<li>[ ] <strong>T-24</strong> (P2, S, Tooling) Docs checks in CI: run <code>make docs-check</code> (diagram text check plus the site build) on pull requests. Part of the CI work in T-28, which should call it. The <a href="../contributing-docs/">contribution guide</a> lists it as optional. Ref: <code>scripts/check_docs_diagrams.py</code>, <code>.github/workflows/docs.yml</code> (deploy only today). Status: open, folded into T-28.</li>
+<li>[ ] <strong>T-27</strong> (P2, S, Data) Find out why 268 of 355 verdicts did not match a stored detection. Split them into clips with no label file and clips whose label file has no box at that spot. Most is probably the clip-name problem (T-03). Ref: <code>feature_store/ball_checks.py</code>, <a href="../data/">Datasets and labels</a>. Status: open.</li>
+<li>[x] <strong>T-28</strong> (P2, S, Tooling) Pre-commit and CI. Two PRs are being prepared: "fix ruff lint and format errors" (branch <code>chore/fix-lint-errors</code>) and "pre-commit and CI checks" (branch <code>ci/pre-commit-and-checks</code>, depends on <code>chore/faster-tests</code>). This consolidates the CI part of T-08 and the docs check in T-24. Status: done. PR #22 (lint) and PR #24 (pre-commit and CI) are merged. The docs check (T-24) is not in CI yet.</li>
+<li>[ ] <strong>T-29</strong> (P2, S, Docs rule) Docs and checks in every change. Standing rule: every PR updates the docs in the same change (see <a href="../contributing-docs/">How to contribute to the docs</a>) and passes <code>make check</code> once pre-commit lands. Status: standing rule, rule written; <code>make check</code> and the pre-commit hook are on <code>main</code> (PR #24).</li>
+<li>[x] <strong>T-32</strong> (P2, S, Docs hygiene) The earliest docs commits (76e426b, 9db6d4f) already contain the object-store bucket name, host names and absolute paths, and the repo and the site are public. Decide between squash-merging the docs branches and rewriting the branch with a force-push (needs the owner's approval) so the old commits are not in main's history. GitHub may keep old commits reachable by their SHA, so also treat the bucket name and host names as already exposed. Ref: branches <code>docs/review-2026-11</code>, <code>docs/review-content</code>. Status: done. The docs branches are squash-merged, so the early commits do not enter the history of <code>main</code>. The old names are still in those branch commits on GitHub, so treat them as exposed.</li>
+<li>[ ] <strong>T-35</strong> (P2, S, Data-correctness) The eval harness counts <code>seg010</code> and <code>seg050</code> twice under different names (from T-03), so bake-off scores weight those clips double. Deduplicate with the canonical clip id (<code>ball_eval</code> <code>resolve_aliases</code>) and re-run the bake-off. Ref: <code>src/footy_track/ball_eval/</code>, <code>scripts/run_bakeoff.py</code>. Status: open, after T-03 merges.</li>
+<li>[ ] <strong>T-36</strong> (P2, S, Data cleanup) Seven raw-named label files were created by the old <code>save_box</code> bug (from T-03). One is eval clip <code>seg010</code>; an example is <code>arsenal_mancity_20250925_seg010.jsonl</code>. Merge each into the matching canonical label file by hand, remove them, and clean the feature-store rows stored under those names. Also two stores disagree on <code>seg010</code> (482 vs 249 rows) and a human must adjudicate. Ref: <a href="../data/">Datasets and labels</a>. Status: open, depends on T-03 merging.</li>
+<li>[ ] <strong>T-37</strong> (P2, S, Tooling) <code>docs/design/tracking-pipeline.md</code> (on main, PR #21) diagram 1 has 26 nodes, one over the diagram check limit of 25. Split it into two diagrams so <code>make docs-check</code> passes before CI runs it (T-28). Ref: <code>scripts/check_docs_diagrams.py</code>. Status: open.</li>
+<li>[ ] <strong>T-38</strong> (P2, S, Docs) <code>docs/development.md</code> ends up with two sections about running tests, the old "Running Tests" block and the new "Running the tests". Merge them after <code>chore/faster-tests</code> lands (T-08). Status: open.</li>
+<li>[ ] <strong>T-39</strong> (P2, S, Test reliability) T-04's agent saw two <code>TestToFiftyOne</code> failures in <code>tests/output/test_match_exporter.py</code> in a parallel run and never confirmed whether they also fail on main. Reproduce on a clean main, then fix or mark them. Also <code>ingest_gt</code> is slow (about 214 s for 22k rows) because of per-row <code>executemany</code>; batch the upserts. Ref: <code>tests/output/test_match_exporter.py</code>, <code>src/footy_track/feature_store/ingest_gt.py</code>, <code>store.py</code>. Status: open.</li>
+<li>[ ] <strong>T-13</strong> (P2, L) Label gaps. Norwich (4K, about 7k s) and Bournemouth 2nd half have footage but no ground truth; machine labels cover only the 162 Man City clips; GT covers 45 of about 1,700 broadcast segments. Ref: <a href="../data/">Datasets and labels</a>. Status: open.</li>
+<li>[ ] <strong>T-14</strong> (P2, S) One shared parser for the six label formats; <code>ingest_gt.py:210</code> crashes on a list-form bbox. Status: open.</li>
+<li>[ ] <strong>T-15</strong> (P2, S) Knowledge base fixes (outside this repo). See <a href="../architecture/">kb-vs-reality</a>. The user has to approve KB edits. A comparison of the KB against the repo and data exists outside this repo (not published here). Also update the KB findings page: the .221 figure was yolo11n, RT-DETR shows a data effect (v3 0.328 to v11 0.665), v11 train has 1,010 balls, v11-val is 74% one clip. Status: open.</li>
+</ul>
+<h2 id="p3">P3<a class="headerlink" href="#p3" title="Permanent link">&para;</a></h2>
+<ul>
+<li>[ ] <strong>T-16</strong> (P3, S) Remove or archive dead code: Streamlit labeller (<code>labeller/app.py</code>, <code>labeller/_canvas_compat.py</code>, <code>scripts/run_labeller.py</code>, streamlit deps in <code>pyproject.toml</code>), <code>Sam3VideoLabeller</code> and the iCloud path in <code>labeller/video_utils.py:121</code>, <code>labeller/motion_tracker.py</code>, <code>footy_track/logging.py</code>, unused scaffolds. Status: open.</li>
+<li>[ ] <strong>T-17</strong> (P3, S) Serving and output scaffolds (<code>output/</code>, <code>projection/</code>, <code>input/streams.py</code>, the hello-world <code>footy_track:main</code>) are not wired. Decide to build or delete. Status: open.</li>
+<li>[ ] <strong>T-18</strong> (P3, S) <code>/ingest</code> returns 500 because <code>labeller/web/ingest.html</code> is missing (<code>labeller/server.py:160-162</code>). Status: open.</li>
+<li>[ ] <strong>T-19</strong> (P3, S) Hardcoded macOS paths: <code>scripts/run_bakeoff.py:26,28</code>, <code>classifier.py:128</code> <code>device="mps"</code>. Status: open.</li>
+<li>[x] <strong>T-30</strong> (P3, S, Tooling) Put <code>detection_review</code> in <code>schema.TABLES</code> so the Parquet export carries it. Ref: <code>feature_store/schema.py</code>. Status: done, <code>detection_review</code> is in <code>schema.TABLES</code> on <code>main</code> (PR #26).</li>
+<li>[~] <strong>T-31</strong> (P3, S, Docs hygiene) Remove personal names and machine names from the docs. In <code>docs/pipeline-and-labels.md</code> the KB step says it needs a named person's approval: reword to "with the maintainer's approval". Replace "the Mac mini" with "the build machine" in <code>docs/data.md</code> (two places) and elsewhere. Also generalise the desktop machine's name and the backup path in T-23 (done in this file already, along with the Environment notes). Other hits found with the grep below: a personal path in <code>docs/bakeoff_results.json</code> and <code>docs/doc_review.md</code>, and a personal W&amp;B account name in <code>docs/training/notable_runs.md</code>; decide whether to keep or generalise each. Done when <code>grep -riE "george|mac mini|desktop-ubuntu|/mnt/" docs</code> is clean. Note: these pages live on branches <code>docs/review-2026-11</code> and <code>docs/review-content</code>. Status: partly done: names and "Mac mini" are removed from the new pages; the W&amp;B account name in <code>docs/training/notable_runs.md</code> is still there.</li>
+<li>[ ] <strong>T-40</strong> (P3, S, Docs) <code>pyproject.toml</code> asks for <code>duckdb&gt;=1.5.3</code> while the docs and the build-machine workaround use <code>==1.3.2</code> (a venv-only CPU workaround). Make sure the docs say that, and consider whether the lower bound should be relaxed. Ref: <code>pyproject.toml</code>, <a href="../data/">Datasets and labels</a>, Environment notes below. Status: open.</li>
+<li>[x] <strong>T-41</strong> (P3, S, Code quality) <code>UltralyticsObjectDetector.predict_from_path</code> never passes <code>predict_kwargs</code> (conf, imgsz) to <code>predict</code> (from PR #23). Fix it and add a test. Ref: <code>src/footy_track/detectors/ultralytics.py</code>. Status: done, PR #29 merged (dad99af); PR #23 then dropped its stale note.</li>
+<li>[ ] <strong>T-42</strong> (P3, S, Code quality) A sidecar file deleted from the GT folder is not noticed by replace-on-reingest (T-04): its rows persist until the clip is re-ingested with an empty file. Add a "prune clips with no sidecar" option. Ref: <code>feature_store/ingest_gt.py</code>. Status: open.</li>
+<li>[ ] <strong>T-43</strong> (P3, S, Docs rule) <code>.github/copilot-instructions.md</code> got a short Docs section because the repo has no tracked <code>AGENTS.md</code> or <code>CLAUDE.md</code>. Confirm it or revert it. Status: open, needs the owner's call.</li>
+</ul>
+<h2 id="environment-notes">Environment notes<a class="headerlink" href="#environment-notes" title="Permanent link">&para;</a></h2>
+<ul>
+<li>The build machine has no AVX2: duckdb needs <code>==1.3.2</code> and polars needs <code>polars-lts-cpu</code> (venv only, do not change <code>pyproject.toml</code> or <code>uv.lock</code>).</li>
+<li>Open the feature store with <code>duckdb.connect(path, read_only=True)</code> when inspecting.</li>
+<li>The SAM3 weights are not in git; tests that need them fail without them (see T-08).</li>
+</ul>
+<h2 id="done-this-session">Done this session<a class="headerlink" href="#done-this-session" title="Permanent link">&para;</a></h2>
+<ul>
+<li>PRs #23, #25, #26, #27, #28 and #29 merged (see T-01 to T-04, T-41).</li>
+<li>PR #21 merged (a82ec07): <a href="../design/tracking-pipeline/">Tracking pipeline design</a> is now on <code>main</code>.</li>
+<li>Docs contribution guide written: <a href="../contributing-docs/">How to contribute to the docs</a>, with an agent docs section and a PR template.</li>
+<li><code>feat/ball-check-mobile</code> merged (main 658d63d to 5d4fc90).</li>
+<li><code>fix/train-workers-cache</code> merged (26d2506).</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      <script id="__config" type="application/json">{"base": "..", "features": [], "search": "../assets/javascripts/workers/search.973d3a69.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.f55a23d4.min.js"></script>
+      
+    
+  </body>
+</html>
