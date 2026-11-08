@@ -205,6 +205,29 @@ def test_eval_dataset_from_dir_missing_video(tmp_path):
         EvalDataset.from_dir(clips_dir)
 
 
+def test_eval_dataset_from_dirs_alias_lookup_is_opt_in(tmp_path):
+    """T-03: GT under the raw clip name matches the eval video under its alias
+    only with resolve_aliases=True; clip_id exposes the shared identity."""
+    video_dir = tmp_path / "videos"
+    gt_dir = tmp_path / "gt"
+    video_dir.mkdir()
+    gt_dir.mkdir()
+    (video_dir / "arsenal_mancity_seg010.mp4").write_bytes(b"")
+    (video_dir / "astonvilla_seg020.mp4").write_bytes(b"")
+    line = '{"frame_index": 0, "bbox": [0.1, 0.2, 0.03, 0.03], "tags": []}\n'
+    (gt_dir / "arsenal_mancity_20250925_seg010.jsonl").write_text(line)
+    (gt_dir / "astonvilla_seg020.jsonl").write_text(line)
+
+    exact = EvalDataset.from_dirs(video_dir, gt_dir)
+    assert [c.name for c in exact] == ["astonvilla_seg020"]
+
+    aliased = EvalDataset.from_dirs(video_dir, gt_dir, resolve_aliases=True)
+    assert sorted(c.clip_id for c in aliased) == [
+        "arsenal_astonvilla_seg020",
+        "arsenal_mancity_seg010",
+    ]
+
+
 # --------------------------------------------------------------------------- #
 # compute_clip_metrics                                                         #
 # --------------------------------------------------------------------------- #
