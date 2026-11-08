@@ -69,3 +69,20 @@ pre-commit-staged: ## Run pre-commit on staged files only
 pcra: pre-commit-all
 pre-commit-all: ## Run pre-commit on all files
 	$(UV) run pre-commit run --all-files
+
+.PHONY: lint
+lint: ## Check lint and formatting (ruff check + ruff format --check)
+	$(UV) run ruff check
+	$(UV) run ruff format --check
+
+.PHONY: format
+format: ## Fix formatting and auto-fixable lint (ruff format + ruff check --fix)
+	$(UV) run ruff format
+	$(UV) run ruff check --fix
+
+.PHONY: check
+check: lint test-fast ## Everything CI runs for code: lint + fast tests
+
+.PHONY: hooks
+hooks: ## Install the pre-commit git hook (uses uvx, no new dependency)
+	uvx pre-commit install
