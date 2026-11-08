@@ -7,6 +7,15 @@ plugins:
   - search
 nav:
   - Home: index.md
+  - Project status:
+      - TODO list: todo.md
+      - 2026-11 review:
+          - Overview: reviews/2026-11/index.md
+          - Architecture review: reviews/2026-11/architecture-review.md
+          - Architecture diagram: reviews/2026-11/architecture-diagram.md
+          - Dataset inventory: reviews/2026-11/dataset-inventory.md
+          - KB vs reality: reviews/2026-11/kb-vs-reality.md
+      - Current architecture: architecture.md
   - Development:
       - System Design: system_design.md
       - System Overview: system_overview.md
@@ -16,6 +25,10 @@ nav:
       - Data Formats: data_formats.md
       - Training: training.md
       - Notable Training Runs: training/notable_runs.md
+  - Design:
+      - Pipeline Overview: design/pipeline_overview.md
+      - Player Re-ID: design/player_reid.md
+      - Feature Store: design/feature_store.md
   - Contributing:
       - Agent Guidelines: agent_guidelines.md
 markdown_extensions:
@@ -24,7 +37,11 @@ markdown_extensions:
       permalink: true
   - tables
   - pymdownx.details
-  - pymdownx.superfences
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
 watch:
   - src
   - docs
