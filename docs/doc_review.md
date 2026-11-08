@@ -101,7 +101,7 @@ three optionally-decomposable stages without saying whether it currently
 exists. There's no single doc stating the current status, the roadmap, or
 how a contributor would enable it. The repo *does* have a `tracking/`
 concept referenced (e.g. `lap` for Hungarian assignment per
-`/Users/georgebarnett/code/CLAUDE.md`) but no doc describes the actual
+the workspace-level `CLAUDE.md`) but no doc describes the actual
 implementation surface.
 
 ### 6. Broadcast classifier role is mis-described

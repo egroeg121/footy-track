@@ -34,7 +34,7 @@ v11-val, 215 images, 211 `in_play_ball`; Ultralytics val [V: `<storage>/backups/
 | **RT-DETR-L @1920 rect, v11, 50 ep (5090) = production** | **0.665** | 0.360 | 0.862 | **0.591** | Yes |
 | yolo11m @1280, v11 | 0.451 | 0.241 | 0.775 | 0.327 | No |
 | yolo11l @1280, v11 | 0.364 | 0.198 | 0.894 | 0.240 | No |
-| RT-DETR-L @1280, **v3**, 50 ep | 0.328 | 0.166 | 0.912 | 0.244 | Yes (S3 `gpu_runs`) |
+| RT-DETR-L @1280, **v3**, 50 ep | 0.328 | 0.166 | 0.912 | 0.244 | Yes (object store, `gpu_runs`) |
 | RT-DETR-L @1280, v11, 9 ep | 0.314 | 0.176 | 0.759 | 0.283 | ? |
 | yolo11n @1280, v3 / v11 trained | 0.250 / 0.221 | | 0.846 / 0.763 | 0.209 / 0.209 | |
 | yolo11s v3 @640 (old default) | about 0 | | | 0.000 | in git |
@@ -54,7 +54,7 @@ Held-out recall at 1280 is about 0.6, consistent with 0.59 at 1920, but n=74 is 
 
 ### Ball Check precision by confidence band
 
-257 decided verdicts on machine candidates (`ball`, `corrected` count as hits) [V]. The sampler oversamples near the boundary, so these are per band, not global precision.
+257 decided verdicts on machine candidates (`ball`, `corrected` count as hits), **measured** from the verdict logs of 2026-09-24 and 09-25 [V]; recomputed counts of the 364 verdicts are in [Datasets and labels](data.md#label-formats-and-counts). The sampler oversamples near the boundary, so these are per band, not global precision.
 
 | conf | 0.1-0.2 | 0.2-0.3 | 0.3-0.4 | 0.4-0.5 | 0.5-0.6 | 0.6-0.7 | 0.7-0.8 | 0.8-0.9 |
 |---|---|---|---|---|---|---|---|---|
@@ -93,17 +93,64 @@ Do not bother: importing external single-frame ball sets at volume, more Man Cit
 
 ## 4. How labels are created today
 
-| Route | Tool | Tier | Path to training | Problems |
-|---|---|---|---|---|
-| A. Hand labels | `/labeller` draws boxes into `ball_gt_marks/<stem>.jsonl` | T1 (692 ball) | `ingest_gt`, then `export_training_dataset`, then Roboflow or `--local-dataset` | S1 strips `human_checked`; S6 concurrent writers clobber. |
-| B. VitTrack propagation | Labeller Run (`VitTrackVideoLabeller`) | T3 when written | as A | Useless for the ball (5% on-ball; Run halts at frame 1). It became T2 only via a one-off backfill on 2026-08-23 (15,386 lines). **No code in the repo writes `human_checked`** [V grep]. |
-| C. `/object_review` | Grid crop review | correct gives T1 | as A | S4 ghost rows on re-ingest; OPEN-3. |
-| D. `/ball_check` | Phone yes/no on machine candidates or sidecar boxes; dragged box written to the sidecar | `corrected` is T1; `ball` and `not_ball` give nothing | corrected boxes only; **verdicts reach nothing** | S2, S3, S5. Measured 364 verdicts in about 20 active minutes, about 3.3 s per card [V]. |
-| E. Roboflow hand labels | Roboflow web annotation | treated as `hand_label` | **The route the best model actually used**: download v11, train directly | v11 was built 2026-08-04 from a store export; the uploader exists only on unmerged branches `feat/roboflow-dataset-export`, `feat/roboflow-upload-script`. |
-| F. Machine labels | RT-DETR batch inference (script not in repo) | T3 | Only the Ball Check pool and LapTracker input | A `ball` verdict, the cheapest human signal, is thrown away. |
-| G. SAM3 text prompts | `scripts/detect_objects.py --store_path` | T3 | store, then export if selected | No metric; effectively unused. |
-| H. Sparse centre GT | `scripts/label_ball_centers.py` | | dropped by `ingest_gt` (`:184`) | Eval only; `mancity_seg104` has no mp4. |
-| I. Identity review | `/identity`, `/identity/merge` | T1 | none | No consumer. |
+Who this is for: anyone deciding where to spend labelling time, or tracing why a label did not reach a model. There are nine routes. Only two of them (A and E) have fed a model that anyone has measured.
+
+```mermaid
+flowchart LR
+  classDef code fill:#dbeafe,stroke:#2563eb,color:#111
+  classDef data fill:#e5e7eb,stroke:#6b7280,color:#111
+  classDef missing fill:#ffedd5,stroke:#ea580c,stroke-dasharray:5 3,color:#111
+  classDef dead fill:#fee2e2,stroke:#dc2626,color:#111
+  classDef bc fill:#ede9fe,stroke:#7c3aed,color:#111
+
+  H1["Human: /labeller<br/>and /object_review<br/>(routes A, C)"]:::code
+  H3["Human: /ball_check<br/>(route D)"]:::bc
+  H4["Human: Roboflow<br/>web tool (route E)"]:::missing
+  M1["VitTrack Run<br/>(route B)"]:::code
+  M2["RT-DETR batch inference<br/>not in git (route F)"]:::missing
+  M3["SAM3 prompts<br/>(route G)"]:::code
+
+  SC[("Sidecars<br/>ball_gt_marks/")]:::data
+  VLOG[("Verdict log<br/>ball_checks/")]:::dead
+  ML[("machine_labels/<br/>tier 3")]:::data
+  RFD[("Roboflow dataset v11")]:::data
+  STORE[("Feature store")]:::data
+  EXP["export_training_dataset"]:::code
+  TRAIN["train_object_detector"]:::code
+
+  H1 --> SC
+  M1 --> SC
+  H3 -- "dragged box" --> SC
+  H3 -- "yes or no" --> VLOG
+  M2 --> ML --> H3
+  ML -. "not ingested" .-> STORE
+  M3 --> STORE
+  SC --> STORE --> EXP --> TRAIN
+  H4 --> RFD --> TRAIN
+```
+
+Legend: blue is code in git, orange dashed is not in git, purple is `/ball_check`, grey is data, red is data nothing reads. The diagram shows that two paths reach the trainer (the store export and a direct Roboflow download), that Ball Check yes and no answers stop at a log, and that the machine labels reach people only through Ball Check. Routes H (sparse centre GT) and I (identity review) are not drawn: neither reaches training.
+
+| Route | Made by | Tool | Stored in | Tier | Reaches training how | Seams |
+|---|---|---|---|---|---|---|
+| **A. Hand labels** | Human | `/labeller` draws boxes (`session.py`) | `ball_gt_marks/<stem>.jsonl`, whole-file atomic rewrite | 1 (692 ball boxes) | `ingest_gt`, then `export_training_dataset`, then `--local-dataset` or a Roboflow version | S1, S6, S13 |
+| **B. VitTrack propagation** | Machine | `/labeller` Run (`VitTrackVideoLabeller`; "SAM3" in old names, but SAM3 is dead code) | Same sidecar, tag `vittrack` | 3 when written. Tier 2 only via a one-off backfill on 2026-08-23 (15,386 lines) | As A | S8 |
+| **C. Object review** | Human | `/object_review` grid; `/review/yolo` re-runs the detector | Same sidecar, rewritten in place (not atomic) | A corrected box is 1 | As A | S4, S10 |
+| **D. Ball Check** | Human, on machine candidates | `/ball_check` on a phone | Verdicts in `ball_checks/`; a dragged box in the sidecar | `corrected` is 1; `ball` and `not_ball` give nothing | Dragged boxes only, as A. Verdicts reach nothing. | S2, S3, S5, S7 |
+| **E. Roboflow hand labels** | Human | Roboflow web annotation (`footy-track-detection`) | Roboflow; copies in `detection_dataset/` | Treated as `hand_label` | **The route the best model actually used:** download v11 and train. | |
+| **F. Machine labels** | Machine | RT-DETR batch inference (script not in repo) | `machine_labels/`, tag `rtdetr`, real confidence | 3 | Only the Ball Check pool and LapTracker input | |
+| **G. SAM3 text prompts** | Machine | `scripts/detect_objects.py --store_path` | Store, `source=sam3` | 3 | Store, then export if selected | |
+| **H. Sparse centre GT** | Human | `scripts/label_ball_centers.py` | `<stem>.jsonl` with a list `center` and null bbox | n/a | Dropped by `ingest_gt` (`:184`); eval only | |
+| **I. Identity review** | Human | `/identity`, `/identity/merge` | `identity_labels/`, append-only | 1 | None. No consumer; `track_meta` has 0 rows. | |
+
+Seam ids (S1 and so on) are the rows of [Architecture, section 7](architecture.md#7-known-seams-and-risks). Notes that do not fit in a table cell:
+
+- **A.** Unknown tags default to `in_play_ball` on load. The data-loss bug in the older write path was fixed in `6bcd153`.
+- **B.** For the ball it is useless: it stays on the ball for 5% of frames (9 of 176) and Run halts at frame 1. Players propagate fine. **No code in the repo writes `human_checked`** (searched 2026-11-08), so new VitTrack output can never become tier 2. The v11 snapshot was exported on 2026-08-04, before the backfill, so its `vittrack` boxes went in unreviewed.
+- **D.** Labelling speed, **measured** from the verdict timestamps of 2026-09-24 and 09-25: 360 decided verdicts in 19.9 active minutes (gaps over 60 s excluded), about **3.3 s per card**, 18 per minute. With a 30 s gap cap it is 2.6 s per card, so the figure is an estimate with about 25% slack, from one person on two days. How the page works is in [Architecture, Ball Check](architecture.md#ball-check-verdicts-corrections-and-undo).
+- **E.** v11 was built on 2026-08-04 from a store export. The uploader that does that exists only on unmerged branches (`feat/roboflow-dataset-export`, `feat/roboflow-upload-script`). Class `ball` is dead (one instance).
+- **F.** The run was `rtdetr-l_1920_v11` on a rented 3060, 82 minutes for 97,625 frames. A `ball` verdict, the cheapest human signal, is thrown away.
+- **H.** `mancity_seg104`, the designated eval clip, is centre-only and has no MP4 next to it.
 
 The newest feature store (2026-08-04) predates the `human_checked` ingest fix, the Ball Check corrections and six new sidecars, so store, export and Roboflow is stale end to end ([T-07](todo.md)).
 

@@ -1,6 +1,6 @@
 {
   "run_timestamp": "2026-06-21T18:12:51",
-  "clips_dir": "/Users/georgebarnett/code/footy/footy_track/refinery/rig/eval_data/clips",
+  "clips_dir": "<local path>/eval_data/clips",
   "methods": [
     {
       "method": "roi-yolo-trained",

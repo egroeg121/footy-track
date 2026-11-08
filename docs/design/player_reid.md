@@ -689,10 +689,10 @@ a number says to.
 ## Appendix A — reproducing the §0 measurements
 
 ```bash
-cd /home/george/footy-track
-aws s3 cp s3://georgebarnett-general-purpose/footy_data/machine_labels/_manifest.json /tmp/
-aws s3 cp s3://georgebarnett-general-purpose/footy_data/machine_labels/arsenal_mancity_20250925_seg002.jsonl /tmp/
-aws s3 cp s3://georgebarnett-general-purpose/footy_data/clips/arsenal_mancity_20250925_seg002.mp4 /tmp/
+cd <repo checkout>
+aws s3 cp s3://<bucket>/footy_data/machine_labels/_manifest.json /tmp/
+aws s3 cp s3://<bucket>/footy_data/machine_labels/arsenal_mancity_20250925_seg002.jsonl /tmp/
+aws s3 cp s3://<bucket>/footy_data/clips/arsenal_mancity_20250925_seg002.mp4 /tmp/
 # M2/M3/M4/M5/M8 need only the JSONL; M6 decodes the mp4; M1 decodes 5 clips.
 # M1:  per-frame 64-bin greyscale histogram L1 distance, cut threshold 0.25
 # M6:  torso crop = bbox[0.25..0.75]w x [0.20..0.50]h, mean HSV,
