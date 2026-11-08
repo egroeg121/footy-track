@@ -58,6 +58,7 @@ class Session:
         # no-ball frame set: frames explicitly marked as no-ball-visible
         self.no_ball_frames: set[int] = set()
         self.not_broadcast_frames: set[int] = set()
+        self._box_markers: dict[tuple, tuple[str, ...]] = {}
         # debounced JSONL flush
         self._flush_timer: threading.Timer | None = None
         self._flush_lock = threading.Lock()
@@ -86,6 +87,7 @@ class Session:
             self.timeline = [None] * self.total_frames
         self.no_ball_frames = set()
         self.not_broadcast_frames = set()
+        self._box_markers = {}
         self._load_existing_marks()
         return {
             "fps": self.fps,
@@ -168,6 +170,14 @@ class Session:
             h=h,
             model=provenance,
         )
+        # Marker tags (e.g. ``human_checked``) are everything after the label
+        # and provenance. ObjectDetection is a shared frozen schema with no
+        # slot for them, so keep them beside the timeline keyed by the box's
+        # identity+geometry; a user edit that moves/relabels a box misses the
+        # key and so (correctly) drops the marker.
+        markers = tuple(t for t in tags if t not in (label, provenance))
+        if markers:
+            self._box_markers[_marker_key(idx, box)] = markers
         with self._tl_lock:
             if self.timeline[idx] is None:
                 self.timeline[idx] = []
@@ -279,7 +289,10 @@ class Session:
                     continue
                 if boxes is None:
                     continue
-                lines.extend(_box_line(idx, b) for b in boxes)
+                lines.extend(
+                    _box_line(idx, b, self._box_markers.get(_marker_key(idx, b), ()))
+                    for b in boxes
+                )
             # Never silently replace real marks with nothing. A legitimate
             # "clear all" is still allowed, but the previous content is kept.
             if not lines and out_path.exists() and out_path.stat().st_size > 0:
@@ -306,13 +319,17 @@ def _skip_marker_line(idx: int, tag: str) -> str:
     return json.dumps({"frame_index": idx, "bbox": None, "center": None, "tags": [tag]})
 
 
-def _box_line(idx: int, b: ObjectDetection) -> str:
+def _marker_key(idx: int, b: ObjectDetection) -> tuple:
+    return (idx, b.label, b.model, *(round(v, 5) for v in (b.x, b.y, b.w, b.h)))
+
+
+def _box_line(idx: int, b: ObjectDetection, markers: tuple[str, ...] = ()) -> str:
     return json.dumps(
         {
             "frame_index": idx,
             "bbox": {"x": b.x, "y": b.y, "w": b.w, "h": b.h},
             "center": {"x": b.x + b.w / 2, "y": b.y + b.h / 2},
-            "tags": [b.label, b.model],
+            "tags": [b.label, b.model, *markers],
         }
     )
 
