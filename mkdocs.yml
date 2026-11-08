@@ -15,6 +15,7 @@ nav:
       - Time Formats: timings.md
       - Data Formats: data_formats.md
       - Training: training.md
+      - Inference: inference.md
       - Notable Training Runs: training/notable_runs.md
   - Contributing:
       - Agent Guidelines: agent_guidelines.md
