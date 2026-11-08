@@ -337,6 +337,7 @@ store/
   frame/game_id=<id>/part.parquet
   detection/game_id=<id>/source=<src>/run_id=<rid>/part.parquet
   track_meta/game_id=<id>/source=<src>/run_id=<rid>/part.parquet
+  detection_review/game_id=<id>/part.parquet   # Ball Check verdicts, see 6.2
   frame_embedding/game_id=<id>/part.parquet
   masks/game_id=<id>/<frame>__<detection_id>.png   # mask_ref targets
 ```
@@ -365,6 +366,46 @@ are present so overlap (and thus comparability) is verified empirically rather
 than assumed. `continuous_time_s` is derived `frame_index / fps + time_offset`
 (default 1-fps extraction, offset 0) pending true kickoff alignment.
 
+### 6.2 Ball Check verdicts (`detection_review`)
+
+Ball Check (labeller §11) records human yes/no verdicts in a side log,
+`<gt-dir>/ball_checks/<clip>.jsonl`, never in the sidecar. They reach the store
+through `feature_store/ball_checks.py::import_ball_checks`, run by
+`ingest_gt` after the sidecars (`--ball-checks-dir`, default
+`<gt-dir>/ball_checks`; run it *after* sidecar ingest because the sidecar
+upsert re-sets `reviewed`).
+
+Per `(source, frame_index, box_index)` the latest line wins and a `verdict:
+null` tombstone retracts. Every live verdict is written to
+`detection_review(game_id, vsource, frame_index, box_index, verdict, ts, label,
+bbox_*, matched_source, matched_run_id, matched_detection_id, match_iou)`
+(additive table; replaced per clip on each run, so the import is idempotent).
+`detection_id` is positional and `box_index` counts all boxes on a frame, so a
+verdict is matched to a ball-class `detection` on the same frame by **IoU >= 0.5**
+(`corrected_bbox` also tried), not by index. Unmatched verdicts (candidate boxes
+never ingested, boxes since removed) are still stored with NULL `matched_*` and
+counted in the import report.
+
+| Verdict | Effect |
+|---|---|
+| `ball`, `corrected` | matched `detection.reviewed = TRUE` (source unchanged) |
+| `not_ball` | rejected negative: `detection_review.verdict='not_ball'` with a match; a `cand` verdict never rejects a `hand_label` row (counted as a conflict) |
+| `unsure`, `box_off` | recorded only, no change to `detection` |
+
+`scripts/export_training_dataset.py` excludes matched `not_ball` boxes from
+positives by default (the exporter has no negatives/background concept, so they
+are just dropped); `--include-rejected` keeps them. Rows with no verdict are
+unaffected.
+
+**Known limitation.** The exclusion joins on the *stored* `detection_id`
+(positional per frame/source). If a sidecar is edited so boxes shift position
+and is re-ingested without re-running the verdict importer, a `not_ball`
+verdict can point at the wrong box. Re-run `ingest_gt` (which re-imports
+verdicts) to refresh. The follow-up TODO "match verdicts to detections at
+export time (by overlap) instead of by stored detection_id" removes this;
+`test_export_survives_reingest_after_boxes_shift` (strict xfail) encodes the
+intended behaviour.
+
 ---
 
 ## 7. Idempotency, keys, and write protocol
@@ -374,6 +415,7 @@ than assumed. `continuous_time_s` is derived `frame_index / fps + time_offset`
   - `frame(game_id, frame_index)`
   - `detection(game_id, source, run_id, frame_index, detection_id)`
   - `track_meta(game_id, source, run_id, track_id)`
+  - `detection_review(game_id, vsource, frame_index, box_index)` (§6.2)
   - `run(run_id)`
 - **Upsert semantics**: ingestion is `INSERT … ON CONFLICT DO UPDATE`
   (DuckDB) / partition-replace (Parquet). Re-ingesting an identical run is a

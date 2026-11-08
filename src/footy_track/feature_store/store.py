@@ -130,6 +130,23 @@ _COLUMNS: dict[str, tuple[str, ...]] = {
         "player_id",
         "reid_parent_track_id",
     ),
+    "detection_review": (
+        "game_id",
+        "vsource",
+        "frame_index",
+        "box_index",
+        "verdict",
+        "ts",
+        "label",
+        "bbox_x",
+        "bbox_y",
+        "bbox_w",
+        "bbox_h",
+        "matched_source",
+        "matched_run_id",
+        "matched_detection_id",
+        "match_iou",
+    ),
 }
 
 # Primary-key columns per table — the ON CONFLICT target.
@@ -139,6 +156,7 @@ _PK: dict[str, tuple[str, ...]] = {
     "frame": ("game_id", "frame_index"),
     "detection": ("game_id", "source", "run_id", "frame_index", "detection_id"),
     "track_meta": ("game_id", "source", "run_id", "track_id"),
+    "detection_review": ("game_id", "vsource", "frame_index", "box_index"),
 }
 
 

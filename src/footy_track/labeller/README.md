@@ -676,7 +676,16 @@ an append-only side file cannot truncate hand labels.
 
 Backend `ball_check.py`, page `web/ball_check.html` (no framework, no Konva).
 Verdicts live in `<gt dir>/ball_checks/<clip>.jsonl`, one JSON object per
-line: `{clip, frame_index, box_index, verdict, bbox, label, provenance, ts}`.
+line: `{clip, frame_index, box_index, source, confidence, verdict, bbox, label,
+provenance, corrected_bbox, ts}` (`source` is `sidecar` or `cand`; a
+`verdict: null` line is an undo tombstone).
+
+The log is **consumed downstream**: `python -m footy_track.feature_store.ingest_gt`
+reads `<gt dir>/ball_checks/` (`--ball-checks-dir`) into the feature store's
+`detection_review` table — `ball`/`corrected` mark the matching detection
+`reviewed`, `not_ball` is a rejected negative that
+`scripts/export_training_dataset.py` drops from positives. See
+`docs/design/feature_store.md` §6.2.
 
 - **LAB-1001** (MUST) `GET /ball_check/queue` returns only ball-class boxes
   (`BALL_LABELS`) whose provenance tag is machine (`yolo`/`vittrack`/`sam3`),

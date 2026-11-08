@@ -51,6 +51,7 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from footy_track.feature_store.ball_checks import import_ball_checks
 from footy_track.feature_store.importers import import_roboflow
 from footy_track.feature_store.schema import (
     DetectionRow,
@@ -312,6 +313,16 @@ def main(argv: list[str] | None = None) -> None:
         help="Roboflow YOLO dataset dir to import as source=hand_label (skipped if omitted)",
     )
     parser.add_argument(
+        "--ball-checks-dir",
+        type=Path,
+        default=None,
+        help=(
+            "Ball Check verdict logs (<clip>.jsonl). Default: <gt-dir>/ball_checks "
+            "if it exists. Applied after the sidecars: ball/corrected -> reviewed, "
+            "not_ball -> rejected negative (excluded from exported positives)."
+        ),
+    )
+    parser.add_argument(
         "--legacy-all-reviewed",
         action="store_true",
         help=(
@@ -337,6 +348,9 @@ def main(argv: list[str] | None = None) -> None:
         legacy_all_reviewed=args.legacy_all_reviewed,
     )
 
+    bc_dir = args.ball_checks_dir or (args.gt_dir / "ball_checks")
+    bc_report = import_ball_checks(store, bc_dir, clip=args.clip, dry_run=args.dry_run)
+
     print("=== ingest_gt import report ===")
     if roboflow_report is not None:
         print(
@@ -348,6 +362,14 @@ def main(argv: list[str] | None = None) -> None:
     print(
         f"gt-marks detections={gt_report.detections_written} by_source={dict(gt_report.by_source)}"
     )
+    if bc_report.clips:
+        print(
+            f"ball-checks clips={bc_report.clips} verdicts={bc_report.verdicts} "
+            f"by_verdict={dict(bc_report.by_verdict)} matched={bc_report.matched} "
+            f"unmatched={bc_report.unmatched} reviewed_marked={bc_report.reviewed_marked} "
+            f"rejected={bc_report.rejected} "
+            f"hand_label_conflicts={bc_report.hand_label_conflicts}"
+        )
     if gt_report.clips_missing_video:
         print(
             f"WARNING: {len(gt_report.clips_missing_video)} clip(s) had no local video "
