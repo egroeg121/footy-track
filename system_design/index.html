@@ -471,6 +471,29 @@
   
   
     <li class="md-nav__item">
+      <a href="../design/tracking-pipeline/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Tracking Pipeline Design
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../development/" class="md-nav__link">
         
   
@@ -901,15 +924,14 @@ upstream stages.</p>
         │  Output  │   Parquet / JSON / FiftyOne / footy-stats
         └──────────┘
 </code></pre></div>
-<div class="highlight"><pre><span></span><code>flowchart TD
+<pre class="mermaid"><code>flowchart TD
   A[Input] --&gt; B[Broadcast Classifier]
   B --&gt; C[Calibration]
   C --&gt; D[Detection]
   D --&gt; E[Tracking]
   C --&gt; F[2D Projection]
   E --&gt; F
-  F --&gt; G[Output]
-</code></pre></div>
+  F --&gt; G[Output]</code></pre>
 <p>The <strong>Calibration</strong> branch feeds <strong>2D Projection</strong> directly so that the
 homography is available alongside tracked detections at projection time.
 A non-broadcast frame short-circuits the chain: it is recorded but

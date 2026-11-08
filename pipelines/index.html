@@ -300,6 +300,29 @@
   
   
     <li class="md-nav__item">
+      <a href="../design/tracking-pipeline/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Tracking Pipeline Design
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../development/" class="md-nav__link">
         
   
@@ -694,7 +717,7 @@
 <li>In parallel, estimate camera pose by matching field lines and computing homography/geometry</li>
 <li>Synchronize all branches by timestamps and hand off to subsequent stages (e.g., tracking, analytics)</li>
 </ul>
-<div class="highlight"><pre><span></span><code>flowchart TD
+<pre class="mermaid"><code>flowchart TD
   A[Ingest Video] --&gt; B[Frame Sampling]
   B --&gt; C[Vision Backbone Embeddings]
   C --&gt; D[Clustering &amp; Overhead View Classification]
@@ -708,8 +731,7 @@
   E --&gt; I[Time Alignment]
   F --&gt; I
   G --&gt; I
-  I --&gt; J[Downstream: Tracking, Analytics, Overlays]
-</code></pre></div>
+  I --&gt; J[Downstream: Tracking, Analytics, Overlays]</code></pre>
 <h2 id="stage-0-ingestion-and-pre-processing">Stage 0 — Ingestion and pre-processing<a class="headerlink" href="#stage-0-ingestion-and-pre-processing" title="Permanent link">&para;</a></h2>
 <p>Input
 - Single video file or directory of pre-split segments</p>

@@ -1,0 +1,1539 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Tracking players, actions, and events in football matches.">
+      
+      
+      
+        <link rel="canonical" href="https://egroeg121.github.io/footy-track/design/tracking-pipeline/">
+      
+      
+        <link rel="prev" href="../../system_overview/">
+      
+      
+        <link rel="next" href="../../development/">
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.6.20">
+    
+    
+      
+        <title>Tracking Pipeline Design - Footy Scan</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.e53b48f4.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+    
+  </head>
+  
+  
+    <body dir="ltr">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#tracking-pipeline-what-we-have-and-where-it-should-go" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="Footy Scan" class="md-header__button md-logo" aria-label="Footy Scan" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Footy Scan
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Tracking Pipeline Design
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="Footy Scan" class="md-nav__button md-logo" aria-label="Footy Scan" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Footy Scan
+  </label>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Home
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    Development
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            Development
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../system_design/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    System Design
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../system_overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    System Overview
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    Tracking Pipeline Design
+    
+  </span>
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    Tracking Pipeline Design
+    
+  </span>
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#part-1-what-we-have-now" class="md-nav__link">
+    <span class="md-ellipsis">
+      Part 1: what we have now
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Part 1: what we have now">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-gaps-in-one-list" class="md-nav__link">
+    <span class="md-ellipsis">
+      The gaps, in one list
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#per-box-detail" class="md-nav__link">
+    <span class="md-ellipsis">
+      Per-box detail
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#part-2-proposed-end-to-end-tracking-of-plays" class="md-nav__link">
+    <span class="md-ellipsis">
+      Part 2: proposed end-to-end tracking of plays
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Part 2: proposed end-to-end tracking of plays">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#calibration-per-frame-as-a-state-machine" class="md-nav__link">
+    <span class="md-ellipsis">
+      Calibration per frame, as a state machine
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#per-box-detail_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      Per-box detail
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#part-3-phased-plan" class="md-nav__link">
+    <span class="md-ellipsis">
+      Part 3: phased plan
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Part 3: phased plan">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#measured-versus-assumed" class="md-nav__link">
+    <span class="md-ellipsis">
+      Measured versus assumed
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#top-risks" class="md-nav__link">
+    <span class="md-ellipsis">
+      Top risks
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#open-questions" class="md-nav__link">
+    <span class="md-ellipsis">
+      Open questions
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#relationship-to-existing-design-docs" class="md-nav__link">
+    <span class="md-ellipsis">
+      Relationship to existing design docs
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Getting Started
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../pipeline_architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Pipeline Architecture
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../timings/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Time Formats
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../data_formats/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Data Formats
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../training/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Training
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../training/notable_runs/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Notable Training Runs
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    Contributing
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            Contributing
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../agent_guidelines/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Agent Guidelines
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#part-1-what-we-have-now" class="md-nav__link">
+    <span class="md-ellipsis">
+      Part 1: what we have now
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Part 1: what we have now">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-gaps-in-one-list" class="md-nav__link">
+    <span class="md-ellipsis">
+      The gaps, in one list
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#per-box-detail" class="md-nav__link">
+    <span class="md-ellipsis">
+      Per-box detail
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#part-2-proposed-end-to-end-tracking-of-plays" class="md-nav__link">
+    <span class="md-ellipsis">
+      Part 2: proposed end-to-end tracking of plays
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Part 2: proposed end-to-end tracking of plays">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#calibration-per-frame-as-a-state-machine" class="md-nav__link">
+    <span class="md-ellipsis">
+      Calibration per frame, as a state machine
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#per-box-detail_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      Per-box detail
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#part-3-phased-plan" class="md-nav__link">
+    <span class="md-ellipsis">
+      Part 3: phased plan
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Part 3: phased plan">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#measured-versus-assumed" class="md-nav__link">
+    <span class="md-ellipsis">
+      Measured versus assumed
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#top-risks" class="md-nav__link">
+    <span class="md-ellipsis">
+      Top risks
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#open-questions" class="md-nav__link">
+    <span class="md-ellipsis">
+      Open questions
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#relationship-to-existing-design-docs" class="md-nav__link">
+    <span class="md-ellipsis">
+      Relationship to existing design docs
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+
+<h1 id="tracking-pipeline-what-we-have-and-where-it-should-go">Tracking pipeline: what we have, and where it should go<a class="headerlink" href="#tracking-pipeline-what-we-have-and-where-it-should-go" title="Permanent link">&para;</a></h1>
+<p>Status: <strong>DRAFT for review</strong> · Date: 2026-11-08 · Code reviewed: <code>main</code> @ <code>26d2506</code></p>
+<p>Two pictures. <strong>Part 1</strong> is the detection and tracking path as it really is in
+code today, from a broadcast clip to whatever comes out the other end. <strong>Part 2</strong>
+is the proposed end-to-end system: plays tracked on a top-down pitch in metres,
+with team and player identity, instead of boxes in broadcast pixels. <strong>Part 3</strong>
+is a phased plan with the labels, effort and success metric for each phase.</p>
+<p>Every number is marked <strong>measured</strong> (with its denominator) or <strong>assumed</strong>. The
+project has already been burnt by a ball mAP quoted off 44 instances
+(<a href="../pipeline_overview/">pipeline overview</a>), so treat unmarked confidence with
+suspicion.</p>
+<p>This page builds on, and does not replace, the stage docs:
+<a href="../pipeline_overview/">pipeline overview</a>, <a href="../player_reid/">player re-id</a>,
+<a href="../tracking/">tracking</a>, <a href="../projection/">projection</a>, <a href="../output/">output</a> and
+<a href="../../system_design/"><code>system_design.md</code></a>. Where it disagrees with them it says
+so in <a href="#relationship-to-existing-design-docs">Relationship to existing design docs</a>.</p>
+<hr />
+<h2 id="part-1-what-we-have-now">Part 1: what we have now<a class="headerlink" href="#part-1-what-we-have-now" title="Permanent link">&para;</a></h2>
+<pre class="mermaid"><code>flowchart TD
+  subgraph legend["Legend"]
+    direction LR
+    L1["working, in git"]:::ok
+    L2["in git, not wired"]:::idle
+    L3["not in git"]:::nogit
+    L4["planned or missing"]:::plan
+    L5[("data artefact")]:::data
+    L1 ~~~ L2 ~~~ L3 ~~~ L4 ~~~ L5
+  end
+
+  V[("Match video&lt;br/&gt;one match: Arsenal v Man City")]:::data
+  SEG["Broadcast splitter&lt;br/&gt;split_broadcast_segments.py&lt;br/&gt;yolo11n-cls broadcast classifier"]:::ok
+  CLIPS[("162 broadcast clips, 97,625 frames&lt;br/&gt;0 interior cuts in 5 clips checked")]:::data
+  W["RT-DETR-L checkpoint rtdetr_1920_v11&lt;br/&gt;trained at 1920 on Roboflow v11&lt;br/&gt;weights on S3 only"]:::nogit
+  DET["Detector wrapper&lt;br/&gt;detectors/ultralytics.py, served at 1280&lt;br/&gt;ball mAP50 0.665, recall 0.591&lt;br/&gt;players about 0.97 mAP50"]:::ok
+  BATCH["Batch inference at 1280, conf 0.1+&lt;br/&gt;2.77M boxes, about 20 fps on a 3060"]:::nogit
+  ML[("machine_labels/*.jsonl&lt;br/&gt;TIER 3, on S3")]:::data
+
+  FILT["Ball-row filter&lt;br/&gt;to ball_candidates/"]:::nogit
+  BC["/ball_check phone review&lt;br/&gt;precision by confidence band:&lt;br/&gt;0.1 to 0.6 at most 0.42&lt;br/&gt;0.6 to 0.7 is 0.79, 0.7+ is 0.96 to 1.00"]:::ok
+  VERD[("ball_checks verdicts&lt;br/&gt;no consumer")]:::data
+  BT["Ball tracker&lt;br/&gt;NONE: no Kalman, no gap fill,&lt;br/&gt;no low-confidence second pass"]:::plan
+
+  LAP["LapTracker, IoU + Hungarian&lt;br/&gt;track_detections.py + trackers/lap.py&lt;br/&gt;player + referee only"]:::ok
+  UT["UltralyticsTracker&lt;br/&gt;ByteTrack / BoT-SORT&lt;br/&gt;never measured"]:::idle
+  TL[("tracklets/*.jsonl&lt;br/&gt;median 31 frames, purity unmeasured")]:::data
+  IDR["/identity review UI&lt;br/&gt;identity_labels: 9 rows"]:::ok
+  TEAM["Team: k=2 on torso hue&lt;br/&gt;1.0% ambiguous, n=1,253&lt;br/&gt;one-off analysis, team never set"]:::nogit
+  LINK["Gap bridging&lt;br/&gt;identity/linker.py + score_links.py&lt;br/&gt;ImageNet ResNet50"]:::idle
+  LP[("link_proposals: 68 rows&lt;br/&gt;no consumer")]:::data
+
+  CAL["Camera calibration, homography&lt;br/&gt;NONE: frame.homography never written"]:::plan
+  PROJ["PitchProjector&lt;br/&gt;projection/projector.py&lt;br/&gt;tests only"]:::idle
+  EXP["MatchExporter&lt;br/&gt;output/exporters.py&lt;br/&gt;tests only"]:::idle
+
+  V --&gt; SEG --&gt; CLIPS
+  CLIPS --&gt; BATCH
+  W --&gt; BATCH
+  W --&gt; DET
+  CLIPS -.-&gt;|"labeller /autodetect only"| DET
+  BATCH --&gt; ML
+  ML --&gt; FILT --&gt; BC --&gt; VERD
+  ML -.-&gt;|"ball rows, nothing reads them"| BT
+  ML --&gt; LAP --&gt; TL
+  CLIPS -.-&gt;|"re-runs detection"| UT
+  TL --&gt; IDR
+  TL --&gt; LINK --&gt; LP
+  TEAM -.-&gt;|"team gate inert"| LINK
+  CAL -.-&gt; PROJ
+  TL -.-&gt;|"not connected"| PROJ
+  PROJ -.-&gt; EXP
+
+  classDef ok fill:#d4edda,stroke:#2e7d32,color:#000
+  classDef idle fill:#fff3cd,stroke:#b8860b,color:#000
+  classDef nogit fill:#f8d7da,stroke:#c62828,color:#000,stroke-dasharray:4 3
+  classDef plan fill:#ffffff,stroke:#555,color:#000,stroke-dasharray:6 4
+  classDef data fill:#eceff1,stroke:#78909c,color:#000</code></pre>
+<p><strong>What comes out today:</strong> per-clip JSONL of boxes (<code>machine_labels/</code>), per-clip
+tracklets (<code>tracklets/</code>), and human verdict logs. There is no ball trajectory, no
+<code>team_id</code>, no <code>player_id</code>, and no pitch coordinate anywhere. The <code>footy-track</code>
+console script prints "Hello from footy-track!".</p>
+<h3 id="the-gaps-in-one-list">The gaps, in one list<a class="headerlink" href="#the-gaps-in-one-list" title="Permanent link">&para;</a></h3>
+<ol>
+<li><strong>No ball tracker.</strong> The ball is a set of independent per-frame boxes. The only
+   ball tracker in a running path is VitTrack in the labeller, which holds the
+   ball on 5% of frames (9/176, measured, KB <code>footy-labeller-gotchas</code>).</li>
+<li><strong>The producers of the data we rely on are not in git:</strong> the RT-DETR training
+   command, the batch inference that made the 2.77M machine labels, and the
+   filter from machine labels to <code>ball_candidates/</code>.</li>
+<li><strong>Identity output is unused.</strong> <code>link_proposals/</code> and <code>identity_labels/</code> are
+   written and read by nothing.</li>
+<li><strong>The team gate is inert.</strong> <code>linker.candidate_links</code> skips cross-team pairs only
+   when both tracklets have a <code>team</code> (<code>identity/linker.py:125</code>), and no code sets
+   it.</li>
+<li><strong>No calibration and no projection.</strong> The store has a <code>homography</code> column
+   (<code>feature_store/schema.py:158</code>) that nothing writes, and <code>PitchProjector</code> is
+   called only from tests.</li>
+<li><strong>The ball benchmark is narrow.</strong> v11-val has 211 balls, but 156 of them (74%)
+   come from one 10-second clip (<code>arsenal_example</code>). All machine labels are one
+   match.</li>
+</ol>
+<h3 id="per-box-detail">Per-box detail<a class="headerlink" href="#per-box-detail" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Box</th>
+<th>Module (file:line)</th>
+<th>Status</th>
+<th>Measured numbers and notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Broadcast splitter</td>
+<td><code>scripts/split_broadcast_segments.py:86</code> (classifier load), <code>:213</code> (<code>main</code>); <code>classifier.py:27</code> (checkpoint path)</td>
+<td>Working</td>
+<td>Splits on broadcast/non-broadcast transitions; it is <strong>not</strong> a shot-cut detector. 0 interior cuts in 3,175 frames across 5 clips (measured, <code>player_reid.md</code> M1). Classifier hardcodes <code>device="mps"</code> (<code>classifier.py:128</code>).</td>
+</tr>
+<tr>
+<td>RT-DETR-L checkpoint</td>
+<td><code>detectors/ultralytics.py:36-37</code> (<code>CURRENT_BEST_DETECTOR_CHECKPOINT</code>)</td>
+<td>Weights not in git</td>
+<td>Trained at <code>imgsz=1920, rect</code>, 50 epochs, v11. Ball (<code>in_play_ball</code>) mAP50 <strong>0.665</strong>, recall <strong>0.591</strong>, P 0.862 on v11-val, 211 balls (measured, training-run val log). The code comment at <code>:37</code> says .221/.209: that is the yolo11n figure and the comment is wrong.</td>
+</tr>
+<tr>
+<td>Detector wrapper</td>
+<td><code>detectors/ultralytics.py:42</code> (<code>DEFAULT_IMGSZ=1280</code>), <code>:56</code> (<code>min_confidence=0.3</code>)</td>
+<td>Working</td>
+<td>Served at 1280, trained at 1920. Held-out recall at 1280 about <strong>0.60</strong> on 74 Man City balls (measured, small n). Player mAP50 0.974 is the yolo11n 1280 figure; RT-DETR per-class player mAP was never logged.</td>
+</tr>
+<tr>
+<td>Batch inference</td>
+<td>none</td>
+<td>Not in git</td>
+<td>162 clips, 97,625 frames, 2,767,151 boxes, conf ≥ 0.1, imgsz 1280 (measured, <code>machine_labels/_manifest.json</code>).</td>
+</tr>
+<tr>
+<td>Ball-row filter</td>
+<td>none</td>
+<td>Not in git</td>
+<td>356,812 candidate rows over 162 clips.</td>
+</tr>
+<tr>
+<td><code>/ball_check</code></td>
+<td><code>labeller/ball_check.py:224</code> (queue), <code>:709</code> (<code>_append_gt</code>); <code>labeller/candidates.py</code></td>
+<td>Working</td>
+<td>Precision by confidence band from 257 decided verdicts (measured; sampler oversamples the boundary, so these are per band, not global): 0.1-0.2: 0.04, 0.2-0.3: 0.29, 0.3-0.4: 0.23, 0.4-0.5: 0.36, 0.5-0.6: 0.42, 0.6-0.7: 0.79, 0.7-0.8: 0.96, 0.8-0.9: 1.00. About 3.3 s per card. Only <code>corrected</code> boxes reach the sidecar; <code>ball</code>/<code>not_ball</code> verdicts reach nothing.</td>
+</tr>
+<tr>
+<td>Ball tracker</td>
+<td>none (<code>ball_trackers/roi_yolo.py:171</code> has a Kalman ROI tracker used only by the bake-off, on the old 640 checkpoint)</td>
+<td>Missing</td>
+<td>On <code>arsenal_example</code>, misses are dominated by long blind spells: one 51-frame gap holds 70% of misses (stated in the August handoff, not re-checked).</td>
+</tr>
+<tr>
+<td>LapTracker</td>
+<td><code>scripts/track_detections.py:154-156</code> (conf 0.5, IoU 0.15, max_age 90), <code>trackers/lap.py:42</code></td>
+<td>Working</td>
+<td>seg000: 157 tracklets, median 31 frames, 9% singletons (measured, docstring). Purity, IDF1 and HOTA are <strong>unmeasured</strong>.</td>
+</tr>
+<tr>
+<td>UltralyticsTracker</td>
+<td><code>trackers/ultralytics.py:28</code>, <code>scripts/track_objects.py:142</code></td>
+<td>Not wired</td>
+<td>Re-runs detection. Never compared against ground truth.</td>
+</tr>
+<tr>
+<td><code>/identity</code> review</td>
+<td><code>labeller/identity_routes.py</code>, <code>identity/store.py</code></td>
+<td>Working</td>
+<td>9 rows. No downstream consumer.</td>
+</tr>
+<tr>
+<td>Team</td>
+<td>none</td>
+<td>Not in git</td>
+<td>k=2 on torso HSV, 1.0% ambiguous on 1,253 crops from one clip (measured, <code>player_reid.md</code> M6).</td>
+</tr>
+<tr>
+<td>Gap bridging</td>
+<td><code>identity/linker.py:101</code> (<code>candidate_links</code>), <code>:125</code> (team gate); <code>scripts/score_links.py:69</code> (ResNet50)</td>
+<td>Not wired</td>
+<td>Within-clip AUC 0.912 at a 4-frame gap, 0.761 at 25 (measured, docstring). Cross-clip ImageNet AUC 0.43-0.49, chance (doc only).</td>
+</tr>
+<tr>
+<td>Calibration</td>
+<td><code>feature_store/schema.py:158</code> (column only)</td>
+<td>Missing</td>
+<td>Nothing detects pitch lines or keypoints.</td>
+</tr>
+<tr>
+<td>PitchProjector</td>
+<td><code>projection/projector.py:46</code>; ball anchor <code>:66-68</code>; uncertainty <code>:131</code></td>
+<td>Not wired</td>
+<td>The ball-anchor check compares against <code>BALL_TAG = "ball"</code>, a dead class, so <code>in_play_ball</code> would get the player feet anchor. <code>uncertainty_m</code> is <code>1 - H_quality</code>, not metres.</td>
+</tr>
+<tr>
+<td>MatchExporter</td>
+<td><code>output/exporters.py:32</code></td>
+<td>Not wired</td>
+<td>Reads <code>tracks/tracks.parquet</code>, which nothing writes.</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="part-2-proposed-end-to-end-tracking-of-plays">Part 2: proposed end-to-end tracking of plays<a class="headerlink" href="#part-2-proposed-end-to-end-tracking-of-plays" title="Permanent link">&para;</a></h2>
+<p>The target: a broadcast match in, and out of it, for every frame where the pitch
+is visible, every player and the ball on a 105 x 68 m pitch with a team, a
+player identity where we can get one, and a confidence. Possessions, passes and
+plays are built on top of that world state, not on broadcast pixels.</p>
+<p>Boxes are coloured by the phase that builds them (Part 3).</p>
+<pre class="mermaid"><code>flowchart TD
+  subgraph legend2["Legend: phase that builds it"]
+    direction LR
+    K0["Phase 0"]:::p0
+    K1["Phase 1"]:::p1
+    K2["Phase 2"]:::p2
+    K3["Phase 3"]:::p3
+    K4["Phase 4"]:::p4
+    K0 ~~~ K1 ~~~ K2 ~~~ K3 ~~~ K4
+  end
+
+  subgraph ingest["Ingest"]
+    VID[("Broadcast video")]
+    SHOT["Shot segmentation + view class&lt;br/&gt;cuts, wide / close / replay / non-pitch"]:::p0
+  end
+
+  subgraph percep["Per-frame perception"]
+    DET2["Detection&lt;br/&gt;players, keepers, referees, ball"]:::p0
+    KP["Pitch keypoints and lines"]:::p2
+  end
+
+  subgraph imgtrack["Image-space tracking, within a shot"]
+    MOT["Player tracking&lt;br/&gt;BoT-SORT + camera-motion comp,&lt;br/&gt;team-constrained"]:::p1
+    BTR["Ball tracker&lt;br/&gt;low-confidence second pass, Kalman,&lt;br/&gt;gap interpolation"]:::p1
+  end
+
+  subgraph who["Who is who"]
+    TEAM2["Team + role&lt;br/&gt;kit-colour clustering"]:::p1
+    NUM["Jersey numbers&lt;br/&gt;human anchors, OCR on large crops"]:::p3
+    REID["Appearance re-id across shots&lt;br/&gt;ReID-trained embedding"]:::p3
+    IDRES["Identity resolution&lt;br/&gt;tracklet to player_id per match"]:::p3
+  end
+
+  subgraph geo["Geometry"]
+    HOM["Per-frame homography&lt;br/&gt;robust fit, temporal smoothing,&lt;br/&gt;carried through pan and zoom"]:::p2
+    PROJ2["Project to pitch in metres&lt;br/&gt;players at the feet,&lt;br/&gt;ball at its ground point"]:::p2
+    B3D["Ball height, 2D to 3D&lt;br/&gt;ballistic fit between touches&lt;br/&gt;HARDEST, LAST"]:::p4
+  end
+
+  subgraph world["World state and plays"]
+    WS[("World-state store&lt;br/&gt;per frame: id, team, x, y, z, confidence")]:::p2
+    EV["Events&lt;br/&gt;possession, passes, shots"]:::p4
+    PLAY["Plays&lt;br/&gt;a play is a sequence of&lt;br/&gt;possessions and passes"]:::p4
+  end
+
+  subgraph outs["Outputs"]
+    TOP["Top-down 2D replay"]:::p2
+    FS[("JSONL / parquet&lt;br/&gt;in the feature store")]:::p2
+    ST["Stats"]:::p4
+  end
+
+  VID --&gt; SHOT
+  SHOT --&gt; DET2
+  SHOT --&gt; KP
+  SHOT -.-&gt;|"cut ends all tracks"| MOT
+  DET2 --&gt; MOT
+  DET2 --&gt; BTR
+  MOT &lt;--&gt;|"team constraint"| TEAM2
+  MOT --&gt; NUM
+  MOT --&gt; REID
+  TEAM2 --&gt; IDRES
+  NUM --&gt; IDRES
+  REID --&gt; IDRES
+  KP --&gt; HOM
+  HOM -.-&gt;|"camera motion"| MOT
+  HOM --&gt; PROJ2
+  MOT --&gt; PROJ2
+  BTR --&gt; PROJ2
+  PROJ2 --&gt; B3D
+  PROJ2 --&gt; WS
+  IDRES --&gt; WS
+  B3D --&gt; WS
+  WS --&gt; EV --&gt; PLAY
+  WS --&gt; TOP
+  WS --&gt; FS
+  PLAY --&gt; FS
+  EV --&gt; ST
+
+  classDef p0 fill:#e3f2fd,stroke:#1565c0,color:#000
+  classDef p1 fill:#d4edda,stroke:#2e7d32,color:#000
+  classDef p2 fill:#fff3cd,stroke:#b8860b,color:#000
+  classDef p3 fill:#f3e5f5,stroke:#7b1fa2,color:#000
+  classDef p4 fill:#f8d7da,stroke:#c62828,color:#000</code></pre>
+<h3 id="calibration-per-frame-as-a-state-machine">Calibration per frame, as a state machine<a class="headerlink" href="#calibration-per-frame-as-a-state-machine" title="Permanent link">&para;</a></h3>
+<p>Calibration is where broadcast footage fights back: wide shots show plenty of
+lines, close-ups show grass and a player, and replays show a different camera.
+The homography stage must say which case it is in rather than emit a confident
+wrong matrix.</p>
+<pre class="mermaid"><code>stateDiagram-v2
+  [*] --&gt; NoPitch
+  NoPitch: No pitch view. Close-up, replay, crowd. No H, positions omitted
+  Fitted: H fitted from keypoints and smoothed each frame. Enough matches, low reprojection error
+  Carried: H carried from last fit by camera motion. Zoomed in, few lines
+  Lost: Carried too long or drifted. Positions NaN, flagged
+  NoPitch --&gt; Fitted: wide view, enough keypoints
+  Fitted --&gt; Carried: too few keypoints
+  Carried --&gt; Fitted: keypoints return
+  Carried --&gt; Lost: drift check fails or N frames
+  Lost --&gt; Fitted: keypoints return
+  Fitted --&gt; NoPitch: cut or view change
+  Carried --&gt; NoPitch: cut or view change</code></pre>
+<h3 id="per-box-detail_1">Per-box detail<a class="headerlink" href="#per-box-detail_1" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Box</th>
+<th>What it does</th>
+<th>Builds on today</th>
+<th>Depends on (research, labels)</th>
+<th>Main risk</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Shot segmentation + view class</td>
+<td>Split at every camera cut, not just broadcast/non-broadcast; tag each shot wide, close-up, replay or non-pitch</td>
+<td><code>split_broadcast_segments.py</code>, yolo11n-cls checkpoint</td>
+<td>M1 (0 interior cuts in 5 clips) holds for the current splitter; a cut detector needs a few hundred labelled cut frames (assumed)</td>
+<td>Replays and close-ups currently vanish with the non-broadcast frames; a view class needs a new label set</td>
+</tr>
+<tr>
+<td>Detection</td>
+<td>Per-frame boxes for players, keepers, referees and the ball</td>
+<td><code>detectors/ultralytics.py</code>, <code>rtdetr_1920_v11</code></td>
+<td>Ball recall 0.591 on a one-clip-heavy val (measured); held-out multi-match eval set needed</td>
+<td>The ball is ~11 px at 1280 (measured, KB); recall on other matches is unmeasured</td>
+</tr>
+<tr>
+<td>Pitch keypoints and lines</td>
+<td>Find pitch landmarks (line intersections, box corners, centre circle, arcs) in each frame</td>
+<td>Nothing. <code>frame.homography</code> column only</td>
+<td><strong>Pitch keypoint labels needed</strong> on our own footage across views; a public calibration dataset may bootstrap it (licence to check)</td>
+<td>Close-ups and zoomed shots have too few visible landmarks</td>
+</tr>
+<tr>
+<td>Player tracking</td>
+<td>Within-shot <code>track_id</code>, with camera-motion compensation and no cross-team association</td>
+<td><code>trackers/lap.py</code>, <code>trackers/ultralytics.py</code> (BoT-SORT config), <code>track_detections.py</code></td>
+<td><code>player_reid.md</code> milestone 1: purity labels on 10 clips (~2 human hours, assumed); M4 says IoU association is easy (measured, one clip)</td>
+<td>Purity is unmeasured; crowded 6.3% of instances (measured, one clip) is where switches happen</td>
+</tr>
+<tr>
+<td>Ball tracker</td>
+<td>One ball trajectory per shot: rescue low-confidence boxes by motion gating, interpolate gaps, reject static false positives</td>
+<td>Existing <code>machine_labels/</code> (conf ≥ 0.1 already stored), precision bands from <code>/ball_check</code>, <code>scripts/analyse_ball_tracker.py</code>, <code>ball_eval/</code></td>
+<td><strong>Ball tracker over the existing machine labels</strong>; dense held-out eval clips with explicit <code>no_ball</code> markers</td>
+<td>Misses are long blind spells, not short dropouts (handoff, not re-checked), so the recall ceiling is low; gains are mostly precision</td>
+</tr>
+<tr>
+<td>Team + role</td>
+<td>Assign home, away, keeper, referee to each tracklet; use it as a hard association constraint</td>
+<td><code>identity/linker.py:125</code> gate (inert), <code>track_meta.team_id</code> column</td>
+<td>M6: 1.0% ambiguous (measured, one clip, one kit pair)</td>
+<td>Referees are weak detections (median conf 0.335, measured); a second kit pair is untested</td>
+</tr>
+<tr>
+<td>Jersey numbers</td>
+<td>Number per tracklet, as an identity anchor</td>
+<td><code>/identity</code> UI, <code>track_meta.jersey_number</code> column</td>
+<td><strong>Jersey-number labels needed</strong> (human, per tracklet); OCR only if a measured legibility rate supports it</td>
+<td>Median player box 52 x 111 px gives ~10-18 px digits (measured, <code>player_reid.md</code> M3)</td>
+</tr>
+<tr>
+<td>Appearance re-id</td>
+<td>Link tracklets across shots and cuts</td>
+<td><code>scripts/score_links.py</code> (one-line backbone swap), <code>identity/linker.py</code></td>
+<td>ReID-trained weights untested; ImageNet features are at chance across clips (doc)</td>
+<td>Teammates look alike; a single-match corpus means about 30 identities</td>
+</tr>
+<tr>
+<td>Identity resolution</td>
+<td>Combine team, numbers and re-id into <code>player_id</code> per match</td>
+<td><code>identity/clusters.py</code>, <code>identity/labels.py</code>, <code>track_meta.player_id</code></td>
+<td>Pairwise merge verdicts from <code>/identity/merge</code></td>
+<td>Persistent identity may not be needed at all (<code>player_reid.md</code> R7)</td>
+</tr>
+<tr>
+<td>Per-frame homography</td>
+<td>Robust fit from keypoints, smoothed over time, carried through pan and zoom by frame-to-frame motion, absent on non-pitch views</td>
+<td>Nothing</td>
+<td>Keypoint labels; a held-out set of hand-clicked correspondences for reprojection error</td>
+<td>Drift while carrying H through a zoom; fails silently if unchecked</td>
+</tr>
+<tr>
+<td>Project to pitch</td>
+<td>Players at the bottom-centre of the box, ball at its ground point, in metres from the centre spot</td>
+<td><code>projection/projector.py</code> (fix the ball tag and the uncertainty units)</td>
+<td>Calibration</td>
+<td>An airborne ball projects to the wrong place (see risks)</td>
+</tr>
+<tr>
+<td>Ball height</td>
+<td>Fit ballistic arcs between touches and bounces to recover z; monocular cues (apparent size, shadow) as a check</td>
+<td>Nothing</td>
+<td>Touch and bounce events from the event layer; no ground truth for height exists</td>
+<td>Hardest step: ill-posed from one camera, so it needs a trajectory prior and will be noisy</td>
+</tr>
+<tr>
+<td>World-state store</td>
+<td>Per frame, per object: <code>player_id</code> or <code>track_id</code>, team, x, y, optional z, confidence, provenance</td>
+<td><code>projection.md</code> <code>pitch_positions.parquet</code> schema; feature store tables</td>
+<td>Everything above</td>
+<td>Schema churn if built before projection works</td>
+</tr>
+<tr>
+<td>Events and plays</td>
+<td>Possession from ball-player proximity on the pitch; passes as possession changes within a team; a play as a sequence</td>
+<td>Nothing</td>
+<td>Hand-labelled events on a few matches (pass start, pass end, shot)</td>
+<td>Possession is fragile where the ball track has gaps</td>
+</tr>
+<tr>
+<td>Outputs</td>
+<td>Top-down replay, JSONL/parquet in the feature store, stats</td>
+<td><code>output/exporters.py</code> (<code>MatchExporter</code>), <code>docs/design/output.md</code> JSON schema</td>
+<td>World-state store</td>
+<td>—</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="part-3-phased-plan">Part 3: phased plan<a class="headerlink" href="#part-3-phased-plan" title="Permanent link">&para;</a></h2>
+<p>Effort is for one person: <strong>S</strong> is days, <strong>M</strong> is one to two weeks, <strong>L</strong> is
+several weeks. These are estimates, not measurements.</p>
+<table>
+<thead>
+<tr>
+<th>Phase</th>
+<th>Goal</th>
+<th>Builds</th>
+<th>Labels and data it needs</th>
+<th>Effort</th>
+<th>Success metric</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>0</strong></td>
+<td>A simple inference pipeline in git (separate PR)</td>
+<td>Video to broadcast clips to RT-DETR at 1280 to per-clip detections and LapTracker tracklets, as one command</td>
+<td>None new; reproduce the existing <code>machine_labels/</code> on one clip</td>
+<td>S</td>
+<td>Matches the existing machine labels on a sample clip; runs end to end from a clean checkout</td>
+</tr>
+<tr>
+<td><strong>1</strong></td>
+<td>Trustworthy image-space tracking</td>
+<td>A committed ball eval; the ball tracker over machine labels; a player tracking eval (<code>player_eval/</code>, mirroring <code>ball_eval/</code>); team clustering wired in as a constraint</td>
+<td>Dense held-out ball clips with <code>no_ball</code> markers, at least 2 matches (~1.5-3k balls, assumed); the untouched v11 test split (243 balls); purity labels on 10 clips; detector run over a second match</td>
+<td>M</td>
+<td>Ball recall and precision at a fixed operating point on the held-out multi-match set, reported per match with instance counts; tracklet purity ≥ 0.95 and ID switches ≤ 1 per 1,000 player-frames (<code>player_reid.md</code> targets); team accuracy ≥ 0.98</td>
+</tr>
+<tr>
+<td><strong>2</strong></td>
+<td>Players and ball on a 2D pitch</td>
+<td>Pitch keypoint detector, per-frame homography with the state machine above, <code>PitchProjector</code> wired up, world-state store, a top-down replay</td>
+<td>Pitch keypoint labels on a few hundred frames across views and at least 2 stadiums (assumed); ~50 held-out frames with hand-clicked correspondences</td>
+<td>L</td>
+<td>Reprojection error in pixels on held-out keypoints; position error in metres on known landmarks (penalty spots, box corners); share of broadcast frames with a usable H; player speeds stay physically plausible</td>
+</tr>
+<tr>
+<td><strong>3</strong></td>
+<td>Who is who across shots</td>
+<td>ReID-trained embedding in <code>score_links.py</code>; team + number + appearance identity resolution; jersey numbers from humans, OCR only if measured legibility supports it</td>
+<td>Jersey numbers per tracklet (human, seconds each); merge verdicts; a second match for any generalisation claim</td>
+<td>L</td>
+<td>Identity accuracy: share of player-frames with the correct <code>player_id</code> on labelled clips; re-id mAP within a match with the gallery size stated</td>
+</tr>
+<tr>
+<td><strong>4</strong></td>
+<td>Plays and the ball in 3D</td>
+<td>Possession, passes and plays from world state; ball height from ballistic fits</td>
+<td>Hand-labelled events (pass start and end, shots) on a few matches; no height ground truth exists</td>
+<td>L</td>
+<td>Pass detection precision and recall against labelled events; possession accuracy per second; for height, consistency checks (landing points against later ground contacts)</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Order.</strong> Phase 1 first: it reuses labels and machine output we already have,
+and every later phase needs its evals. Phase 2 can start in parallel once Phase 0
+lands, because calibration does not depend on tracking. Phase 3 waits on the
+<code>player_reid.md</code> R7 question: is per-player identity needed at all, or are team
+and pitch position enough? Phase 4 comes last.</p>
+<h3 id="measured-versus-assumed">Measured versus assumed<a class="headerlink" href="#measured-versus-assumed" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Measured (with denominator)</th>
+<th>Assumed or unmeasured</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Ball mAP50 0.665 / recall 0.591, v11-val, 211 balls, 74% one clip</td>
+<td>Ball recall on any match other than Man City</td>
+</tr>
+<tr>
+<td>Held-out recall at 1280 about 0.60, 74 balls</td>
+<td>That serving at 1280 costs nothing versus 1920 on a proper benchmark</td>
+</tr>
+<tr>
+<td>Ball precision by confidence band, 257 verdicts</td>
+<td>That a tracker can use those bands as its high/low thresholds</td>
+</tr>
+<tr>
+<td>Player mAP50 0.974 (yolo11n at 1280)</td>
+<td>RT-DETR per-class player mAP</td>
+</tr>
+<tr>
+<td>0 interior cuts, 5 clips, 3,175 frames</td>
+<td>That this holds across all 162 clips and other broadcasters</td>
+</tr>
+<tr>
+<td>Team separation 1.0% ambiguous, 1,253 crops, one clip</td>
+<td>Team accuracy with a second kit pair, and for keepers and referees</td>
+</tr>
+<tr>
+<td>LapTracker fragmentation on seg000</td>
+<td>Tracklet purity, IDF1, HOTA</td>
+</tr>
+<tr>
+<td>ImageNet re-id AUC 0.912 at 4 frames within a clip</td>
+<td>Any ReID-trained backbone on this footage</td>
+</tr>
+<tr>
+<td>—</td>
+<td>Everything about calibration accuracy on this footage</td>
+</tr>
+<tr>
+<td>—</td>
+<td>Every effort estimate on this page</td>
+</tr>
+</tbody>
+</table>
+<h3 id="top-risks">Top risks<a class="headerlink" href="#top-risks" title="Permanent link">&para;</a></h3>
+<ol>
+<li><strong>Broadcast cuts break tracking.</strong> Every cut ends every track, and replays show
+   the same players from another angle. Within a clip the splitter gives cut-free
+   shots (measured on 5 clips), so cuts turn into a cross-shot identity problem
+   (Phase 3), not a tracker problem. A temporal ball detector must fall back to a
+   single frame at cuts.</li>
+<li><strong>Homography fails on zoomed shots.</strong> Close-ups show too few landmarks for a
+   fit. The plan is to carry H through pan and zoom by camera motion and to mark
+   positions NaN once drift is too high, never to emit a confident wrong position
+   (consistent with <code>projection.md</code> §5).</li>
+<li><strong>The ball is ~11 px at 1280.</strong> Recall is 0.59 on a narrow benchmark, and the
+   misses cluster in long gaps. A tracker can raise precision a lot and recall a
+   little. Recall needs more diverse labels (other matches, other camera angles).</li>
+<li><strong>An airborne ball projects to the wrong place.</strong> A homography maps the ground
+   plane. A ball 3 m up, seen from a camera about 25 m high and 60 m away, lands
+   roughly 5-10 m from its true ground point (geometry estimate). Until Phase 4,
+   the ball's pitch position is only trustworthy when it is on or near the ground,
+   and must carry a flag saying so.</li>
+<li><strong>One match.</strong> All machine labels, the team measurement and the identity
+   gallery come from Arsenal v Man City. No claim generalises until a second match
+   is processed.</li>
+</ol>
+<h3 id="open-questions">Open questions<a class="headerlink" href="#open-questions" title="Permanent link">&para;</a></h3>
+<ol>
+<li>Which phase first after Phase 0: the ball tracker and evals (Phase 1), or
+   calibration and the top-down view (Phase 2)?</li>
+<li>How ambitious on the ball in 3D: a 2D ground position with an "airborne" flag,
+   or real height estimation?</li>
+<li>Jersey numbers: human anchors only (as <code>player_reid.md</code> §3.7 recommends), or
+   OCR on the best frame of large tracklets? <code>pipeline_overview.md</code> says about
+   40% of tracklets have a frame at least 110 px tall and a human has read numbers
+   at 102 px; that is the case for measuring OCR legibility before ruling it out.</li>
+<li>Is persistent per-player identity needed downstream, or are team, role and
+   pitch position enough (<code>player_reid.md</code> R7, <code>pipeline_overview.md</code> Q5)?</li>
+<li>Calibration model: train our own keypoint detector on our labels, or start from
+   a public pretrained pitch-calibration model and fine-tune (licence and fit to
+   our footage to check)?</li>
+<li>Where should the world state live: the DuckDB feature store, or the per-stage
+   parquet files from <code>output.md</code> and <code>projection.md</code>?</li>
+</ol>
+<hr />
+<h2 id="relationship-to-existing-design-docs">Relationship to existing design docs<a class="headerlink" href="#relationship-to-existing-design-docs" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Doc</th>
+<th>Kept</th>
+<th>Superseded or changed</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="../../system_design/"><code>system_design.md</code></a></td>
+<td>Stage order; calibration in parallel with detection, feeding projection</td>
+<td>Adds a ball tracker, identity resolution, ball height and an event layer, which the stage list does not have. The calibration design doc it asks for (<code>design/calibration.md</code>) should be written in Phase 2</td>
+</tr>
+<tr>
+<td><a href="../projection/"><code>projection.md</code></a></td>
+<td>Pitch frame (centre-spot origin, metres), feet anchor for players, NaN on low-quality H, no clamping, smoothing downstream</td>
+<td>"Z-axis not modelled, acceptable for v1" stays true for Phase 2, but the ball row needs an airborne flag, and Phase 4 adds z. The code's ball anchor must match <code>in_play_ball</code>, and <code>uncertainty_m</code> must be in metres. H must be defined on the same normalised image coordinates the projector uses</td>
+</tr>
+<tr>
+<td><a href="../tracking/"><code>tracking.md</code></a></td>
+<td><code>ObjectTracker</code> protocol, track ID lifecycle</td>
+<td>§4 says track state should survive a non-broadcast gap. In practice clips are separate files and a gap is a shot change, so continuity across it is identity resolution (Phase 3), as <code>player_reid.md</code> M1 already concluded</td>
+</tr>
+<tr>
+<td><a href="../player_reid/"><code>player_reid.md</code></a></td>
+<td>P0-first order, tracklet purity as the primary metric, team as a hard constraint, its targets, milestone 1</td>
+<td>§3.7 "do not build jersey OCR" becomes an open question for the reviewer (question 3), gated on a measured legibility rate</td>
+</tr>
+<tr>
+<td><a href="../pipeline_overview/"><code>pipeline_overview.md</code></a></td>
+<td>The three-problem split (ball, players, identity), the label tiers</td>
+<td>Its ball mAP row is out of date: .665/.591 is the RT-DETR figure and .221/.209 is yolo11n</td>
+</tr>
+<tr>
+<td><a href="../output/"><code>output.md</code></a></td>
+<td><code>MatchExporter</code>, parquet first, JSON per frame</td>
+<td>Extend with world-state rows and plays once they exist</td>
+</tr>
+</tbody>
+</table>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      <script id="__config" type="application/json">{"base": "../..", "features": [], "search": "../../assets/javascripts/workers/search.973d3a69.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.f55a23d4.min.js"></script>
+      
+    
+  </body>
+</html>
