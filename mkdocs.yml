@@ -10,6 +10,7 @@ nav:
   - Development:
       - System Design: system_design.md
       - System Overview: system_overview.md
+      - Tracking Pipeline Design: design/tracking-pipeline.md
       - Getting Started: development.md
       - Pipeline Architecture: pipeline_architecture.md
       - Time Formats: timings.md
