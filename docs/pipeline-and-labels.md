@@ -109,7 +109,7 @@ The newest feature store (2026-08-04) predates the `human_checked` ingest fix, t
 
 ## 5. Recommendation, in order
 
-1. **Fix the record.** Done on this branch: the code comment and docs now cite .665 / .591 and the 74% caveat. The KB findings page still needs updating, with George's approval ([T-15](todo.md)).
+1. **Fix the record.** Done on this branch: the code comment and docs now cite .665 / .591 and the 74% caveat. The KB findings page still needs updating, with the maintainer's approval ([T-15](todo.md)).
 2. **One committed ball eval** over the v11 test split plus held-out dense clips (`arsenal_example` after checking it is not a sub-span of a training clip, and `mancity_seg031`), at 1280 and 1920, reporting instance counts and a per-match breakdown ([T-10](todo.md)). The 1280 half needs no GPU for the sidecar clips.
 3. **ByteTrack/Kalman ball association over existing machine labels**, with thresholds from the precision bands (0.7 or more near-certain; 0.6-0.7 about 0.79; below 0.6 at most 0.42). Run `analyse_ball_tracker.py` first to split detector misses from tracker misses ([T-20](todo.md)).
 4. **Diversity labelling on new matches** (Aston Villa, Bournemouth 2nd half, Norwich) with `/ball_check`, holding one full match out for eval; at about 3.3 s per card, 1,000 cards is about an hour ([T-13](todo.md), [T-21](todo.md)). Look at the 51-frame `arsenal_example` gap first.

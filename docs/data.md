@@ -1,6 +1,6 @@
 # Datasets and labels
 
-_State as of 2026-11-08, checked on the Mac mini against `main` @ 26d2506. Counts will drift; re-run the checks before relying on them._ For how the data moves through the system see [Architecture](architecture.md); for what is missing see the [TODO list](todo.md).
+_State as of 2026-11-08, checked on the build machine against `main` @ 26d2506. Counts will drift; re-run the checks before relying on them._ For how the data moves through the system see [Architecture](architecture.md); for what is missing see the [TODO list](todo.md).
 
 ## Where things live
 
@@ -37,7 +37,7 @@ Model weights are not in git: `rtdetr_1920_v11/best.pt` (66.8 MB) is on S3 `mode
 
 Sidecar rows are `{frame_index, bbox{x,y,w,h} normalised, center, tags: [class, provenance, *markers]}`; skip markers are rows with `bbox: null` and tag `no_ball` or `not_broadcast`. See [Architecture, section 6](architecture.md#6-data-formats-that-cross-stage-boundaries) for the six formats.
 
-Current `ball_gt_marks` (22,648 rows, 0 unparseable): player 18,688, referee 2,099, `in_play_ball` 1,523, `not_broadcast` 138 (marker), coach 81, `no_ball` 68 (marker), person 32, player_sub 13, `out_of_play_ball` 2, untagged 4.
+Current `ball_gt_marks` (22,648 rows, 0 unparsable): player 18,688, referee 2,099, `in_play_ball` 1,523, `not_broadcast` 138 (marker), coach 81, `no_ball` 68 (marker), person 32, player_sub 13, `out_of_play_ball` 2, untagged 4.
 
 Ball provenance tiers: tier 1 `labeller` 692 (plus 2 `out_of_play_ball`); tier 2 `vittrack` plus `human_checked` 825; tier 3 `yolo` 6. `vittrack` rows total 15,386, all carrying `human_checked`; `labeller` rows 6,446; `yolo` 606. The KB's older 612/857/6 matches the August feature store, not these files.
 
@@ -81,4 +81,4 @@ Clip names come in three aliases: dated (`arsenal_mancity_20250925_segNNN`, in `
 - **Labels without footage:** `arsenal_example` (3,348 rows, 176 ball marks) has only the 10 s example video, tied by name. `eval_data/clips/mancity_seg104.jsonl` has no MP4.
 - **Not in the feature store:** see above ([T-07](todo.md)).
 - **Format hazards:** two centre formats (dict and list) can still appear; `ball_gt_marks` has 4 untagged rows; `astonvilla_seg080.jsonl` differs from its backup because six vittrack boxes were rewritten as `labeller` by the `corrected` path, so Ball Check does rewrite sidecars.
-- **Cross-machine:** WSL-only rows cannot be checked from the Mac mini.
+- **Cross-machine:** WSL-only rows cannot be checked from the build machine.

@@ -18,7 +18,7 @@ GPU job.
 
 ```mermaid
 flowchart LR
-    V[video] --> D["RT-DETR @1280<br/>conf >= 0.1"]
+    V[video] --> D["RT-DETR @1280<br/>conf 0.1 or more"]
     D --> L[detections.jsonl]
     L --> P["LapTracker<br/>players, referees"]
     D --> B["DetectionBallTracker<br/>ball"]
