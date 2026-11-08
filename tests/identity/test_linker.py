@@ -101,10 +101,20 @@ def test_unscored_candidates_default_to_ask():
 def test_tracklets_from_rows_summarises_and_filters():
     rows = []
     for f in range(40):
-        rows.append({"frame_index": f, "track_id": 1,
-                     "bbox": {"x": 0.10 + f * 0.001, "y": 0.5, "w": 0.04, "h": 0.1}})
-    rows.append({"frame_index": 0, "track_id": 2,
-                 "bbox": {"x": 0.8, "y": 0.5, "w": 0.04, "h": 0.1}})  # too short
+        rows.append(
+            {
+                "frame_index": f,
+                "track_id": 1,
+                "bbox": {"x": 0.10 + f * 0.001, "y": 0.5, "w": 0.04, "h": 0.1},
+            }
+        )
+    rows.append(
+        {
+            "frame_index": 0,
+            "track_id": 2,
+            "bbox": {"x": 0.8, "y": 0.5, "w": 0.04, "h": 0.1},
+        }
+    )  # too short
     ts = tracklets_from_rows(rows, min_frames=25)
     assert [t.track_id for t in ts] == [1]
     t = ts[0]

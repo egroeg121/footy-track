@@ -116,7 +116,7 @@ Legend: blue is code in git, grey is data, purple is the Ball Check path, red is
 
 Sidecar rows are `{frame_index, bbox{x,y,w,h} normalised, center, tags: [class, provenance, *markers]}`; skip markers are rows with `bbox: null` and tag `no_ball` or `not_broadcast`. See [Architecture, section 6](architecture.md#6-data-formats-that-cross-stage-boundaries) for the six formats.
 
-Current `ball_gt_marks` (45 files, 22,648 rows, 0 unparseable; measured 2026-11-08): player 18,688, referee 2,099, `in_play_ball` 1,523, `not_broadcast` 138 (marker), coach 81, `no_ball` 68 (marker), person 32, player_sub 13, `out_of_play_ball` 2, untagged 4.
+Current `ball_gt_marks` (45 files, 22,648 rows, 0 unparsable; measured 2026-11-08): player 18,688, referee 2,099, `in_play_ball` 1,523, `not_broadcast` 138 (marker), coach 81, `no_ball` 68 (marker), person 32, player_sub 13, `out_of_play_ball` 2, untagged 4.
 
 Ball provenance tiers: tier 1 `labeller` 692 (plus 2 `out_of_play_ball`); tier 2 `vittrack` plus `human_checked` 825; tier 3 `yolo` 6. `vittrack` rows total 15,386, all carrying `human_checked`; `labeller` rows 6,446; `yolo` 606. An older note's 612/857/6 matches the August feature store, not these files.
 

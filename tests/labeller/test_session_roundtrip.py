@@ -252,3 +252,60 @@ def test_merge_propagated_empty_frame_writes_boxes_returns_false():
 
     assert result is False
     assert session.timeline[0] == incoming
+
+
+# ---------------------------------------------------------------------------
+# 2. Marker tags (e.g. human_checked) survive load -> edit -> flush
+# ---------------------------------------------------------------------------
+
+
+def _write_sidecar(gt_marks_dir, stem, tags_by_frame):
+    gt_marks_dir.mkdir(parents=True, exist_ok=True)
+    lines = []
+    for idx, (tags, x) in tags_by_frame.items():
+        lines.append(
+            json.dumps(
+                {
+                    "frame_index": idx,
+                    "bbox": {"x": x, "y": 0.2, "w": 0.05, "h": 0.08},
+                    "center": {"x": x + 0.025, "y": 0.24},
+                    "tags": tags,
+                }
+            )
+        )
+    (gt_marks_dir / f"{stem}.jsonl").write_text("\n".join(lines) + "\n")
+
+
+def _flushed_tags(gt_marks_dir, stem):
+    out = {}
+    for ln in (gt_marks_dir / f"{stem}.jsonl").read_text().splitlines():
+        d = json.loads(ln)
+        out[d["frame_index"]] = d["tags"]
+    return out
+
+
+def test_marker_tags_survive_load_edit_flush(gt_marks_dir):
+    _write_sidecar(
+        gt_marks_dir,
+        "clip_m",
+        {
+            0: (["in_play_ball", PROV_VITTRACK, "human_checked"], 0.10),
+            1: (["player", PROV_VITTRACK, "human_checked", "extra"], 0.20),
+            2: (["player", PROV_YOLO], 0.30),
+            3: (["player", PROV_VITTRACK, "human_checked"], 0.40),
+        },
+    )
+    s = _make_session("clip_m", total_frames=5)
+    s._load_existing_marks()
+    # Session edit on another frame, then flush rewrites the whole sidecar.
+    s.set_frame(4, [_box("player", PROV_LABELLER, 1.0, x=0.5)])
+    # User moves the box on frame 3: new geometry, labeller provenance.
+    s.set_frame(3, [_box("player", PROV_LABELLER, 1.0, x=0.45)])
+    s._do_flush()
+
+    tags = _flushed_tags(gt_marks_dir, "clip_m")
+    assert tags[0] == ["in_play_ball", PROV_VITTRACK, "human_checked"]
+    assert tags[1] == ["player", PROV_VITTRACK, "human_checked", "extra"]
+    assert tags[2] == ["player", PROV_YOLO]  # unchanged behaviour
+    assert tags[3] == ["player", PROV_LABELLER]  # user-corrected: not a marker carrier
+    assert tags[4] == ["player", PROV_LABELLER]

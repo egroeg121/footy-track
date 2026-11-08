@@ -13,10 +13,12 @@ nav:
   - Training:
       - Training: training.md
       - Notable Training Runs: training/notable_runs.md
+  - Inference: inference.md
   - Feature store: design/feature_store.md
   - Design:
       - Pipeline Overview: design/pipeline_overview.md
       - Player Re-ID: design/player_reid.md
+      - Tracking Pipeline Design: design/tracking-pipeline.md
       - System Design: system_design.md
       - System Overview: system_overview.md
       - Pipeline Architecture: pipeline_architecture.md

@@ -67,8 +67,8 @@ def load_detections(
     path: Path, *, min_confidence: float, keep_labels: tuple[str, ...]
 ) -> dict[int, list[tuple[str, dict, float]]]:
     by_frame: dict[int, list[tuple[str, dict, float]]] = collections.defaultdict(list)
-    for line in path.read_text().splitlines():
-        line = line.strip()
+    for raw_line in path.read_text().splitlines():
+        line = raw_line.strip()
         if not line:
             continue
         try:
@@ -78,7 +78,11 @@ def load_detections(
         label = label_of(row.get("tags") or [])
         conf = float(row.get("confidence", 1.0))
         bbox = row.get("bbox")
-        if label not in keep_labels or conf < min_confidence or not isinstance(bbox, dict):
+        if (
+            label not in keep_labels
+            or conf < min_confidence
+            or not isinstance(bbox, dict)
+        ):
             continue
         by_frame[int(row["frame_index"])].append((label, bbox, conf))
     return by_frame
@@ -171,7 +175,9 @@ def main(argv: list[str] | None = None) -> int:
 
     stats = summarise(rows)
     n_frames = max(by_frame) + 1 if by_frame else 0
-    print(f"{args.detections.name}: {n_frames} frames, {stats.get('detections', 0)} tracked")
+    print(
+        f"{args.detections.name}: {n_frames} frames, {stats.get('detections', 0)} tracked"
+    )
     print(f"  {elapsed:.1f}s ({n_frames / max(elapsed, 0.01):.0f} fps, CPU)")
     for k, v in stats.items():
         print(f"  {k}: {v}")

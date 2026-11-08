@@ -117,7 +117,7 @@ track / track_meta: derived from detection, see §8
 
 | Column | Type | Notes |
 |---|---|---|
-| `game_id` | `VARCHAR` PK | e.g. `arsenal_mancity` (matches `data/<match_name>`) |
+| `game_id` | `VARCHAR` PK | despite the name, usually a **clip** stem: `ingest_gt` uses the GT sidecar stem (`mancity_seg010`), `detect_objects` the frames folder name, Roboflow imports a match-level stem (`arsenal_mancity_20250925`). Not canonical; see §3.1a |
 | `home_team` | `VARCHAR` | |
 | `away_team` | `VARCHAR` | |
 | `match_date` | `DATE` | nullable |
@@ -133,6 +133,46 @@ track / track_meta: derived from detection, see §8
 
 This subsumes the `GameMetadata` block previously living in
 `tracks_meta.json`.
+
+### 3.1a Clip identity (canonical clip id)
+
+One physical clip has several names across the data plane, and `game_id`
+inherits whichever one the importer saw. `footy_track.clip_id.canonical_clip_id`
+maps them to one id, `<match>_<kind><NNN>` (date infix dropped, number
+zero-padded to 3):
+
+| Names on disk (same video, verified via the `ballcheck_clips/` and `eval_data/clips/` symlinks) | Canonical id |
+|---|---|
+| `arsenal_mancity_20250925_segNNN` (clips, machine labels, candidates), `arsenal_mancity_segNNN`, `mancity_segNNN` | `arsenal_mancity_segNNN` |
+| `arsenal_mancity_20250925_partNNN` (`split_video_10s`, a different cut from `segNNN`), `mancity_partNNN` | `arsenal_mancity_partNNN` |
+| `Arsenal - Aston Villa_segNNN`, `astonvilla_segNNN` | `arsenal_astonvilla_segNNN` |
+| `Bournemouth vs Arsenal 1_segNNN`, `bournemouth_1st_segNNN`, `bournemouth_broadcast_segNNN`, `bournemouth_segNNN` | `arsenal_bournemouth_1st_segNNN` |
+| `arsenal_mancity_example_video`, `arsenal_example` | `arsenal_example` |
+
+Anything else passes through unchanged (minus extension). Where it is used:
+
+- **Training export**: eval exclusion compares canonical ids, so an eval clip
+  stored under another alias is excluded; the by-clip split assigns whole alias
+  groups (keyed by their smallest `game_id`, so an alias-free store splits as
+  before). The manifest lists the groups under `clip_aliases`.
+- **`ball_check` `save_box`**: a correction on a raw-named candidate goes into
+  the clip's existing GT sidecar (labeller README LAB-1013a).
+- **`ball_eval`**: `EvalClip.clip_id`; `EvalDataset.from_dirs(...,
+  resolve_aliases=True)` matches GT to a video under another alias (off by
+  default, as it changes which GT files are scored).
+- **`ingest_gt`**: deliberately *not* canonicalised. `game_id` stays the
+  sidecar stem: that file is the unit ingest (re)imports and the
+  `gt_import:<game_id>` run group, and two aliases' sidecars would otherwise
+  collide on the detection PK.
+
+Find aliases with `aliases_of(name, names)` / `group_by_clip(names)`, or the
+read-only report `python -m footy_track.clip_id --db <store> [dirs...]`.
+
+**Migration note.** Existing stores keep their alias `game_id`s and need no
+change for the export to be leak-free. To canonicalise a store anyway, run the
+report to list the `game_id`s that would collapse, merge those sidecars by hand
+(they hold separately labelled frames), and re-ingest into a fresh store. Never
+`UPDATE game_id` in place.
 
 ### 3.2 `frame` — one row per (game, frame)
 
@@ -200,7 +240,8 @@ The high-volume table. Every detected object from every source/run is a row.
 PK: `(game_id, source, run_id, frame_index, detection_id)`. `detection_id` is
 the **per-frame** object index, so detectors emit `0..N-1` per frame with no
 need for a run-global counter; re-ingesting one frame's detections upserts
-cleanly. Partitioned on disk by `game_id` then `source` (§6) so a single
+cleanly (GT-sidecar ingest additionally deletes the clip's `gt_import_*` rows
+first, see §7). Partitioned on disk by `game_id` then `source` (§6) so a single
 source's detections are a cheap column/partition scan and one source can be
 rewritten without touching others.
 
@@ -340,6 +381,7 @@ store/
   frame/game_id=<id>/part.parquet
   detection/game_id=<id>/source=<src>/run_id=<rid>/part.parquet
   track_meta/game_id=<id>/source=<src>/run_id=<rid>/part.parquet
+  detection_review/game_id=<id>/part.parquet   # Ball Check verdicts, see 6.2
   frame_embedding/game_id=<id>/part.parquet
   masks/game_id=<id>/<frame>__<detection_id>.png   # mask_ref targets
 ```
@@ -368,6 +410,46 @@ are present so overlap (and thus comparability) is verified empirically rather
 than assumed. `continuous_time_s` is derived `frame_index / fps + time_offset`
 (default 1-fps extraction, offset 0) pending true kickoff alignment.
 
+### 6.2 Ball Check verdicts (`detection_review`)
+
+Ball Check (labeller §11) records human yes/no verdicts in a side log,
+`<gt-dir>/ball_checks/<clip>.jsonl`, never in the sidecar. They reach the store
+through `feature_store/ball_checks.py::import_ball_checks`, run by
+`ingest_gt` after the sidecars (`--ball-checks-dir`, default
+`<gt-dir>/ball_checks`; run it *after* sidecar ingest because the sidecar
+upsert re-sets `reviewed`).
+
+Per `(source, frame_index, box_index)` the latest line wins and a `verdict:
+null` tombstone retracts. Every live verdict is written to
+`detection_review(game_id, vsource, frame_index, box_index, verdict, ts, label,
+bbox_*, matched_source, matched_run_id, matched_detection_id, match_iou)`
+(additive table; replaced per clip on each run, so the import is idempotent).
+`detection_id` is positional and `box_index` counts all boxes on a frame, so a
+verdict is matched to a ball-class `detection` on the same frame by **IoU >= 0.5**
+(`corrected_bbox` also tried), not by index. Unmatched verdicts (candidate boxes
+never ingested, boxes since removed) are still stored with NULL `matched_*` and
+counted in the import report.
+
+| Verdict | Effect |
+|---|---|
+| `ball`, `corrected` | matched `detection.reviewed = TRUE` (source unchanged) |
+| `not_ball` | rejected negative: `detection_review.verdict='not_ball'` with a match; a `cand` verdict never rejects a `hand_label` row (counted as a conflict) |
+| `unsure`, `box_off` | recorded only, no change to `detection` |
+
+`scripts/export_training_dataset.py` excludes matched `not_ball` boxes from
+positives by default (the exporter has no negatives/background concept, so they
+are just dropped); `--include-rejected` keeps them. Rows with no verdict are
+unaffected.
+
+**Known limitation.** The exclusion joins on the *stored* `detection_id`
+(positional per frame/source). If a sidecar is edited so boxes shift position
+and is re-ingested without re-running the verdict importer, a `not_ball`
+verdict can point at the wrong box. Re-run `ingest_gt` (which re-imports
+verdicts) to refresh. The follow-up TODO "match verdicts to detections at
+export time (by overlap) instead of by stored detection_id" removes this;
+`test_export_survives_reingest_after_boxes_shift` (strict xfail) encodes the
+intended behaviour.
+
 ---
 
 ## 7. Idempotency, keys, and write protocol
@@ -377,11 +459,30 @@ than assumed. `continuous_time_s` is derived `frame_index / fps + time_offset`
   - `frame(game_id, frame_index)`
   - `detection(game_id, source, run_id, frame_index, detection_id)`
   - `track_meta(game_id, source, run_id, track_id)`
+  - `detection_review(game_id, vsource, frame_index, box_index)` (§6.2)
   - `run(run_id)`
 - **Upsert semantics**: ingestion is `INSERT … ON CONFLICT DO UPDATE`
   (DuckDB) / partition-replace (Parquet). Re-ingesting an identical run is a
   no-op on row count. This satisfies the footy-stats "re-upload must not
   duplicate" rule from the project CLAUDE.md.
+- **GT-sidecar re-ingest is replace, not merge** (`ingest_gt`). A bare upsert
+  never deletes, so a corrected or deleted box left a ghost row (e.g. an old
+  `gt_import_vittrack` row still marked canonical after the box was rewritten
+  as `labeller`), and positional `detection_id`s shift when a sidecar line is
+  removed. So `ingest_gt_jsonl` / `ingest_gt_dir` (default `replace=True`, CLI
+  `--replace/--no-replace`) treat the sidecar as the source of truth for its
+  clip: in one transaction they delete every `detection` and `track_meta` row
+  with `game_id = <clip>` and `run_id` starting `gt_import_`, then insert the
+  freshly parsed rows. An emptied sidecar (or one with only skip markers)
+  therefore clears the clip's GT rows. A malformed sidecar raises before the
+  delete, and an error mid-way rolls back, so old rows survive. Left alone:
+  all other runs for the game (`roboflow_v*`, `sam3`, hand-label imports),
+  other games, and the shared `game` / `frame` / `run` rows. Re-ingesting an
+  unchanged sidecar yields identical store contents. `detection_id` stays
+  positional (per `(frame_index, source)` in sidecar order); delete-then-insert
+  makes that safe. `--no-replace` restores the old merge-only upsert. A sidecar
+  file removed from the GT dir is not detected; its rows persist until
+  re-ingested with an empty file.
 - **Frame spine first**: a run that produces detections requires the
   `(game_id, frame_index)` frame rows to exist (FK). Frame extraction is the
   first writer; analysis stages update/insert against existing frames.

@@ -29,6 +29,13 @@ harness is excluded from both splits. The harness eval set is the set of clips
 that have a GT ``.jsonl`` sidecar under ``--eval-dir`` (default
 ``eval_data/clips``). Extra clips can be excluded with repeated ``--exclude-clip``.
 
+Clip identity is canonical (T-03, ``footy_track.clip_id``): one physical clip
+can sit in the store under several ``game_id`` aliases (``mancity_seg010``,
+``arsenal_mancity_seg010``, ``arsenal_mancity_20250925_seg010``). Any alias of
+an eval/excluded clip is excluded, and all aliases of a clip land in the same
+split. The split is computed over alias groups keyed by their smallest
+``game_id``, so a store without aliases splits exactly as before.
+
 ``--sources`` (comma list, e.g. ``hand_label`` or ``hand_label,vittrack``)
 optionally restricts detections to specific ``source`` values. Default (omitted)
 is unrestricted — the original behavior of pulling every canonical source.
@@ -69,10 +76,24 @@ from pathlib import Path
 
 import yaml
 
+from footy_track.clip_id import canonical_clip_id
 from footy_track.feature_store.store import FeatureStore
 
 BALL_LABELS = ("ball", "in_play_ball", "out_of_play_ball")
 BALL_CLASS_ID = 0
+
+# A box the user marked not_ball in Ball Check (feature_store/ball_checks.py)
+# must not be exported as a positive. No verdict -> row unaffected.
+_NOT_REJECTED = """
+          AND NOT EXISTS (
+              SELECT 1 FROM detection_review rv
+              WHERE rv.verdict = 'not_ball'
+                AND rv.game_id = detections_enriched.game_id
+                AND rv.frame_index = detections_enriched.frame_index
+                AND rv.matched_source = detections_enriched.source
+                AND rv.matched_run_id = detections_enriched.run_id
+                AND rv.matched_detection_id = detections_enriched.detection_id
+          )"""
 
 
 def _eval_clip_stems(eval_dir: Path) -> set[str]:
@@ -88,7 +109,12 @@ def _distinct_labels(store: FeatureStore) -> list[str]:
     return sorted(df["label"].tolist())
 
 
-def _query_ball_detections(store: FeatureStore, *, sources: list[str] | None = None):
+def _query_ball_detections(
+    store: FeatureStore,
+    *,
+    sources: list[str] | None = None,
+    include_rejected: bool = False,
+):
     placeholders = ", ".join("?" for _ in BALL_LABELS)
     params: list[object] = list(BALL_LABELS)
     source_clause = ""
@@ -96,19 +122,24 @@ def _query_ball_detections(store: FeatureStore, *, sources: list[str] | None = N
         source_placeholders = ", ".join("?" for _ in sources)
         source_clause = f" AND source IN ({source_placeholders})"
         params += sources
+    rejected_clause = "" if include_rejected else _NOT_REJECTED
     sql = f"""
         SELECT game_id, frame_index, detection_id, source, run_id, label,
                bbox_x, bbox_y, bbox_w, bbox_h, frame_uri, dataset_tag
         FROM detections_enriched
         WHERE canonical
-          AND lower(label) IN ({placeholders}){source_clause}
+          AND lower(label) IN ({placeholders}){source_clause}{rejected_clause}
         ORDER BY game_id, frame_index, detection_id
     """
     return store.query(sql, params)
 
 
 def _query_multiclass_detections(
-    store: FeatureStore, labels: list[str], *, sources: list[str] | None = None
+    store: FeatureStore,
+    labels: list[str],
+    *,
+    sources: list[str] | None = None,
+    include_rejected: bool = False,
 ):
     placeholders = ", ".join("?" for _ in labels)
     params: list[object] = list(labels)
@@ -117,12 +148,13 @@ def _query_multiclass_detections(
         source_placeholders = ", ".join("?" for _ in sources)
         source_clause = f" AND source IN ({source_placeholders})"
         params += sources
+    rejected_clause = "" if include_rejected else _NOT_REJECTED
     sql = f"""
         SELECT game_id, frame_index, detection_id, source, run_id, label,
                bbox_x, bbox_y, bbox_w, bbox_h, frame_uri, dataset_tag
         FROM detections_enriched
         WHERE canonical
-          AND label IN ({placeholders}){source_clause}
+          AND label IN ({placeholders}){source_clause}{rejected_clause}
         ORDER BY game_id, frame_index, detection_id
     """
     return store.query(sql, params)
@@ -176,6 +208,28 @@ def _split_clips_three_way(
     return train, val, test
 
 
+def _split_by_clip_identity(
+    game_ids: list[str], val_fraction: float, test_fraction: float
+) -> tuple[set[str], set[str], set[str], dict[str, set[str]]]:
+    """By-clip split over *physical* clips (T-03): every alias ``game_id`` of
+    one clip lands in the same split. Each alias group is represented by its
+    smallest ``game_id``, so with no aliases this is exactly ``_split_clips``
+    / ``_split_clips_three_way`` over the ``game_id``s. Also returns
+    ``{canonical_id: game_ids}`` for the manifest."""
+    aliases_by_id: dict[str, set[str]] = defaultdict(set)
+    for game_id in game_ids:
+        aliases_by_id[canonical_clip_id(game_id)].add(game_id)
+    group_of = {min(g): g for g in aliases_by_id.values()}
+    if test_fraction > 0:
+        splits = _split_clips_three_way(list(group_of), val_fraction, test_fraction)
+    else:
+        splits = (*_split_clips(list(group_of), val_fraction), set())
+    train, val, test = (
+        {game_id for rep in reps for game_id in group_of[rep]} for reps in splits
+    )
+    return train, val, test, aliases_by_id
+
+
 # Fallback source-video resolution (ft-n2o.1): the `eval_data/clips/*.mp4`
 # files are, on this machine, broken symlinks into a macOS-only iCloud path
 # that never synced here. The real source footage lives on
@@ -183,10 +237,10 @@ def _split_clips_three_way(
 # directories with a *different* filename convention than the GT-mark clip
 # stems. This table maps a clip-stem *prefix* -> (subdir, real-file suffix
 # transform) so we can locate the actual video. Prefixes not covered here
-# (e.g. bare ``mancity_seg*``, ``bournemouth_seg*``, ``bournemouth_broadcast_*``)
-# have no matching footage on this machine at all (verified: the relevant
-# match directories are empty or absent) and are reported as unresolved
-# rather than guessed at.
+# (bare ``mancity_seg*``, ``bournemouth_seg*``, ``bournemouth_broadcast_*``)
+# are aliases of clips that do exist on disk (see ``footy_track.clip_id``);
+# they resolve through ``--video-dir`` symlinks (``eval_data/clips``,
+# ``ballcheck_clips``) and are otherwise reported as unresolved.
 _FALLBACK_MATCH_DIRS: tuple[tuple[str, str, str], ...] = (
     # (clip_stem_prefix, data_root_subdir, real_filename_prefix)
     (
@@ -196,7 +250,7 @@ _FALLBACK_MATCH_DIRS: tuple[tuple[str, str, str], ...] = (
     ),
     (
         "mancity_part",
-        "arsenal_mancity/split_video_broadcast_frames",
+        "arsenal_mancity/split_video_10s",  # parts are 10 s cuts, not broadcast segs
         "arsenal_mancity_20250925_part",
     ),
     (
@@ -321,6 +375,95 @@ def _export_clip(
     return clip_images, clip_boxes
 
 
+def _split_for_clip(clip: str, val_clips: set[str], test_clips: set[str]) -> str:
+    if clip in val_clips:
+        return "val"
+    if clip in test_clips:
+        return "test"
+    return "train"
+
+
+def _reset_output_dirs(out_dir: Path, splits: tuple[str, ...]) -> None:
+    """Remove any previous export and recreate empty per-split directories."""
+    if out_dir.exists():
+        shutil.rmtree(out_dir)
+    for split in splits:
+        (out_dir / "images" / split).mkdir(parents=True, exist_ok=True)
+        (out_dir / "labels" / split).mkdir(parents=True, exist_ok=True)
+
+
+def _tag_exported_rows(store: FeatureStore, tagged: list[tuple], tag: str) -> None:
+    """Tag exported rows in the store (dataset_tag = "<tag>:<split>")."""
+    for game_id, source, run_id, fi, det_id, split in tagged:
+        store.query(
+            "UPDATE detection SET dataset_tag = ? "
+            "WHERE game_id=? AND source=? AND run_id=? AND frame_index=? AND detection_id=?",
+            [f"{tag}:{split}", game_id, source, run_id, fi, det_id],
+        )
+
+
+def _write_data_yaml(out_dir: Path, class_names: list[str], has_test: bool) -> None:
+    """Write data.yaml (YOLOv8 format; paths relative to the dataset root)."""
+    data_yaml = {
+        "path": str(out_dir.resolve()),
+        "train": "images/train",
+        "val": "images/val",
+        "nc": len(class_names),
+        "names": class_names,
+    }
+    if has_test:
+        data_yaml["test"] = "images/test"
+    (out_dir / "data.yaml").write_text(yaml.safe_dump(data_yaml, sort_keys=False))
+
+
+def _split_summary(counts: dict, split: str) -> dict:
+    return {
+        "images": counts[split]["images"],
+        "boxes": counts[split]["boxes"],
+        "by_source": dict(counts[split]["by_source"]),
+    }
+
+
+def _build_manifest(
+    *,
+    tag: str,
+    class_names: list[str],
+    sources: list[str] | None,
+    eval_clips: set[str],
+    extra_exclude: set[str],
+    excluded_boxes: int,
+    train_clips: set[str],
+    val_clips: set[str],
+    test_clips: set[str],
+    has_test: bool,
+    counts: dict,
+    per_clip: dict,
+    unresolved_clips: set[str],
+    aliases_by_id: dict[str, set[str]],
+) -> dict:
+    manifest = {
+        "tag": tag,
+        "classes": class_names,
+        "sources": sorted(sources) if sources else None,
+        "excluded_eval_clips": sorted(eval_clips),
+        "extra_excluded_clips": sorted(extra_exclude),
+        "excluded_ball_boxes": excluded_boxes,
+        "train_clips": sorted(train_clips),
+        "val_clips": sorted(val_clips),
+        "train": _split_summary(counts, "train"),
+        "val": _split_summary(counts, "val"),
+        "per_clip": per_clip,
+        "clip_aliases": {
+            cid: sorted(g) for cid, g in sorted(aliases_by_id.items()) if len(g) > 1
+        },
+        "unresolved_clips_no_source_video": sorted(unresolved_clips),
+    }
+    if has_test:
+        manifest["test_clips"] = sorted(test_clips)
+        manifest["test"] = _split_summary(counts, "test")
+    return manifest
+
+
 def export(
     store: FeatureStore,
     *,
@@ -334,6 +477,7 @@ def export(
     classes: list[str] | None = None,
     sources: list[str] | None = None,
     test_fraction: float = 0.0,
+    include_rejected: bool = False,
 ) -> dict:
     """Export a leakage-free YOLO dataset.
 
@@ -349,37 +493,42 @@ def export(
     by-clip split, output unchanged. Set > 0 for a three-way (train/val/test)
     by-clip split (recommended: ``val_fraction=0.2, test_fraction=0.1`` for a
     70/20/10 split); a clip never straddles any pair of splits.
+
+    Boxes the user marked ``not_ball`` in Ball Check are dropped from the
+    positives (the export has no negatives/background notion, so they are
+    simply excluded); ``include_rejected=True`` keeps them.
     """
     multiclass = classes is not None
     if multiclass:
         class_names = sorted(set(classes))
         class_id_for_label = {name: i for i, name in enumerate(class_names)}
-        df = _query_multiclass_detections(store, class_names, sources=sources)
+        df = _query_multiclass_detections(
+            store, class_names, sources=sources, include_rejected=include_rejected
+        )
     else:
         class_names = ["ball"]
         class_id_for_label = defaultdict(lambda: BALL_CLASS_ID)
-        df = _query_ball_detections(store, sources=sources)
+        df = _query_ball_detections(
+            store, sources=sources, include_rejected=include_rejected
+        )
     eval_clips = _eval_clip_stems(eval_dir)
-    excluded = eval_clips | extra_exclude
+    # Compare canonical ids, so an eval clip stored under another alias is
+    # still excluded (T-03).
+    excluded_ids = {canonical_clip_id(c) for c in eval_clips | extra_exclude}
 
     # Group rows by clip (game_id), skipping excluded clips.
     rows_by_clip: dict[str, list] = defaultdict(list)
     excluded_boxes = 0
     for r in df.itertuples():
-        if r.game_id in excluded:
+        if canonical_clip_id(r.game_id) in excluded_ids:
             excluded_boxes += 1
             continue
         rows_by_clip[r.game_id].append(r)
 
-    clips = list(rows_by_clip)
     has_test = test_fraction > 0
-    if has_test:
-        train_clips, val_clips, test_clips = _split_clips_three_way(
-            clips, val_fraction, test_fraction
-        )
-    else:
-        train_clips, val_clips = _split_clips(clips, val_fraction)
-        test_clips = set()
+    train_clips, val_clips, test_clips, aliases_by_id = _split_by_clip_identity(
+        list(rows_by_clip), val_fraction, test_fraction
+    )
 
     # Sanity: no clip in more than one split.
     assert not (train_clips & val_clips), "clip leakage between splits"
@@ -393,12 +542,7 @@ def export(
     }
     per_clip = {}
 
-    # Reset output dirs.
-    if out_dir.exists():
-        shutil.rmtree(out_dir)
-    for split in splits:
-        (out_dir / "images" / split).mkdir(parents=True, exist_ok=True)
-        (out_dir / "labels" / split).mkdir(parents=True, exist_ok=True)
+    _reset_output_dirs(out_dir, splits)
 
     tagged: list[
         tuple
@@ -406,12 +550,7 @@ def export(
     unresolved_clips: set[str] = set()
 
     for clip, rows in rows_by_clip.items():
-        if clip in val_clips:
-            split = "val"
-        elif clip in test_clips:
-            split = "test"
-        else:
-            split = "train"
+        split = _split_for_clip(clip, val_clips, test_clips)
         clip_images, clip_boxes = _export_clip(
             clip,
             rows,
@@ -427,55 +566,24 @@ def export(
         if clip_boxes and not clip_images:
             unresolved_clips.add(clip)
 
-    # Tag exported rows in the store (dataset_tag = "<tag>:<split>").
-    for game_id, source, run_id, fi, det_id, split in tagged:
-        store.query(
-            "UPDATE detection SET dataset_tag = ? "
-            "WHERE game_id=? AND source=? AND run_id=? AND frame_index=? AND detection_id=?",
-            [f"{tag}:{split}", game_id, source, run_id, fi, det_id],
-        )
-
-    # data.yaml (YOLOv8 format; paths relative to the dataset root).
-    data_yaml = {
-        "path": str(out_dir.resolve()),
-        "train": "images/train",
-        "val": "images/val",
-        "nc": len(class_names),
-        "names": class_names,
-    }
-    if has_test:
-        data_yaml["test"] = "images/test"
-    (out_dir / "data.yaml").write_text(yaml.safe_dump(data_yaml, sort_keys=False))
-
-    manifest = {
-        "tag": tag,
-        "classes": class_names,
-        "sources": sorted(sources) if sources else None,
-        "excluded_eval_clips": sorted(eval_clips),
-        "extra_excluded_clips": sorted(extra_exclude),
-        "excluded_ball_boxes": excluded_boxes,
-        "train_clips": sorted(train_clips),
-        "val_clips": sorted(val_clips),
-        "train": {
-            "images": counts["train"]["images"],
-            "boxes": counts["train"]["boxes"],
-            "by_source": dict(counts["train"]["by_source"]),
-        },
-        "val": {
-            "images": counts["val"]["images"],
-            "boxes": counts["val"]["boxes"],
-            "by_source": dict(counts["val"]["by_source"]),
-        },
-        "per_clip": per_clip,
-        "unresolved_clips_no_source_video": sorted(unresolved_clips),
-    }
-    if has_test:
-        manifest["test_clips"] = sorted(test_clips)
-        manifest["test"] = {
-            "images": counts["test"]["images"],
-            "boxes": counts["test"]["boxes"],
-            "by_source": dict(counts["test"]["by_source"]),
-        }
+    _tag_exported_rows(store, tagged, tag)
+    _write_data_yaml(out_dir, class_names, has_test)
+    manifest = _build_manifest(
+        tag=tag,
+        class_names=class_names,
+        sources=sources,
+        eval_clips=eval_clips,
+        extra_exclude=extra_exclude,
+        excluded_boxes=excluded_boxes,
+        train_clips=train_clips,
+        val_clips=val_clips,
+        test_clips=test_clips,
+        has_test=has_test,
+        counts=counts,
+        per_clip=per_clip,
+        unresolved_clips=unresolved_clips,
+        aliases_by_id=aliases_by_id,
+    )
     (out_dir / "manifest.yaml").write_text(yaml.safe_dump(manifest, sort_keys=False))
     return manifest
 
@@ -526,6 +634,11 @@ def main(argv: list[str] | None = None) -> None:
         "(e.g. 'hand_label' or 'hand_label,vittrack'). Omit for unrestricted "
         "(all canonical sources, the original behavior).",
     )
+    parser.add_argument(
+        "--include-rejected",
+        action="store_true",
+        help="Keep boxes the user marked not_ball in Ball Check (default: drop).",
+    )
     args = parser.parse_args(argv)
 
     store = FeatureStore.open(args.db)
@@ -553,6 +666,7 @@ def main(argv: list[str] | None = None) -> None:
         tag=args.tag,
         classes=classes,
         sources=sources,
+        include_rejected=args.include_rejected,
     )
 
     print("=== export_training_dataset manifest ===")

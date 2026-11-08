@@ -8,9 +8,12 @@ and returns a finite mAP50-95 metric.
 import math
 from pathlib import Path
 
+import pytest
+
 from footy_track.scripts.train_object_detector import train_detector
 
 
+@pytest.mark.slow
 def test_train_detector_smoke(detection_dataset: Path, staged_workdir: Path) -> None:
     metric, weights_path = train_detector(
         model_name="yolo11n",

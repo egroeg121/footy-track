@@ -37,7 +37,9 @@ def select_eval_clips(clips: list[str], n: int) -> list[str]:
     if n > len(clips):
         raise ValueError(f"asked for {n} eval clips but only {len(clips)} exist")
     stride = len(clips) / n
-    picked = [clips[min(len(clips) - 1, int(i * stride + stride / 2))] for i in range(n)]
+    picked = [
+        clips[min(len(clips) - 1, int(i * stride + stride / 2))] for i in range(n)
+    ]
     # Guard against duplicates from rounding on short lists.
     out: list[str] = []
     for c in picked:

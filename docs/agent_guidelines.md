@@ -19,3 +19,11 @@ These guidelines are intended to reduce accidental changes and help maintain con
 - Run the docs build and look at a screenshot of every diagram you add or change.
 - Never put secrets, private hostnames, IP addresses or private bucket names in docs. The site is public.
 - When a TODO item starts, moves or finishes, update `docs/todo.md`.
+
+## Checks
+
+Every agent and contributor must run `make check` (or have the pre-commit hook
+installed with `make hooks`) before committing. Never use `--no-verify` to skip
+the hooks. If you could not run a check (for example the machine cannot run the
+tests), say so in the commit message or PR description and name the check. See
+[Checks before you commit](development.md#checks-before-you-commit).

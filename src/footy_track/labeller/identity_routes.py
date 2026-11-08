@@ -83,8 +83,8 @@ def _load_tracklet_rows(clip: str) -> list[dict]:
     if not path.exists():
         return []
     out = []
-    for line in path.read_text().splitlines():
-        line = line.strip()
+    for raw_line in path.read_text().splitlines():
+        line = raw_line.strip()
         if not line:
             continue
         try:
@@ -172,8 +172,12 @@ async def list_tracklets(clip: str, min_frames: int = 25) -> dict:
     # Longest first: they cover the most detections per decision, and a switch
     # in a long tracklet corrupts far more training pairs than one in a short.
     out.sort(key=lambda t: -t["n_detections"])
-    return {"clip": safe, "tracklets": out, "hidden_short": n_hidden,
-            "min_frames": min_frames}
+    return {
+        "clip": safe,
+        "tracklets": out,
+        "hidden_short": n_hidden,
+        "min_frames": min_frames,
+    }
 
 
 @router.get("/risky-frames")
@@ -254,12 +258,14 @@ async def best_frame(clip: str, track_id: int, n: int = 3) -> dict:
         cy.setdefault(int(r["frame_index"]), []).append(
             (int(r["track_id"]), b["y"] + b["h"] / 2)
         )
-    track_cy = {int(r["frame_index"]): r["bbox"]["y"] + r["bbox"]["h"] / 2 for r in rows}
+    track_cy = {
+        int(r["frame_index"]): r["bbox"]["y"] + r["bbox"]["h"] / 2 for r in rows
+    }
 
     def camera_dy(f0: int, f1: int) -> float:
         """Median vertical motion of all tracks present in BOTH frames."""
-        a = {t: y for t, y in cy.get(f0, [])}
-        b = {t: y for t, y in cy.get(f1, [])}
+        a = dict(cy.get(f0, []))
+        b = dict(cy.get(f1, []))
         both = [b[t] - a[t] for t in a.keys() & b.keys()]
         if not both:
             return 0.0
@@ -291,17 +297,26 @@ async def best_frame(clip: str, track_id: int, n: int = 3) -> dict:
         if f0 not in track_cy or f1 not in track_cy:
             continue
         rel_dy = (track_cy[f1] - track_cy[f0]) - camera_dy(f0, f1)
-        away = max(0.0, -rel_dy)          # negative dy (up-screen) == away from camera
+        away = max(0.0, -rel_dy)  # negative dy (up-screen) == away from camera
         h_px = r["bbox"]["h"] * 1080
         cands.append((f, r["bbox"], h_px, away))
 
     if not cands:  # too short to measure motion — fall back to size alone
         pool = [r for r in rows if usable_for_reading(r["bbox"])] or rows
         best = max(pool, key=lambda r: r["bbox"]["h"])
-        return {"clip": safe, "track_id": track_id, "heuristic": "size-only",
-                "candidates": [{"frame": int(best["frame_index"]), "bbox": best["bbox"],
-                                "height_px": round(best["bbox"]["h"] * 1080),
-                                "facing_away": None}]}
+        return {
+            "clip": safe,
+            "track_id": track_id,
+            "heuristic": "size-only",
+            "candidates": [
+                {
+                    "frame": int(best["frame_index"]),
+                    "bbox": best["bbox"],
+                    "height_px": round(best["bbox"]["h"] * 1080),
+                    "facing_away": None,
+                }
+            ],
+        }
 
     max_h = max(c[2] for c in cands) or 1.0
     max_away = max(c[3] for c in cands) or 1.0
@@ -313,20 +328,35 @@ async def best_frame(clip: str, track_id: int, n: int = 3) -> dict:
     )
     seen, out = set(), []
     for f, bbox, h_px, away in scored:
-        if any(abs(f - g) < 15 for g in seen):   # spread candidates out in time
+        if any(abs(f - g) < 15 for g in seen):  # spread candidates out in time
             continue
         seen.add(f)
-        out.append({"frame": f, "bbox": bbox, "height_px": round(h_px),
-                    "facing_away": round(away / max_away, 2)})
+        out.append(
+            {
+                "frame": f,
+                "bbox": bbox,
+                "height_px": round(h_px),
+                "facing_away": round(away / max_away, 2),
+            }
+        )
         if len(out) >= max(1, n):
             break
-    return {"clip": safe, "track_id": track_id, "heuristic": "orientation+size",
-            "candidates": out}
+    return {
+        "clip": safe,
+        "track_id": track_id,
+        "heuristic": "orientation+size",
+        "candidates": out,
+    }
 
 
 @router.get("/crop/{clip}/{frame}.jpg")
 async def crop(
-    clip: str, frame: int, x: float = 0.0, y: float = 0.0, w: float = 1.0, h: float = 1.0,
+    clip: str,
+    frame: int,
+    x: float = 0.0,
+    y: float = 0.0,
+    w: float = 1.0,
+    h: float = 1.0,
     pad: float = 0.6,
 ) -> Response:
     """Serve one padded crop. Clip-scoped so two clips can be shown together.
@@ -383,6 +413,58 @@ async def crop(
     return Response(content=buf.tobytes(), media_type="image/jpeg")
 
 
+def _render_track_frame(img, b: dict, idx: int, out_size: int):
+    """Draw one centred, padded square frame of the tracked player, box drawn.
+
+    Returns ``None`` when the window falls entirely outside the frame.
+    """
+    H, W = img.shape[:2]
+    cx, cy = (b["x"] + b["w"] / 2) * W, (b["y"] + b["h"] / 2) * H
+    half = max(b["w"] * W, b["h"] * H) * 1.6
+    half = max(half, 60.0)
+    x1, y1 = int(cx - half), int(cy - half)
+    x2, y2 = int(cx + half), int(cy + half)
+    pad_l, pad_t = max(0, -x1), max(0, -y1)
+    pad_r, pad_b = max(0, x2 - W), max(0, y2 - H)
+    win = img[max(0, y1) : min(H, y2), max(0, x1) : min(W, x2)]
+    if win.size == 0:
+        return None
+    if pad_l or pad_t or pad_r or pad_b:
+        # Pad rather than shift the window: shifting would move the
+        # player off-centre exactly when they are near the touchline.
+        win = cv2.copyMakeBorder(
+            win,
+            pad_t,
+            pad_b,
+            pad_l,
+            pad_r,
+            cv2.BORDER_CONSTANT,
+            value=(20, 20, 20),
+        )
+    scale = out_size / max(win.shape[0], win.shape[1])
+    win = cv2.resize(win, (int(win.shape[1] * scale), int(win.shape[0] * scale)))
+    canvas = np.full((out_size, out_size, 3), 20, dtype=np.uint8)
+    oy, ox = (out_size - win.shape[0]) // 2, (out_size - win.shape[1]) // 2
+    canvas[oy : oy + win.shape[0], ox : ox + win.shape[1]] = win
+    # Box in canvas coords.
+    bx1 = int((b["x"] * W - max(0, x1) + pad_l) * scale) + ox
+    by1 = int((b["y"] * H - max(0, y1) + pad_t) * scale) + oy
+    bx2 = int(((b["x"] + b["w"]) * W - max(0, x1) + pad_l) * scale) + ox
+    by2 = int(((b["y"] + b["h"]) * H - max(0, y1) + pad_t) * scale) + oy
+    cv2.rectangle(canvas, (bx1, by1), (bx2, by2), (0, 235, 255), 2)
+    cv2.putText(
+        canvas,
+        str(idx),
+        (6, out_size - 8),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.45,
+        (200, 200, 200),
+        1,
+        cv2.LINE_AA,
+    )
+    return canvas
+
+
 @router.get("/track-video/{clip}/{track_id}.mp4")
 async def track_video(clip: str, track_id: int, max_frames: int = 150) -> Response:
     """Render the tracked player as a short video, box drawn, player centred.
@@ -430,7 +512,9 @@ async def track_video(clip: str, track_id: int, max_frames: int = 150) -> Respon
     tmp = cached.with_suffix(".tmp.mp4")
     writer = cv2.VideoWriter(str(tmp), cv2.VideoWriter_fourcc(*"avc1"), 10, (OUT, OUT))
     if not writer.isOpened():  # avc1 is not always available; mp4v always is
-        writer = cv2.VideoWriter(str(tmp), cv2.VideoWriter_fourcc(*"mp4v"), 10, (OUT, OUT))
+        writer = cv2.VideoWriter(
+            str(tmp), cv2.VideoWriter_fourcc(*"mp4v"), 10, (OUT, OUT)
+        )
 
     idx, written = frames[0], 0
     while idx <= frames[-1]:
@@ -438,39 +522,10 @@ async def track_video(clip: str, track_id: int, max_frames: int = 150) -> Respon
         if not ok:
             break
         if idx in wanted:
-            H, W = img.shape[:2]
-            b = boxes[idx]
-            cx, cy = (b["x"] + b["w"] / 2) * W, (b["y"] + b["h"] / 2) * H
-            half = max(b["w"] * W, b["h"] * H) * 1.6
-            half = max(half, 60.0)
-            x1, y1 = int(cx - half), int(cy - half)
-            x2, y2 = int(cx + half), int(cy + half)
-            pad_l, pad_t = max(0, -x1), max(0, -y1)
-            pad_r, pad_b = max(0, x2 - W), max(0, y2 - H)
-            win = img[max(0, y1):min(H, y2), max(0, x1):min(W, x2)]
-            if win.size == 0:
-                idx += 1
-                continue
-            if pad_l or pad_t or pad_r or pad_b:
-                # Pad rather than shift the window: shifting would move the
-                # player off-centre exactly when they are near the touchline.
-                win = cv2.copyMakeBorder(win, pad_t, pad_b, pad_l, pad_r,
-                                         cv2.BORDER_CONSTANT, value=(20, 20, 20))
-            scale = OUT / max(win.shape[0], win.shape[1])
-            win = cv2.resize(win, (int(win.shape[1] * scale), int(win.shape[0] * scale)))
-            canvas = np.full((OUT, OUT, 3), 20, dtype=np.uint8)
-            oy, ox = (OUT - win.shape[0]) // 2, (OUT - win.shape[1]) // 2
-            canvas[oy:oy + win.shape[0], ox:ox + win.shape[1]] = win
-            # Box in canvas coords.
-            bx1 = int((b["x"] * W - max(0, x1) + pad_l) * scale) + ox
-            by1 = int((b["y"] * H - max(0, y1) + pad_t) * scale) + oy
-            bx2 = int(((b["x"] + b["w"]) * W - max(0, x1) + pad_l) * scale) + ox
-            by2 = int(((b["y"] + b["h"]) * H - max(0, y1) + pad_t) * scale) + oy
-            cv2.rectangle(canvas, (bx1, by1), (bx2, by2), (0, 235, 255), 2)
-            cv2.putText(canvas, str(idx), (6, OUT - 8), cv2.FONT_HERSHEY_SIMPLEX,
-                        0.45, (200, 200, 200), 1, cv2.LINE_AA)
-            writer.write(canvas)
-            written += 1
+            canvas = _render_track_frame(img, boxes[idx], idx, OUT)
+            if canvas is not None:
+                writer.write(canvas)
+                written += 1
         idx += 1
     cap.release()
     writer.release()
@@ -495,8 +550,8 @@ async def label_pair(body: dict) -> dict:
     except (KeyError, ValueError, TypeError) as exc:
         return {"ok": False, "error": f"bad payload: {exc}"}
     append_pair_label(
-        _labels_dir(), PairLabel(a=a, b=b, verdict=verdict,
-                                 annotator=body.get("annotator", "human"))
+        _labels_dir(),
+        PairLabel(a=a, b=b, verdict=verdict, annotator=body.get("annotator", "human")),
     )
     res = build_clusters(load_pair_labels(_labels_dir()))
     return {
@@ -515,7 +570,9 @@ async def submit_review(body: dict) -> dict:
     """Record which intervals of a tracklet a human actually inspected."""
     try:
         tracklet = TrackletRef(clip=body["clip"], track_id=int(body["track_id"]))
-        intervals = [CheckedInterval(int(s), int(e)) for s, e in body.get("checked", [])]
+        intervals = [
+            CheckedInterval(int(s), int(e)) for s, e in body.get("checked", [])
+        ]
     except (KeyError, ValueError, TypeError) as exc:
         return {"ok": False, "error": f"bad payload: {exc}"}
     review = TrackletReview(
@@ -527,9 +584,13 @@ async def submit_review(body: dict) -> dict:
         annotator=body.get("annotator", "human"),
     )
     append_tracklet_review(_labels_dir(), review)
-    return {"ok": True, "is_pure": review.is_pure(), "unsure": review.unsure,
-            "jersey_number": review.jersey_number,
-            "checked_frames": review.checked_frame_count()}
+    return {
+        "ok": True,
+        "is_pure": review.is_pure(),
+        "unsure": review.unsure,
+        "jersey_number": review.jersey_number,
+        "checked_frames": review.checked_frame_count(),
+    }
 
 
 @router.get("/clusters")

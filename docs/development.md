@@ -53,8 +53,12 @@ The documentation will be available at http://127.0.0.1:8000 when serving locall
 
 ### Running Tests
 ```bash
-uv run pytest
+uv run pytest        # everything (also: make tests)
+make test-fast       # skips tests marked slow or needs_weights
 ```
+
+Tests marked `needs_weights` skip themselves when the model weights
+(e.g. `model_saves/sam3/sam3.pt`) have not been pulled from DVC/LFS.
 
 ### Code Organization
 
@@ -109,14 +113,14 @@ The suite has 462 tests (collected 2026-11-08). The whole run took about 4 m 30 
 
 **Why it was slow.** The guess was a GPU problem. It was not: no test uses CUDA. Three things took almost all the time: two SAM3 tests (about 75 to 80 s each, and they fail anyway when the weights file is missing) and the first `fiftyone` test (about 17 s of start-up).
 
-**What fixes it.** The branch `chore/faster-tests` is pushed but **not merged yet**. Once it is merged you get:
+**What fixes it.** The `chore/faster-tests` changes are merged (with PR #24). You get:
 
-| Command | What runs | Time (measured on that branch) |
+| Command | What runs | Time (measured before the merge) |
 |---|---|---|
 | `uv run pytest` or `make tests` | Everything | about 52 s |
 | `make test-fast` | Skips tests marked `slow` or `needs_weights` | about 25 s |
 
-The `needs_weights` marker is available once `chore/faster-tests` is merged. It is for tests that need model weights that are not in the repo; they skip themselves when the file is missing. The branch also makes the `extract_frames` test fixture create its output folder first, because `ffmpeg` does not.
+The `needs_weights` marker is for tests that need model weights that are not in the repo; they skip themselves when the file is missing. The change also makes the `extract_frames` test fixture create its output folder first, because `ffmpeg` does not.
 
 ```mermaid
 flowchart LR
@@ -137,6 +141,73 @@ flowchart LR
   W --> SAM
 ```
 
-Legend: blue is what exists on `main` today, purple is new on the unmerged `chore/faster-tests` branch, grey is data not in git. The diagram shows that the full run includes the two SAM3 tests and the `fiftyone` tests, and that `make test-fast` skips both groups.
+Legend: blue is what existed before, purple is what the faster-tests change added, grey is data not in git. The diagram shows that the full run includes the two SAM3 tests and the `fiftyone` tests, and that `make test-fast` skips both groups.
 
-CI does not run the tests today ([T-08](todo.md)).
+CI runs `make test-fast` on every pull request (see [Checks before you commit](#checks-before-you-commit), [T-08](todo.md)).
+
+## Checks before you commit
+
+Two kinds of automatic check protect `main`: small, fast ones that run on your
+machine each time you commit, and a fuller set that runs on GitHub for every
+pull request (PR). The fast ones catch most mistakes before anyone else sees
+them.
+
+**One-time setup.** Run `make hooks`. This installs a git hook using
+`uvx pre-commit`, so there is nothing new to add to the project.
+
+**What runs when you commit.** Each commit runs these hooks on the files you
+changed:
+
+- `ruff` checks the Python for mistakes and fixes what it safely can.
+- `ruff-format` lays the code out in the project style.
+- `codespell` spell-checks code and docs. Project terms such as MOT are
+  allowed.
+- `nbstripout` strips outputs from notebooks so they do not bloat the repo.
+- Small file checks: a newline at the end of each file, no trailing spaces,
+  valid YAML and TOML, no leftover merge-conflict markers, and no file over
+  500 KB.
+
+If a hook changes a file, the commit stops. Look at the change, `git add` the
+files again and commit again. If a hook reports a problem it cannot fix, fix it
+by hand and commit again.
+
+**Run everything yourself.**
+
+```bash
+make check    # lint + fast tests, the same things CI runs
+make lint     # ruff check + ruff format --check only
+make format   # let ruff fix formatting and simple lint problems
+```
+
+**What runs on GitHub.** Every PR, and every push to `main`, runs three jobs:
+
+| Job | What it does |
+| --- | --- |
+| `lint` | Runs the pre-commit hooks on every file in the repo. |
+| `tests` | Installs the project and runs `make test-fast` (skips slow tests and tests that need model weights or API keys). |
+| `docs` | Builds the docs site, to catch broken pages. It is not strict yet, because `system_design.md` has two known broken links. |
+
+A new push to the same branch cancels the run that is still going.
+
+```mermaid
+flowchart TD
+  classDef you fill:#dbeafe,stroke:#2563eb,color:#111
+  classDef auto fill:#e5e7eb,stroke:#6b7280,color:#111
+  A["Edit code and docs"]:::you --> B["git commit:<br/>pre-commit hooks run"]:::auto
+  B -->|"a hook fails or fixes a file"| A
+  B -->|"all hooks pass"| C["git push and open a PR"]:::you
+  C --> D["CI runs: lint, tests, docs build"]:::auto
+  D -->|"a job fails"| A
+  D -->|"all jobs pass"| E["Review"]:::you
+  E --> F["Merge to main"]:::you
+  F --> G["Docs deploy to GitHub Pages"]:::auto
+```
+
+Legend: blue boxes are things you do; grey boxes happen by themselves. The
+arrows going back to "Edit" show that a failed check sends you back to fix it.
+
+Never skip the hooks with `git commit --no-verify`. If a check is wrong, fix
+the check in its own PR.
+
+Planned: add a hook that runs `scripts/check_docs_diagrams.py` on changed docs.
+For now run `make docs-check` yourself when you change a diagram.
