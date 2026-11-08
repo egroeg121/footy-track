@@ -53,8 +53,12 @@ The documentation will be available at http://127.0.0.1:8000 when serving locall
 
 ### Running Tests
 ```bash
-uv run pytest
+uv run pytest        # everything (also: make tests)
+make test-fast       # skips tests marked slow or needs_weights
 ```
+
+Tests marked `needs_weights` skip themselves when the model weights
+(e.g. `model_saves/sam3/sam3.pt`) have not been pulled from DVC/LFS.
 
 ### Code Organization
 

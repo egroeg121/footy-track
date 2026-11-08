@@ -54,6 +54,7 @@ def extracted_frames(repo_root: Path) -> list[Path]:
     if frames_dir.exists() and any(frames_dir.iterdir()):
         return list(frames_dir.glob("*.png"))
 
+    frames_dir.mkdir(parents=True, exist_ok=True)
     extract_frames.extract_frames(
         input_path=video,
         output_dir=frames_dir,

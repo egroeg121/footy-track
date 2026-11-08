@@ -53,6 +53,10 @@ docs-deploy: ## Deploy MkDocs to GitHub Pages
 tests: ## Run all tests
 	$(UV) run pytest tests/
 
+.PHONY: test-fast
+test-fast: ## Run tests excluding slow and weights-dependent ones
+	$(UV) run pytest tests/ -m "not slow and not needs_weights"
+
 # -----------------------------
 # Linting / pre-commit
 # -----------------------------
