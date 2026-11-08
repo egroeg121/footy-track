@@ -197,7 +197,8 @@ The high-volume table. Every detected object from every source/run is a row.
 PK: `(game_id, source, run_id, frame_index, detection_id)`. `detection_id` is
 the **per-frame** object index, so detectors emit `0..N-1` per frame with no
 need for a run-global counter; re-ingesting one frame's detections upserts
-cleanly. Partitioned on disk by `game_id` then `source` (§6) so a single
+cleanly (GT-sidecar ingest additionally deletes the clip's `gt_import_*` rows
+first, see §7). Partitioned on disk by `game_id` then `source` (§6) so a single
 source's detections are a cheap column/partition scan and one source can be
 rewritten without touching others.
 
@@ -379,6 +380,24 @@ than assumed. `continuous_time_s` is derived `frame_index / fps + time_offset`
   (DuckDB) / partition-replace (Parquet). Re-ingesting an identical run is a
   no-op on row count. This satisfies the footy-stats "re-upload must not
   duplicate" rule from the project CLAUDE.md.
+- **GT-sidecar re-ingest is replace, not merge** (`ingest_gt`). A bare upsert
+  never deletes, so a corrected or deleted box left a ghost row (e.g. an old
+  `gt_import_vittrack` row still marked canonical after the box was rewritten
+  as `labeller`), and positional `detection_id`s shift when a sidecar line is
+  removed. So `ingest_gt_jsonl` / `ingest_gt_dir` (default `replace=True`, CLI
+  `--replace/--no-replace`) treat the sidecar as the source of truth for its
+  clip: in one transaction they delete every `detection` and `track_meta` row
+  with `game_id = <clip>` and `run_id` starting `gt_import_`, then insert the
+  freshly parsed rows. An emptied sidecar (or one with only skip markers)
+  therefore clears the clip's GT rows. A malformed sidecar raises before the
+  delete, and an error mid-way rolls back, so old rows survive. Left alone:
+  all other runs for the game (`roboflow_v*`, `sam3`, hand-label imports),
+  other games, and the shared `game` / `frame` / `run` rows. Re-ingesting an
+  unchanged sidecar yields identical store contents. `detection_id` stays
+  positional (per `(frame_index, source)` in sidecar order); delete-then-insert
+  makes that safe. `--no-replace` restores the old merge-only upsert. A sidecar
+  file removed from the GT dir is not detected; its rows persist until
+  re-ingested with an empty file.
 - **Frame spine first**: a run that produces detections requires the
   `(game_id, frame_index)` frame rows to exist (FK). Frame extraction is the
   first writer; analysis stages update/insert against existing frames.
