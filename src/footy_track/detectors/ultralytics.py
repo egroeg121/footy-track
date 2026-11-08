@@ -171,9 +171,10 @@ class UltralyticsObjectDetector(ObjectDetector):
         image_path: Path,
     ) -> FrameDetections:
         """Run detection and return FrameDetections."""
-        result: UltralyticsResults = self.model.predict(image_path, device=self.device)[
-            0
-        ]
+        # Configured settings (conf, iou, imgsz, ...) come from the constructor;
+        # the device chosen at init is explicit and takes precedence.
+        kwargs = {**self.predict_kwargs, "device": self.device}
+        result: UltralyticsResults = self.model.predict(image_path, **kwargs)[0]
 
         # Image size
         h, w = result.orig_shape[:2]
