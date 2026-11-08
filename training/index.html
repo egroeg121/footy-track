@@ -872,12 +872,12 @@
 <tr>
 <td><code>--model</code></td>
 <td><code>yolo11n</code></td>
-<td>YOLO model variant (e.g. <code>yolo11n</code>, <code>yolo11m</code>). <code>.pt</code> is appended automatically.</td>
+<td>Model variant (for example <code>yolo11n</code>, <code>yolo11m</code>). <code>.pt</code> is appended automatically and the name is passed to <code>YOLO(...)</code>.</td>
 </tr>
 <tr>
 <td><code>--dataset-version</code></td>
 <td><code>3</code></td>
-<td>Roboflow dataset version to download.</td>
+<td>Roboflow dataset version to download. See the traps below.</td>
 </tr>
 <tr>
 <td><code>--freeze</code></td>
@@ -889,8 +889,88 @@
 <td><code>50</code></td>
 <td>Number of training epochs.</td>
 </tr>
+<tr>
+<td><code>--imgsz</code></td>
+<td><code>640</code></td>
+<td>Training image size in pixels. The help text says to use 1280 for ball work.</td>
+</tr>
+<tr>
+<td><code>--batch</code></td>
+<td><code>-1</code></td>
+<td>Batch size; <code>-1</code> means automatic. On MPS the help text says to use an explicit small batch (4 to 8).</td>
+</tr>
+<tr>
+<td><code>--no-amp</code></td>
+<td>off (AMP on)</td>
+<td>Turn off mixed precision. Recommended on MPS.</td>
+</tr>
+<tr>
+<td><code>--device</code></td>
+<td><code>mps</code></td>
+<td><code>mps</code>, <code>cpu</code>, or <code>0</code> for the first CUDA GPU.</td>
+</tr>
+<tr>
+<td><code>--workers</code></td>
+<td><code>8</code></td>
+<td>DataLoader worker processes.</td>
+</tr>
+<tr>
+<td><code>--cache</code></td>
+<td><code>ram</code></td>
+<td><code>ram</code>, <code>disk</code> or <code>none</code>: where decoded images are cached.</td>
+</tr>
+<tr>
+<td><code>--local-dataset</code></td>
+<td>none</td>
+<td>Path to a local YOLOv8-format dataset folder that contains <code>data.yaml</code>. Skips the Roboflow download.</td>
+</tr>
 </tbody>
 </table>
+<h3 id="defaults-that-are-traps">Defaults that are traps<a class="headerlink" href="#defaults-that-are-traps" title="Permanent link">&para;</a></h3>
+<p>Who this is for: anyone starting a training run for the first time. The defaults suit the first small experiment on a Mac laptop, not a ball detector. Each row below is read from <code>scripts/train_object_detector.py</code> on <code>main</code> (2026-11-08).</p>
+<table>
+<thead>
+<tr>
+<th>Flag</th>
+<th>Default</th>
+<th>Why it bites</th>
+<th>What to pass</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--imgsz</code></td>
+<td><code>640</code></td>
+<td>The ball is a few pixels wide. A 640 px model has ball recall of about 0 (a yolo11s v3 run at 640, <a href="../pipeline-and-labels/#ball-detector-leaderboard">Best pipeline</a>).</td>
+<td><code>--imgsz 1280</code> at least. The production checkpoint was trained at 1920.</td>
+</tr>
+<tr>
+<td><code>--device</code></td>
+<td><code>mps</code></td>
+<td>Fails or runs on the wrong device on any machine without Apple silicon. <code>mps</code> also switches on an assigner workaround.</td>
+<td><code>--device 0</code> for CUDA, or <code>cpu</code>.</td>
+</tr>
+<tr>
+<td><code>--dataset-version</code></td>
+<td><code>3</code></td>
+<td>Version 3 is the original small set (162 train, 49 val images). The best model used version 11 (1,035 train, 215 val, 268 test images). Version 3 to 11 took RT-DETR-L ball mAP50 from 0.328 to 0.665.</td>
+<td><code>--dataset-version 11</code>, or <code>--local-dataset</code> with a folder you built.</td>
+</tr>
+<tr>
+<td><code>--workers</code></td>
+<td><code>8</code></td>
+<td>The help text says workers were pinned to 0 under WSL2 because of a driver bug, and that native Ubuntu has no such limit. The merge commit message says "default 0 under WSL" but the code defaults to 8 (<a href="../todo/">T-06</a>). An older note says workers above 0 crash a WSL2 GPU machine; not re-checked here.</td>
+<td><code>--workers 0</code> on WSL2; otherwise 8 is fine.</td>
+</tr>
+<tr>
+<td><code>--cache</code></td>
+<td><code>ram</code></td>
+<td>Holds every decoded image in memory. Fine for 1,035 images at 640, heavy at 1920. Unmeasured here.</td>
+<td><code>--cache disk</code> or <code>none</code> if memory is tight.</td>
+</tr>
+</tbody>
+</table>
+<p>Two more facts. The command that produced the production RT-DETR-L checkpoint is <strong>not in the repo</strong> (<a href="../todo/">T-09</a>), so a run with this script is not a reproduction of it. And an example such as <code>--model yolo11m --dataset-version 11 --imgsz 1280 --device 0 --workers 0 --cache disk --epochs 50</code> is only an illustration of the flags; it has not been run for this page.</p>
 <h3 id="outputs">Outputs<a class="headerlink" href="#outputs" title="Permanent link">&para;</a></h3>
 <p>Weights and plots are saved to:
 <div class="highlight"><pre><span></span><code>footy_scan_detection/&lt;run-name&gt;/weights/best.pt
@@ -904,8 +984,9 @@ footy_scan_detection/&lt;run-name&gt;/weights/last.pt
 <h2 id="dataset">Dataset<a class="headerlink" href="#dataset" title="Permanent link">&para;</a></h2>
 <ul>
 <li><strong>Source:</strong> Roboflow workspace <code>egroeg121</code>, project <code>footy-track-detection</code></li>
-<li><strong>Version 3 split:</strong> 162 train / 49 val images</li>
-<li><strong>Classes (7):</strong> <code>coach</code>, <code>in_play_ball</code>, <code>person</code>, <code>player</code>, <code>player_sub</code>, <code>referee</code>, <code>+ keeper</code></li>
+<li><strong>Version 3 split:</strong> 162 train / 49 val / 46 test images</li>
+<li><strong>Version 11 split:</strong> 1,035 train / 215 val / 268 test images (the one the best model used; details and limits in <a href="../data/#evaluation-sets">Datasets and labels</a>)</li>
+<li><strong>Classes (7, read from <code>data.yaml</code> of v3 and v11, 2026-11-08):</strong> <code>ball</code> (unused: one instance in v11), <code>coach</code>, <code>in_play_ball</code>, <code>person</code>, <code>player</code>, <code>player_sub</code>, <code>referee</code>. The ball class that matters is <code>in_play_ball</code>.</li>
 <li><strong>Downloaded to:</strong> <code>$DATA_ROOT/detection_dataset/roboflow_dataset_&lt;version&gt;/</code> (defaults to <code>data/detection_dataset/...</code> if <code>DATA_ROOT</code> is unset)</li>
 </ul>
 <hr />

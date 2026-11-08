@@ -320,6 +320,21 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Where things live">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#layout-and-what-is-local-only" class="md-nav__link">
+    <span class="md-ellipsis">
+      Layout and what is local only
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -332,9 +347,27 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#label-tiers-and-provenance-tags" class="md-nav__link">
+    <span class="md-ellipsis">
+      Label tiers and provenance tags
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#label-formats-and-counts" class="md-nav__link">
     <span class="md-ellipsis">
       Label formats and counts
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#evaluation-sets" class="md-nav__link">
+    <span class="md-ellipsis">
+      Evaluation sets
     </span>
   </a>
   
@@ -359,9 +392,9 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#local-versus-s3" class="md-nav__link">
+  <a href="#local-versus-the-object-store" class="md-nav__link">
     <span class="md-ellipsis">
-      Local versus S3
+      Local versus the object store
     </span>
   </a>
   
@@ -917,6 +950,21 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Where things live">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#layout-and-what-is-local-only" class="md-nav__link">
+    <span class="md-ellipsis">
+      Layout and what is local only
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -929,9 +977,27 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#label-tiers-and-provenance-tags" class="md-nav__link">
+    <span class="md-ellipsis">
+      Label tiers and provenance tags
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#label-formats-and-counts" class="md-nav__link">
     <span class="md-ellipsis">
       Label formats and counts
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#evaluation-sets" class="md-nav__link">
+    <span class="md-ellipsis">
+      Evaluation sets
     </span>
   </a>
   
@@ -956,9 +1022,9 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#local-versus-s3" class="md-nav__link">
+  <a href="#local-versus-the-object-store" class="md-nav__link">
     <span class="md-ellipsis">
-      Local versus S3
+      Local versus the object store
     </span>
   </a>
   
@@ -990,8 +1056,10 @@
 
 
 <h1 id="datasets-and-labels">Datasets and labels<a class="headerlink" href="#datasets-and-labels" title="Permanent link">&para;</a></h1>
-<p><em>State as of 2026-11-08, checked on the build machine against <code>main</code> @ 26d2506. Counts will drift; re-run the checks before relying on them.</em> For how the data moves through the system see <a href="../architecture/">Architecture</a>; for what is missing see the <a href="../todo/">TODO list</a>.</p>
+<p><strong>Who this is for:</strong> anyone who needs to find, count or trust the footy data and its labels. It says where each dataset lives, what a label is worth (tiers), how the evaluation sets are built, and what exists on one machine but not the other.</p>
+<p><em>Counts measured on 2026-11-08 on the build machine against <code>main</code> @ 26d2506. They will drift; re-run the checks before relying on them. Figures marked "inventory" come from the review's dataset inventory and were not recounted.</em> For how the data moves through the system see <a href="../architecture/">Architecture</a>; for what is missing see the <a href="../todo/">TODO list</a>.</p>
 <h2 id="where-things-live">Where things live<a class="headerlink" href="#where-things-live" title="Permanent link">&para;</a></h2>
+<p>All paths below are relative to the <strong>footy data directory</strong>. It is not in git. Its location differs per machine, so code reads it from environment variables or a per-user default.</p>
 <table>
 <thead>
 <tr>
@@ -1001,32 +1069,53 @@
 </thead>
 <tbody>
 <tr>
-<td>The data root (a local disk, 45 GB, 18,716 files)</td>
-<td>The real data root on the main workstation.</td>
+<td>Footy data directory on the build machine (45 GB, 18,716 files)</td>
+<td>The working copy of everything below.</td>
 </tr>
 <tr>
 <td><code>~/code/footy_data</code></td>
-<td>A <strong>dangling symlink</strong> into iCloud. Do not use.</td>
+<td>On the build machine, a dangling symlink into iCloud left over from the macOS setup. Do not use.</td>
 </tr>
 <tr>
-<td><code>the private S3 bucket (prefix</code>footy_data/<code>)</code></td>
-<td>18,147 objects, 47.88 GB. Sibling prefixes <code>gpu_runs/</code> (18 objects, 795 MB), <code>models/</code> (3, 67 MB), <code>backups/</code>.</td>
+<td>The object store, under a <code>footy_data/</code> prefix</td>
+<td>18,147 objects, 47.88 GB. Sibling prefixes <code>gpu_runs/</code> (18 objects, 795 MB), <code>models/</code> (3 objects, 67 MB) and <code>backups/</code>.</td>
 </tr>
 <tr>
-<td>Desktop (WSL / Ubuntu) <code>~/code/footy_data</code></td>
-<td>About 44 GB per the KB; not checked here. The KB records the two machines diverging on <code>ball_gt_marks</code> in August; unverified.</td>
+<td>The desktop GPU machine</td>
+<td>A third copy, about 44 GB per the maintainer's notes. Not checked in this review. The notes record the two machines diverging on <code>ball_gt_marks</code> in August; not verified.</td>
 </tr>
 <tr>
 <td><code>~/footy/footy_data</code></td>
-<td>Where the labeller looks by default; override with <code>FOOTY_CLIPS_DIR</code>, <code>FOOTY_GT_MARKS_DIR</code>, <code>FOOTY_BALL_CANDIDATES_DIR</code> (<code>labeller/server.py:92-114</code>).</td>
+<td>Where the labeller looks by default. Override with <code>FOOTY_CLIPS_DIR</code>, <code>FOOTY_GT_MARKS_DIR</code> and <code>FOOTY_BALL_CANDIDATES_DIR</code> (<code>labeller/server.py:92-114</code>).</td>
 </tr>
 <tr>
-<td>A <code>data/</code> directory beside the repo checkout</td>
+<td>A separate data folder next to the repo</td>
 <td>Only <code>arsenal_mancity_example_video.mp4</code> (1920x1080, 25 fps, 250 frames, 10 s).</td>
 </tr>
 </tbody>
 </table>
-<p>Model weights are not in git: <code>rtdetr_1920_v11/best.pt</code> (66.8 MB) is on S3 <code>models/</code> and <code>gpu_runs/</code> and at <code>&lt;storage&gt;/models/</code>. The SAM3 weights are in <code>model_saves/sam3/</code> (S3 has the complete <code>sam3.1_multiplex.pt</code>; the local copy is a partial download).</p>
+<p>Model weights are not in git. <code>rtdetr_1920_v11/best.pt</code> (66.8 MB) is in the object store under <code>models/</code> and <code>gpu_runs/</code>, and on the build machine. The SAM3 weights go in <code>model_saves/sam3/</code>; the object store has the complete <code>sam3.1_multiplex.pt</code>, the local copy is a partial download.</p>
+<h3 id="layout-and-what-is-local-only">Layout and what is local only<a class="headerlink" href="#layout-and-what-is-local-only" title="Permanent link">&para;</a></h3>
+<pre class="mermaid"><code>flowchart LR
+  classDef data fill:#e5e7eb,stroke:#6b7280,color:#111
+  classDef local fill:#ffedd5,stroke:#ea580c,stroke-dasharray:5 3,color:#111
+  classDef dead fill:#fee2e2,stroke:#dc2626,color:#111
+
+  ROOT[("Footy data directory&lt;br/&gt;45 GB, 18.7k files")]:::data
+  VID["Original videos + derived frames&lt;br/&gt;5 matches, about 50 GB"]:::data
+  CLIPS["clips/&lt;br/&gt;162 mp4, Man City"]:::data
+  ML["machine_labels/&lt;br/&gt;162 jsonl, 2.77M boxes"]:::data
+  GT["ball_gt_marks/&lt;br/&gt;45 files, 22.6k rows"]:::data
+  DET["detection_dataset/&lt;br/&gt;Roboflow v3, v11"]:::data
+  CLS["classifier_dataset/&lt;br/&gt;Roboflow v9, v10"]:::data
+  BC["ball_gt_marks/ball_checks/&lt;br/&gt;110 files, 364 verdicts"]:::dead
+  CAND["ball_candidates/ + ball_embeddings/&lt;br/&gt;Ball Check pool"]:::local
+  TRK["tracklets/, link_proposals/,&lt;br/&gt;identity_labels/, track_videos/"]:::local
+  SNAP["3 GT snapshots&lt;br/&gt;backups"]:::local
+  ALIAS["ballcheck_clips/&lt;br/&gt;199 symlinks, made by hand"]:::local
+
+  ROOT --&gt; VID &amp; CLIPS &amp; ML &amp; GT &amp; DET &amp; CLS &amp; BC &amp; CAND &amp; TRK &amp; SNAP &amp; ALIAS</code></pre>
+<p>Legend: grey is in the object store and on the build machine, orange dashed is local only (not in the object store, and not made by code in git), red is data that nothing reads. The diagram shows the top-level folders only; the table below has formats and sizes.</p>
 <h2 id="datasets">Datasets<a class="headerlink" href="#datasets" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
@@ -1041,7 +1130,7 @@
 <tbody>
 <tr>
 <td>Raw match videos</td>
-<td><code>arsenal_{astonvilla,bournmouth_1st_half,bournmouth_2nd_half,mancity,norwich}/original_video</code></td>
+<td><code>arsenal_{astonvilla,bournmouth_1st_half,bournmouth_2nd_half,mancity,norwich}/original_video</code> (the <code>bournmouth</code> spelling is the real folder name)</td>
 <td>mp4, ts, webm, mkv</td>
 <td>14.7 GB, 5 files</td>
 <td>Source of everything</td>
@@ -1065,7 +1154,7 @@
 <td><code>machine_labels/</code></td>
 <td>jsonl plus <code>_manifest.json</code></td>
 <td>162 files, 889 MB, 2,767,151 boxes, 97,625 frames</td>
-<td>RT-DETR-L (<code>rtdetr-l_1920_v11</code>, imgsz 1280, conf 0.1 or more), tier 3, unreviewed. On S3.</td>
+<td>RT-DETR-L (<code>rtdetr-l_1920_v11</code>, imgsz 1280, conf 0.1 or more), tier 3, unreviewed. In the object store.</td>
 </tr>
 <tr>
 <td><code>ball_candidates/</code></td>
@@ -1114,7 +1203,7 @@
 <td><code>ball_gt_marks.bak-ballcheck-20260924-151008</code>, <code>ball_gt_marks_MERGED</code> (identical, 39 files), <code>ball_gt_marks.pre-merge-20260826-234555</code> (33 files)</td>
 <td>jsonl</td>
 <td>about 5 MB each</td>
-<td>Backups. <strong>Local only</strong>; S3 has <code>_backups/ball_gt_marks_2026-07-04</code>.</td>
+<td>Backups. <strong>Local only</strong>; the object store has <code>_backups/ball_gt_marks_2026-07-04</code>.</td>
 </tr>
 <tr>
 <td><code>detection_dataset/</code></td>
@@ -1125,27 +1214,131 @@
 </tr>
 <tr>
 <td><code>classifier_dataset/</code></td>
-<td><code>roboflow_dataset_9</code>, <code>roboflow_dataset_10</code></td>
+<td><code>roboflow_dataset_9</code> (594/183/166), <code>roboflow_dataset_10</code> (387/104/100)</td>
 <td>class folders</td>
 <td>109 MB, 70 MB</td>
-<td>Broadcast-frame classifier</td>
+<td>Broadcast-frame classifier (inventory counts)</td>
 </tr>
 </tbody>
 </table>
+<h2 id="label-tiers-and-provenance-tags">Label tiers and provenance tags<a class="headerlink" href="#label-tiers-and-provenance-tags" title="Permanent link">&para;</a></h2>
+<p>A label is worth what the person or program behind it is worth. Every box in a sidecar file carries tags in the order <code>[class, provenance, *markers]</code>, and the tiers are read from those tags (<code>labeller/README.md</code> section 1; <code>feature_store/ingest_gt.py:73-77, 93-115</code>).</p>
+<table>
+<thead>
+<tr>
+<th>Tier</th>
+<th>Tags on the box</th>
+<th>What it means</th>
+<th>In the feature store</th>
+<th>For training</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>1</strong></td>
+<td><code>labeller</code></td>
+<td>A human drew or dragged this box.</td>
+<td><code>source = hand_label</code>, <code>reviewed = true</code></td>
+<td>Ground truth. Safe to train and evaluate on.</td>
+</tr>
+<tr>
+<td><strong>2</strong></td>
+<td><code>vittrack</code> plus <code>human_checked</code></td>
+<td>A tracker drew the box and a human confirmed it. About 97% right on the 81 Ball Check verdicts over such boxes (measured, 2026-11-08).</td>
+<td><code>source = vittrack</code>, <code>reviewed = true</code> once the ingest fix is in the store</td>
+<td>Good enough to train on. Not good enough as strict eval ground truth.</td>
+</tr>
+<tr>
+<td><strong>3</strong></td>
+<td><code>yolo</code>, <code>sam3</code>, or <code>vittrack</code> without <code>human_checked</code>; also every machine label from RT-DETR</td>
+<td>A machine drew it and nobody looked.</td>
+<td><code>reviewed = false</code></td>
+<td>Noisy. Below 0.6 detector confidence at most 42% of Ball Check cards were real balls (<a href="../pipeline-and-labels/#ball-check-precision-by-confidence-band">precision bands</a>).</td>
+</tr>
+</tbody>
+</table>
+<p>Three details that trip people up:</p>
+<ul>
+<li><code>human_checked</code> is a marker, not a provenance and not a class. It sits after the provenance tag. Before <code>ingest_gt</code> knew this, it read the marker as the object class and lost the real one.</li>
+<li><strong>No code in the repo writes <code>human_checked</code></strong> (searched 2026-11-08). The 15,386 <code>vittrack</code> rows that carry it got it from a one-off backfill on 2026-08-23. New VitTrack output cannot become tier 2 through any tool.</li>
+<li>The labeller session currently drops <code>human_checked</code> on load and flush, which silently turns tier 2 into tier 3 for a whole clip (<a href="../todo/">T-01</a>; the fix is on an unmerged branch).</li>
+</ul>
+<pre class="mermaid"><code>flowchart LR
+  classDef code fill:#dbeafe,stroke:#2563eb,color:#111
+  classDef data fill:#e5e7eb,stroke:#6b7280,color:#111
+  classDef dead fill:#fee2e2,stroke:#dc2626,color:#111
+  classDef bc fill:#ede9fe,stroke:#7c3aed,color:#111
+
+  HAND["Hand box&lt;br/&gt;/labeller or /object_review"]:::code
+  BCD["Ball Check&lt;br/&gt;dragged box"]:::bc
+  VT["VitTrack propagation&lt;br/&gt;(Run in /labeller)"]:::code
+  BCV["Ball Check&lt;br/&gt;yes or no verdict"]:::bc
+  MACH["RT-DETR machine labels"]:::code
+
+  SC[("Sidecar ball_gt_marks/&amp;lt;clip&amp;gt;.jsonl&lt;br/&gt;tags: class, provenance, markers")]:::data
+  T1["Tier 1&lt;br/&gt;labeller"]:::data
+  T2["Tier 2&lt;br/&gt;vittrack + human_checked"]:::data
+  T3["Tier 3&lt;br/&gt;machine only"]:::data
+  VLOG[("Verdict log&lt;br/&gt;ball_checks/")]:::dead
+  STORE[("Feature store&lt;br/&gt;source + reviewed")]:::data
+  EXP["export_training_dataset&lt;br/&gt;canonical rows, no tier filter"]:::code
+  TRAIN["Training"]:::code
+
+  HAND --&gt; SC
+  BCD -- "tag labeller" --&gt; SC
+  VT -- "tag vittrack" --&gt; SC
+  SC --&gt; T1 &amp; T2 &amp; T3
+  MACH -. "not ingested" .-&gt; T3
+  BCV --&gt; VLOG
+  T1 &amp; T2 &amp; T3 --&gt; STORE --&gt; EXP --&gt; TRAIN</code></pre>
+<p>Legend: blue is code in git, grey is data, purple is the Ball Check path, red is data nothing reads. The diagram shows how a box becomes tier 1, 2 or 3 and what reaches training: a Ball Check dragged box becomes tier 1 through the sidecar, a Ball Check yes or no goes only to the verdict log, and the export does not filter on tier, so tier 3 rows in the store are exported too (<a href="../todo/">T-22</a>). The routes that produce these labels are in <a href="../pipeline-and-labels/#4-how-labels-are-created-today">Best pipeline and label needs, section 4</a>.</p>
 <h2 id="label-formats-and-counts">Label formats and counts<a class="headerlink" href="#label-formats-and-counts" title="Permanent link">&para;</a></h2>
 <p>Sidecar rows are <code>{frame_index, bbox{x,y,w,h} normalised, center, tags: [class, provenance, *markers]}</code>; skip markers are rows with <code>bbox: null</code> and tag <code>no_ball</code> or <code>not_broadcast</code>. See <a href="../architecture/#6-data-formats-that-cross-stage-boundaries">Architecture, section 6</a> for the six formats.</p>
-<p>Current <code>ball_gt_marks</code> (22,648 rows, 0 unparsable): player 18,688, referee 2,099, <code>in_play_ball</code> 1,523, <code>not_broadcast</code> 138 (marker), coach 81, <code>no_ball</code> 68 (marker), person 32, player_sub 13, <code>out_of_play_ball</code> 2, untagged 4.</p>
-<p>Ball provenance tiers: tier 1 <code>labeller</code> 692 (plus 2 <code>out_of_play_ball</code>); tier 2 <code>vittrack</code> plus <code>human_checked</code> 825; tier 3 <code>yolo</code> 6. <code>vittrack</code> rows total 15,386, all carrying <code>human_checked</code>; <code>labeller</code> rows 6,446; <code>yolo</code> 606. The KB's older 612/857/6 matches the August feature store, not these files.</p>
+<p>Current <code>ball_gt_marks</code> (45 files, 22,648 rows, 0 unparsable; measured 2026-11-08): player 18,688, referee 2,099, <code>in_play_ball</code> 1,523, <code>not_broadcast</code> 138 (marker), coach 81, <code>no_ball</code> 68 (marker), person 32, player_sub 13, <code>out_of_play_ball</code> 2, untagged 4.</p>
+<p>Ball provenance tiers: tier 1 <code>labeller</code> 692 (plus 2 <code>out_of_play_ball</code>); tier 2 <code>vittrack</code> plus <code>human_checked</code> 825; tier 3 <code>yolo</code> 6. <code>vittrack</code> rows total 15,386, all carrying <code>human_checked</code>; <code>labeller</code> rows 6,446; <code>yolo</code> 606. An older note's 612/857/6 matches the August feature store, not these files.</p>
 <p>Verdicts (364 rows): <code>ball</code> 179, <code>not_ball</code> 149, <code>unsure</code> 20, <code>corrected</code> 12, tombstones 4. By source: 283 candidates, 81 sidecar boxes. Machine labels: player 2,028,121; <code>in_play_ball</code> 352,039; referee 285,162; coach 53,607; person 26,463; player_sub 16,986; <code>ball</code> 4,773 (class <code>ball</code> is dead in Roboflow v11 but present in machine output).</p>
-<p>Roboflow v11 <code>in_play_ball</code> instances, counted per file: train 1,010, valid 211, test 243. (<code>cat labels/*.txt</code> undercounts because the files lack a trailing newline; the KB's 826 is wrong.) v11-val is 74% one clip, <code>arsenal_example</code>.</p>
+<p>Roboflow v11 <code>in_play_ball</code> instances, counted per file: train 1,010, valid 211, test 243. (<code>cat labels/*.txt</code> undercounts because the files lack a trailing newline; an older figure of 826 for train was that miscount.) v11-val is 74% one clip, <code>arsenal_example</code>.</p>
+<h2 id="evaluation-sets">Evaluation sets<a class="headerlink" href="#evaluation-sets" title="Permanent link">&para;</a></h2>
+<p>There are two, and neither is a multi-match benchmark. Both are defined by files, so check the files before quoting a score.</p>
+<table>
+<thead>
+<tr>
+<th>Set</th>
+<th>Defined by</th>
+<th>Size</th>
+<th>Limits</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Roboflow v11-val</strong> (single-frame ball detection)</td>
+<td><code>detection_dataset/roboflow_dataset_11/valid</code></td>
+<td>215 images, 211 <code>in_play_ball</code></td>
+<td>157 images and 156 balls (74%) are one 10-second clip, <code>arsenal_example</code>. Counted from file names, 2026-11-08. The production checkpoint's headline figure (mAP50 0.665, recall 0.591) is measured here.</td>
+</tr>
+<tr>
+<td><strong>Roboflow v11-test</strong></td>
+<td><code>detection_dataset/roboflow_dataset_11/test</code></td>
+<td>268 images, 243 <code>in_play_ball</code></td>
+<td>Never evaluated in any log found. 265 of the 268 images (241 of 243 balls) are frames cut from the full Man City match video, not from clips, so it is one match. Counted from file names, 2026-11-08.</td>
+</tr>
+<tr>
+<td><strong>Ball-tracker harness set</strong> (<code>ball_eval</code>)</td>
+<td>Every clip with a <code>&lt;stem&gt;.jsonl</code> sidecar in <code>eval_data/clips/</code></td>
+<td>One file, <code>mancity_seg104.jsonl</code>: 4 rows, all with the same centre, and no matching MP4</td>
+<td>Effectively empty. The bake-off that used it ran the ball-blind 640 px checkpoint, so its results are not valid (<a href="../architecture/#41-status-by-stage">Architecture, section 4.1</a>).</td>
+</tr>
+</tbody>
+</table>
+<p>The harness set doubles as the <strong>leakage guard</strong>: <code>export_training_dataset</code> excludes every clip that has a sidecar in <code>eval_data/clips/</code> from train and val (<code>scripts/export_training_dataset.py:78-80, 362-363</code>). It matches clip names exactly, and one clip has up to three names, so the guard can miss (<a href="../todo/">T-03</a>). The split in v11 itself is by clip, but v11 train, val and test are all mostly Man City (v11 train has 1,010 balls, 517 of them from <code>astonvilla_seg080</code>).</p>
+<p>What a better set needs (diverse matches, dense contiguous frames, explicit <code>no_ball</code> frames) is in <a href="../pipeline-and-labels/#3-label-needs-and-gaps">Best pipeline and label needs, section 3</a>.</p>
 <h2 id="feature-store">Feature store<a class="headerlink" href="#feature-store" title="Permanent link">&para;</a></h2>
-<p>DuckDB (<code>duckdb==1.3.2</code>; open with <code>read_only=True</code>). Schema and rules are in <a href="../architecture/#52-feature-store">Architecture, section 5.2</a> and <a href="../design/feature_store/">Feature store design</a>.</p>
+<p>DuckDB (open with <code>read_only=True</code>; see <a href="../development/#environment-notes">Environment notes</a> for the version pin). The keys, the diagram and the list of what is not in the store are in <a href="../design/feature_store/#71-keys-as-implemented-and-what-is-not-in-the-store">Feature store design, section 7.1</a>. The state of the newest copy:</p>
 <ul>
-<li>Newest copy: 2026-08-04, 4.2 MB, in a local job-mirror directory (older: 2026-07-05, 3.4 MB, in the old rig data directory). <strong>Local only, not on S3, stale.</strong></li>
-<li>Contents: <code>detection</code> 26,364 rows; 34 of 41 games have detections; <code>frame</code> 1,869; 4 runs (<code>roboflow_v3</code>, <code>gt_import_labeller</code>, <code>gt_import_vittrack</code>, <code>gt_import_yolo</code>); <code>track_meta</code> 0 rows.</li>
-<li>Ball rows: <code>vittrack</code> 857 (<code>reviewed=False</code>), <code>hand_label</code> reviewed 612, <code>roboflow_v3</code> 235, <code>yolo</code> 6, <code>ball</code> 1.</li>
-<li><code>game_id</code> is the clip stem (GT) or frame-filename stem (Roboflow). <code>game.source_video_uri</code> and <code>match_date</code> are NULL; <code>frame_uri</code> is NULL in samples. Clips are linked only by naming.</li>
-<li>Missing: all machine labels, candidates, verdicts, tracklets, identity labels, the six GT files added later, the 2026-09-24 corrections, and Roboflow v11 (only v3). <code>vittrack</code> boxes are stored <code>reviewed=False</code> because the <code>human_checked</code> ingest fix post-dates both copies.</li>
+<li><strong>Newest copy:</strong> 2026-08-04, 4.2 MB, in a local job mirror (older: 2026-07-05, 3.4 MB). <strong>Local only, not in the object store, stale.</strong></li>
+<li><strong>Contents (measured 2026-11-08, read-only):</strong> <code>detection</code> 26,364 rows; 34 of 41 games have detections; <code>frame</code> 1,869; 4 runs (<code>roboflow_v3</code>, <code>gt_import_labeller</code>, <code>gt_import_vittrack</code>, <code>gt_import_yolo</code>); <code>track_meta</code> 0 rows.</li>
+<li><strong>Ball rows:</strong> <code>vittrack</code> 857 (<code>reviewed=False</code>), <code>hand_label</code> reviewed 612, <code>roboflow_v3</code> 235, <code>yolo</code> 6, <code>ball</code> 1.</li>
+<li><strong>Why it is stale:</strong> <code>vittrack</code> boxes are stored <code>reviewed=False</code> because the <code>human_checked</code> ingest fix post-dates both copies. It also lacks the September corrections, six GT files and Roboflow v11 (only v3).</li>
 </ul>
 <h2 id="footage">Footage<a class="headerlink" href="#footage" title="Permanent link">&para;</a></h2>
 <table>
@@ -1203,21 +1396,45 @@
 </tbody>
 </table>
 <p>Clip names come in three aliases: dated (<code>arsenal_mancity_20250925_segNNN</code>, in <code>clips/</code>), and short GT stems (<code>arsenal_mancity_segNNN</code>, <code>mancity_segNNN</code>, <code>astonvilla_segNNN</code>, <code>bournemouth_1st_segNNN</code>). The map between them is <code>ballcheck_clips/</code> (199 symlinks), which is not generated by anything in git (<a href="../todo/">T-03</a>, <a href="../todo/">T-09</a>). GT covers 45 clips (7 with dated names) of about 1,700 broadcast segments.</p>
-<h2 id="local-versus-s3">Local versus S3<a class="headerlink" href="#local-versus-s3" title="Permanent link">&para;</a></h2>
+<h2 id="local-versus-the-object-store">Local versus the object store<a class="headerlink" href="#local-versus-the-object-store" title="Permanent link">&para;</a></h2>
+<p>Counts from a listing on 2026-11-08 (measured). The top-level folders marked in the <a href="#layout-and-what-is-local-only">layout diagram</a> are the ones that differ.</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>In both</th>
+<th>Object store only</th>
+<th>Local only</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Keys</td>
+<td>18,112</td>
+<td>3</td>
+<td>604</td>
+</tr>
+<tr>
+<td>What</td>
+<td>Clips, machine labels, GT sidecars including <code>ball_checks/</code> (same file sizes on both sides as of 2026-09-25), Roboflow datasets</td>
+<td><code>_backups/ball_gt_marks_2026-07-04</code>, the complete <code>sam3.1_multiplex.pt</code>, <code>roboflow_dataset_11/test/labels.cache</code></td>
+<td><code>ball_candidates</code>, <code>ball_embeddings</code>, <code>tracklets</code>, the GT snapshots, <code>identity_labels</code>, <code>link_proposals</code>, <code>track_videos</code>, the partial SAM3 file, both feature stores</td>
+</tr>
+</tbody>
+</table>
+<p>Practical rules:</p>
 <ul>
-<li>18,112 keys are on both sides.</li>
-<li><strong>S3 only:</strong> <code>_backups/ball_gt_marks_2026-07-04</code>, the complete <code>sam3.1_multiplex.pt</code>, <code>roboflow_dataset_11/test/labels.cache</code>.</li>
-<li><strong>Local only (604 files):</strong> <code>ball_candidates</code>, <code>ball_embeddings</code>, <code>tracklets</code>, the GT snapshots, <code>identity_labels</code>, <code>link_proposals</code>, <code>track_videos</code>, the partial SAM3 file, both feature stores.</li>
-<li><code>ball_gt_marks</code> including <code>ball_checks</code> has the same file sizes on both sides as of 2026-09-25.</li>
-<li>AWS credentials work (the KB's "creds dead" note from 2026-08-26 is stale).</li>
+<li>Ball Check needs <code>ball_candidates/</code> and <code>ball_embeddings/</code>, which are local only. A new machine has to rebuild them from <code>machine_labels/</code> with a filter script that is not in git (<a href="../todo/">T-09</a>).</li>
+<li>The labeller and <code>ball_check</code> read sidecars from <code>FOOTY_GT_MARKS_DIR</code>. Two machines writing to different copies is how the August divergence happened.</li>
+<li>The object store credentials work; an older note saying they were dead (2026-08-26) is stale.</li>
 </ul>
 <h2 id="gaps">Gaps<a class="headerlink" href="#gaps" title="Permanent link">&para;</a></h2>
 <ul>
 <li><strong>Footage without labels:</strong> Norwich and Bournemouth 2nd half have no GT. Machine labels cover only the 162 Man City clips. See <a href="../pipeline-and-labels/">Best pipeline and label needs</a> for which gaps matter (<a href="../todo/">T-13</a>).</li>
 <li><strong>Labels without footage:</strong> <code>arsenal_example</code> (3,348 rows, 176 ball marks) has only the 10 s example video, tied by name. <code>eval_data/clips/mancity_seg104.jsonl</code> has no MP4.</li>
-<li><strong>Not in the feature store:</strong> see above (<a href="../todo/">T-07</a>).</li>
+<li><strong>Not in the feature store:</strong> see <a href="../design/feature_store/#71-keys-as-implemented-and-what-is-not-in-the-store">Feature store design, section 7.1</a> (<a href="../todo/">T-07</a>).</li>
 <li><strong>Format hazards:</strong> two centre formats (dict and list) can still appear; <code>ball_gt_marks</code> has 4 untagged rows; <code>astonvilla_seg080.jsonl</code> differs from its backup because six vittrack boxes were rewritten as <code>labeller</code> by the <code>corrected</code> path, so Ball Check does rewrite sidecars.</li>
-<li><strong>Cross-machine:</strong> WSL-only rows cannot be checked from the build machine.</li>
+<li><strong>Cross-machine:</strong> rows that exist only on the desktop GPU machine cannot be checked from the build machine.</li>
 </ul>
 
 

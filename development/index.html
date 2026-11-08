@@ -851,6 +851,24 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#environment-notes" class="md-nav__link">
+    <span class="md-ellipsis">
+      Environment notes
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#running-the-tests" class="md-nav__link">
+    <span class="md-ellipsis">
+      Running the tests
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#checks-before-you-commit" class="md-nav__link">
     <span class="md-ellipsis">
       Checks before you commit
@@ -1081,6 +1099,24 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#environment-notes" class="md-nav__link">
+    <span class="md-ellipsis">
+      Environment notes
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#running-the-tests" class="md-nav__link">
+    <span class="md-ellipsis">
+      Running the tests
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#checks-before-you-commit" class="md-nav__link">
     <span class="md-ellipsis">
       Checks before you commit
@@ -1182,6 +1218,59 @@ make<span class="w"> </span>test-fast<span class="w">       </span><span class="
 <p>When using automated tools or agents with this codebase, follow the guidelines in <a href="../agent_guidelines/">Agent Guidelines</a> to maintain consistency.</p>
 <h3 id="docs">Docs<a class="headerlink" href="#docs" title="Permanent link">&para;</a></h3>
 <p>To change the docs, read <a href="../contributing-docs/">How to contribute to the docs</a>.</p>
+<h2 id="environment-notes">Environment notes<a class="headerlink" href="#environment-notes" title="Permanent link">&para;</a></h2>
+<p>Who this is for: anyone setting up a new machine, especially an older or unusual one. These notes were measured on the review's build machine on 2026-11-08.</p>
+<ul>
+<li><strong>Old CPUs without AVX2 crash on import.</strong> The build machine's CPU lacks AVX2. The newest <code>duckdb</code> and the stock <code>polars</code> die with an illegal instruction there. The workaround is <code>duckdb==1.3.2</code> and <code>polars-lts-cpu</code> in the virtual environment only. <code>pyproject.toml</code> asks for <code>duckdb&gt;=1.5.3</code>, and <code>polars</code> arrives through <code>ultralytics</code>; do not edit <code>pyproject.toml</code> or <code>uv.lock</code> to work around a local CPU.</li>
+<li><strong>Open the feature store read-only when inspecting it:</strong> <code>duckdb.connect(path, read_only=True)</code>. See <a href="../design/feature_store/#71-keys-as-implemented-and-what-is-not-in-the-store">Feature store design, section 7.1</a>.</li>
+<li><strong>Weights are not in git.</strong> <code>model_saves/sam3/sam3.pt</code> and the detector checkpoints come from the object store or DVC/LFS. Tests that need them fail without the file (see below).</li>
+<li><strong>No GPU is needed for the tests.</strong> No test uses CUDA (checked 2026-11-08). The slow ones are model tests that run on the CPU.</li>
+<li><strong>Where the data is</strong> is covered in <a href="../data/#where-things-live">Datasets and labels</a>; the labeller finds it through <code>FOOTY_CLIPS_DIR</code>, <code>FOOTY_GT_MARKS_DIR</code> and <code>FOOTY_BALL_CANDIDATES_DIR</code>.</li>
+</ul>
+<h2 id="running-the-tests">Running the tests<a class="headerlink" href="#running-the-tests" title="Permanent link">&para;</a></h2>
+<p>The suite has 462 tests (collected 2026-11-08). The whole run took about 4 m 30 s before the speed-up and about 52 s after it (measured on the build machine, same date).</p>
+<p><strong>Why it was slow.</strong> The guess was a GPU problem. It was not: no test uses CUDA. Three things took almost all the time: two SAM3 tests (about 75 to 80 s each, and they fail anyway when the weights file is missing) and the first <code>fiftyone</code> test (about 17 s of start-up).</p>
+<p><strong>What fixes it.</strong> The <code>chore/faster-tests</code> changes are merged (with PR #24). You get:</p>
+<table>
+<thead>
+<tr>
+<th>Command</th>
+<th>What runs</th>
+<th>Time (measured before the merge)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>uv run pytest</code> or <code>make tests</code></td>
+<td>Everything</td>
+<td>about 52 s</td>
+</tr>
+<tr>
+<td><code>make test-fast</code></td>
+<td>Skips tests marked <code>slow</code> or <code>needs_weights</code></td>
+<td>about 25 s</td>
+</tr>
+</tbody>
+</table>
+<p>The <code>needs_weights</code> marker is for tests that need model weights that are not in the repo; they skip themselves when the file is missing. The change also makes the <code>extract_frames</code> test fixture create its output folder first, because <code>ffmpeg</code> does not.</p>
+<pre class="mermaid"><code>flowchart LR
+  classDef code fill:#dbeafe,stroke:#2563eb,color:#111
+  classDef new fill:#ede9fe,stroke:#7c3aed,color:#111
+  classDef data fill:#e5e7eb,stroke:#6b7280,color:#111
+
+  ALL["make tests&lt;br/&gt;462 tests, about 52 s"]:::code
+  FAST["make test-fast&lt;br/&gt;about 25 s"]:::new
+  SAM["2 SAM3 tests&lt;br/&gt;about 75 to 80 s each&lt;br/&gt;needs_weights, slow"]:::new
+  FO["fiftyone tests&lt;br/&gt;about 17 s start-up&lt;br/&gt;slow"]:::new
+  W[("sam3.pt weights&lt;br/&gt;not in git")]:::data
+
+  ALL --&gt; SAM
+  ALL --&gt; FO
+  FAST -. "skips" .-&gt; SAM
+  FAST -. "skips" .-&gt; FO
+  W --&gt; SAM</code></pre>
+<p>Legend: blue is what existed before, purple is what the faster-tests change added, grey is data not in git. The diagram shows that the full run includes the two SAM3 tests and the <code>fiftyone</code> tests, and that <code>make test-fast</code> skips both groups.</p>
+<p>CI runs <code>make test-fast</code> on every pull request (see <a href="#checks-before-you-commit">Checks before you commit</a>, <a href="../todo/">T-08</a>).</p>
 <h2 id="checks-before-you-commit">Checks before you commit<a class="headerlink" href="#checks-before-you-commit" title="Permanent link">&para;</a></h2>
 <p>Two kinds of automatic check protect <code>main</code>: small, fast ones that run on your
 machine each time you commit, and a fuller set that runs on GitHub for every

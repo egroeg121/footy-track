@@ -2609,10 +2609,10 @@ tracklet because a human cannot look at 288 frames, and build nothing else until
 a number says to.</p>
 <hr />
 <h2 id="appendix-a-reproducing-the-0-measurements">Appendix A — reproducing the §0 measurements<a class="headerlink" href="#appendix-a-reproducing-the-0-measurements" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><span class="nb">cd</span><span class="w"> </span>/home/george/footy-track
-aws<span class="w"> </span>s3<span class="w"> </span>cp<span class="w"> </span>s3://georgebarnett-general-purpose/footy_data/machine_labels/_manifest.json<span class="w"> </span>/tmp/
-aws<span class="w"> </span>s3<span class="w"> </span>cp<span class="w"> </span>s3://georgebarnett-general-purpose/footy_data/machine_labels/arsenal_mancity_20250925_seg002.jsonl<span class="w"> </span>/tmp/
-aws<span class="w"> </span>s3<span class="w"> </span>cp<span class="w"> </span>s3://georgebarnett-general-purpose/footy_data/clips/arsenal_mancity_20250925_seg002.mp4<span class="w"> </span>/tmp/
+<div class="highlight"><pre><span></span><code><span class="nb">cd</span><span class="w"> </span>&lt;repo<span class="w"> </span>checkout&gt;
+aws<span class="w"> </span>s3<span class="w"> </span>cp<span class="w"> </span>s3://&lt;bucket&gt;/footy_data/machine_labels/_manifest.json<span class="w"> </span>/tmp/
+aws<span class="w"> </span>s3<span class="w"> </span>cp<span class="w"> </span>s3://&lt;bucket&gt;/footy_data/machine_labels/arsenal_mancity_20250925_seg002.jsonl<span class="w"> </span>/tmp/
+aws<span class="w"> </span>s3<span class="w"> </span>cp<span class="w"> </span>s3://&lt;bucket&gt;/footy_data/clips/arsenal_mancity_20250925_seg002.mp4<span class="w"> </span>/tmp/
 <span class="c1"># M2/M3/M4/M5/M8 need only the JSONL; M6 decodes the mp4; M1 decodes 5 clips.</span>
 <span class="c1"># M1:  per-frame 64-bin greyscale histogram L1 distance, cut threshold 0.25</span>
 <span class="c1"># M6:  torso crop = bbox[0.25..0.75]w x [0.20..0.50]h, mean HSV,</span>

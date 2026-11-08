@@ -677,6 +677,21 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="7. Idempotency, keys, and write protocol">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#71-keys-as-implemented-and-what-is-not-in-the-store" class="md-nav__link">
+    <span class="md-ellipsis">
+      7.1 Keys as implemented, and what is not in the store
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -1352,6 +1367,21 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="7. Idempotency, keys, and write protocol">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#71-keys-as-implemented-and-what-is-not-in-the-store" class="md-nav__link">
+    <span class="md-ellipsis">
+      7.1 Keys as implemented, and what is not in the store
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -1521,6 +1551,10 @@ frame_features</code>); the storage stays sane.</p>
   file as a fast, constraint-enforcing index over it (rebuildable from
   Parquet at any time). This keeps the store DVC-friendly and reproducible.</li>
 </ul>
+<div class="admonition note">
+<p class="admonition-title">Status check, 2026-11-08</p>
+<p>The design above is not what runs. DuckDB is the only store anyone writes to. A Parquet export exists (<code>store.py:270-326</code>) but no workflow uses it, so DuckDB is the source of truth. And <code>game_id</code> is a clip stem for GT imports (for example <code>astonvilla_seg080</code>), not a match as section 3.1 suggests. See <a href="#71-keys-as-implemented-and-what-is-not-in-the-store">section 7.1</a>.</p>
+</div>
 <hr />
 <h2 id="3-schema-overview">3. Schema overview<a class="headerlink" href="#3-schema-overview" title="Permanent link">&para;</a></h2>
 <p>Five tables plus three convenience views. All timestamps <code>ContinuousTime</code>
@@ -2224,6 +2258,102 @@ intended behaviour.</p>
 <li><strong>Atomic partition writes</strong>: write to a temp path, fsync, rename. A crashed
   run leaves no half-written partition visible.</li>
 </ul>
+<h3 id="71-keys-as-implemented-and-what-is-not-in-the-store">7.1 Keys as implemented, and what is not in the store<a class="headerlink" href="#71-keys-as-implemented-and-what-is-not-in-the-store" title="Permanent link">&para;</a></h3>
+<p><em>Added 2026-11-08 from a review of <code>main</code> @ 26d2506. Who this is for: anyone ingesting into the store, joining to it, or asking why a label is missing from an export.</em></p>
+<pre class="mermaid"><code>flowchart LR
+  classDef code fill:#dbeafe,stroke:#2563eb,color:#111
+  classDef data fill:#e5e7eb,stroke:#6b7280,color:#111
+  classDef missing fill:#ffedd5,stroke:#ea580c,stroke-dasharray:5 3,color:#111
+  classDef dead fill:#fee2e2,stroke:#dc2626,color:#111
+
+  GAME[("game&lt;br/&gt;key: game_id&lt;br/&gt;a clip stem in practice")]:::data
+  FRAME[("frame&lt;br/&gt;key: game_id, frame_index&lt;br/&gt;frame_uri often NULL")]:::data
+  RUN[("run&lt;br/&gt;key: run_id")]:::data
+  DET[("detection&lt;br/&gt;key: game_id, source, run_id,&lt;br/&gt;frame_index, detection_id")]:::data
+  TM[("track_meta&lt;br/&gt;key: game_id, source, run_id, track_id&lt;br/&gt;0 rows, no writer")]:::dead
+  VIEW["detections_enriched&lt;br/&gt;adds the canonical flag"]:::code
+  EXP["export_training_dataset&lt;br/&gt;WHERE canonical"]:::code
+  GTI["ingest_gt&lt;br/&gt;run_id gt_import_PROVENANCE"]:::code
+  RBI["Roboflow importer&lt;br/&gt;run_id roboflow_vN"]:::code
+  MISSING["Not in the store&lt;br/&gt;see the table below"]:::missing
+
+  GAME -- "game_id" --&gt; FRAME
+  FRAME -- "game_id, frame_index" --&gt; DET
+  RUN -- "run_id" --&gt; DET
+  GAME --&gt; TM
+  GTI --&gt; DET
+  RBI --&gt; DET
+  DET --&gt; VIEW --&gt; EXP
+  MISSING -.-&gt; DET</code></pre>
+<p>Legend: grey is a table, blue is code in git, orange dashed is data that is not in the store, red is a table nothing writes. The diagram shows that a detection is found by <code>(game_id, frame_index)</code> plus a source and a run, that two importers feed it, and that only the <code>canonical</code> rows reach the export.</p>
+<p>How the keys are built in practice:</p>
+<table>
+<thead>
+<tr>
+<th>Key part</th>
+<th>Built from</th>
+<th>Consequence</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>game_id</code></td>
+<td>The clip stem for GT imports (<code>ingest_gt.py:202</code>), the frame-file stem for Roboflow</td>
+<td>Clips are linked to videos only by name. <code>game.source_video_uri</code> and <code>match_date</code> are NULL, and <code>frame_uri</code> is NULL in the samples looked at.</td>
+</tr>
+<tr>
+<td><code>run_id</code></td>
+<td><code>gt_import_&lt;provenance&gt;</code> is hard-coded (<code>ingest_gt.py:197, 253</code>); Roboflow uses <code>roboflow_v&lt;N&gt;</code></td>
+<td>Two machines' sidecars for the same clip share a run and overwrite each other.</td>
+</tr>
+<tr>
+<td><code>detection_id</code></td>
+<td>Position within <code>(frame, source)</code> (<code>ingest_gt.py:199</code>, <code>importers.py:228</code>)</td>
+<td>Deleting or reordering a box repoints old ids. The content-hash version in <code>identity/stable_id.py</code> is never called.</td>
+</tr>
+<tr>
+<td>Upsert</td>
+<td><code>ON CONFLICT DO UPDATE</code> on the full key (<code>store.py:197-220</code>)</td>
+<td>Re-ingest never deletes, so an old row stays next to a corrected one (<a href="../../todo/">T-04</a>).</td>
+</tr>
+</tbody>
+</table>
+<p>What is and is not in the newest copy of the store (2026-08-04, measured 2026-11-08):</p>
+<table>
+<thead>
+<tr>
+<th>In the store</th>
+<th>Not in the store</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Roboflow v3 (<code>hand_label</code>, run <code>roboflow_v3</code>)</td>
+<td>Roboflow v11</td>
+</tr>
+<tr>
+<td>GT sidecars, top-level files only: runs <code>gt_import_labeller</code>, <code>gt_import_vittrack</code>, <code>gt_import_yolo</code></td>
+<td>The six GT files added later and the 2026-09-24 Ball Check corrections</td>
+</tr>
+<tr>
+<td>26,364 detections, 1,869 frames, 34 of 41 games</td>
+<td>The 2.77M machine labels and the 357k ball candidates</td>
+</tr>
+<tr>
+<td></td>
+<td>Ball Check verdicts (<code>ingest_gt</code> never reads <code>ball_checks/</code>)</td>
+</tr>
+<tr>
+<td></td>
+<td>Tracklets, link proposals, identity labels (<code>track_meta</code> has 0 rows)</td>
+</tr>
+<tr>
+<td></td>
+<td>Embeddings, pitch segmentation, calibration, broadcast flags: the columns exist, but no importer in the repo fills them (data not checked)</td>
+</tr>
+</tbody>
+</table>
+<p>The newest copy is stale and local only. Refreshing it is <a href="../../todo/">T-07</a>.</p>
 <hr />
 <h2 id="8-tracking-integration-forward-compatible">8. Tracking integration (forward-compatible)<a class="headerlink" href="#8-tracking-integration-forward-compatible" title="Permanent link">&para;</a></h2>
 <p>Tracking reuses the <code>detection</code> table rather than a parallel <code>tracks.parquet</code>:</p>
