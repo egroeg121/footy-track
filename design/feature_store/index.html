@@ -754,6 +754,15 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#62-ball-check-verdicts-detection_review" class="md-nav__link">
+    <span class="md-ellipsis">
+      6.2 Ball Check verdicts (detection_review)
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -1464,6 +1473,7 @@ confidences." The pattern:</p>
   frame/game_id=&lt;id&gt;/part.parquet
   detection/game_id=&lt;id&gt;/source=&lt;src&gt;/run_id=&lt;rid&gt;/part.parquet
   track_meta/game_id=&lt;id&gt;/source=&lt;src&gt;/run_id=&lt;rid&gt;/part.parquet
+  detection_review/game_id=&lt;id&gt;/part.parquet   # Ball Check verdicts, see 6.2
   frame_embedding/game_id=&lt;id&gt;/part.parquet
   masks/game_id=&lt;id&gt;/&lt;frame&gt;__&lt;detection_id&gt;.png   # mask_ref targets
 </code></pre></div>
@@ -1489,6 +1499,57 @@ frame-for-frame only if extracted from the same video at the same fps</strong>;
 are present so overlap (and thus comparability) is verified empirically rather
 than assumed. <code>continuous_time_s</code> is derived <code>frame_index / fps + time_offset</code>
 (default 1-fps extraction, offset 0) pending true kickoff alignment.</p>
+<h3 id="62-ball-check-verdicts-detection_review">6.2 Ball Check verdicts (<code>detection_review</code>)<a class="headerlink" href="#62-ball-check-verdicts-detection_review" title="Permanent link">&para;</a></h3>
+<p>Ball Check (labeller §11) records human yes/no verdicts in a side log,
+<code>&lt;gt-dir&gt;/ball_checks/&lt;clip&gt;.jsonl</code>, never in the sidecar. They reach the store
+through <code>feature_store/ball_checks.py::import_ball_checks</code>, run by
+<code>ingest_gt</code> after the sidecars (<code>--ball-checks-dir</code>, default
+<code>&lt;gt-dir&gt;/ball_checks</code>; run it <em>after</em> sidecar ingest because the sidecar
+upsert re-sets <code>reviewed</code>).</p>
+<p>Per <code>(source, frame_index, box_index)</code> the latest line wins and a <code>verdict:
+null</code> tombstone retracts. Every live verdict is written to
+<code>detection_review(game_id, vsource, frame_index, box_index, verdict, ts, label,
+bbox_*, matched_source, matched_run_id, matched_detection_id, match_iou)</code>
+(additive table; replaced per clip on each run, so the import is idempotent).
+<code>detection_id</code> is positional and <code>box_index</code> counts all boxes on a frame, so a
+verdict is matched to a ball-class <code>detection</code> on the same frame by <strong>IoU &gt;= 0.5</strong>
+(<code>corrected_bbox</code> also tried), not by index. Unmatched verdicts (candidate boxes
+never ingested, boxes since removed) are still stored with NULL <code>matched_*</code> and
+counted in the import report.</p>
+<table>
+<thead>
+<tr>
+<th>Verdict</th>
+<th>Effect</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ball</code>, <code>corrected</code></td>
+<td>matched <code>detection.reviewed = TRUE</code> (source unchanged)</td>
+</tr>
+<tr>
+<td><code>not_ball</code></td>
+<td>rejected negative: <code>detection_review.verdict='not_ball'</code> with a match; a <code>cand</code> verdict never rejects a <code>hand_label</code> row (counted as a conflict)</td>
+</tr>
+<tr>
+<td><code>unsure</code>, <code>box_off</code></td>
+<td>recorded only, no change to <code>detection</code></td>
+</tr>
+</tbody>
+</table>
+<p><code>scripts/export_training_dataset.py</code> excludes matched <code>not_ball</code> boxes from
+positives by default (the exporter has no negatives/background concept, so they
+are just dropped); <code>--include-rejected</code> keeps them. Rows with no verdict are
+unaffected.</p>
+<p><strong>Known limitation.</strong> The exclusion joins on the <em>stored</em> <code>detection_id</code>
+(positional per frame/source). If a sidecar is edited so boxes shift position
+and is re-ingested without re-running the verdict importer, a <code>not_ball</code>
+verdict can point at the wrong box. Re-run <code>ingest_gt</code> (which re-imports
+verdicts) to refresh. The follow-up TODO "match verdicts to detections at
+export time (by overlap) instead of by stored detection_id" removes this;
+<code>test_export_survives_reingest_after_boxes_shift</code> (strict xfail) encodes the
+intended behaviour.</p>
 <hr />
 <h2 id="7-idempotency-keys-and-write-protocol">7. Idempotency, keys, and write protocol<a class="headerlink" href="#7-idempotency-keys-and-write-protocol" title="Permanent link">&para;</a></h2>
 <ul>
@@ -1497,6 +1558,7 @@ than assumed. <code>continuous_time_s</code> is derived <code>frame_index / fps 
 <li><code>frame(game_id, frame_index)</code></li>
 <li><code>detection(game_id, source, run_id, frame_index, detection_id)</code></li>
 <li><code>track_meta(game_id, source, run_id, track_id)</code></li>
+<li><code>detection_review(game_id, vsource, frame_index, box_index)</code> (§6.2)</li>
 <li><code>run(run_id)</code></li>
 <li><strong>Upsert semantics</strong>: ingestion is <code>INSERT … ON CONFLICT DO UPDATE</code>
   (DuckDB) / partition-replace (Parquet). Re-ingesting an identical run is a
