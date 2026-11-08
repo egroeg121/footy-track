@@ -230,7 +230,7 @@ class EvalDataset:
         cls,
         video_dir: str | pathlib.Path,
         gt_dir: str | pathlib.Path,
-    ) -> "EvalDataset":
+    ) -> EvalDataset:
         """Load clips with videos in *video_dir* and JSONL GT in *gt_dir*.
 
         Useful when GT marks live separately from the video files (e.g. iCloud).

@@ -83,8 +83,8 @@ def _load_tracklet_rows(clip: str) -> list[dict]:
     if not path.exists():
         return []
     out = []
-    for line in path.read_text().splitlines():
-        line = line.strip()
+    for raw_line in path.read_text().splitlines():
+        line = raw_line.strip()
         if not line:
             continue
         try:
@@ -264,8 +264,8 @@ async def best_frame(clip: str, track_id: int, n: int = 3) -> dict:
 
     def camera_dy(f0: int, f1: int) -> float:
         """Median vertical motion of all tracks present in BOTH frames."""
-        a = {t: y for t, y in cy.get(f0, [])}
-        b = {t: y for t, y in cy.get(f1, [])}
+        a = dict(cy.get(f0, []))
+        b = dict(cy.get(f1, []))
         both = [b[t] - a[t] for t in a.keys() & b.keys()]
         if not both:
             return 0.0
@@ -413,6 +413,58 @@ async def crop(
     return Response(content=buf.tobytes(), media_type="image/jpeg")
 
 
+def _render_track_frame(img, b: dict, idx: int, out_size: int):
+    """Draw one centred, padded square frame of the tracked player, box drawn.
+
+    Returns ``None`` when the window falls entirely outside the frame.
+    """
+    H, W = img.shape[:2]
+    cx, cy = (b["x"] + b["w"] / 2) * W, (b["y"] + b["h"] / 2) * H
+    half = max(b["w"] * W, b["h"] * H) * 1.6
+    half = max(half, 60.0)
+    x1, y1 = int(cx - half), int(cy - half)
+    x2, y2 = int(cx + half), int(cy + half)
+    pad_l, pad_t = max(0, -x1), max(0, -y1)
+    pad_r, pad_b = max(0, x2 - W), max(0, y2 - H)
+    win = img[max(0, y1) : min(H, y2), max(0, x1) : min(W, x2)]
+    if win.size == 0:
+        return None
+    if pad_l or pad_t or pad_r or pad_b:
+        # Pad rather than shift the window: shifting would move the
+        # player off-centre exactly when they are near the touchline.
+        win = cv2.copyMakeBorder(
+            win,
+            pad_t,
+            pad_b,
+            pad_l,
+            pad_r,
+            cv2.BORDER_CONSTANT,
+            value=(20, 20, 20),
+        )
+    scale = out_size / max(win.shape[0], win.shape[1])
+    win = cv2.resize(win, (int(win.shape[1] * scale), int(win.shape[0] * scale)))
+    canvas = np.full((out_size, out_size, 3), 20, dtype=np.uint8)
+    oy, ox = (out_size - win.shape[0]) // 2, (out_size - win.shape[1]) // 2
+    canvas[oy : oy + win.shape[0], ox : ox + win.shape[1]] = win
+    # Box in canvas coords.
+    bx1 = int((b["x"] * W - max(0, x1) + pad_l) * scale) + ox
+    by1 = int((b["y"] * H - max(0, y1) + pad_t) * scale) + oy
+    bx2 = int(((b["x"] + b["w"]) * W - max(0, x1) + pad_l) * scale) + ox
+    by2 = int(((b["y"] + b["h"]) * H - max(0, y1) + pad_t) * scale) + oy
+    cv2.rectangle(canvas, (bx1, by1), (bx2, by2), (0, 235, 255), 2)
+    cv2.putText(
+        canvas,
+        str(idx),
+        (6, out_size - 8),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.45,
+        (200, 200, 200),
+        1,
+        cv2.LINE_AA,
+    )
+    return canvas
+
+
 @router.get("/track-video/{clip}/{track_id}.mp4")
 async def track_video(clip: str, track_id: int, max_frames: int = 150) -> Response:
     """Render the tracked player as a short video, box drawn, player centred.
@@ -470,56 +522,10 @@ async def track_video(clip: str, track_id: int, max_frames: int = 150) -> Respon
         if not ok:
             break
         if idx in wanted:
-            H, W = img.shape[:2]
-            b = boxes[idx]
-            cx, cy = (b["x"] + b["w"] / 2) * W, (b["y"] + b["h"] / 2) * H
-            half = max(b["w"] * W, b["h"] * H) * 1.6
-            half = max(half, 60.0)
-            x1, y1 = int(cx - half), int(cy - half)
-            x2, y2 = int(cx + half), int(cy + half)
-            pad_l, pad_t = max(0, -x1), max(0, -y1)
-            pad_r, pad_b = max(0, x2 - W), max(0, y2 - H)
-            win = img[max(0, y1) : min(H, y2), max(0, x1) : min(W, x2)]
-            if win.size == 0:
-                idx += 1
-                continue
-            if pad_l or pad_t or pad_r or pad_b:
-                # Pad rather than shift the window: shifting would move the
-                # player off-centre exactly when they are near the touchline.
-                win = cv2.copyMakeBorder(
-                    win,
-                    pad_t,
-                    pad_b,
-                    pad_l,
-                    pad_r,
-                    cv2.BORDER_CONSTANT,
-                    value=(20, 20, 20),
-                )
-            scale = OUT / max(win.shape[0], win.shape[1])
-            win = cv2.resize(
-                win, (int(win.shape[1] * scale), int(win.shape[0] * scale))
-            )
-            canvas = np.full((OUT, OUT, 3), 20, dtype=np.uint8)
-            oy, ox = (OUT - win.shape[0]) // 2, (OUT - win.shape[1]) // 2
-            canvas[oy : oy + win.shape[0], ox : ox + win.shape[1]] = win
-            # Box in canvas coords.
-            bx1 = int((b["x"] * W - max(0, x1) + pad_l) * scale) + ox
-            by1 = int((b["y"] * H - max(0, y1) + pad_t) * scale) + oy
-            bx2 = int(((b["x"] + b["w"]) * W - max(0, x1) + pad_l) * scale) + ox
-            by2 = int(((b["y"] + b["h"]) * H - max(0, y1) + pad_t) * scale) + oy
-            cv2.rectangle(canvas, (bx1, by1), (bx2, by2), (0, 235, 255), 2)
-            cv2.putText(
-                canvas,
-                str(idx),
-                (6, OUT - 8),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.45,
-                (200, 200, 200),
-                1,
-                cv2.LINE_AA,
-            )
-            writer.write(canvas)
-            written += 1
+            canvas = _render_track_frame(img, boxes[idx], idx, OUT)
+            if canvas is not None:
+                writer.write(canvas)
+                written += 1
         idx += 1
     cap.release()
     writer.release()

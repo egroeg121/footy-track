@@ -67,8 +67,8 @@ def load_detections(
     path: Path, *, min_confidence: float, keep_labels: tuple[str, ...]
 ) -> dict[int, list[tuple[str, dict, float]]]:
     by_frame: dict[int, list[tuple[str, dict, float]]] = collections.defaultdict(list)
-    for line in path.read_text().splitlines():
-        line = line.strip()
+    for raw_line in path.read_text().splitlines():
+        line = raw_line.strip()
         if not line:
             continue
         try:

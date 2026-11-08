@@ -49,8 +49,8 @@ CROPS_PER_SIDE = 3
 
 def load_rows(path: Path, label: str = "player") -> list[dict]:
     rows = []
-    for line in path.read_text().splitlines():
-        line = line.strip()
+    for raw_line in path.read_text().splitlines():
+        line = raw_line.strip()
         if not line:
             continue
         try:
@@ -63,7 +63,9 @@ def load_rows(path: Path, label: str = "player") -> list[dict]:
 
 
 def _embedder(device: str):
-    import torchvision
+    # Lazy: torchvision is heavy and only needed when scoring, so importing
+    # this module (e.g. for load_rows) must not pay for it.
+    import torchvision  # noqa: PLC0415
 
     net = torchvision.models.resnet50(
         weights=torchvision.models.ResNet50_Weights.IMAGENET1K_V2
@@ -82,6 +84,35 @@ def _embedder(device: str):
         return torch.nn.functional.normalize(torch.cat(out), dim=1)
 
     return embed
+
+
+def _read_crops(
+    video_path: Path, need: dict[int, list[tuple[int, dict]]]
+) -> tuple[list[np.ndarray], dict[tuple[int, int], int]]:
+    """Decode the video once, sequentially, and cut out the requested crops.
+
+    Returns the crops and a map of (track_id, frame_index) -> crop position.
+    """
+    crops: list[np.ndarray] = []
+    index: dict[tuple[int, int], int] = {}
+    cap = cv2.VideoCapture(str(video_path))
+    idx, target = 0, max(need) if need else -1
+    while idx <= target:
+        ok, img = cap.read()
+        if not ok:
+            break
+        if idx in need:
+            H, W = img.shape[:2]
+            for tid, b in need[idx]:
+                x1, y1 = max(0, int(b["x"] * W)), max(0, int(b["y"] * H))
+                x2 = min(W, int((b["x"] + b["w"]) * W))
+                y2 = min(H, int((b["y"] + b["h"]) * H))
+                if x2 > x1 + 4 and y2 > y1 + 8:
+                    index[(tid, idx)] = len(crops)
+                    crops.append(cv2.resize(img[y1:y2, x1:x2], (128, 256)))
+        idx += 1
+    cap.release()
+    return crops, index
 
 
 def score_clip(
@@ -120,25 +151,7 @@ def score_clip(
                 need[int(r["frame_index"])].append((int(r["track_id"]), r["bbox"]))
                 sides[(c.a, c.b)][side].append(int(r["frame_index"]))
 
-    crops: list[np.ndarray] = []
-    index: dict[tuple[int, int], int] = {}
-    cap = cv2.VideoCapture(str(clips_dir / f"{clip}.mp4"))
-    idx, target = 0, max(need) if need else -1
-    while idx <= target:
-        ok, img = cap.read()
-        if not ok:
-            break
-        if idx in need:
-            H, W = img.shape[:2]
-            for tid, b in need[idx]:
-                x1, y1 = max(0, int(b["x"] * W)), max(0, int(b["y"] * H))
-                x2 = min(W, int((b["x"] + b["w"]) * W))
-                y2 = min(H, int((b["y"] + b["h"]) * H))
-                if x2 > x1 + 4 and y2 > y1 + 8:
-                    index[(tid, idx)] = len(crops)
-                    crops.append(cv2.resize(img[y1:y2, x1:x2], (128, 256)))
-        idx += 1
-    cap.release()
+    crops, index = _read_crops(clips_dir / f"{clip}.mp4", need)
     if not crops:
         return cands
 

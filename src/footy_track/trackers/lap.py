@@ -5,12 +5,12 @@ Re-ID is out of scope for v1 — see player_tracking_format.md §6.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 import numpy as np
 
 from footy_track.schema import FrameDetections, ObjectDetection
-from footy_track.trackers.base import TrackMeta, TrackedDetection
+from footy_track.trackers.base import TrackedDetection, TrackMeta
 
 
 def _iou(a: ObjectDetection, b: ObjectDetection) -> float:

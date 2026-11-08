@@ -17,7 +17,7 @@ import json
 from io import StringIO
 from pathlib import Path
 
-from footy_track.trackers.base import TrackMeta, TrackedDetection
+from footy_track.trackers.base import TrackedDetection, TrackMeta
 
 
 class TrackingWriter:

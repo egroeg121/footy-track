@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import json
+import re
 
+import numpy as np
 import pytest
 from fastapi.testclient import TestClient
 
+import footy_track.labeller.identity_routes as ir
 from footy_track.identity.labels import (
     CheckedInterval,
     PairLabel,
@@ -257,9 +260,6 @@ def test_crop_draws_only_the_reviewed_box(client, tmp_path, monkeypatch):
     Without it the reviewer judges continuity on whichever player is most
     visible, which is not the question being asked.
     """
-    import numpy as np
-    import footy_track.labeller.identity_routes as ir
-
     frame = np.zeros((1080, 1920, 3), dtype=np.uint8)
 
     class _Cap:
@@ -439,8 +439,6 @@ def test_pages_have_no_dangling_element_or_function_refs(client):
     HTTP 200 with empty dropdowns and a black video. HTTP 200 is not evidence
     that a page works.
     """
-    import re
-
     for path in ("/identity", "/identity/merge"):
         html = client.get(path).text
         ids = set(re.findall(r'id="([A-Za-z0-9_]+)"', html))

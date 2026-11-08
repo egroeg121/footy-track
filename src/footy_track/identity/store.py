@@ -96,8 +96,8 @@ def load_pair_labels(dir_path: Path) -> list[PairLabel]:
     if not path.exists():
         return []
     latest: dict[tuple, PairLabel] = {}
-    for line in path.read_text().splitlines():
-        line = line.strip()
+    for raw_line in path.read_text().splitlines():
+        line = raw_line.strip()
         if not line:
             continue
         try:
@@ -156,8 +156,8 @@ def load_tracklet_reviews(dir_path: Path) -> list[TrackletReview]:
     if not path.exists():
         return []
     latest: dict[tuple, TrackletReview] = {}
-    for line in path.read_text().splitlines():
-        line = line.strip()
+    for raw_line in path.read_text().splitlines():
+        line = raw_line.strip()
         if not line:
             continue
         try:
