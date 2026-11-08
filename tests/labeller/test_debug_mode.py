@@ -58,12 +58,14 @@ def test_gt_marks_dir_honours_env(monkeypatch, tmp_path):
     monkeypatch.setenv("FOOTY_GT_MARKS_DIR", str(gt))
     monkeypatch.setenv("FOOTY_CLIPS_DIR", str(clips))
 
-    from footy_track.labeller import server
+    # Imported lazily on purpose: the env vars set above must be in place
+    # before the server module is first imported/reloaded.
+    from footy_track.labeller import server  # noqa: PLC0415
 
     importlib.reload(server)
     try:
-        assert server._GT_MARKS_DIR == gt
-        assert server._CLIPS_DIR == clips
+        assert gt == server._GT_MARKS_DIR
+        assert clips == server._CLIPS_DIR
     finally:
         monkeypatch.delenv("FOOTY_GT_MARKS_DIR", raising=False)
         monkeypatch.delenv("FOOTY_CLIPS_DIR", raising=False)
