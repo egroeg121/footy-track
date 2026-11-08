@@ -57,6 +57,8 @@ def train_detector(
     batch: int = -1,
     amp: bool = True,
     device: str = "mps",
+    workers: int = 8,
+    cache: bool | str = True,
 ):
     """
     Downloads a dataset from Roboflow (or uses a local path) and trains a YOLO detector.
@@ -114,7 +116,8 @@ def train_detector(
         freeze=freeze_layers,
         batch=batch,
         amp=amp,
-        cache=True,
+        cache=cache,
+        workers=workers,
         augment=True,
         plots=True,
         device=device,
@@ -180,6 +183,21 @@ if __name__ == "__main__":
         help="Training device (mps, cpu, 0 for CUDA).",
     )
     parser.add_argument(
+        "--workers",
+        type=int,
+        default=8,
+        help="DataLoader worker processes. Was pinned to 0 under WSL2 "
+        "(dxgkrnl bug); native Ubuntu has no such limit.",
+    )
+    parser.add_argument(
+        "--cache",
+        type=str,
+        default="ram",
+        choices=["ram", "disk", "none"],
+        help="Cache decoded images in RAM (fastest, high footprint), on "
+        "disk, or not at all.",
+    )
+    parser.add_argument(
         "--local-dataset",
         type=str,
         default=None,
@@ -196,6 +214,8 @@ if __name__ == "__main__":
         batch=args.batch,
         amp=not args.no_amp,
         device=args.device,
+        workers=args.workers,
+        cache={"ram": True, "disk": "disk", "none": False}[args.cache],
         freeze_layers=args.freeze,
         epochs=args.epochs,
         local_dataset=args.local_dataset,
