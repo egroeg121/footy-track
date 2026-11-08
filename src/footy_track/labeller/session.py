@@ -175,7 +175,7 @@ class Session:
         # slot for them, so keep them beside the timeline keyed by the box's
         # identity+geometry; a user edit that moves/relabels a box misses the
         # key and so (correctly) drops the marker.
-        markers = tuple(t for t in tags if t != label and t != provenance)
+        markers = tuple(t for t in tags if t not in (label, provenance))
         if markers:
             self._box_markers[_marker_key(idx, box)] = markers
         with self._tl_lock:
