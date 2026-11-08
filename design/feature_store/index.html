@@ -608,6 +608,15 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#31a-clip-identity-canonical-clip-id" class="md-nav__link">
+    <span class="md-ellipsis">
+      3.1a Clip identity (canonical clip id)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#32-frame-one-row-per-game-frame" class="md-nav__link">
     <span class="md-ellipsis">
       3.2 frame — one row per (game, frame)
@@ -970,7 +979,7 @@ track / track_meta: derived from detection, see §8
 <tr>
 <td><code>game_id</code></td>
 <td><code>VARCHAR</code> PK</td>
-<td>e.g. <code>arsenal_mancity</code> (matches <code>data/&lt;match_name&gt;</code>)</td>
+<td>despite the name, usually a <strong>clip</strong> stem: <code>ingest_gt</code> uses the GT sidecar stem (<code>mancity_seg010</code>), <code>detect_objects</code> the frames folder name, Roboflow imports a match-level stem (<code>arsenal_mancity_20250925</code>). Not canonical; see §3.1a</td>
 </tr>
 <tr>
 <td><code>home_team</code></td>
@@ -1036,6 +1045,64 @@ track / track_meta: derived from detection, see §8
 </table>
 <p>This subsumes the <code>GameMetadata</code> block previously living in
 <code>tracks_meta.json</code>.</p>
+<h3 id="31a-clip-identity-canonical-clip-id">3.1a Clip identity (canonical clip id)<a class="headerlink" href="#31a-clip-identity-canonical-clip-id" title="Permanent link">&para;</a></h3>
+<p>One physical clip has several names across the data plane, and <code>game_id</code>
+inherits whichever one the importer saw. <code>footy_track.clip_id.canonical_clip_id</code>
+maps them to one id, <code>&lt;match&gt;_&lt;kind&gt;&lt;NNN&gt;</code> (date infix dropped, number
+zero-padded to 3):</p>
+<table>
+<thead>
+<tr>
+<th>Names on disk (same video, verified via the <code>ballcheck_clips/</code> and <code>eval_data/clips/</code> symlinks)</th>
+<th>Canonical id</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>arsenal_mancity_20250925_segNNN</code> (clips, machine labels, candidates), <code>arsenal_mancity_segNNN</code>, <code>mancity_segNNN</code></td>
+<td><code>arsenal_mancity_segNNN</code></td>
+</tr>
+<tr>
+<td><code>arsenal_mancity_20250925_partNNN</code> (<code>split_video_10s</code>, a different cut from <code>segNNN</code>), <code>mancity_partNNN</code></td>
+<td><code>arsenal_mancity_partNNN</code></td>
+</tr>
+<tr>
+<td><code>Arsenal - Aston Villa_segNNN</code>, <code>astonvilla_segNNN</code></td>
+<td><code>arsenal_astonvilla_segNNN</code></td>
+</tr>
+<tr>
+<td><code>Bournemouth vs Arsenal 1_segNNN</code>, <code>bournemouth_1st_segNNN</code>, <code>bournemouth_broadcast_segNNN</code>, <code>bournemouth_segNNN</code></td>
+<td><code>arsenal_bournemouth_1st_segNNN</code></td>
+</tr>
+<tr>
+<td><code>arsenal_mancity_example_video</code>, <code>arsenal_example</code></td>
+<td><code>arsenal_example</code></td>
+</tr>
+</tbody>
+</table>
+<p>Anything else passes through unchanged (minus extension). Where it is used:</p>
+<ul>
+<li><strong>Training export</strong>: eval exclusion compares canonical ids, so an eval clip
+  stored under another alias is excluded; the by-clip split assigns whole alias
+  groups (keyed by their smallest <code>game_id</code>, so an alias-free store splits as
+  before). The manifest lists the groups under <code>clip_aliases</code>.</li>
+<li><strong><code>ball_check</code> <code>save_box</code></strong>: a correction on a raw-named candidate goes into
+  the clip's existing GT sidecar (labeller README LAB-1013a).</li>
+<li><strong><code>ball_eval</code></strong>: <code>EvalClip.clip_id</code>; <code>EvalDataset.from_dirs(...,
+  resolve_aliases=True)</code> matches GT to a video under another alias (off by
+  default, as it changes which GT files are scored).</li>
+<li><strong><code>ingest_gt</code></strong>: deliberately <em>not</em> canonicalised. <code>game_id</code> stays the
+  sidecar stem: that file is the unit ingest (re)imports and the
+  <code>gt_import:&lt;game_id&gt;</code> run group, and two aliases' sidecars would otherwise
+  collide on the detection PK.</li>
+</ul>
+<p>Find aliases with <code>aliases_of(name, names)</code> / <code>group_by_clip(names)</code>, or the
+read-only report <code>python -m footy_track.clip_id --db &lt;store&gt; [dirs...]</code>.</p>
+<p><strong>Migration note.</strong> Existing stores keep their alias <code>game_id</code>s and need no
+change for the export to be leak-free. To canonicalise a store anyway, run the
+report to list the <code>game_id</code>s that would collapse, merge those sidecars by hand
+(they hold separately labelled frames), and re-ingest into a fresh store. Never
+<code>UPDATE game_id</code> in place.</p>
 <h3 id="32-frame-one-row-per-game-frame">3.2 <code>frame</code> — one row per (game, frame)<a class="headerlink" href="#32-frame-one-row-per-game-frame" title="Permanent link">&para;</a></h3>
 <p>The per-frame spine. One row whether or not the frame is a usable broadcast
 view (non-broadcast frames are recorded, not dropped — invariant #5).</p>
