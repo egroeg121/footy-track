@@ -525,7 +525,7 @@ def test_save_box_appends_gt_for_a_candidate_with_no_sidecar(
     ],
 )
 def test_save_box_on_a_raw_named_candidate_writes_into_the_existing_gt_stem(
-    client, clips_dir, gt_marks_dir, cand_dir, existing, expected
+    client, clips_dir, gt_marks_dir, cand_dir, *, existing, expected
 ):
     # T-03: candidates use the raw clip name; the clip's GT lives under an
     # alias. The correction must land in that file, not a new raw-named one.
