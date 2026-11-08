@@ -35,7 +35,9 @@ def test_cxcywh_box_round_trip():
 
 def test_compute_roi_centered_when_within_bounds():
     pred_box = (490.0, 490.0, 510.0, 510.0)  # 20x20 box centred at (500, 500)
-    roi = compute_roi(pred_box, frame_w=1920, frame_h=1080, margin_scale=2.0, min_size=10.0)
+    roi = compute_roi(
+        pred_box, frame_w=1920, frame_h=1080, margin_scale=2.0, min_size=10.0
+    )
     x1, y1, x2, y2 = roi
     # Fully inside frame -> should stay centred on the predicted box's centre.
     assert (x1 + x2) / 2.0 == pytest.approx(500.0, abs=1e-6)
@@ -45,7 +47,9 @@ def test_compute_roi_centered_when_within_bounds():
 
 def test_compute_roi_clamped_to_frame_near_edge():
     pred_box = (0.0, 0.0, 20.0, 20.0)  # ball right at the top-left corner
-    roi = compute_roi(pred_box, frame_w=640, frame_h=480, margin_scale=3.0, min_size=100.0)
+    roi = compute_roi(
+        pred_box, frame_w=640, frame_h=480, margin_scale=3.0, min_size=100.0
+    )
     x1, y1, x2, y2 = roi
     assert x1 >= 0.0
     assert y1 >= 0.0
@@ -92,7 +96,9 @@ def test_crop_to_frame_coordinate_round_trip():
 
 def test_crop_to_frame_round_trip_matches_pixel_crop():
     """Round-trip using an actual cropped ndarray, not just the box math."""
-    frame = np.random.default_rng(0).integers(0, 255, size=(480, 640, 3), dtype=np.uint8)
+    frame = np.random.default_rng(0).integers(
+        0, 255, size=(480, 640, 3), dtype=np.uint8
+    )
     roi = (50.0, 60.0, 306.0, 316.0)  # 256x256
     crop = crop_frame(frame, roi)
     assert crop.shape == (256, 256, 3)
@@ -126,7 +132,9 @@ def test_kalman_init_predict_returns_same_box_with_zero_velocity():
 def test_kalman_tracks_constant_velocity_motion():
     """Feed a ball moving at constant velocity; predictions should converge
     to track it, and velocity should be recovered close to the true value."""
-    kf = KalmanBoxTracker(process_noise=0.5, measurement_noise=2.0, velocity_process_noise=2.0)
+    kf = KalmanBoxTracker(
+        process_noise=0.5, measurement_noise=2.0, velocity_process_noise=2.0
+    )
     true_vx, true_vy = 8.0, -4.0
     w, h = 20.0, 20.0
     cx0, cy0 = 100.0, 100.0
@@ -226,7 +234,9 @@ def test_motion_guided_tracker_step_refines_and_maps_back_to_frame():
         seed[2] - roi[0],
         seed[3] - roi[1],
     )
-    runner = _FakeRunner("fake", [Detection(box=crop_local_box, confidence=0.9, label="ball")])
+    runner = _FakeRunner(
+        "fake", [Detection(box=crop_local_box, confidence=0.9, label="ball")]
+    )
     tracker = MotionGuidedTracker(runner=runner, miss_confidence_thresh=0.3)
     tracker.reset(frame, seed)
 

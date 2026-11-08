@@ -13,17 +13,23 @@ import pytest
 
 from footy_track.schema import FrameDetections, ObjectDetection
 
-FOOTY_DATA_FRAMES = pathlib.Path.home() / "code/footy/footy_data/arsenal_mancity/full_video_frames"
+FOOTY_DATA_FRAMES = (
+    pathlib.Path.home() / "code/footy/footy_data/arsenal_mancity/full_video_frames"
+)
 FRAME_GLOB = "*.png"
 N_INTEGRATION_FRAMES = 15  # Must be > 10 per bead spec
 
 
-def _det(label: str, x: float, y: float, w: float = 0.05, h: float = 0.1, conf: float = 0.9) -> ObjectDetection:
+def _det(
+    label: str, x: float, y: float, w: float = 0.05, h: float = 0.1, conf: float = 0.9
+) -> ObjectDetection:
     return ObjectDetection(label=label, confidence=conf, x=x, y=y, w=w, h=h)
 
 
 def _fd(uri: str, dets: list[ObjectDetection]) -> FrameDetections:
-    return FrameDetections(uri=pathlib.Path(uri), width=1920, height=1080, detections=dets)
+    return FrameDetections(
+        uri=pathlib.Path(uri), width=1920, height=1080, detections=dets
+    )
 
 
 @pytest.fixture
@@ -73,5 +79,7 @@ def footy_data_frames() -> list[pathlib.Path]:
         pytest.skip(f"footy_data frames not found at {FOOTY_DATA_FRAMES}")
     paths = sorted(FOOTY_DATA_FRAMES.glob(FRAME_GLOB))[:N_INTEGRATION_FRAMES]
     if len(paths) < N_INTEGRATION_FRAMES:
-        pytest.skip(f"Not enough frames — need {N_INTEGRATION_FRAMES}, found {len(paths)}")
+        pytest.skip(
+            f"Not enough frames — need {N_INTEGRATION_FRAMES}, found {len(paths)}"
+        )
     return paths
