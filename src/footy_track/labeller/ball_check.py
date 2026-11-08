@@ -35,6 +35,7 @@ import cv2
 from fastapi import APIRouter
 from fastapi.responses import Response
 
+from footy_track.clip_id import canonical_clip_id
 from footy_track.labeller import candidates as cand
 from footy_track.labeller.constants import (
     BALL_LABELS,
@@ -706,10 +707,13 @@ async def ball_check_save_box(body: dict) -> dict:
             result.get("error"),
         )
 
+    target: dict[str, str] = {}
+
     def _append_gt() -> None:
         marks_dir = _gt_marks_dir()
         marks_dir.mkdir(parents=True, exist_ok=True)
-        path = marks_dir / f"{clip}.jsonl"
+        path = marks_dir / f"{_gt_sidecar_stem(marks_dir, clip)}.jsonl"
+        target["stem"] = path.stem
         line = json.dumps(
             {
                 "frame_index": frame_index,
@@ -726,7 +730,30 @@ async def ball_check_save_box(body: dict) -> dict:
             fh.write(prefix + line + "\n")
 
     await asyncio.to_thread(_append_gt)
-    return {"ok": True, "written": "appended"}
+    return {"ok": True, "written": "appended", "sidecar": target.get("stem")}
+
+
+def _gt_sidecar_stem(marks_dir: Path, clip: str) -> str:
+    """The GT sidecar stem a box drawn on *clip* belongs in (T-03).
+
+    Candidates use the raw clip name (``arsenal_mancity_20250925_seg010``)
+    while the clip's GT usually lives under an alias (``arsenal_mancity_seg010``
+    or ``mancity_seg010``); all aliases are the same video, so frame indices
+    agree. Order: the exact file if it exists, else an existing alias (the one
+    named like the canonical id first, then alphabetical), else *clip* as
+    given. A clip with GT never gains a second, raw-named sidecar; a clip
+    without GT keeps the name its video is served under (renaming it would
+    leave the new sidecar without a video for review and ingest).
+    """
+    if (marks_dir / f"{clip}.jsonl").exists():
+        return clip
+    cid = canonical_clip_id(clip)
+    aliases = sorted(
+        p.stem for p in marks_dir.glob("*.jsonl") if canonical_clip_id(p.stem) == cid
+    )
+    if aliases:
+        return cid if cid in aliases else aliases[0]
+    return clip
 
 
 # ---------------------------------------------------------------------------

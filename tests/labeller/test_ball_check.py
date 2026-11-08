@@ -516,6 +516,51 @@ def test_save_box_appends_gt_for_a_candidate_with_no_sidecar(
     assert rec["center"]["x"] == pytest.approx(0.21 + 0.012 / 2)
 
 
+@pytest.mark.parametrize(
+    ("existing", "expected"),
+    [
+        (["mancity_seg010"], "mancity_seg010"),
+        # Several aliases: the one spelled like the canonical id wins.
+        (["mancity_seg010", "arsenal_mancity_seg010"], "arsenal_mancity_seg010"),
+    ],
+)
+def test_save_box_on_a_raw_named_candidate_writes_into_the_existing_gt_stem(
+    client, clips_dir, gt_marks_dir, cand_dir, existing, expected
+):
+    # T-03: candidates use the raw clip name; the clip's GT lives under an
+    # alias. The correction must land in that file, not a new raw-named one.
+    raw = "arsenal_mancity_20250925_seg010"
+    (clips_dir / f"{raw}.mp4").touch()
+    gt_line = json.dumps(
+        {
+            "frame_index": 1,
+            "bbox": {"x": 0.5, "y": 0.5, "w": 0.01, "h": 0.01},
+            "tags": ["in_play_ball", "labeller"],
+        }
+    )
+    for stem in existing:
+        (gt_marks_dir / f"{stem}.jsonl").write_text(gt_line + "\n")
+
+    out = client.post(
+        "/ball_check/save_box",
+        json={
+            "clip": raw,
+            "frame_index": 3,
+            "box_index": 0,
+            "source": "cand",
+            "bbox": {"x": 0.21, "y": 0.22, "w": 0.012, "h": 0.013},
+        },
+    ).json()
+
+    assert out["ok"] is True and out["sidecar"] == expected
+    assert not (gt_marks_dir / f"{raw}.jsonl").exists()
+    lines = (gt_marks_dir / f"{expected}.jsonl").read_text().splitlines()
+    assert lines[0] == gt_line  # existing GT untouched
+    assert json.loads(lines[1])["frame_index"] == 3
+    for stem in set(existing) - {expected}:
+        assert (gt_marks_dir / f"{stem}.jsonl").read_text() == gt_line + "\n"
+
+
 def test_save_box_appends_without_corrupting_a_file_lacking_a_trailing_newline(
     client, clips_dir, gt_marks_dir, cand_dir
 ):
