@@ -19,7 +19,9 @@ video, so ``--start`` / ``--stride`` runs line up with the video):
     ``/identity/tracklets`` reads: ``{frame_index, track_id, tags:[label, "lap"],
     bbox, confidence, is_interpolated}``.
 ``ball_track.jsonl``
-    The only new format. One row per processed frame: ``{frame_index, track_id,
+    The only new format. (NOTE(revisit): deliberately a minimal documented
+    format, not in ``schema.py``; give it a shared schema when the projection
+    step needs to read it.) One row per processed frame: ``{frame_index, track_id,
     source, bbox, center, confidence}``. ``source`` is ``detected``,
     ``interpolated`` (gap bridged between two detections; ``confidence`` null) or
     ``none`` (no ball; ``bbox``, ``center`` and ``track_id`` null). bbox/center are

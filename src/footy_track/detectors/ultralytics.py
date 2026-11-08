@@ -172,6 +172,8 @@ class UltralyticsObjectDetector(ObjectDetector):
         image_path: Path,
     ) -> FrameDetections:
         """Run detection and return FrameDetections."""
+        # NOTE(revisit): ignores self.predict_kwargs (conf, imgsz); fixed in a
+        # separate PR, not here.
         result: UltralyticsResults = self.model.predict(image_path, device=self.device)[
             0
         ]

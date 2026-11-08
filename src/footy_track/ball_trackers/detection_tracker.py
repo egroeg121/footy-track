@@ -99,6 +99,9 @@ class _Live:
     vel: tuple[float, float] = (0.0, 0.0)  # normalised centre units per frame
 
 
+# NOTE(revisit): DetectionBallTracker deliberately sits outside the BallTracker
+# protocol (it takes detections, the protocol takes pixels). Revisit a
+# detections-based protocol variant if a second such tracker appears.
 class DetectionBallTracker:
     """Single-ball tracker; call :meth:`update` once per processed frame, in order."""
 
@@ -112,6 +115,12 @@ class DetectionBallTracker:
         growth_px: float = 25.0,
         max_missed: int = 12,
     ) -> None:
+        # NOTE(revisit): these defaults are starting points read off the
+        # precision bands (0.5-0.6 is only ~42% precise, hence start_conf 0.6),
+        # not tuned. Re-tune once ball eval (T-10) gives ground-truth scores.
+        # NOTE(revisit): no guard against a persistent false positive, e.g. a
+        # ball on a player's head that moves with the camera pan (conf ~0.75).
+        # Deliberately left out until ball eval (T-10) exists; tracked as T-34.
         self._w, self._h = frame_size
         self._start_conf = start_conf
         self._jump_conf = jump_conf

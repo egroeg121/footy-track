@@ -79,3 +79,24 @@ ground truth.
   camera panned; nothing here checks whether the "ball" moves with a player.
 - No projection to pitch coordinates, no team assignment, no re-identification.
 - Without a GPU the detector runs at well under 1 frame per second.
+
+### Open decisions / revisit later
+
+Each of these has a `NOTE(revisit)` comment in the code where the decision lives.
+
+- **Ball start threshold (0.6).** A track only starts on a detection of 0.6 or
+  more, because the 0.5-0.6 band is only about 42% precise. This and the other
+  tracker numbers are starting points, not tuned. Re-tune once the ball
+  evaluation (T-10) gives real scores.
+- **No guard against a ball stuck on a player.** If the detector keeps finding a
+  "ball" on a player's head, the tracker follows it. We chose not to add a guard
+  before there is ground truth to test it against. Revisit as T-34 once T-10
+  exists.
+- **The ball tracker is outside the `BallTracker` protocol.** That protocol hands
+  over pixels, this tracker consumes detections. Revisit if a second
+  detections-based tracker appears.
+- **`ball_track.jsonl` has no shared schema.** It stays a documented minimal
+  format until the projection step needs to read it.
+- **Labeller detector ignores `predict_kwargs`.** `predict_from_path` in the
+  labeller's detector does not pass the configured confidence and image size.
+  That is being fixed in a separate change, not in this pipeline.
