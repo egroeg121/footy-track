@@ -19,11 +19,11 @@ Two facts shape everything below:
 - **The machine-labelled corpus is one match.** All 162 clips in `machine_labels/` are `arsenal_mancity_20250925` (`docs/design/player_reid.md` section 0, M7). No corpus-level number has been shown to generalise across matches.
 - **The production inputs are not in git.** The RT-DETR training command, the batch inference script, the machine-labels to ball-candidates filter and the clip-alias symlinks live outside the repo ([T-09](todo.md)).
 
-Provenance tiers (`labeller/README.md` section 1, `feature_store/ingest_gt.py:73-77`): `labeller` is tier 1 (human), `vittrack` plus the `human_checked` tag is tier 2, anything machine-only is tier 3.
+Provenance tiers: `labeller` is tier 1 (human), `vittrack` plus the `human_checked` tag is tier 2, anything machine-only is tier 3. What each tier means for training, and how a label reaches the trainer, is in [Datasets and labels](data.md#label-tiers-and-provenance-tags).
 
 ## 2. End-to-end data flow
 
-The flow is drawn in three parts so each fits on one screen. Legend for all three: grey is data on disk or S3, blue is code in git, orange dashed is a step that is not in git, red is an output nothing reads, purple is the `/ball_check` path.
+The flow is drawn in three parts so each fits on one screen. Legend for all three: grey is data on disk or in the object store, blue is code in git, orange dashed is a step that is not in git, red is an output nothing reads, purple is the `/ball_check` path.
 
 ### 2.1 From video to machine labels
 
@@ -37,7 +37,7 @@ flowchart TB
   VID[("Full match video")]:::data --> SEG["split_broadcast_segments<br/>yolo11n-cls classifier"]:::code
   SEG --> CLIPS[("Shot clips .mp4<br/>3 name aliases")]:::data
   CLIPS --> RTD["RT-DETR-L batch inference<br/>imgsz 1280"]:::missing
-  RTD --> ML[("machine_labels/*.jsonl<br/>2.77M boxes, S3")]:::data
+  RTD --> ML[("machine_labels/*.jsonl<br/>2.77M boxes, object store")]:::data
   ML --> FILT["ball row filter"]:::missing
   FILT --> CAND[("ball_candidates/*.jsonl<br/>357k rows")]:::data
   CAND --> EMB["embed_ball_candidates"]:::code
@@ -123,7 +123,7 @@ Details and fixes are in section 7.
 | Stage | Wired component | Numbers (source) | Alternatives that lost or are untested |
 |---|---|---|---|
 | **Shot segmentation** | `scripts/split_broadcast_segments.py` with `classifier.get_current_best_guess_classifier()` (yolo11n-cls `model_saves/classifier/20251226-yolo11n-cls/0.987.pt`). Also run by the labeller `/ingest/run`. | The "0.987" exists only in the filename (**unverified**). Output quality: 0 interior cuts in 3,175 frames over 5 clips (`player_reid.md` M1). | W&B run `aakevy06` (top1 0.981, `docs/training/notable_runs.md`); its checkpoint dir holds only a `.gitignore`. `split_video.py` makes fixed-length chunks and is superseded. |
-| **Object detection** (player, referee, `in_play_ball`) | RT-DETR-L, `CURRENT_BEST_DETECTOR_CHECKPOINT = model_saves/detector/rtdetr_1920_v11/best.pt`, `DEFAULT_IMGSZ = 1280` (`detectors/ultralytics.py:36-43`). Weights are not in git. | **Ball: mAP50 .665, recall .591** on v11-val (211 balls), trained and validated at imgsz 1920 rect (`<storage>/backups/vast5090_final_20260828-195228/exp5090_results.json`). Not measured at the served 1280 or on the v11 test split. 74% of v11-val balls are one clip. Players: median conf 0.919 on seg002 (`player_reid.md` M8); no RT-DETR player mAP recorded. Throughput about 19.8 fps on an RTX 3060, 97,625 frames to 2,767,151 detections in 82 min (KB:footy-labeller-gotchas). | yolo11n/m/l at 1280 scored .221/.451/.364 and lost to RT-DETR-L (.668) on the same split; the old ".221" attributed to this checkpoint was yolo11n. yolo11s v3 at 640 has ball recall 0.000 (still in git). The SAM3 text-prompt detector (`UltralyticsSam3Detector`) has no metric. Full table: [Best pipeline](pipeline-and-labels.md). |
+| **Object detection** (player, referee, `in_play_ball`) | RT-DETR-L, `CURRENT_BEST_DETECTOR_CHECKPOINT = model_saves/detector/rtdetr_1920_v11/best.pt`, `DEFAULT_IMGSZ = 1280` (`detectors/ultralytics.py:36-43`). Weights are not in git. | **Ball: mAP50 .665, recall .591** on v11-val (211 balls), trained and validated at imgsz 1920 rect (`exp5090_results.json` in the 5090 run backup, not in the repo). Not measured at the served 1280 or on the v11 test split. 74% of v11-val balls are one clip. Players: median conf 0.919 on seg002 (`player_reid.md` M8); no RT-DETR player mAP recorded. Throughput about 19.8 fps on an RTX 3060, 97,625 frames to 2,767,151 detections in 82 min (KB:footy-labeller-gotchas). | yolo11n/m/l at 1280 scored .221/.451/.364 and lost to RT-DETR-L (.668) on the same split; the old ".221" attributed to this checkpoint was yolo11n. yolo11s v3 at 640 has ball recall 0.000 (still in git). The SAM3 text-prompt detector (`UltralyticsSam3Detector`) has no metric. Full table: [Best pipeline](pipeline-and-labels.md). |
 | **Ball tracking** | **UNSOLVED.** Nothing is wired into the batch path. Only temporal component: VitTrack propagation in the labeller (`labeller/video_utils.py`). | VitTrack seeded from GT stays on the ball for 9/176 frames (5%) with a constant confidence of 0.119 (KB:footy-labeller-gotchas). | Bake-off (`docs/bakeoff_results.json`) is **invalid**: it ran the 640px checkpoint, blind to the ball, and VitTrack's `mean_fps` of 1,829,132 shows it never ran. `MotionGuidedTracker` is not wired. ByteTrack second pass, Kalman and temporal heatmap models are **untested**. |
 | **Player tracking** (within a clip) | `scripts/track_detections.py` with `trackers/lap.py::LapTracker` (IoU and Hungarian, conf 0.5, iou 0.15, max_age 90) over machine labels, CPU. | seg000: 157 tracklets, median 31 frames, 9% singletons (against 397, 5, 22% with defaults). 4.5% of 1,604,326 consecutive-frame associations fail. About 650 fps (`track_detections.py:5`). **Purity, IDF1, HOTA: unmeasured.** | `trackers/ultralytics.py` (ByteTrack, BoT-SORT) re-runs detection and has never been run against GT. |
 | **Gap bridging** | `identity/linker.py` plus `scripts/score_links.py` (ImageNet ResNet50 cosine). Merge at 0.80 or more, reject below 0.55, max gap 12 frames. | AUC by gap: 0.912 at 4 frames, 0.867 at 12, 0.761 at 25, 0.634 at 200 (`linker.py` docstring; script and data not in repo). Thresholds uncalibrated. | ReID-trained backbone **untested**. Team gate is inert: `linker.py:125` needs `team`, which no code sets. |
@@ -137,7 +137,7 @@ Details and fixes are in section 7.
 |---|---|---|---|
 | Segmentation | `python -m footy_track.scripts.split_broadcast_segments`; labeller `/ingest/upload`, `/ingest/run` (`labeller/ingest.py`) | match video | broadcast-only MP4 runs plus manifest JSON |
 | Frame extraction | `python -m footy_track.scripts.extract_frames`, `split_video` | video | JPEG frames `<stem>_%06d` |
-| Batch detection | **not in repo** | clips | `machine_labels/<raw_stem>.jsonl` on S3 |
+| Batch detection | **not in repo** | clips | `machine_labels/<raw_stem>.jsonl` in the object store |
 | In-repo detection | `scripts/detect_objects.py` (SAM3 prompts, optional `--store_path`); labeller `/autodetect`, `/review/yolo` | frames | `FrameDetections` (pydantic, `schema.py`). Only the SAM3 script writes to the store. |
 | Player tracking | `scripts/track_detections.py`; `scripts/track_objects.py` (superseded) | machine labels JSONL | `tracklets/<clip>.jsonl`; neither writes to the store (`track_meta` has no writer) |
 | Gap bridging | `scripts/score_links.py` | tracklets, clips | `link_proposals/` (read by nothing) |
@@ -160,24 +160,65 @@ One FastAPI app, `src/footy_track/labeller/server.py`. Its canonical spec is `sr
 |---|---|---|
 | `/labeller` | Hand-mark boxes, propagate with VitTrack over a WebSocket run | Works mechanically. For the ball, Run halts at frame 1 (confidence 0.119 against the 0.30 handback in `video_utils.py:51,55`). This is the safe behaviour: lowering the threshold would write off-ball boxes into GT. |
 | `/object_review` | Grid and modal crop review, edit, re-run the detector | Works. |
-| `/ball_check` | Phone-sized yes/no and drag-to-correct on RT-DETR ball candidates (356,812 over 162 clips), confidence-stratified, 75% near the boundary and 25% uniform, event dedupe | Works. Its verdicts reach nothing downstream ([T-02](todo.md)). |
+| `/ball_check` | Phone-sized yes/no and drag-to-correct on RT-DETR ball candidates (356,812 over 162 clips), confidence-stratified (one card in four is uniform; the rest are weighted towards the borderline window), event dedupe | Works. Its verdicts reach nothing downstream ([T-02](todo.md)); see [Ball Check](#ball-check-verdicts-corrections-and-undo). |
 | `/identity`, `/identity/merge` | Tracklet purity, jersey grounding, pairwise merges | Human side only. |
 | `/ingest` | Clip ingestion | Returns 500: `labeller/web/ingest.html` is missing (`server.py:160-162`, [T-18](todo.md)). |
 
 Gotcha: `review._parse_jsonl_box` reports `vittrack` boxes as provenance `labeller` (OPEN-3, pinned by tests), so filter on tags, not on that field (KB:footy-labeller-gotchas).
 
+#### Ball Check: verdicts, corrections and undo
+
+Who this is for: anyone changing `/ball_check` or wondering why its work does not show up in a training set. Code: `labeller/ball_check.py`, `labeller/web/ball_check.html`.
+
+```mermaid
+flowchart LR
+  classDef code fill:#dbeafe,stroke:#2563eb,color:#111
+  classDef data fill:#e5e7eb,stroke:#6b7280,color:#111
+  classDef dead fill:#fee2e2,stroke:#dc2626,color:#111
+  classDef bc fill:#ede9fe,stroke:#7c3aed,color:#111
+
+  CARD["Card: crop of one<br/>detector box"]:::bc
+  SWIPE["ball, not_ball,<br/>box_off, unsure"]:::bc
+  DRAG["Drag a new box<br/>= corrected"]:::bc
+  UNDO["Undo"]:::bc
+  POSTV["POST /verdict"]:::code
+  SAVE["POST /save_box"]:::code
+  POSTU["POST /undo"]:::code
+  VLOG[("ball_checks/&lt;clip&gt;.jsonl<br/>append-only, last line wins")]:::data
+  SC[("ball_gt_marks/&lt;clip&gt;.jsonl<br/>tag labeller")]:::data
+  QUEUE["Queue and /stats:<br/>hide judged cards,<br/>re-estimate boundary,<br/>precision tallies"]:::code
+  ING["ingest_gt<br/>top-level files only"]:::code
+  LOST["Feature store,<br/>export, training"]:::dead
+
+  CARD --> SWIPE --> POSTV --> VLOG
+  CARD --> DRAG --> SAVE --> SC
+  DRAG -- "then verdict corrected" --> POSTV
+  CARD --> UNDO --> POSTU -- "null tombstone" --> VLOG
+  VLOG --> QUEUE
+  VLOG -. "never read" .-> LOST
+  SC --> ING --> LOST
+```
+
+Legend: purple is the Ball Check path, blue is code in git, grey is data, red is where the work stops. The diagram shows that a yes or no only reaches the verdict log, a dragged box reaches the sidecar and so can reach training, and undo touches only the log.
+
+- **Verdicts.** One JSON line per decision: `clip`, `frame_index`, `box_index`, `source` (`cand` for a detector candidate, `sidecar` for a box already in a sidecar), `confidence`, `bbox`, `label`, `provenance`, `corrected_bbox`, `ts`. There are five verdicts: `ball`, `not_ball`, `box_off` (the ball is there but the box is wrong), `corrected` and `unsure`. The last line for a `(source, clip, frame, box)` wins.
+- **Corrections.** Dragging a box calls `save_box` first, then logs a `corrected` verdict. For a candidate (the usual case, because candidate clips mostly have no sidecar) `save_box` appends a new tier 1 line `[label, labeller]` to `<clip>.jsonl`, creating the file under the clip name the card shows. For a sidecar box it rewrites that box in place through the review endpoint, and falls back to appending if that fails.
+- **Undo.** Appends a line with `verdict: null` (a tombstone) and puts the card back in the queue. It does **not** revert a box that `save_box` wrote, and correcting the card again appends a second box ([T-05](todo.md)).
+- **What reads verdicts today.** Only the queue and `/ball_check/stats`. The queue hides judged cards and re-estimates its sampling boundary, starting at 0.25, as the confidence where measured precision crosses 0.5. The stats endpoint reports precision as (`ball` + `box_off` + `corrected`) over those plus `not_ball`, and `clean_precision` without `box_off`. The [precision bands](pipeline-and-labels.md#ball-check-precision-by-confidence-band) counted only `ball` and `corrected`; there are no `box_off` verdicts in the 364, so the two agree.
+- **What does not.** `ingest_gt` only globs top-level `*.jsonl`, so `ball_checks/` is never imported, and the export keeps `not_ball` boxes that sit in a sidecar as positives ([T-02](todo.md), seam S2).
+
 ### 5.2 Feature store
 
 DuckDB. Tables `game`, `frame`, `detection`, `track_meta`, `run`; views `frame_features`, `detections_enriched`, `tracks_enriched`. Detection key is `(game_id, source, run_id, frame_index, detection_id)` (`schema.py:301`). The `canonical` flag arbitrates per run group, not per row (`schema.py:19-71` docstring); all `gt_import_*` runs of a clip form one group (`schema.py:40-48`). Importers cover Roboflow YOLO sets (`hand_label`), labeller/SAM3 JSON and GT sidecars (`ingest_gt.py`). `export_training_dataset.py` writes a by-clip train/val[/test] split excluding eval clips, tested in `tests/feature_store/`. Parquet export exists (`store.py:270-326`) but no workflow uses it; DuckDB is primary. `game_id` is a clip stem for GT imports (`ingest_gt.py:202,227`), not a match.
 
-Not ingested: the 2.77M machine labels, ball candidates, verdicts, tracklets, identity labels. `detection_id` is positional (`importers.py:228`, `ingest_gt.py:199`); the content-hash fix in `identity/stable_id.py` is never called. `difficulty.py` is never called.
+What is and is not in the store, and a diagram of its keys, is in [Feature store design, section 7.1](design/feature_store.md#71-keys-as-implemented-and-what-is-not-in-the-store). `detection_id` is positional (`importers.py:228`, `ingest_gt.py:199`); the content-hash fix in `identity/stable_id.py` is never called. `difficulty.py` is never called.
 
 ### 5.3 Training
 
-- `scripts/train_object_detector.py` pulls Roboflow `footy-track-detection` or a `--local-dataset`. **Defaults are traps:** `--imgsz 640` (blind to the ball, `:56`) and `--device mps`; pass `--imgsz 1280` and your device ([T-06](todo.md)). It includes an MPS assigner workaround (`209f1bb`). `--workers` (default 8) and `--cache {ram,disk,none}` were added in 26d2506, whose message says "default 0 under WSL" while the code defaults to 8.
+- `scripts/train_object_detector.py` pulls Roboflow `footy-track-detection` or a `--local-dataset`. **Several defaults are traps** (`--imgsz 640`, `--device mps`, `--dataset-version 3`, `--workers 8`, `--cache ram`); the table is in [Training, defaults that are traps](training.md#defaults-that-are-traps) ([T-06](todo.md)). It includes an MPS assigner workaround (`209f1bb`).
 - The RT-DETR-L training command that made the production checkpoint is not in any branch.
 - `scripts/optuna_sweep_object_detector.py` and `train_classifier.py` are older and unverified.
-- `.dvc/config:4` points at a macOS path (`/Users/<name>/code/dvc-remote`).
+- `.dvc/config:4` points at a macOS path (a home-directory path).
 - The Vast.ai scripts KB:vast-ai-gpu-rental describes (`scripts/vast/*.sh`) are not in `main` or any remote branch (checked 2026-10-25).
 
 ## 6. Data formats that cross stage boundaries
@@ -191,9 +232,25 @@ There are six ball and box label formats and no module owns them:
 5. **Verdict log** `ball_checks/<stem>.jsonl`: `{clip, frame_index, box_index, source, confidence, verdict, bbox, label, provenance, corrected_bbox, ts}`. Verdicts are `ball`, `not_ball`, `box_off`, `corrected`, `unsure`; undo appends a `verdict: null` tombstone.
 6. **Tracklets JSONL** and **identity label** logs.
 
-The parsers disagree. `review._parse_jsonl_box` and `session._restore_box_line` accept a list `bbox`; `ingest_gt` does `bbox["x"]` (`ingest_gt.py:210`), so a list bbox aborts the whole ingest, and it drops centre-only rows (`ingest_gt.py:184`) ([T-14](todo.md)).
+### Which reader accepts which format
 
-Environment variables: `FOOTY_CLIPS_DIR`, `FOOTY_GT_MARKS_DIR`, `FOOTY_BALL_CANDIDATES_DIR`, `FOOTY_MAX_CLIPS`, `FOOTY_DEBUG`. The data plane is `~/footy/footy_data` or the data root (see [Datasets and labels](data.md)).
+The parsers disagree. A **list bbox** is `[x, y, w, h]`; a **dict bbox** is `{x, y, w, h}`. A **centre-only row** has `bbox: null` and a `center`. The table is read from the code on `main`, 2026-11-08; "TypeError" means the line indexes a list as a dict and raises.
+
+| Reader | Code | Dict bbox | List bbox | Centre-only row | Unknown class tag becomes |
+|---|---|---|---|---|---|
+| Labeller session (load) | `session._restore_box_line` | yes | yes | ignored on load, so the next flush rewrites the file without it | `in_play_ball` |
+| Object review | `review._parse_jsonl_box` | yes | yes | ignored | `player` |
+| Ball Check sidecar boxes | `ball_check._sidecar_ball_boxes` | yes | yes | ignored | skipped (not a ball) |
+| Ball Check candidates | `candidates.read_candidates` | yes | TypeError (`:239`) | ignored | skipped (ball tags only) |
+| Candidate embedder | `scripts/embed_ball_candidates.py` | yes | TypeError in `describe` | ignored | skipped (ball tags only) |
+| Feature store ingest | `ingest_gt.ingest_gt_jsonl` | yes | **TypeError at `:210`, which aborts the whole ingest** | dropped; the frame is still recorded | the raw tag becomes the label |
+| Player tracker | `scripts/track_detections.py` | yes | silently skipped | n/a | n/a |
+| Eval sidecar builder | `scripts/build_eval_sidecars.py` | yes | yes | writes `bbox: null`; the centre is not copied | skipped (ball tags only) |
+| Eval harness | `ball_eval/dataset.py` | yes | yes | **the only reader that uses the centre** | n/a |
+
+The hazard is latent today: none of the 45 files in `ball_gt_marks` has a list bbox (checked 2026-11-08). The only list values are the centres in `mancity_seg104.jsonl`, which is not a box sidecar. The first list-bbox file that reaches `ingest_gt` will stop the run ([T-14](todo.md)).
+
+Environment variables: `FOOTY_CLIPS_DIR`, `FOOTY_GT_MARKS_DIR`, `FOOTY_BALL_CANDIDATES_DIR`, `FOOTY_MAX_CLIPS`, `FOOTY_DEBUG`. The data plane is the footy data directory: `~/footy/footy_data` by default, wherever the variables point otherwise (see [Datasets and labels](data.md#where-things-live)).
 
 ## 7. Known seams and risks
 
@@ -224,13 +281,29 @@ Test gaps at stage boundaries: no CI runs tests ([T-08](todo.md)); no sidecar-to
 
 ## 8. Dead code, duplication, hardcoded paths
 
-**Nothing on a live path reaches** ([T-16](todo.md), [T-17](todo.md)): `labeller/app.py` (Streamlit), `labeller/_canvas_compat.py`, `scripts/run_labeller.py` and the streamlit dependencies; `Sam3VideoLabeller` and `_default_model_uri` (iCloud path, `video_utils.py:121`); `labeller/motion_tracker.py::MotionGuidedTracker`; `ball_trackers/roi_yolo.py` and `scripts/run_bakeoff.py`; `projection/`, `output/`, `input/streams.py`, `metaflow/`; `footy_track/logging.py`; the hello-world `footy_track:main`; `labelling.py`, `scripts/upload_*_frames.py`, `scripts/create_roboflow_v11.py`; `trackers/ultralytics.py`, `trackers/writer.py`, `scripts/track_objects.py`; `feature_store/difficulty.py`, `identity/stable_id.py`; `.playwright-mcp/` logs.
+### Dead and unwired code
+
+"Unwired" means no script, server route or pipeline stage on a live path imports it. Checked by searching imports on `main`, 2026-11-08; "tests only" means the only importers are in `tests/`. Removal is tracked as [T-16](todo.md) (dead code) and [T-17](todo.md) (scaffolds); `/ingest` is [T-18](todo.md).
+
+| Item | What it was for | Status |
+|---|---|---|
+| `labeller/app.py`, `labeller/_canvas_compat.py`, `scripts/run_labeller.py`, streamlit dependencies | The first, Streamlit labeller | Replaced by the FastAPI labeller. Only its own run script and tests reach it. |
+| `Sam3VideoLabeller`, `_default_model_uri` (an iCloud path, `labeller/video_utils.py:111-121`) | SAM3 video backend | Re-exported by `labeller/__init__.py`, but the server uses VitTrack. Docstring says "kept for reference". |
+| `labeller/motion_tracker.py::MotionGuidedTracker` | Motion-guided ball tracker | Not wired. Only its `Box` and `Detection` types are imported; tests otherwise. |
+| `ball_trackers/roi_yolo.py`, `scripts/run_bakeoff.py` | Ball-tracker bake-off | Only the bake-off reaches them, and its results are invalid (640 px checkpoint). |
+| `projection/`, `output/`, `input/streams.py`, `metaflow/` | Serving, pitch projection, output, orchestration | Scaffolds. Tests only; `metaflow/` holds a Dockerfile and no flow. |
+| `footy_track/logging.py`, `footy_track:main` | Logging helper, console entry point | No importer; `main` prints "Hello from footy-track!". |
+| `labelling.py`, `scripts/upload_classifier_frames.py`, `scripts/upload_object_detector_frames.py`, `scripts/create_roboflow_v11.py` | One-off Roboflow upload helpers | Tests only for `labelling.py`; the scripts are run by hand and nothing calls them. |
+| `trackers/ultralytics.py`, `trackers/writer.py`, `scripts/track_objects.py` | ByteTrack and BoT-SORT path | Superseded by `LapTracker`; re-runs detection and has never been scored against GT. |
+| `feature_store/difficulty.py`, `identity/stable_id.py` | Review-flag scorer; content-hash detection ids | Exported and tested, but no stage calls them (`detection_id` is still positional). |
+| `.playwright-mcp/` | Browser logs | Committed by accident; nothing reads them. |
+| `/ingest` page | Clip ingestion UI | The route exists but `labeller/web/ingest.html` does not, so it returns 500. |
 
 `classifier.get_current_best_guess_classifier()` silently falls back to random labels if the checkpoint fails to load (`classifier.py:30-33`), loads at import time (`:148`), and hardcodes `device="mps"` (`:128`).
 
 **Duplicated helpers** ([T-14](todo.md)): box numbering in `review._read_all_boxes`, `review._iter_frame_box_lines` and `ball_check._sidecar_ball_boxes`; ball label sets in four places; provenance tag sets in three (`human_checked` is known only to `ingest_gt`); video lookup by stem in three places; the crop window in review and ball_check.
 
-**Hardcoded paths** ([T-19](todo.md)): `.dvc/config:4`; `scripts/run_bakeoff.py:26,28`; `labeller/video_utils.py:121`; `labeller/server.py:97-106` (iCloud GT fallback); `feature_store/ingest_gt.py:6-7` docstring (a Gas Town worktree); `scripts/export_training_dataset.py:179-212,509`; `scripts/embed_ball_candidates.py:18-20`; `scripts/score_links.py:167-171`; `eval_data/clips/*.mp4` (40 absolute symlinks); `classifier.py:128`.
+**Hardcoded paths** ([T-19](todo.md)): `.dvc/config:4`; `scripts/run_bakeoff.py:26,28`; `labeller/video_utils.py:121`; `labeller/server.py:97-106` (iCloud GT fallback); `feature_store/ingest_gt.py:6-7` docstring (a machine-specific example path); `scripts/export_training_dataset.py:179-212,509`; `scripts/embed_ball_candidates.py:18-20`; `scripts/score_links.py:167-171`; `eval_data/clips/*.mp4` (40 absolute symlinks); `classifier.py:128`.
 
 ## 9. Docs that still disagree with the code
 

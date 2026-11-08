@@ -61,10 +61,31 @@ DATA_ROOT="$PWD/data" uv run python src/footy_track/scripts/train_object_detecto
 
 | Argument | Default | Description |
 |---|---|---|
-| `--model` | `yolo11n` | YOLO model variant (e.g. `yolo11n`, `yolo11m`). `.pt` is appended automatically. |
-| `--dataset-version` | `3` | Roboflow dataset version to download. |
+| `--model` | `yolo11n` | Model variant (for example `yolo11n`, `yolo11m`). `.pt` is appended automatically and the name is passed to `YOLO(...)`. |
+| `--dataset-version` | `3` | Roboflow dataset version to download. See the traps below. |
 | `--freeze` | `9` | Number of backbone layers to freeze. Freezing early layers speeds up training when fine-tuning from a pretrained checkpoint. |
 | `--epochs` | `50` | Number of training epochs. |
+| `--imgsz` | `640` | Training image size in pixels. The help text says to use 1280 for ball work. |
+| `--batch` | `-1` | Batch size; `-1` means automatic. On MPS the help text says to use an explicit small batch (4 to 8). |
+| `--no-amp` | off (AMP on) | Turn off mixed precision. Recommended on MPS. |
+| `--device` | `mps` | `mps`, `cpu`, or `0` for the first CUDA GPU. |
+| `--workers` | `8` | DataLoader worker processes. |
+| `--cache` | `ram` | `ram`, `disk` or `none`: where decoded images are cached. |
+| `--local-dataset` | none | Path to a local YOLOv8-format dataset folder that contains `data.yaml`. Skips the Roboflow download. |
+
+### Defaults that are traps
+
+Who this is for: anyone starting a training run for the first time. The defaults suit the first small experiment on a Mac laptop, not a ball detector. Each row below is read from `scripts/train_object_detector.py` on `main` (2026-11-08).
+
+| Flag | Default | Why it bites | What to pass |
+|---|---|---|---|
+| `--imgsz` | `640` | The ball is a few pixels wide. A 640 px model has ball recall of about 0 (a yolo11s v3 run at 640, [Best pipeline](pipeline-and-labels.md#ball-detector-leaderboard)). | `--imgsz 1280` at least. The production checkpoint was trained at 1920. |
+| `--device` | `mps` | Fails or runs on the wrong device on any machine without Apple silicon. `mps` also switches on an assigner workaround. | `--device 0` for CUDA, or `cpu`. |
+| `--dataset-version` | `3` | Version 3 is the original small set (162 train, 49 val images). The best model used version 11 (1,035 train, 215 val, 268 test images). Version 3 to 11 took RT-DETR-L ball mAP50 from 0.328 to 0.665. | `--dataset-version 11`, or `--local-dataset` with a folder you built. |
+| `--workers` | `8` | The help text says workers were pinned to 0 under WSL2 because of a driver bug, and that native Ubuntu has no such limit. The merge commit message says "default 0 under WSL" but the code defaults to 8 ([T-06](todo.md)). An older note says workers above 0 crash a WSL2 GPU machine; not re-checked here. | `--workers 0` on WSL2; otherwise 8 is fine. |
+| `--cache` | `ram` | Holds every decoded image in memory. Fine for 1,035 images at 640, heavy at 1920. Unmeasured here. | `--cache disk` or `none` if memory is tight. |
+
+Two more facts. The command that produced the production RT-DETR-L checkpoint is **not in the repo** ([T-09](todo.md)), so a run with this script is not a reproduction of it. And an example such as `--model yolo11m --dataset-version 11 --imgsz 1280 --device 0 --workers 0 --cache disk --epochs 50` is only an illustration of the flags; it has not been run for this page.
 
 ### Outputs
 
@@ -86,8 +107,9 @@ Training metrics are also logged to Weights & Biases under the `footy_scan_detec
 ## Dataset
 
 - **Source:** Roboflow workspace `egroeg121`, project `footy-track-detection`
-- **Version 3 split:** 162 train / 49 val images
-- **Classes (7):** `coach`, `in_play_ball`, `person`, `player`, `player_sub`, `referee`, `+ keeper`
+- **Version 3 split:** 162 train / 49 val / 46 test images
+- **Version 11 split:** 1,035 train / 215 val / 268 test images (the one the best model used; details and limits in [Datasets and labels](data.md#evaluation-sets))
+- **Classes (7, read from `data.yaml` of v3 and v11, 2026-11-08):** `ball` (unused: one instance in v11), `coach`, `in_play_ball`, `person`, `player`, `player_sub`, `referee`. The ball class that matters is `in_play_ball`.
 - **Downloaded to:** `$DATA_ROOT/detection_dataset/roboflow_dataset_<version>/` (defaults to `data/detection_dataset/...` if `DATA_ROOT` is unset)
 
 ---

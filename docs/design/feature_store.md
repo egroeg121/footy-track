@@ -92,6 +92,9 @@ frame_features`); the storage stays sane.
   file as a fast, constraint-enforcing index over it (rebuildable from
   Parquet at any time). This keeps the store DVC-friendly and reproducible.
 
+!!! note "Status check, 2026-11-08"
+    The design above is not what runs. DuckDB is the only store anyone writes to. A Parquet export exists (`store.py:270-326`) but no workflow uses it, so DuckDB is the source of truth. And `game_id` is a clip stem for GT imports (for example `astonvilla_seg080`), not a match as section 3.1 suggests. See [section 7.1](#71-keys-as-implemented-and-what-is-not-in-the-store).
+
 ---
 
 ## 3. Schema overview
@@ -384,6 +387,63 @@ than assumed. `continuous_time_s` is derived `frame_index / fps + time_offset`
   first writer; analysis stages update/insert against existing frames.
 - **Atomic partition writes**: write to a temp path, fsync, rename. A crashed
   run leaves no half-written partition visible.
+
+### 7.1 Keys as implemented, and what is not in the store
+
+_Added 2026-11-08 from a review of `main` @ 26d2506. Who this is for: anyone ingesting into the store, joining to it, or asking why a label is missing from an export._
+
+```mermaid
+flowchart LR
+  classDef code fill:#dbeafe,stroke:#2563eb,color:#111
+  classDef data fill:#e5e7eb,stroke:#6b7280,color:#111
+  classDef missing fill:#ffedd5,stroke:#ea580c,stroke-dasharray:5 3,color:#111
+  classDef dead fill:#fee2e2,stroke:#dc2626,color:#111
+
+  GAME[("game<br/>key: game_id<br/>a clip stem in practice")]:::data
+  FRAME[("frame<br/>key: game_id, frame_index<br/>frame_uri often NULL")]:::data
+  RUN[("run<br/>key: run_id")]:::data
+  DET[("detection<br/>key: game_id, source, run_id,<br/>frame_index, detection_id")]:::data
+  TM[("track_meta<br/>key: game_id, source, run_id, track_id<br/>0 rows, no writer")]:::dead
+  VIEW["detections_enriched<br/>adds the canonical flag"]:::code
+  EXP["export_training_dataset<br/>WHERE canonical"]:::code
+  GTI["ingest_gt<br/>run_id gt_import_PROVENANCE"]:::code
+  RBI["Roboflow importer<br/>run_id roboflow_vN"]:::code
+  MISSING["Not in the store<br/>see the table below"]:::missing
+
+  GAME -- "game_id" --> FRAME
+  FRAME -- "game_id, frame_index" --> DET
+  RUN -- "run_id" --> DET
+  GAME --> TM
+  GTI --> DET
+  RBI --> DET
+  DET --> VIEW --> EXP
+  MISSING -.-> DET
+```
+
+Legend: grey is a table, blue is code in git, orange dashed is data that is not in the store, red is a table nothing writes. The diagram shows that a detection is found by `(game_id, frame_index)` plus a source and a run, that two importers feed it, and that only the `canonical` rows reach the export.
+
+How the keys are built in practice:
+
+| Key part | Built from | Consequence |
+|---|---|---|
+| `game_id` | The clip stem for GT imports (`ingest_gt.py:202`), the frame-file stem for Roboflow | Clips are linked to videos only by name. `game.source_video_uri` and `match_date` are NULL, and `frame_uri` is NULL in the samples looked at. |
+| `run_id` | `gt_import_<provenance>` is hard-coded (`ingest_gt.py:197, 253`); Roboflow uses `roboflow_v<N>` | Two machines' sidecars for the same clip share a run and overwrite each other. |
+| `detection_id` | Position within `(frame, source)` (`ingest_gt.py:199`, `importers.py:228`) | Deleting or reordering a box repoints old ids. The content-hash version in `identity/stable_id.py` is never called. |
+| Upsert | `ON CONFLICT DO UPDATE` on the full key (`store.py:197-220`) | Re-ingest never deletes, so an old row stays next to a corrected one ([T-04](../todo.md)). |
+
+What is and is not in the newest copy of the store (2026-08-04, measured 2026-11-08):
+
+| In the store | Not in the store |
+|---|---|
+| Roboflow v3 (`hand_label`, run `roboflow_v3`) | Roboflow v11 |
+| GT sidecars, top-level files only: runs `gt_import_labeller`, `gt_import_vittrack`, `gt_import_yolo` | The six GT files added later and the 2026-09-24 Ball Check corrections |
+| 26,364 detections, 1,869 frames, 34 of 41 games | The 2.77M machine labels and the 357k ball candidates |
+| | Ball Check verdicts (`ingest_gt` never reads `ball_checks/`) |
+| | Tracklets, link proposals, identity labels (`track_meta` has 0 rows) |
+| | Embeddings, pitch segmentation, calibration, broadcast flags: the columns exist, but no importer in the repo fills them (data not checked) |
+
+The newest copy is stale and local only. Refreshing it is [T-07](../todo.md).
+
 
 ---
 
