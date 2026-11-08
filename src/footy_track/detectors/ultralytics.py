@@ -1,6 +1,7 @@
 import os
 from pathlib import Path
 
+import numpy as np
 import torch
 from ultralytics import YOLO
 from ultralytics.engine.results import Results as UltralyticsResults
@@ -130,9 +131,12 @@ class UltralyticsObjectDetector(ObjectDetector):
         iou_threshold: float = 0.90,
         use_model_names: bool = False,
         imgsz: int = DEFAULT_IMGSZ,
+        device: str | None = None,
     ):
-        # Use shared device selection util (prefers MPS on Apple, then CUDA, then CPU)
-        dev = _available_device()
+        # Default: shared device selection util (prefers MPS on Apple, then CUDA,
+        # then CPU). Pass ``device`` to override, e.g. the inference pipeline's
+        # cuda -> mps -> cpu order.
+        dev = device or _available_device()
         self.device = dev.type if isinstance(dev, torch.device) else str(dev)
         self.model = YOLO(model_uri)
         self.model_uri = model_uri
@@ -188,6 +192,31 @@ class UltralyticsObjectDetector(ObjectDetector):
             height=int(h),
             detections=detections,
         )
+
+    @torch.no_grad()
+    def predict_frames(self, frames: list[np.ndarray]) -> list[FrameDetections]:
+        """Run detection on a batch of BGR frames (as OpenCV reads them).
+
+        ``uri`` is a placeholder (``frame_<i>``): in-memory frames have no path.
+        """
+        results = self.model.predict(
+            frames,
+            device=self.device,
+            half=self.device == "cuda",
+            **self.predict_kwargs,
+        )
+        out = []
+        for i, result in enumerate(results):
+            h, w = result.orig_shape[:2]
+            out.append(
+                FrameDetections(
+                    uri=Path(f"frame_{i}"),
+                    width=int(w),
+                    height=int(h),
+                    detections=ultralytics_result_to_detections(result, self.classes),
+                )
+            )
+        return out
 
 
 class UltralyticsSam3Detector(ObjectDetector):
