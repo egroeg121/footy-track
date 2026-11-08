@@ -6,20 +6,29 @@ theme:
 plugins:
   - search
 nav:
-  - Home: index.md
-  - Development:
+  - Overview: index.md
+  - Architecture: architecture.md
+  - Pipeline and labels: pipeline-and-labels.md
+  - Data: data.md
+  - Training:
+      - Training: training.md
+      - Notable Training Runs: training/notable_runs.md
+  - Inference: inference.md
+  - Feature store: design/feature_store.md
+  - Design:
+      - Pipeline Overview: design/pipeline_overview.md
+      - Player Re-ID: design/player_reid.md
+      - Tracking Pipeline Design: design/tracking-pipeline.md
       - System Design: system_design.md
       - System Overview: system_overview.md
-      - Tracking Pipeline Design: design/tracking-pipeline.md
-      - Getting Started: development.md
       - Pipeline Architecture: pipeline_architecture.md
       - Time Formats: timings.md
       - Data Formats: data_formats.md
-      - Training: training.md
-      - Inference: inference.md
-      - Notable Training Runs: training/notable_runs.md
-  - Contributing:
+  - Development:
+      - Getting Started: development.md
       - Agent Guidelines: agent_guidelines.md
+      - How to contribute to the docs: contributing-docs.md
+  - TODO: todo.md
 markdown_extensions:
   - admonition
   - toc:

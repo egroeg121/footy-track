@@ -16,3 +16,7 @@ Follow the guidance within:
 * development.md
 
 Add instructions to those files when useful
+
+## Docs
+
+Follow `docs/contributing-docs.md`: update the docs in the same PR as the code, use plain language and Mermaid diagrams, build and check them, never put secrets or private hostnames in docs (the site is public), and update `docs/todo.md` when a TODO item moves.

@@ -94,6 +94,9 @@ See [Pipeline Architecture](pipeline_architecture.md) for detailed design inform
 ### Automated Tools
 When using automated tools or agents with this codebase, follow the guidelines in [Agent Guidelines](agent_guidelines.md) to maintain consistency.
 
+### Docs
+To change the docs, read [How to contribute to the docs](contributing-docs.md).
+
 
 ## Checks before you commit
 
@@ -159,5 +162,5 @@ arrows going back to "Edit" show that a failed check sends you back to fix it.
 Never skip the hooks with `git commit --no-verify`. If a check is wrong, fix
 the check in its own PR.
 
-Planned: once the docs branch with `scripts/check_docs_diagrams.py` is merged,
-add a hook that runs it on changed docs.
+Planned: add a hook that runs `scripts/check_docs_diagrams.py` on changed docs.
+For now run `make docs-check` yourself when you change a diagram.

@@ -57,7 +57,7 @@ broadcast video
 
 | Stage | Model | Trained? | Status |
 |---|---|---|---|
-| Detection | RT-DETR-L, `imgsz=1280` | fine-tuned on v11 | **Works.** Ball mAP50 disputed — code comment says .221/.209, handoff says .665/.591; **re-measure before citing** |
+| Detection | RT-DETR-L, `imgsz=1280` | fine-tuned on v11 | **Works.** Ball mAP50 .665 / recall .591 at 1920 on v11-val (211 balls, 74% one clip); not yet measured at the served 1280 or on the v11 test split. (.221/.209 was yolo11n, see [Best pipeline and label needs](../pipeline-and-labels.md)) |
 | Player tracking | LapTracker (IoU + Hungarian) | training-free | **Works, fragments.** Consecutive-frame IoU median 0.72, only 4–6% below the 0.3 threshold; spawn rate 4.2% matches that tail. Fragmentation is a *detection dropout* problem, not an association problem |
 | Ball tracking | VitTrack | training-free | **Fails.** Holds the ball for 5% of frames; confidence is a constant 0.119 and cannot separate on-ball from drifted. Do not tune — replace |
 | Team assignment | k=2 on torso HSV | none | **Works.** 1.0% ambiguous (n=1,253). Hue 185° vs 23° |
@@ -148,7 +148,7 @@ calibration, which is why it is not in the loop.
 2. **What is the tracker's real purity?** Being measured now. Needs *complete*
    clips; partial coverage biases toward whatever was reviewed first.
 3. **What replaces VitTrack for the ball?**
-4. **Which ball mAP figure is true?** `.221` vs `.665` for the same weights.
+4. **What is the ball mAP at the served resolution, across matches?** Settled: `.665` / `.591` is the checkpoint (v11-val, 1920); `.221` was yolo11n. Open: one committed eval at 1280 and 1920 on the v11 test split plus held-out dense clips.
 5. **Is per-player identity even needed downstream**, or is team + role enough
    for the questions being asked of the data?
 
