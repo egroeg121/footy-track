@@ -345,6 +345,91 @@ def _export_clip(
     return clip_images, clip_boxes
 
 
+def _split_for_clip(clip: str, val_clips: set[str], test_clips: set[str]) -> str:
+    if clip in val_clips:
+        return "val"
+    if clip in test_clips:
+        return "test"
+    return "train"
+
+
+def _reset_output_dirs(out_dir: Path, splits: tuple[str, ...]) -> None:
+    """Remove any previous export and recreate empty per-split directories."""
+    if out_dir.exists():
+        shutil.rmtree(out_dir)
+    for split in splits:
+        (out_dir / "images" / split).mkdir(parents=True, exist_ok=True)
+        (out_dir / "labels" / split).mkdir(parents=True, exist_ok=True)
+
+
+def _tag_exported_rows(store: FeatureStore, tagged: list[tuple], tag: str) -> None:
+    """Tag exported rows in the store (dataset_tag = "<tag>:<split>")."""
+    for game_id, source, run_id, fi, det_id, split in tagged:
+        store.query(
+            "UPDATE detection SET dataset_tag = ? "
+            "WHERE game_id=? AND source=? AND run_id=? AND frame_index=? AND detection_id=?",
+            [f"{tag}:{split}", game_id, source, run_id, fi, det_id],
+        )
+
+
+def _write_data_yaml(out_dir: Path, class_names: list[str], has_test: bool) -> None:
+    """Write data.yaml (YOLOv8 format; paths relative to the dataset root)."""
+    data_yaml = {
+        "path": str(out_dir.resolve()),
+        "train": "images/train",
+        "val": "images/val",
+        "nc": len(class_names),
+        "names": class_names,
+    }
+    if has_test:
+        data_yaml["test"] = "images/test"
+    (out_dir / "data.yaml").write_text(yaml.safe_dump(data_yaml, sort_keys=False))
+
+
+def _split_summary(counts: dict, split: str) -> dict:
+    return {
+        "images": counts[split]["images"],
+        "boxes": counts[split]["boxes"],
+        "by_source": dict(counts[split]["by_source"]),
+    }
+
+
+def _build_manifest(
+    *,
+    tag: str,
+    class_names: list[str],
+    sources: list[str] | None,
+    eval_clips: set[str],
+    extra_exclude: set[str],
+    excluded_boxes: int,
+    train_clips: set[str],
+    val_clips: set[str],
+    test_clips: set[str],
+    has_test: bool,
+    counts: dict,
+    per_clip: dict,
+    unresolved_clips: set[str],
+) -> dict:
+    manifest = {
+        "tag": tag,
+        "classes": class_names,
+        "sources": sorted(sources) if sources else None,
+        "excluded_eval_clips": sorted(eval_clips),
+        "extra_excluded_clips": sorted(extra_exclude),
+        "excluded_ball_boxes": excluded_boxes,
+        "train_clips": sorted(train_clips),
+        "val_clips": sorted(val_clips),
+        "train": _split_summary(counts, "train"),
+        "val": _split_summary(counts, "val"),
+        "per_clip": per_clip,
+        "unresolved_clips_no_source_video": sorted(unresolved_clips),
+    }
+    if has_test:
+        manifest["test_clips"] = sorted(test_clips)
+        manifest["test"] = _split_summary(counts, "test")
+    return manifest
+
+
 def export(
     store: FeatureStore,
     *,
@@ -426,12 +511,7 @@ def export(
     }
     per_clip = {}
 
-    # Reset output dirs.
-    if out_dir.exists():
-        shutil.rmtree(out_dir)
-    for split in splits:
-        (out_dir / "images" / split).mkdir(parents=True, exist_ok=True)
-        (out_dir / "labels" / split).mkdir(parents=True, exist_ok=True)
+    _reset_output_dirs(out_dir, splits)
 
     tagged: list[
         tuple
@@ -439,12 +519,7 @@ def export(
     unresolved_clips: set[str] = set()
 
     for clip, rows in rows_by_clip.items():
-        if clip in val_clips:
-            split = "val"
-        elif clip in test_clips:
-            split = "test"
-        else:
-            split = "train"
+        split = _split_for_clip(clip, val_clips, test_clips)
         clip_images, clip_boxes = _export_clip(
             clip,
             rows,
@@ -460,55 +535,23 @@ def export(
         if clip_boxes and not clip_images:
             unresolved_clips.add(clip)
 
-    # Tag exported rows in the store (dataset_tag = "<tag>:<split>").
-    for game_id, source, run_id, fi, det_id, split in tagged:
-        store.query(
-            "UPDATE detection SET dataset_tag = ? "
-            "WHERE game_id=? AND source=? AND run_id=? AND frame_index=? AND detection_id=?",
-            [f"{tag}:{split}", game_id, source, run_id, fi, det_id],
-        )
-
-    # data.yaml (YOLOv8 format; paths relative to the dataset root).
-    data_yaml = {
-        "path": str(out_dir.resolve()),
-        "train": "images/train",
-        "val": "images/val",
-        "nc": len(class_names),
-        "names": class_names,
-    }
-    if has_test:
-        data_yaml["test"] = "images/test"
-    (out_dir / "data.yaml").write_text(yaml.safe_dump(data_yaml, sort_keys=False))
-
-    manifest = {
-        "tag": tag,
-        "classes": class_names,
-        "sources": sorted(sources) if sources else None,
-        "excluded_eval_clips": sorted(eval_clips),
-        "extra_excluded_clips": sorted(extra_exclude),
-        "excluded_ball_boxes": excluded_boxes,
-        "train_clips": sorted(train_clips),
-        "val_clips": sorted(val_clips),
-        "train": {
-            "images": counts["train"]["images"],
-            "boxes": counts["train"]["boxes"],
-            "by_source": dict(counts["train"]["by_source"]),
-        },
-        "val": {
-            "images": counts["val"]["images"],
-            "boxes": counts["val"]["boxes"],
-            "by_source": dict(counts["val"]["by_source"]),
-        },
-        "per_clip": per_clip,
-        "unresolved_clips_no_source_video": sorted(unresolved_clips),
-    }
-    if has_test:
-        manifest["test_clips"] = sorted(test_clips)
-        manifest["test"] = {
-            "images": counts["test"]["images"],
-            "boxes": counts["test"]["boxes"],
-            "by_source": dict(counts["test"]["by_source"]),
-        }
+    _tag_exported_rows(store, tagged, tag)
+    _write_data_yaml(out_dir, class_names, has_test)
+    manifest = _build_manifest(
+        tag=tag,
+        class_names=class_names,
+        sources=sources,
+        eval_clips=eval_clips,
+        extra_exclude=extra_exclude,
+        excluded_boxes=excluded_boxes,
+        train_clips=train_clips,
+        val_clips=val_clips,
+        test_clips=test_clips,
+        has_test=has_test,
+        counts=counts,
+        per_clip=per_clip,
+        unresolved_clips=unresolved_clips,
+    )
     (out_dir / "manifest.yaml").write_text(yaml.safe_dump(manifest, sort_keys=False))
     return manifest
 

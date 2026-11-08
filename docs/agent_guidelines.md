@@ -10,3 +10,11 @@ This repository includes a short developer guideline for automated agents and ma
 - Include a brief explanation of edits in commit messages or pull request descriptions.
 
 These guidelines are intended to reduce accidental changes and help maintain consistent behaviour when using automated coding agents against this codebase.
+
+## Checks
+
+Every agent and contributor must run `make check` (or have the pre-commit hook
+installed with `make hooks`) before committing. Never use `--no-verify` to skip
+the hooks. If you could not run a check (for example the machine cannot run the
+tests), say so in the commit message or PR description and name the check. See
+[Checks before you commit](development.md#checks-before-you-commit).

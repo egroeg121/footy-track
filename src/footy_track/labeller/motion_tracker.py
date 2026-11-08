@@ -246,7 +246,14 @@ class KalmanBoxTracker:
         self._qv = velocity_process_noise
         self._initial_covariance = initial_covariance
         self._Q = np.diag(
-            [process_noise, process_noise, process_noise, process_noise, self._qv, self._qv]
+            [
+                process_noise,
+                process_noise,
+                process_noise,
+                process_noise,
+                self._qv,
+                self._qv,
+            ]
         ).astype(np.float64)
         self._R = np.eye(4, dtype=np.float64) * measurement_noise
         self.x: np.ndarray | None = None

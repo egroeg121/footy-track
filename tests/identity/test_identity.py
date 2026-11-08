@@ -40,9 +40,9 @@ def test_stable_id_is_independent_of_position():
 
 
 def test_stable_id_accepts_dict_and_tuple_bbox():
-    assert stable_detection_id(3, "player", (0.1, 0.2, 0.3, 0.4)) == stable_detection_id(
-        3, "player", {"x": 0.1, "y": 0.2, "w": 0.3, "h": 0.4}
-    )
+    assert stable_detection_id(
+        3, "player", (0.1, 0.2, 0.3, 0.4)
+    ) == stable_detection_id(3, "player", {"x": 0.1, "y": 0.2, "w": 0.3, "h": 0.4})
 
 
 def test_stable_id_survives_float_noise():

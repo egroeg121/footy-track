@@ -45,7 +45,7 @@ references below are `file::test_name` within `tests/labeller/`.
 ## 1. Label hierarchy & provenance (LAB-0xx)
 
 Every box records where it came from in its `ObjectDetection.model` field,
-persisted in the JSONL sidecar as the second tag (`tags: [label, model]`):
+persisted in the JSONL sidecar as the second tag (`tags: [label, model, *markers]`):
 
 | `model` | Meaning | Authority |
 |---|---|---|
@@ -105,7 +105,14 @@ One JSON object per line:
 
 - **LAB-101** (MUST) Box lines carry `frame_index`, normalized `bbox`
   (`x,y,w,h`), derived `center` (`x+w/2`, `y+h/2`), and
-  `tags = [label, model]`. `center` is written on flush and ignored on load.
+  `tags = [label, model, *markers]`. `center` is written on flush and ignored on load.
+  - **Marker-tag rule:** tags after the provenance (e.g. `human_checked`,
+    which makes a `vittrack` box tier 2) are preserved verbatim across
+    load -> flush, keyed to the box's label/model/geometry. A user edit that
+    moves or relabels a box (it becomes `labeller`, tier 1) writes
+    `[label, labeller]` with no markers, as `review.py`/`ball_check.py`
+    corrections do. Untouched boxes keep their markers.
+  - Tests: `test_session_roundtrip.py::test_marker_tags_survive_load_edit_flush`
   - Tests: `test_session_roundtrip.py::test_roundtrip_preserves_model_tags_label_and_geometry`,
     `test_review_endpoints.py::test_correct_rewrites_line_stamped_labeller`
 - **LAB-102** (MUST) Skip markers are lines with `bbox: null, center: null`
