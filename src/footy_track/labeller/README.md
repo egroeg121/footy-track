@@ -45,7 +45,7 @@ references below are `file::test_name` within `tests/labeller/`.
 ## 1. Label hierarchy & provenance (LAB-0xx)
 
 Every box records where it came from in its `ObjectDetection.model` field,
-persisted in the JSONL sidecar as the second tag (`tags: [label, model]`):
+persisted in the JSONL sidecar as the second tag (`tags: [label, model, *markers]`):
 
 | `model` | Meaning | Authority |
 |---|---|---|
@@ -105,7 +105,14 @@ One JSON object per line:
 
 - **LAB-101** (MUST) Box lines carry `frame_index`, normalized `bbox`
   (`x,y,w,h`), derived `center` (`x+w/2`, `y+h/2`), and
-  `tags = [label, model]`. `center` is written on flush and ignored on load.
+  `tags = [label, model, *markers]`. `center` is written on flush and ignored on load.
+  - **Marker-tag rule:** tags after the provenance (e.g. `human_checked`,
+    which makes a `vittrack` box tier 2) are preserved verbatim across
+    load -> flush, keyed to the box's label/model/geometry. A user edit that
+    moves or relabels a box (it becomes `labeller`, tier 1) writes
+    `[label, labeller]` with no markers, as `review.py`/`ball_check.py`
+    corrections do. Untouched boxes keep their markers.
+  - Tests: `test_session_roundtrip.py::test_marker_tags_survive_load_edit_flush`
   - Tests: `test_session_roundtrip.py::test_roundtrip_preserves_model_tags_label_and_geometry`,
     `test_review_endpoints.py::test_correct_rewrites_line_stamped_labeller`
 - **LAB-102** (MUST) Skip markers are lines with `bbox: null, center: null`
@@ -325,6 +332,13 @@ bbox-null lines excluded).
   missing.
   - Tests: `test_review_endpoints.py::test_review_yolo_returns_rounded_boxes`,
     `test_review_endpoints.py::test_review_yolo_missing_video`
+  - Note: the detector now actually uses its configured settings. Earlier,
+    `UltralyticsObjectDetector.predict_from_path` ignored them and ran with
+    the ultralytics defaults (imgsz 640, conf 0.25, iou 0.7). It now passes
+    the constructor's `min_confidence`, `iou_threshold` and `imgsz` (1280 by
+    default) through, so boxes from the labeller's YOLO seeding and review
+    calls can differ from ones produced before this fix (ball recall in
+    particular is much better at 1280).
 
 ## 6. Ingest API (LAB-5xx)
 
@@ -669,7 +683,16 @@ an append-only side file cannot truncate hand labels.
 
 Backend `ball_check.py`, page `web/ball_check.html` (no framework, no Konva).
 Verdicts live in `<gt dir>/ball_checks/<clip>.jsonl`, one JSON object per
-line: `{clip, frame_index, box_index, verdict, bbox, label, provenance, ts}`.
+line: `{clip, frame_index, box_index, source, confidence, verdict, bbox, label,
+provenance, corrected_bbox, ts}` (`source` is `sidecar` or `cand`; a
+`verdict: null` line is an undo tombstone).
+
+The log is **consumed downstream**: `python -m footy_track.feature_store.ingest_gt`
+reads `<gt dir>/ball_checks/` (`--ball-checks-dir`) into the feature store's
+`detection_review` table — `ball`/`corrected` mark the matching detection
+`reviewed`, `not_ball` is a rejected negative that
+`scripts/export_training_dataset.py` drops from positives. See
+`docs/design/feature_store.md` §6.2.
 
 - **LAB-1001** (MUST) `GET /ball_check/queue` returns only ball-class boxes
   (`BALL_LABELS`) whose provenance tag is machine (`yolo`/`vittrack`/`sam3`),
@@ -740,6 +763,15 @@ line: `{clip, frame_index, box_index, verdict, bbox, label, provenance, ts}`.
   the card back rather than reporting a saved verdict.
   - Tests: UNTESTED-FRONTEND (`web/ball_check.html`; the server contract is
     LAB-1004..1009)
+- **LAB-1013a** (MUST) `POST /ball_check/save_box` on a candidate appends to
+  the GT sidecar that already exists for that clip under any alias (candidate
+  `arsenal_mancity_20250925_seg010` -> `arsenal_mancity_seg010.jsonl` or
+  `mancity_seg010.jsonl`), never a second raw-named file. Lookup order: exact
+  stem, then the alias spelled like the canonical id, then alphabetical; a clip
+  with no GT keeps its own name. The response's `sidecar` names the file.
+  Identity rules: `footy_track.clip_id` and
+  [feature store §3.1a](../../../docs/design/feature_store.md#31a-clip-identity-canonical-clip-id).
+  - Tests: `test_ball_check.py::test_save_box_on_a_raw_named_candidate_writes_into_the_existing_gt_stem`
 
 ## 12. Confidence sampling — candidates (LAB-11xx)
 

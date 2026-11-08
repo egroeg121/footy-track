@@ -23,6 +23,12 @@ from footy_track.labelling import (
 ROBOFLOW_API_KEY = os.getenv("ROBOFLOW_API_KEY")
 
 
+requires_roboflow_key = pytest.mark.skipif(
+    not ROBOFLOW_API_KEY, reason="ROBOFLOW_API_KEY not set"
+)
+
+
+@requires_roboflow_key
 def test_get_roboflow_broadcast_prod_project():
     """Tests that we can successfully get the footy-track-broadcast-frame production project from roboflow."""
     handler = BaseRoboflowHandler(workspace_name=ROBOFLOW_WORKSPACE)
@@ -31,6 +37,7 @@ def test_get_roboflow_broadcast_prod_project():
     assert project.name == ROBOFLOW_BROADCAST_PROJECT
 
 
+@requires_roboflow_key
 def test_get_roboflow_broadcast_test_project(roboflow_test_project_name: str):
     """Tests that we can successfully get the footy-track-broadcast-frame test project from roboflow."""
     handler = BaseRoboflowHandler(workspace_name=ROBOFLOW_WORKSPACE)

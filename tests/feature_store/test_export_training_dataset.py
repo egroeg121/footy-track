@@ -232,6 +232,93 @@ def test_export_excludes_eval_clips(tmp_path) -> None:
     assert manifest["excluded_ball_boxes"] == 2  # eval_clip's two ball boxes
 
 
+def _split_of(manifest: dict, clip: str) -> str:
+    return next(
+        s for s in ("train", "val", "test") if clip in manifest.get(f"{s}_clips", [])
+    )
+
+
+def test_export_keeps_aliases_of_one_clip_on_one_side_and_excludes_eval_aliases(
+    tmp_path,
+) -> None:
+    """T-03: aliases of one physical clip never straddle splits, and an eval
+    clip stored under another alias is still excluded."""
+    images_dir = tmp_path / "imgs"
+    images_dir.mkdir()
+    store = FeatureStore.open(":memory:")
+    # Real alias forms seen on /mnt/storage/footy_data (same video each pair).
+    pairs = [
+        ("arsenal_mancity_20250925_seg020", "arsenal_mancity_seg020"),
+        ("arsenal_mancity_20250925_seg031", "mancity_seg031"),
+        ("astonvilla_seg050", "Arsenal - Aston Villa_seg050"),
+        ("bournemouth_seg009", "bournemouth_1st_seg009"),
+        ("bournemouth_broadcast_seg015", "Bournemouth vs Arsenal 1_seg015"),
+        ("arsenal_mancity_20250925_part050", "mancity_part050"),
+    ]
+    for a, b in pairs:
+        _seed_clip(store, tmp_path, a, images_dir, frames=(0,))
+        _seed_clip(store, tmp_path, b, images_dir, frames=(1,))
+    # The eval clip, stored only under its raw (date-stamped) alias.
+    _seed_clip(
+        store, tmp_path, "arsenal_mancity_20250925_seg010", images_dir, frames=(0, 1)
+    )
+
+    eval_dir = tmp_path / "eval"
+    eval_dir.mkdir()
+    (eval_dir / "mancity_seg010.jsonl").write_text("{}\n")
+
+    for test_fraction in (0.0, 0.2):
+        manifest = export(
+            store,
+            out_dir=tmp_path / f"out_{test_fraction}",
+            video_dir=tmp_path,
+            eval_dir=eval_dir,
+            extra_exclude=set(),
+            val_fraction=0.5,
+            test_fraction=test_fraction,
+            tag="ball_v1",
+        )
+        exported = (
+            set(manifest["train_clips"])
+            | set(manifest["val_clips"])
+            | set(manifest.get("test_clips", []))
+        )
+        assert "arsenal_mancity_20250925_seg010" not in exported
+        assert manifest["excluded_ball_boxes"] == 2
+        assert exported == {c for pair in pairs for c in pair}
+        assert manifest["val_clips"]  # the split really happened
+        for a, b in pairs:
+            assert _split_of(manifest, a) == _split_of(manifest, b), (a, b)
+        assert manifest["clip_aliases"]["arsenal_mancity_seg020"] == sorted(pairs[0])
+
+
+def test_export_alias_free_store_splits_exactly_as_before(tmp_path) -> None:
+    """Grouping by canonical id must not move clips when there are no aliases:
+    groups are keyed by their smallest game_id, i.e. the game_id itself."""
+    images_dir = tmp_path / "imgs"
+    images_dir.mkdir()
+    store = FeatureStore.open(":memory:")
+    stems = ["astonvilla_seg020", "arsenal_mancity_seg090", "bournemouth_seg035"]
+    stems += [f"clip_{i}" for i in range(5)]
+    for stem in stems:
+        _seed_clip(store, tmp_path, stem, images_dir, frames=(0,))
+    eval_dir = tmp_path / "eval"
+    eval_dir.mkdir()
+    manifest = export(
+        store,
+        out_dir=tmp_path / "out",
+        video_dir=tmp_path,
+        eval_dir=eval_dir,
+        extra_exclude=set(),
+        val_fraction=0.25,
+        tag="ball_v1",
+    )
+    train, val = _split_clips(stems, 0.25)
+    assert set(manifest["train_clips"]) == train
+    assert set(manifest["val_clips"]) == val
+    assert manifest["clip_aliases"] == {}
+
+
 # --------------------------------------------------------------------------- #
 # Multi-class / --sources tests                                               #
 # --------------------------------------------------------------------------- #

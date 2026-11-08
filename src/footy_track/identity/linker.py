@@ -122,9 +122,13 @@ def candidate_links(
                 # Overlapping in time: they co-exist, so they are provably
                 # different players. Not a candidate at any similarity.
                 continue
-            if respect_team and a.team is not None and b.team is not None:
-                if a.team != b.team:
-                    continue
+            if (
+                respect_team
+                and a.team is not None
+                and b.team is not None
+                and a.team != b.team
+            ):
+                continue
             dx = b.start_xy[0] - a.end_xy[0]
             dy = b.start_xy[1] - a.end_xy[1]
             dist = (dx * dx + dy * dy) ** 0.5

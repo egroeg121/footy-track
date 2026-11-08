@@ -1,5 +1,8 @@
 import json
 from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
 
 from footy_track.detectors.ultralytics import (
     UltralyticsObjectDetector,
@@ -7,6 +10,64 @@ from footy_track.detectors.ultralytics import (
 )
 from footy_track.detectors.utils import calculate_iou
 from footy_track.schema import FrameDetections, ObjectDetection
+from footy_track.utils import get_project_root
+
+SAM3_WEIGHTS = get_project_root() / "model_saves" / "sam3" / "sam3.pt"
+requires_sam3_weights = pytest.mark.skipif(
+    not SAM3_WEIGHTS.exists(),
+    reason=f"SAM3 weights not found at {SAM3_WEIGHTS} (DVC/LFS-managed; pull them to run)",
+)
+
+
+@pytest.fixture(scope="session")
+def yolo_detector() -> UltralyticsObjectDetector:
+    """One YOLO detector shared by all tests (model build costs ~0.5-2.6s)."""
+    return UltralyticsObjectDetector()
+
+
+@pytest.fixture(scope="session")
+def sam3_detector() -> UltralyticsSam3Detector:
+    """One SAM3 detector shared by all tests (CPU model build is ~40s+)."""
+    return UltralyticsSam3Detector()
+
+
+class _FakeYOLO:
+    """Stand-in for ultralytics.YOLO: records predict() kwargs, needs no weights."""
+
+    names = {0: "person"}
+
+    def __init__(self, model_uri: str) -> None:
+        self.calls: list[dict] = []
+
+    def predict(self, source, **kwargs):
+        self.calls.append(kwargs)
+        return [SimpleNamespace(orig_shape=(720, 1280), boxes=None)]
+
+
+class TestUltralyticsPredictKwargs:
+    def test_predict_from_path_forwards_configured_kwargs(self, monkeypatch):
+        """Configured conf/iou/imgsz must reach model.predict (not library defaults)."""
+        monkeypatch.setattr("footy_track.detectors.ultralytics.YOLO", _FakeYOLO)
+        detector = UltralyticsObjectDetector(
+            min_confidence=0.12, iou_threshold=0.55, imgsz=1280
+        )
+        result = detector.predict_from_path(Path("frame.jpg"))
+
+        assert isinstance(result, FrameDetections)
+        assert (result.width, result.height) == (1280, 720)
+        (kwargs,) = detector.model.calls
+        assert kwargs["conf"] == 0.12
+        assert kwargs["iou"] == 0.55
+        assert kwargs["imgsz"] == 1280
+        assert kwargs["device"] == detector.device
+
+    def test_device_wins_over_predict_kwargs(self, monkeypatch):
+        """The device chosen at init is explicit and overrides a stray kwarg."""
+        monkeypatch.setattr("footy_track.detectors.ultralytics.YOLO", _FakeYOLO)
+        detector = UltralyticsObjectDetector()
+        detector.predict_kwargs["device"] = "not-a-device"
+        detector.predict_from_path(Path("frame.jpg"))
+        assert detector.model.calls[0]["device"] == detector.device
 
 
 class TestUltralyticsYOLODetector:
@@ -15,9 +76,11 @@ class TestUltralyticsYOLODetector:
         detector = UltralyticsObjectDetector()
         assert detector is not None
 
-    def test_ultralytics_object_detector_predict_from_path(self):
+    def test_ultralytics_object_detector_predict_from_path(
+        self, yolo_detector: UltralyticsObjectDetector
+    ):
         """Test that the predict_from_path method returns a FrameDetections object."""
-        detector = UltralyticsObjectDetector()
+        detector = yolo_detector
         test_image_path = Path("tests/data/arsenal_mancity_test_detection.jpg")
         frame_detections = detector.predict_from_path(test_image_path)
         assert isinstance(frame_detections, FrameDetections)
@@ -26,9 +89,11 @@ class TestUltralyticsYOLODetector:
         for detection in frame_detections.detections:
             assert detection.label in ["person", "ball"]
 
-    def test_ultralytics_object_detector_iou(self):
+    def test_ultralytics_object_detector_iou(
+        self, yolo_detector: UltralyticsObjectDetector
+    ):
         """Test that the detector achieves a minimum IoU for at least half the persons."""
-        detector = UltralyticsObjectDetector()
+        detector = yolo_detector
         test_image_path = Path("tests/data/arsenal_mancity_test_detection.jpg")
         frame_detections = detector.predict_from_path(test_image_path)
 
@@ -92,9 +157,14 @@ class TestUltralyticsSam3Detector:
         detector = UltralyticsSam3Detector()
         assert detector is not None
 
-    def test_ultralytics_sam3_detector_predict_from_path(self):
+    @requires_sam3_weights
+    @pytest.mark.needs_weights
+    @pytest.mark.slow
+    def test_ultralytics_sam3_detector_predict_from_path(
+        self, sam3_detector: UltralyticsSam3Detector
+    ):
         """Test that the SAM3 predict_from_path returns a FrameDetections object."""
-        detector = UltralyticsSam3Detector()
+        detector = sam3_detector
         test_image_path = Path("tests/data/arsenal_mancity_test_detection.jpg")
         frame_detections = detector.predict_from_path(test_image_path)
         assert isinstance(frame_detections, FrameDetections)
@@ -104,9 +174,14 @@ class TestUltralyticsSam3Detector:
             # assert detection.label in ["person", "ball"]
             assert detection.label in detector.output_classes
 
-    def test_ultralytics_sam3_detector_iou(self):
+    @requires_sam3_weights
+    @pytest.mark.needs_weights
+    @pytest.mark.slow
+    def test_ultralytics_sam3_detector_iou(
+        self, sam3_detector: UltralyticsSam3Detector
+    ):
         """Similar IoU quality check for SAM3 on persons."""
-        detector = UltralyticsSam3Detector()
+        detector = sam3_detector
         test_image_path = Path("tests/data/arsenal_mancity_test_detection.jpg")
         frame_detections = detector.predict_from_path(test_image_path)
 

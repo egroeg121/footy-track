@@ -78,6 +78,7 @@ exclude = [
   "yolo11n.pt",
 ]
 
+[tool.ruff.lint]
 # Enable common rule sets: E,F (pycodestyle/pyflakes), I (isort), B (flake8-bugbear),
 # UP (pyupgrade), SIM (flake8-simplify), PL (pylint), C4 (flake8-comprehensions)
 select = [
@@ -107,6 +108,7 @@ per-file-ignores."tests/*.py" = [ "PLR2004" ]
 addopts = "-q -n 2"
 markers = [
   "slow: tests that run models and may take longer",
+  "needs_weights: requires model weights that are not in the repo (DVC/LFS-managed); skipped when missing",
   "live_roboflow: requires live Roboflow API credentials and makes real network calls; skipped by default",
 ]
 

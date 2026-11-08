@@ -53,6 +53,10 @@ docs-deploy: ## Deploy MkDocs to GitHub Pages
 tests: ## Run all tests
 	$(UV) run pytest tests/
 
+.PHONY: test-fast
+test-fast: ## Run tests excluding slow and weights-dependent ones
+	$(UV) run pytest tests/ -m "not slow and not needs_weights"
+
 # -----------------------------
 # Linting / pre-commit
 # -----------------------------
@@ -70,3 +74,20 @@ pre-commit-all: ## Run pre-commit on all files
 docs-check: ## Check Mermaid diagrams in docs/ and build the site
 	python3 scripts/check_docs_diagrams.py
 	uvx --with mkdocs-material mkdocs build -d /tmp/footy-site
+
+.PHONY: lint
+lint: ## Check lint and formatting (ruff check + ruff format --check)
+	$(UV) run ruff check
+	$(UV) run ruff format --check
+
+.PHONY: format
+format: ## Fix formatting and auto-fixable lint (ruff format + ruff check --fix)
+	$(UV) run ruff format
+	$(UV) run ruff check --fix
+
+.PHONY: check
+check: lint test-fast ## Everything CI runs for code: lint + fast tests
+
+.PHONY: hooks
+hooks: ## Install the pre-commit git hook (uses uvx, no new dependency)
+	uvx pre-commit install

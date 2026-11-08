@@ -47,14 +47,19 @@ def test_ball_and_low_confidence_are_excluded(tmp_path):
 
 def test_torn_line_does_not_abort_the_clip(tmp_path):
     p = tmp_path / "dets.jsonl"
-    p.write_text(json.dumps(_det(0, 0.1)) + "\n{ broken\n" + json.dumps(_det(1, 0.11)) + "\n")
+    p.write_text(
+        json.dumps(_det(0, 0.1)) + "\n{ broken\n" + json.dumps(_det(1, 0.11)) + "\n"
+    )
     by_frame = load_detections(p, min_confidence=0.5, keep_labels=("player",))
     assert len(by_frame) == 2
 
 
 def test_out_of_frame_box_is_clamped_not_dropped(tmp_path):
     """RT-DETR really emits x=-1.9e-05; the schema requires [0,1]."""
-    path = _write(tmp_path, [{**_det(0, 0.1), "bbox": {"x": -1.9e-05, "y": 0.5, "w": 0.04, "h": 0.1}}])
+    path = _write(
+        tmp_path,
+        [{**_det(0, 0.1), "bbox": {"x": -1.9e-05, "y": 0.5, "w": 0.04, "h": 0.1}}],
+    )
     by_frame = load_detections(path, min_confidence=0.5, keep_labels=("player",))
     rows = track_clip(by_frame, iou_threshold=0.15, max_age=90)
     assert len(rows) == 1
@@ -114,8 +119,14 @@ def test_known_quirk_tracks_do_not_age_on_empty_frames(tmp_path):
 
 def test_empty_input_is_handled(tmp_path):
     path = _write(tmp_path, [])
-    assert track_clip(load_detections(path, min_confidence=0.5, keep_labels=("player",)),
-                      iou_threshold=0.15, max_age=90) == []
+    assert (
+        track_clip(
+            load_detections(path, min_confidence=0.5, keep_labels=("player",)),
+            iou_threshold=0.15,
+            max_age=90,
+        )
+        == []
+    )
     assert summarise([]) == {"tracklets": 0}
 
 
