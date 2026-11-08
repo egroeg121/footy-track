@@ -114,7 +114,7 @@ track / track_meta: derived from detection, see §8
 
 | Column | Type | Notes |
 |---|---|---|
-| `game_id` | `VARCHAR` PK | e.g. `arsenal_mancity` (matches `data/<match_name>`) |
+| `game_id` | `VARCHAR` PK | despite the name, usually a **clip** stem: `ingest_gt` uses the GT sidecar stem (`mancity_seg010`), `detect_objects` the frames folder name, Roboflow imports a match-level stem (`arsenal_mancity_20250925`). Not canonical; see §3.1a |
 | `home_team` | `VARCHAR` | |
 | `away_team` | `VARCHAR` | |
 | `match_date` | `DATE` | nullable |
@@ -130,6 +130,46 @@ track / track_meta: derived from detection, see §8
 
 This subsumes the `GameMetadata` block previously living in
 `tracks_meta.json`.
+
+### 3.1a Clip identity (canonical clip id)
+
+One physical clip has several names across the data plane, and `game_id`
+inherits whichever one the importer saw. `footy_track.clip_id.canonical_clip_id`
+maps them to one id, `<match>_<kind><NNN>` (date infix dropped, number
+zero-padded to 3):
+
+| Names on disk (same video, verified via the `ballcheck_clips/` and `eval_data/clips/` symlinks) | Canonical id |
+|---|---|
+| `arsenal_mancity_20250925_segNNN` (clips, machine labels, candidates), `arsenal_mancity_segNNN`, `mancity_segNNN` | `arsenal_mancity_segNNN` |
+| `arsenal_mancity_20250925_partNNN` (`split_video_10s`, a different cut from `segNNN`), `mancity_partNNN` | `arsenal_mancity_partNNN` |
+| `Arsenal - Aston Villa_segNNN`, `astonvilla_segNNN` | `arsenal_astonvilla_segNNN` |
+| `Bournemouth vs Arsenal 1_segNNN`, `bournemouth_1st_segNNN`, `bournemouth_broadcast_segNNN`, `bournemouth_segNNN` | `arsenal_bournemouth_1st_segNNN` |
+| `arsenal_mancity_example_video`, `arsenal_example` | `arsenal_example` |
+
+Anything else passes through unchanged (minus extension). Where it is used:
+
+- **Training export**: eval exclusion compares canonical ids, so an eval clip
+  stored under another alias is excluded; the by-clip split assigns whole alias
+  groups (keyed by their smallest `game_id`, so an alias-free store splits as
+  before). The manifest lists the groups under `clip_aliases`.
+- **`ball_check` `save_box`**: a correction on a raw-named candidate goes into
+  the clip's existing GT sidecar (labeller README LAB-1013a).
+- **`ball_eval`**: `EvalClip.clip_id`; `EvalDataset.from_dirs(...,
+  resolve_aliases=True)` matches GT to a video under another alias (off by
+  default, as it changes which GT files are scored).
+- **`ingest_gt`**: deliberately *not* canonicalised. `game_id` stays the
+  sidecar stem: that file is the unit ingest (re)imports and the
+  `gt_import:<game_id>` run group, and two aliases' sidecars would otherwise
+  collide on the detection PK.
+
+Find aliases with `aliases_of(name, names)` / `group_by_clip(names)`, or the
+read-only report `python -m footy_track.clip_id --db <store> [dirs...]`.
+
+**Migration note.** Existing stores keep their alias `game_id`s and need no
+change for the export to be leak-free. To canonicalise a store anyway, run the
+report to list the `game_id`s that would collapse, merge those sidecars by hand
+(they hold separately labelled frames), and re-ingest into a fresh store. Never
+`UPDATE game_id` in place.
 
 ### 3.2 `frame` — one row per (game, frame)
 

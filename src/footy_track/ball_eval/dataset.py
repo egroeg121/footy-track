@@ -32,6 +32,8 @@ from typing import NamedTuple
 import cv2
 import numpy as np
 
+from footy_track.clip_id import canonical_clip_id
+
 # Normalised (x, y, w, h) top-left. Using a plain tuple for zero-overhead.
 BBox = tuple[float, float, float, float]
 # Normalised (cx, cy) ball center.
@@ -158,6 +160,12 @@ class EvalClip:
             total_frames=total_frames,
         )
 
+    @property
+    def clip_id(self) -> str:
+        """Canonical clip id (``footy_track.clip_id``): equal for every alias
+        of the same physical clip, so callers can spot duplicates."""
+        return canonical_clip_id(self.name)
+
     def iter_frames(self) -> Generator[tuple[int, np.ndarray], None, None]:
         """Yield (frame_index, rgb_frame) pairs for every frame in the clip."""
         cap = cv2.VideoCapture(str(self.video_path))
@@ -230,11 +238,19 @@ class EvalDataset:
         cls,
         video_dir: str | pathlib.Path,
         gt_dir: str | pathlib.Path,
+        *,
+        resolve_aliases: bool = False,
     ) -> EvalDataset:
         """Load clips with videos in *video_dir* and JSONL GT in *gt_dir*.
 
         Useful when GT marks live separately from the video files (e.g. iCloud).
         Only clips that have both a video and a matching JSONL are included.
+
+        Matching is by exact stem by default. ``resolve_aliases=True`` also
+        accepts a video under another alias of the same clip (T-03, e.g. GT
+        ``arsenal_mancity_20250925_seg010.jsonl`` with video
+        ``arsenal_mancity_seg010.mp4``). Off by default because it changes
+        which GT files are scored; check ``EvalClip.clip_id`` for duplicates.
         """
         video_dir = pathlib.Path(video_dir)
         gt_dir = pathlib.Path(gt_dir)
@@ -242,6 +258,8 @@ class EvalDataset:
 
         for jsonl_path in sorted(gt_dir.glob("*.jsonl")):
             video_path = _find_video(video_dir, jsonl_path.stem)
+            if video_path is None and resolve_aliases:
+                video_path = _find_alias_video(video_dir, jsonl_path.stem)
             if video_path is None:
                 continue  # GT exists but no video — skip silently
             clips.append(EvalClip.from_video_and_jsonl(video_path, jsonl_path))
@@ -274,6 +292,18 @@ def _find_video(directory: pathlib.Path, stem: str) -> pathlib.Path | None:
     for suffix in _VIDEO_SUFFIXES:
         candidate = directory / (stem + suffix)
         if candidate.exists():
+            return candidate
+    return None
+
+
+def _find_alias_video(directory: pathlib.Path, stem: str) -> pathlib.Path | None:
+    """A video in *directory* whose canonical clip id matches *stem*'s."""
+    cid = canonical_clip_id(stem)
+    for candidate in sorted(directory.iterdir()):
+        if (
+            candidate.suffix in _VIDEO_SUFFIXES
+            and canonical_clip_id(candidate.name) == cid
+        ):
             return candidate
     return None
 

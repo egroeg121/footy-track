@@ -29,6 +29,13 @@ harness is excluded from both splits. The harness eval set is the set of clips
 that have a GT ``.jsonl`` sidecar under ``--eval-dir`` (default
 ``eval_data/clips``). Extra clips can be excluded with repeated ``--exclude-clip``.
 
+Clip identity is canonical (T-03, ``footy_track.clip_id``): one physical clip
+can sit in the store under several ``game_id`` aliases (``mancity_seg010``,
+``arsenal_mancity_seg010``, ``arsenal_mancity_20250925_seg010``). Any alias of
+an eval/excluded clip is excluded, and all aliases of a clip land in the same
+split. The split is computed over alias groups keyed by their smallest
+``game_id``, so a store without aliases splits exactly as before.
+
 ``--sources`` (comma list, e.g. ``hand_label`` or ``hand_label,vittrack``)
 optionally restricts detections to specific ``source`` values. Default (omitted)
 is unrestricted — the original behavior of pulling every canonical source.
@@ -69,6 +76,7 @@ from pathlib import Path
 
 import yaml
 
+from footy_track.clip_id import canonical_clip_id
 from footy_track.feature_store.store import FeatureStore
 
 BALL_LABELS = ("ball", "in_play_ball", "out_of_play_ball")
@@ -200,6 +208,28 @@ def _split_clips_three_way(
     return train, val, test
 
 
+def _split_by_clip_identity(
+    game_ids: list[str], val_fraction: float, test_fraction: float
+) -> tuple[set[str], set[str], set[str], dict[str, set[str]]]:
+    """By-clip split over *physical* clips (T-03): every alias ``game_id`` of
+    one clip lands in the same split. Each alias group is represented by its
+    smallest ``game_id``, so with no aliases this is exactly ``_split_clips``
+    / ``_split_clips_three_way`` over the ``game_id``s. Also returns
+    ``{canonical_id: game_ids}`` for the manifest."""
+    aliases_by_id: dict[str, set[str]] = defaultdict(set)
+    for game_id in game_ids:
+        aliases_by_id[canonical_clip_id(game_id)].add(game_id)
+    group_of = {min(g): g for g in aliases_by_id.values()}
+    if test_fraction > 0:
+        splits = _split_clips_three_way(list(group_of), val_fraction, test_fraction)
+    else:
+        splits = (*_split_clips(list(group_of), val_fraction), set())
+    train, val, test = (
+        {game_id for rep in reps for game_id in group_of[rep]} for reps in splits
+    )
+    return train, val, test, aliases_by_id
+
+
 # Fallback source-video resolution (ft-n2o.1): the `eval_data/clips/*.mp4`
 # files are, on this machine, broken symlinks into a macOS-only iCloud path
 # that never synced here. The real source footage lives on
@@ -207,10 +237,10 @@ def _split_clips_three_way(
 # directories with a *different* filename convention than the GT-mark clip
 # stems. This table maps a clip-stem *prefix* -> (subdir, real-file suffix
 # transform) so we can locate the actual video. Prefixes not covered here
-# (e.g. bare ``mancity_seg*``, ``bournemouth_seg*``, ``bournemouth_broadcast_*``)
-# have no matching footage on this machine at all (verified: the relevant
-# match directories are empty or absent) and are reported as unresolved
-# rather than guessed at.
+# (bare ``mancity_seg*``, ``bournemouth_seg*``, ``bournemouth_broadcast_*``)
+# are aliases of clips that do exist on disk (see ``footy_track.clip_id``);
+# they resolve through ``--video-dir`` symlinks (``eval_data/clips``,
+# ``ballcheck_clips``) and are otherwise reported as unresolved.
 _FALLBACK_MATCH_DIRS: tuple[tuple[str, str, str], ...] = (
     # (clip_stem_prefix, data_root_subdir, real_filename_prefix)
     (
@@ -220,7 +250,7 @@ _FALLBACK_MATCH_DIRS: tuple[tuple[str, str, str], ...] = (
     ),
     (
         "mancity_part",
-        "arsenal_mancity/split_video_broadcast_frames",
+        "arsenal_mancity/split_video_10s",  # parts are 10 s cuts, not broadcast segs
         "arsenal_mancity_20250925_part",
     ),
     (
@@ -409,6 +439,7 @@ def _build_manifest(
     counts: dict,
     per_clip: dict,
     unresolved_clips: set[str],
+    aliases_by_id: dict[str, set[str]],
 ) -> dict:
     manifest = {
         "tag": tag,
@@ -422,6 +453,9 @@ def _build_manifest(
         "train": _split_summary(counts, "train"),
         "val": _split_summary(counts, "val"),
         "per_clip": per_clip,
+        "clip_aliases": {
+            cid: sorted(g) for cid, g in sorted(aliases_by_id.items()) if len(g) > 1
+        },
         "unresolved_clips_no_source_video": sorted(unresolved_clips),
     }
     if has_test:
@@ -478,26 +512,23 @@ def export(
             store, sources=sources, include_rejected=include_rejected
         )
     eval_clips = _eval_clip_stems(eval_dir)
-    excluded = eval_clips | extra_exclude
+    # Compare canonical ids, so an eval clip stored under another alias is
+    # still excluded (T-03).
+    excluded_ids = {canonical_clip_id(c) for c in eval_clips | extra_exclude}
 
     # Group rows by clip (game_id), skipping excluded clips.
     rows_by_clip: dict[str, list] = defaultdict(list)
     excluded_boxes = 0
     for r in df.itertuples():
-        if r.game_id in excluded:
+        if canonical_clip_id(r.game_id) in excluded_ids:
             excluded_boxes += 1
             continue
         rows_by_clip[r.game_id].append(r)
 
-    clips = list(rows_by_clip)
     has_test = test_fraction > 0
-    if has_test:
-        train_clips, val_clips, test_clips = _split_clips_three_way(
-            clips, val_fraction, test_fraction
-        )
-    else:
-        train_clips, val_clips = _split_clips(clips, val_fraction)
-        test_clips = set()
+    train_clips, val_clips, test_clips, aliases_by_id = _split_by_clip_identity(
+        list(rows_by_clip), val_fraction, test_fraction
+    )
 
     # Sanity: no clip in more than one split.
     assert not (train_clips & val_clips), "clip leakage between splits"
@@ -551,6 +582,7 @@ def export(
         counts=counts,
         per_clip=per_clip,
         unresolved_clips=unresolved_clips,
+        aliases_by_id=aliases_by_id,
     )
     (out_dir / "manifest.yaml").write_text(yaml.safe_dump(manifest, sort_keys=False))
     return manifest

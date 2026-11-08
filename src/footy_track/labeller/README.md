@@ -756,6 +756,15 @@ reads `<gt dir>/ball_checks/` (`--ball-checks-dir`) into the feature store's
   the card back rather than reporting a saved verdict.
   - Tests: UNTESTED-FRONTEND (`web/ball_check.html`; the server contract is
     LAB-1004..1009)
+- **LAB-1013a** (MUST) `POST /ball_check/save_box` on a candidate appends to
+  the GT sidecar that already exists for that clip under any alias (candidate
+  `arsenal_mancity_20250925_seg010` -> `arsenal_mancity_seg010.jsonl` or
+  `mancity_seg010.jsonl`), never a second raw-named file. Lookup order: exact
+  stem, then the alias spelled like the canonical id, then alphabetical; a clip
+  with no GT keeps its own name. The response's `sidecar` names the file.
+  Identity rules: `footy_track.clip_id` and
+  [feature store §3.1a](../../../docs/design/feature_store.md#31a-clip-identity-canonical-clip-id).
+  - Tests: `test_ball_check.py::test_save_box_on_a_raw_named_candidate_writes_into_the_existing_gt_stem`
 
 ## 12. Confidence sampling — candidates (LAB-11xx)
 
