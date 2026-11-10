@@ -38,7 +38,13 @@
     <p id="overlayNote" class="caveat hidden"></p>
     <div class="clips" id="clips"></div>
     <div class="panel">
-      <video id="player" controls playsinline preload="metadata"></video>
+      <div class="vwrap">
+        <video id="player" controls playsinline preload="metadata"></video>
+        <div id="cutaway" class="cutaway hidden">cutaway &ndash; not tracked</div>
+      </div>
+      <div id="timeline" class="timeline hidden" title="Click to jump"></div>
+      <p id="timelineKey" class="muted hidden"><span class="key tracked"></span> tracked
+        <span class="key skipped"></span> cutaway, not tracked (plain footage)</p>
       <p id="clipMeta" class="muted"></p>
       <p id="clipError" class="err"></p>
       <div id="stats" class="grid"></div>
@@ -52,7 +58,62 @@
 renderHeader("Results");
 const $ = (id) => document.getElementById(id);
 const jobId = location.pathname.split("/").filter(Boolean).pop();
-let job = null, selected = null, shownKey = "", timer = null;
+let job = null, selected = null, shownKey = "", timer = null, picked = false;
+const FULL = "full";
+function fullUrl() { return API + "/jobs/" + jobId + "/full.mp4"; }
+function spanAt(t) {
+  return (job.timeline || []).find((s) => t >= s.start_s && t < s.end_s);
+}
+function updateCutaway() {
+  const s = selected === FULL ? spanAt($("player").currentTime) : null;
+  $("cutaway").classList.toggle("hidden", !(s && s.kind === "skipped"));
+  const total = timelineEnd();
+  $("playhead") && ($("playhead").style.left = total ? ($("player").currentTime / total * 100) + "%" : "0");
+}
+function timelineEnd() {
+  const t = job.timeline || [];
+  return t.length ? t[t.length - 1].end_s : 0;
+}
+function buildTimeline() {
+  const box = $("timeline"), total = timelineEnd();
+  box.replaceChildren();
+  for (const s of job.timeline || []) {
+    const seg = el("div", { class: "seg " + s.kind });
+    seg.style.left = (s.start_s / total * 100) + "%";
+    seg.style.width = ((s.end_s - s.start_s) / total * 100) + "%";
+    seg.title = (s.kind === "tracked" ? "Tracked " + s.clip : "Cutaway, not tracked") +
+      ": " + s.start_s + "s to " + s.end_s + "s";
+    box.append(seg);
+  }
+  box.append(el("div", { id: "playhead", class: "playhead" }));
+}
+$("timeline").addEventListener("click", (e) => {
+  const r = $("timeline").getBoundingClientRect(), total = timelineEnd();
+  if (!total) return;
+  $("player").currentTime = Math.min(Math.max((e.clientX - r.left) / r.width, 0), 1) * total;
+  updateCutaway();
+});
+["timeupdate", "seeking", "seeked"].forEach((ev) => $("player").addEventListener(ev, updateCutaway));
+
+function showFull() {
+  selected = FULL;
+  document.querySelectorAll("#clips button").forEach((b) => b.classList.toggle("sel", b.dataset.id === FULL));
+  const v = $("player");
+  if (v.getAttribute("src") !== fullUrl()) v.setAttribute("src", fullUrl());
+  const spans = job.timeline || [];
+  const nt = spans.filter((s) => s.kind === "tracked").length;
+  $("clipMeta").textContent = "Whole video in order: " + nt + " tracked clip" + (nt === 1 ? "" : "s") +
+    " with boxes, the rest plain footage. No sound.";
+  $("clipError").textContent = "";
+  $("stats").replaceChildren();
+  $("timeline").classList.remove("hidden");
+  $("timelineKey").classList.remove("hidden");
+  buildTimeline();
+  updateCutaway();
+  const dl = $("downloads");
+  dl.replaceChildren(el("a", { class: "btn secondary", href: fullUrl(), download: "full.mp4" }, "full.mp4"));
+}
+
 
 function stat(label, value) {
   return el("div", { class: "stat" }, el("b", {}, String(value)), el("span", { class: "muted" }, label));
@@ -61,6 +122,9 @@ function clipUrl(c, name) { return API + "/jobs/" + jobId + "/clips/" + c.id + "
 
 function showClip(c) {
   selected = c.id;
+  $("timeline").classList.add("hidden");
+  $("timelineKey").classList.add("hidden");
+  $("cutaway").classList.add("hidden");
   document.querySelectorAll("#clips button").forEach((b) => b.classList.toggle("sel", b.dataset.id === c.id));
   const v = $("player");
   const src = c.status === "done" ? clipUrl(c, "overlay.mp4") : "";
@@ -102,17 +166,23 @@ function render() {
   $("delete").classList.toggle("hidden", live);
   const have = job.clips.filter((c) => c.status === "done");
   $("results").classList.toggle("hidden", have.length === 0);
+  const hasFull = !!job.full_video && (job.timeline || []).length > 0;
   if (job.overlay_note) { $("overlayNote").textContent = job.overlay_note; $("overlayNote").classList.remove("hidden"); }
-  const key = job.clips.map((c) => c.id + c.status).join();
+  const key = job.clips.map((c) => c.id + c.status).join() + hasFull;
   if (key !== shownKey) {
     shownKey = key;
     const box = $("clips");
     box.replaceChildren();
+    if (hasFull) box.append(el("button", { "data-id": FULL, onclick: () => { picked = true; showFull(); } }, "Full video"));
     for (const c of job.clips) {
-      const b = el("button", { "data-id": c.id, onclick: () => showClip(c) },
+      const b = el("button", { "data-id": c.id, onclick: () => { picked = true; showClip(c); } },
         c.id + (c.status === "done" ? "" : " (" + c.status + ")"));
       box.append(b);
     }
+  }
+  if (hasFull && (selected === FULL || !picked)) {
+    showFull();
+    return;
   }
   const cur = job.clips.find((c) => c.id === selected) || have[0];
   if (cur && have.length) showClip(cur);

@@ -62,10 +62,15 @@ function stageLine(job) {
   if (job.status === "cancelled") return "Cancelled";
   if (job.status === "failed") return "Failed";
   if (seg.status === "running") return "Cutting the video into shots";
+  if (job.stages.stitch && job.stages.stitch.status === "running") return "Building the full video";
   if (trk.status === "running")
     return "Tracking clip " + Math.min(trk.clips_done + 1, trk.clips_total) +
       " of " + trk.clips_total;
-  if (job.status === "done") return "Done: " + trk.clips_total + " clips";
+  if (job.status === "done") {
+    const st = job.stages.stitch;
+    return "Done: " + trk.clips_total + " clips" +
+      (st && st.status === "failed" ? " (the full video could not be built; clips are fine)" : "");
+  }
   return job.status;
 }
 
@@ -79,6 +84,7 @@ function renderStages(box, job, uploadPct) {
     el("span", { class: "stage " + cls(trk.status) },
       trk.clips_total ? "Tracking " + trk.clips_done + "/" + trk.clips_total : "Tracking"),
   );
+  if (job.stages.stitch) box.append(el("span", { class: "stage " + cls(job.stages.stitch.status) }, "Full video"));
 }
 
 const NAV = [["/infer", "Upload"], ["/infer/jobs", "Jobs"]];

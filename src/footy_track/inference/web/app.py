@@ -227,6 +227,13 @@ def create_router(  # noqa: PLR0915 - one flat list of routes
     async def delete_job(job_id: str) -> None:
         _call(runner.delete, job_id)
 
+    @router.get("/api/jobs/{job_id}/full.mp4", dependencies=auth)
+    async def full_video(job_id: str) -> FileResponse:
+        """The stitched whole video (overlay on tracked clips, plain elsewhere)."""
+        return FileResponse(
+            _call(runner.full_video_file, job_id), media_type="video/mp4"
+        )
+
     @router.get("/api/jobs/{job_id}/clips/{clip_id}/{name}", dependencies=auth)
     async def clip_file(job_id: str, clip_id: str, name: str) -> FileResponse:
         path = _call(runner.clip_file, job_id, clip_id, name)
@@ -314,7 +321,7 @@ def build_from_args(
         runner = JobRunner(
             args.jobs_dir,
             detector_factory=fake_detector_factory,
-            segmenter=make_chunk_segmenter(),
+            segmenter=make_chunk_segmenter(gap_frames=25),
         )
     else:
         from footy_track.detectors.ultralytics import (  # noqa: PLC0415
