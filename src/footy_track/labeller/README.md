@@ -35,6 +35,7 @@ uv run uvicorn footy_track.labeller.server:app --reload
 | `/labeller` | Frame labeller (mark + propagate) |
 | `/object_review` | Tinder-style crop review/correction |
 | `/ball_check` | Mobile ball verification (swipe yes/no) |
+| `/calibration` | Manual pitch calibration (frame <-> pitch point pairs, §16) |
 | `/ingest` | Clip ingestion (page currently broken — OPEN-1) |
 
 Test suite: `tests/labeller/` (run `uv run pytest tests/labeller/`). Test
@@ -875,6 +876,82 @@ updating/adding the corresponding LAB requirement + tests.
   machine "fixes" them; needs per-machine config + regeneration script.
 - GPU propagation loop (`ft-8vx` epic): paused by request.
 
+## 16. Pitch calibration — manual camera -> pitch (LAB-12xx)
+
+Milestone M0 of `docs/design/calibration.md`: an operator pairs points on a
+video frame with named pitch keypoints (or free pitch metres), the server fits a
+homography and renders the full pitch model over the frame and as a bird's-eye
+warp so the fit can be judged by eye. Saved pairs are *calibration GT*, the
+yardstick for the automatic calibrator (M1+).
+
+Backend `calibration.py`, page `web/calibration.html` (route `/calibration`,
+Konva; overlays are siblings of the stage containers, never children), maths in
+`footy_track/calibration/` (see its README for the coordinate conventions).
+`H` maps **normalised image coords to pitch metres** (origin centre spot, `+x`
+long axis, `+y` far touchline), the form `PitchProjector` consumes.
+Calibration GT lives in `<gt dir>/calibration_gt/<canonical clip id>.json`
+(`{clip, frames: {"<frame_index>": record}}`, record = `{frame_index,
+correspondences: [{image, pitch_id, pitch_xy}], H, H_convention, pitch_dims,
+image_size, method, inliers, mean_err_m, err_px, ts}`). It is a separate file
+tree: the ball GT sidecars and the feature store are not touched.
+
+- **LAB-1201** (MUST) `GET /calibration` serves the page with `Cache-Control:
+  no-store`, and the hub (`/main`) links to it.
+  - Tests: `test_calibration.py::test_pages_served`
+- **LAB-1202** (MUST) `GET /calibration/api/clips` lists the clips under
+  `_CLIPS_DIR` as `{name, n_gt}` (`n_gt` = frames with calibration GT);
+  `GET /calibration/api/clips/{clip}/meta` returns `{frames, fps, width,
+  height, gt_frames}`; `GET /calibration/api/frame/{clip}/{idx}.jpg` returns the
+  frame JPEG. Unknown clip or unreadable frame -> HTTP 404.
+  - Tests: `test_calibration.py::test_clips_meta_and_frame`
+- **LAB-1203** (MUST) `GET /calibration/api/pitch_model?length=&width=` returns
+  the pitch model for those dims (default 105 x 68): sampled polylines for every
+  regulation line, circle and penalty arc, the named keypoints (stable ids,
+  e.g. `L_PEN_BOX_TOP_OUTER`), spots, and the warp scale/margin.
+  - Tests: `test_calibration.py::test_pitch_model_route`,
+    `tests/calibration/test_pitch_model.py`
+- **LAB-1204** (MUST) `POST /calibration/api/fit` takes `{correspondences:
+  [{image: [u, v], pitch_id | pitch_xy}], pitch_dims, method: dlt|ransac,
+  image_size?}` and returns `{H, H_flat, inliers, err_m, err_px, mean_err_m,
+  overlay, correspondences}`. A `pitch_id` is resolved to metres from the given
+  dims. `overlay` is every pitch line projected through `H^-1` into normalised
+  image coords as runs of points; points behind the camera are dropped so lines
+  never wrap. Fewer than 4 points, an unknown id, a degenerate configuration or
+  bad dims -> HTTP 400 `{ok: false, error}`.
+  - Tests: `test_calibration.py::test_fit_returns_h_errors_and_overlay`,
+    `::test_fit_accepts_free_points_and_ransac`,
+    `::test_fit_rejects_bad_input_with_4xx`, `tests/calibration/test_geometry.py`
+- **LAB-1205** (MUST) `POST /calibration/api/warp` takes `{clip, frame_index,
+  H, pitch_dims?, px_per_m?}` and returns a JPEG of the frame warped to a
+  top-down raster covering `(L + 2m) x (W + 2m)` metres (`m` =
+  `WARP_MARGIN_M`), `+x` right, `+y` up. Bad `H` -> 400; unknown clip/frame -> 404.
+  - Tests: `test_calibration.py::test_warp_returns_raster_of_expected_size`,
+    `test_geometry.py::test_warp_puts_pitch_features_where_the_model_says`
+- **LAB-1206** (MUST) `PUT /calibration/api/gt/{clip}/{idx}` re-fits `H` from
+  the posted correspondences (so stored `H` and points cannot disagree) and
+  replaces that frame's record in `calibration_gt/<canonical id>.json`, written
+  atomically. A rejected fit leaves the stored record untouched.
+  `GET .../gt/{clip}/{idx}` returns it (404 if absent), `GET .../gt/{clip}`
+  summarises all frames, `DELETE .../gt/{clip}/{idx}` removes one.
+  - Tests: `test_calibration.py::test_gt_save_load_round_trip`,
+    `::test_gt_save_rejects_too_few_points_and_keeps_existing`
+- **LAB-1207** (MUST) The GT file is keyed by `canonical_clip_id`, so every
+  alias of a clip reads and writes the same file; nothing else under the GT dir
+  is created or modified.
+  - Tests: `test_calibration.py::test_gt_file_location_is_canonical_and_alias_shared`
+- **LAB-1208** (MUST) UI: clip picker, frame slider/number input, chips for
+  frames of this clip that have GT; frame on the left (click adds an image point,
+  points draggable), pitch diagram on the right (click snaps to the nearest named
+  keypoint and shows its name; shift+click places a free point); points pair up
+  in order with numbered markers on both sides and a list with per-pair error
+  and a delete button; editable pitch dims; Save/Load/Delete GT.
+  - Tests: UNTESTED-FRONTEND (`web/calibration.html`; server contract LAB-1202..1207)
+- **LAB-1209** (MUST) UI: with >= 4 complete pairs the page auto-fits, overlays
+  the reprojected pitch lines on the frame (toggle), colours each point by
+  reprojection error (green < 3 px, amber < 8 px, red above), and can blend the
+  bird's-eye warp over the pitch diagram (toggle, opacity).
+  - Tests: UNTESTED-FRONTEND
+
 ## 15. Traceability summary
 
 | Section | Requirements | Tested | UNTESTED | UNTESTED-FRONTEND |
@@ -891,7 +968,8 @@ updating/adding the corresponding LAB requirement + tests.
 | 10. Review UI (LAB-9xx) | 7 | 0 | 0 | 7 |
 | 11. Ball Check (LAB-10xx) | 12 | 11 | 0 | 1 |
 | 12. Confidence sampling (LAB-11xx) | 5 | 5 | 0 | 0 |
-| **Total** | **101** | **71** | **8** | **22** |
+| 16. Pitch calibration (LAB-12xx) | 9 | 7 | 0 | 2 |
+| **Total** | **110** | **78** | **8** | **24** |
 
 Open items: 4 (OPEN-1..4) + 1 fixed on main (undo provenance, `95b60cc`).
 Test suite: 138 tests in `tests/labeller/` (all green), plus the

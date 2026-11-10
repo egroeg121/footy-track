@@ -35,6 +35,7 @@ from fastapi.staticfiles import StaticFiles  # noqa: E402
 
 from footy_track.ball_eval.metrics import bbox_iou  # noqa: E402
 from footy_track.labeller.ball_check import router as ball_check_router  # noqa: E402
+from footy_track.labeller.calibration import router as calibration_router  # noqa: E402
 from footy_track.labeller.constants import (  # noqa: E402
     BALL_LABELS,
     PLAYER_LABELS,
@@ -153,6 +154,14 @@ async def ball_check_page() -> HTMLResponse:
     # because the old route still answers 200.
     return HTMLResponse(
         (_STATIC_DIR / "ball_check.html").read_text(),
+        headers={"Cache-Control": "no-store, max-age=0"},
+    )
+
+
+@app.get("/calibration", response_class=HTMLResponse)
+async def calibration_page() -> HTMLResponse:
+    return HTMLResponse(
+        (_STATIC_DIR / "calibration.html").read_text(),
         headers={"Cache-Control": "no-store, max-age=0"},
     )
 
@@ -589,6 +598,7 @@ async def ws(websocket: WebSocket) -> None:
 
 app.include_router(review_router)
 app.include_router(ball_check_router)
+app.include_router(calibration_router)
 app.include_router(ingest_router)
 
 # Mount static assets (JS/CSS) if any beyond index.html.
