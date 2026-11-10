@@ -54,5 +54,20 @@ td, th { text-align:left; padding:6px 4px; border-bottom:1px solid var(--border)
 .stat b { display:block; font-size:20px; }
 input[type=number] { width:100px; padding:8px; border-radius:8px; border:1px solid var(--border);
                      background:var(--bg); color:var(--ink); font-size:15px; }
+.vwrap { position:relative; }
+.cutaway { position:absolute; top:10px; left:10px; background:rgba(0,0,0,.7);
+           color:var(--amber); border:1px solid var(--amber); border-radius:8px;
+           padding:3px 10px; font-size:13px; pointer-events:none; }
+.timeline { position:relative; height:22px; margin:10px 0 4px; background:#243041;
+            border-radius:6px; overflow:hidden; cursor:pointer; }
+.timeline .seg { position:absolute; top:0; bottom:0; }
+.timeline .seg.tracked { background:var(--accent); }
+.timeline .seg.skipped { background:#4a3f1c; }
+.timeline .playhead { position:absolute; top:0; bottom:0; width:2px; background:#fff;
+                      pointer-events:none; }
+.key { display:inline-block; width:12px; height:12px; border-radius:3px;
+       vertical-align:-1px; margin-left:8px; }
+.key.tracked { background:var(--accent); }
+.key.skipped { background:#4a3f1c; }
 .hidden { display:none !important; }
 @media (max-width:600px) { main { padding:10px; } td.hide-m, th.hide-m { display:none; } }

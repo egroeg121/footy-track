@@ -13,6 +13,7 @@ Configuration is environment variables with CLI flags that override them:
 ``FOOTY_INFERENCE_DEVICE``          cuda / mps / cpu (default: auto)
 ``FOOTY_INFERENCE_MAX_UPLOAD_MB``   upload size limit, default 8192
 ``FOOTY_INFERENCE_TOKEN``           optional shared token for the API and downloads
+``FOOTY_INFERENCE_DEMO_CLIP``       optional sample video behind the "Try a demo clip" button
 ``FOOTY_INFERENCE_FAKE``            ``1`` = DEV ONLY fake detector and fixed-length cutter
 """
 
@@ -22,6 +23,7 @@ import argparse
 import hmac
 import os
 import re
+import shutil
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Query, Request
@@ -38,6 +40,7 @@ from footy_track.inference.jobs import (
     fake_detector_factory,
     make_chunk_segmenter,
     make_real_detector_factory,
+    probe_video,
 )
 
 WEB_DIR = Path(__file__).parent
@@ -72,12 +75,53 @@ def _clean_name(name: str) -> str:
     return re.sub(r"[\x00-\x1f\x7f]", "", base).strip()[:120] or "video"
 
 
-def create_router(
+class _Demo:
+    """The optional demo clip. Only its display name and duration leave the server."""
+
+    def __init__(self, path: Path | None) -> None:
+        self.path = path
+        self._info: dict | None = None
+
+    def available(self) -> bool:
+        return self.path is not None and self.path.is_file()
+
+    def config(self) -> dict:
+        if not self.available():
+            return {"demo": False}
+        if self._info is None:  # probe once
+            try:
+                duration = probe_video(self.path)["duration_s"]
+            except BadVideo:
+                duration = None
+            self._info = {
+                "demo_name": _clean_name(self.path.name),
+                "demo_duration_s": duration,
+            }
+        return {"demo": True, **self._info}
+
+    def start(self, runner: JobRunner, options: dict) -> dict:
+        """Copy the clip into a new job and queue it, like an upload would."""
+        job_id, dest = runner.allocate(
+            _clean_name(self.path.name), _safe_ext(self.path.name), options
+        )
+        try:
+            shutil.copyfile(self.path, dest)
+            return runner.submit(job_id)
+        except BadVideo as exc:
+            runner.abort_upload(job_id)
+            raise HTTPException(400, str(exc)) from exc
+        except BaseException:
+            runner.abort_upload(job_id)
+            raise
+
+
+def create_router(  # noqa: PLR0915 - one flat list of routes
     runner: JobRunner,
     *,
     max_upload_bytes: int,
     token: str | None = None,
     fake: bool = False,
+    demo_clip: Path | None = None,
 ) -> APIRouter:
     router = APIRouter(prefix="/infer")
 
@@ -86,6 +130,7 @@ def create_router(
             raise HTTPException(401, "A valid token is required.")
 
     auth = [Depends(require_token)]
+    demo = _Demo(demo_clip)
 
     def _page(name: str) -> HTMLResponse:
         return HTMLResponse((WEB_DIR / name).read_text())
@@ -108,6 +153,7 @@ def create_router(
             "max_upload_mb": max_upload_bytes // (1024 * 1024),
             "extensions": list(ALLOWED_EXTENSIONS),
             "fake": fake,
+            **demo.config(),
         }
 
     @router.post("/api/jobs", dependencies=auth, status_code=201)
@@ -145,6 +191,16 @@ def create_router(
             runner.abort_upload(job_id)
             raise
 
+    @router.post("/api/demo", dependencies=auth, status_code=201)
+    async def create_demo_job(
+        max_frames: int | None = Query(None, ge=1, le=10_000_000),
+        stride: int = Query(1, ge=1, le=1000),
+    ) -> dict:
+        """Start a normal job from the configured demo clip (no upload)."""
+        if not demo.available():
+            raise HTTPException(404, "No demo clip is available on this server.")
+        return demo.start(runner, {"max_frames": max_frames, "stride": stride})
+
     @router.get("/api/jobs", dependencies=auth)
     async def list_jobs() -> list[dict]:
         return runner.list()
@@ -171,6 +227,13 @@ def create_router(
     async def delete_job(job_id: str) -> None:
         _call(runner.delete, job_id)
 
+    @router.get("/api/jobs/{job_id}/full.mp4", dependencies=auth)
+    async def full_video(job_id: str) -> FileResponse:
+        """The stitched whole video (overlay on tracked clips, plain elsewhere)."""
+        return FileResponse(
+            _call(runner.full_video_file, job_id), media_type="video/mp4"
+        )
+
     @router.get("/api/jobs/{job_id}/clips/{clip_id}/{name}", dependencies=auth)
     async def clip_file(job_id: str, clip_id: str, name: str) -> FileResponse:
         path = _call(runner.clip_file, job_id, clip_id, name)
@@ -194,10 +257,17 @@ def create_app(
     max_upload_bytes: int = DEFAULT_MAX_UPLOAD_MB * 1024 * 1024,
     token: str | None = None,
     fake: bool = False,
+    demo_clip: Path | None = None,
 ) -> FastAPI:
     app = FastAPI(title="Footy Track Inference")
     app.include_router(
-        create_router(runner, max_upload_bytes=max_upload_bytes, token=token, fake=fake)
+        create_router(
+            runner,
+            max_upload_bytes=max_upload_bytes,
+            token=token,
+            fake=fake,
+            demo_clip=demo_clip,
+        )
     )
     app.mount("/infer/static", StaticFiles(directory=str(WEB_DIR)), name="infer-static")
     app.state.runner = runner
@@ -231,6 +301,14 @@ def build_from_args(
         default=int(env("FOOTY_INFERENCE_MAX_UPLOAD_MB", DEFAULT_MAX_UPLOAD_MB)),
     )
     ap.add_argument(
+        "--demo-clip",
+        type=Path,
+        default=Path(env("FOOTY_INFERENCE_DEMO_CLIP"))
+        if env("FOOTY_INFERENCE_DEMO_CLIP")
+        else None,
+        help="sample video offered as a one-click demo on the upload page",
+    )
+    ap.add_argument(
         "--fake",
         action="store_true",
         default=env("FOOTY_INFERENCE_FAKE") == "1",
@@ -243,7 +321,7 @@ def build_from_args(
         runner = JobRunner(
             args.jobs_dir,
             detector_factory=fake_detector_factory,
-            segmenter=make_chunk_segmenter(),
+            segmenter=make_chunk_segmenter(gap_frames=25),
         )
     else:
         from footy_track.detectors.ultralytics import (  # noqa: PLC0415
@@ -266,6 +344,7 @@ def build_from_args(
         max_upload_bytes=args.max_upload_mb * 1024 * 1024,
         token=token,
         fake=args.fake,
+        demo_clip=args.demo_clip,
     )
     return app, args
 
@@ -274,6 +353,8 @@ def main(argv: list[str] | None = None) -> int:
     import uvicorn  # noqa: PLC0415
 
     app, args = build_from_args(argv)
+    if args.demo_clip and not args.demo_clip.is_file():
+        print("WARNING: demo clip not found; the demo button will be hidden.")
     if args.host not in ("127.0.0.1", "localhost", "::1"):
         print(
             "WARNING: listening beyond localhost. Uploads run on this machine's GPU; "

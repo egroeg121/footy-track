@@ -7,6 +7,10 @@ time (there is one GPU) through these stages:
    runs ``scripts/split_broadcast_segments.py`` in a subprocess (it is a CLI that
    loads the broadcast classifier), then reads the ``segments.json`` it writes.
 2. **track**: ``run_inference`` on every clip, with an overlay video.
+3. **stitch**: build ``full.mp4``, the whole upload in order, with the overlay on
+   tracked clips and plain footage for everything the cutter dropped
+   (``inference/stitch.py``). The timeline of tracked and skipped spans is kept in
+   ``job.json``. A stitch failure does not fail the job.
 
 Everything lives under ``<jobs_dir>/<job_id>/`` and state is a ``job.json`` that
 is rewritten atomically, so finished jobs survive a restart::
@@ -15,6 +19,7 @@ is rewritten atomically, so finished jobs survive a restart::
     <job_id>/input.<ext>       the upload (extension from a fixed allow-list)
     <job_id>/clips/clip.mp4... cut clips, renamed to c000.mp4, c001.mp4, ...
     <job_id>/out/c000/         detections/tracklets/ball_track/summary/overlay
+    <job_id>/full.mp4          stitched whole video (when the stitch worked)
 
 Ids and file names on disk are generated here; the user's file name is kept only
 as a display name inside ``job.json``.
@@ -45,6 +50,12 @@ from footy_track.inference.pipeline import (
     InferenceConfig,
     run_inference,
     select_device,
+)
+from footy_track.inference.stitch import (
+    StitchCancelled,
+    compute_timeline,
+    fps_fraction,
+    stitch_full_video,
 )
 from footy_track.schema import FrameDetections
 
@@ -199,8 +210,11 @@ def _log_tail(path: Path, n: int = 4) -> list[str]:
     return [ln for ln in lines if ln][-n:]
 
 
-def make_chunk_segmenter(chunk_frames: int = 100) -> Segmenter:
+def make_chunk_segmenter(chunk_frames: int = 100, gap_frames: int = 0) -> Segmenter:
     """DEV ONLY: cut into fixed-length chunks with OpenCV, no classifier or ffmpeg.
+
+    With ``gap_frames`` > 0, that many frames after every chunk are left out, like
+    the cutaways the real cutter drops, so the stitched video has gaps to fill.
 
     Used with the fake detector so the whole flow runs on a machine that has
     neither the classifier weights nor a GPU. It does not find broadcast shots.
@@ -241,6 +255,10 @@ def make_chunk_segmenter(chunk_frames: int = 100) -> Segmenter:
                         "frame_count": count,
                     }
                 )
+                for _ in range(gap_frames if ok else 0):  # leave a gap
+                    if not cap.read()[0]:
+                        break
+                    index += 1
             if not ok:
                 break
         cap.release()
@@ -429,6 +447,14 @@ class JobRunner:
             raise JobNotFound(name)
         return path
 
+    def full_video_file(self, job_id: str) -> Path:
+        """The stitched ``full.mp4`` of a job, or ``JobNotFound``."""
+        self.get(job_id)
+        path = self.job_dir(job_id) / "full.mp4"
+        if not path.is_file():
+            raise JobNotFound("full.mp4")
+        return path
+
     # -- persistence ------------------------------------------------------
     def _load_existing(self) -> None:
         for d in sorted(self.jobs_dir.iterdir()):
@@ -447,6 +473,8 @@ class JobRunner:
                 job["error"] = "The server restarted while this job was running."
                 job["finished"] = _now()
                 self._mark_unfinished(job)
+            job.setdefault("timeline", None)
+            job.setdefault("full_video", None)
             self._jobs[job["id"]] = job
             if job["status"] == QUEUED:
                 self._queue.append(job["id"])
@@ -499,8 +527,11 @@ class JobRunner:
                         "clips_done": 0,
                         "clips_total": 0,
                     },
+                    "stitch": {"status": QUEUED, "seconds": None},
                 },
                 "clips": [],
+                "timeline": None,
+                "full_video": None,
                 "overlay_note": None,
             }
             self._jobs[job_id] = job
@@ -707,6 +738,8 @@ class JobRunner:
                     ),
                 )
             ok = sum(c["status"] == DONE for c in clips)
+            if ok:
+                self._stitch(job, video, job_dir)
 
             def finish(j: dict) -> None:
                 trk.update(
@@ -730,6 +763,54 @@ class JobRunner:
             )
         except Exception as exc:  # noqa: BLE001
             self._fail(job, str(exc))
+
+    def _stitch(self, job: dict, video: Path, job_dir: Path) -> None:
+        """Stage 3. Never raises except ``Cancelled``: per-clip results stay usable."""
+        stitch = job["stages"]["stitch"]
+        t0 = time.time()
+        try:
+            info = job["video"]
+            fps = float(fps_fraction(info["fps"] or 25.0))  # job.json rounds fps
+            stride = int(job["options"].get("stride") or 1)
+            spans = compute_timeline(job["clips"], int(info["frames"]), fps, stride)
+            self._update(
+                job,
+                lambda j: (
+                    j.update(timeline=spans),
+                    stitch.update(
+                        status=RUNNING, pieces_done=0, pieces_total=len(spans)
+                    ),
+                ),
+            )
+
+            def progress(done: int, total: int) -> None:
+                stitch["pieces_done"], stitch["pieces_total"] = done, total
+                self._update(job, lambda _j: None)
+
+            stitch_full_video(video, job_dir, spans, fps, self._cancel.is_set, progress)
+            total = spans[-1]["end_frame"] if spans else 0
+            self._update(
+                job,
+                lambda j: (
+                    stitch.update(status=DONE, seconds=round(time.time() - t0, 2)),
+                    j.update(full_video={"frames": total, "fps": fps, "audio": False}),
+                ),
+            )
+        except StitchCancelled:
+            raise Cancelled from None
+        except Exception as exc:  # noqa: BLE001 - the clips are still good
+            logger.exception("stitching job %s failed", job["id"])
+            (job_dir / "full.tmp.mp4").unlink(missing_ok=True)
+            message = f"{type(exc).__name__}: {exc}"[:300]
+            self._update(
+                job,
+                lambda j: (
+                    stitch.update(
+                        status=FAILED, error=message, seconds=round(time.time() - t0, 2)
+                    ),
+                    j.update(full_video=None),
+                ),
+            )
 
     @staticmethod
     def _planned_frames(frame_count: int, options: dict) -> int:

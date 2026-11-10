@@ -185,3 +185,42 @@ def test_fake_detector_stays_in_frame_on_long_clips():
     frames = [np.zeros((9, 16, 3), np.uint8)] * 600
     for fd in FakeDetector().predict_frames(frames):
         assert all(0 <= d.x <= 1 for d in fd.detections)
+
+
+def test_demo_disabled_by_default(client):
+    assert client.get("/infer/api/config").json()["demo"] is False
+    assert client.post("/infer/api/demo").status_code == 404
+
+
+def test_demo_creates_job_without_leaking_path(runner, video_path):
+    c = TestClient(create_app(runner, demo_clip=video_path))
+    cfg = c.get("/infer/api/config").json()
+    assert cfg["demo"] is True and cfg["demo_name"] == "match.mp4"
+    assert str(video_path.parent) not in str(cfg)
+    res = c.post("/infer/api/demo?max_frames=20")
+    assert res.status_code == 201
+    assert str(video_path.parent) not in res.text
+    job = wait_done(c, res.json()["id"])
+    assert job["status"] == "done", job["error"]
+    assert job["options"]["max_frames"] == 20
+    assert video_path.exists()  # copied, not moved
+
+
+def test_demo_requires_token(runner, video_path):
+    c = TestClient(create_app(runner, token="s3cret", demo_clip=video_path))
+    assert c.post("/infer/api/demo").status_code == 401
+    res = c.post("/infer/api/demo", headers={"Authorization": "Bearer s3cret"})
+    assert res.status_code == 201
+
+
+def test_demo_missing_file_hidden(runner, tmp_path):
+    c = TestClient(create_app(runner, demo_clip=tmp_path / "gone.mp4"))
+    assert c.get("/infer/api/config").json()["demo"] is False
+    assert c.post("/infer/api/demo").status_code == 404
+    assert c.get("/infer/api/jobs").json() == []
+
+
+def test_demo_clip_env_and_flag(tmp_path, video_path, monkeypatch):
+    monkeypatch.setenv("FOOTY_INFERENCE_DEMO_CLIP", str(video_path))
+    _, args = build_from_args(["--fake", "--jobs-dir", str(tmp_path / "j")])
+    assert args.demo_clip == video_path

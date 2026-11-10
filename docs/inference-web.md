@@ -2,7 +2,9 @@
 
 Upload a match video in the browser. The app cuts it into broadcast shots, tracks
 the players, referees and ball on every shot, and shows each result as an overlay
-video with a short summary. It is a front end for the existing pipeline: the
+video with a short summary. It also stitches the whole upload back together into
+one "Full video": boxes on the broadcast shots, plain footage for everything the
+cutter dropped, in the original order. It is a front end for the existing pipeline: the
 cutting is `scripts/split_broadcast_segments.py` and the tracking is
 `run_inference` (see [Inference pipeline](inference.md)). Nothing about the
 tracking itself is new.
@@ -22,13 +24,68 @@ flowchart LR
     Q --> C["Cut into shots<br/>split_broadcast_segments"]
     C --> T["Per clip: run_inference<br/>with overlay"]
     T --> E["Re-encode overlay<br/>to H.264"]
-    E --> R[Results page]
+    E --> L["Work out the timeline<br/>tracked clips + gaps"]
+    L --> F["Stitch full.mp4<br/>overlay clips + plain gaps"]
+    F --> R[Results page]
+    F -. "stitch fails: job still done,<br/>per-clip results kept" .-> R
 ```
 
 Jobs run one at a time on a single worker thread, because there is one GPU. A
 second upload waits in the queue ("Waiting for the GPU"). The detector is loaded
 once and reused for every clip. A clip that fails (for example out of GPU memory)
 is marked failed and the other clips still finish.
+
+## The full video
+
+The cutter keeps only broadcast shots of at least a couple of seconds. Replays,
+crowd shots and short stretches are thrown away, so the clips alone do not add up
+to the match. To watch the whole upload in order, the app builds one `full.mp4`
+per job once tracking is finished:
+
+- every tracked clip is shown as its overlay (boxes, ids, ball trail);
+- every stretch the clips do not cover (before the first clip, between clips,
+  after the last) is copied from the original upload as plain footage, with no
+  boxes;
+- a clip that failed to track, and the part of a clip that was not tracked
+  because of the quick-run fields, also show as plain footage.
+
+No detection or tracking runs on the plain stretches, so they cost only an
+encode. The results page opens on the "Full video" view by default. Under the
+player is a bar showing tracked (blue) and cutaway (dark) stretches; click it to
+jump, and a small "cutaway - not tracked" label appears while a plain stretch is
+playing. The per-clip views and downloads are unchanged, and `full.mp4` has its
+own download button.
+
+Details that matter:
+
+- **Frame exact.** Cuts are made in frame numbers, not rounded seconds, so
+  `full.mp4` has the same number of frames as the upload and every frame is in
+  its original place. A clip starts at its start time times the frame rate, and
+  the plain stretches are what is left between the clips.
+- **No sound.** Audio is dropped. The overlay clips never had any, and keeping
+  the original track in step with a re-cut video is not worth the risk of drift.
+- **Re-encoded.** Every piece is encoded again with the same settings (H.264,
+  yuv420p, no B-frames, even width and height, the upload's frame rate) so the
+  pieces join cleanly. Tracked clips are therefore encoded twice (once for the
+  overlay, once here) and are slightly softer than the per-clip overlay download.
+  The size is similar to the upload for the plain parts. `ffmpeg` 5.1 or newer
+  is needed.
+- **Timeline.** `job.json` (and `GET /infer/api/jobs/<id>`) has a `timeline`: a
+  list of spans in time order with `start_s`, `end_s`, `start_frame`,
+  `end_frame`, `kind` (`tracked` or `skipped`) and `clip` (the clip id for a
+  tracked span, otherwise null). The spans cover the whole video without gaps.
+  Odd frame rates such as 29.97 are handled exactly.
+- **Failure is not fatal.** If stitching fails (no `ffmpeg`, disk full, anything
+  else) the job is still "done", the `stitch` stage is marked failed with a
+  message, the timeline is kept and all per-clip results work. The results page
+  then simply has no "Full video" button. Cancelling the job also stops a stitch
+  in progress.
+- `GET /infer/api/jobs/<id>/full.mp4` downloads it, with the same token rules as
+  every other download; it answers 404 when there is none (older jobs, failed
+  stitch).
+- The cutter decides where shots start and end, so a boxed stretch can begin or
+  end a few frames away from where a human would cut. The stitch only follows
+  what the cutter recorded.
 
 ## Run it on the GPU machine
 
@@ -66,8 +123,9 @@ Notes that matter on the WSL box:
 ### Try it without a GPU
 
 `make infer-web-fake` (or `FOOTY_INFERENCE_FAKE=1`) swaps in a fake detector and a
-cutter that just makes fixed 100-frame chunks, so the whole flow can be tried
-with no weights. **Development only**: the boxes it draws are invented and the
+cutter that just makes fixed 100-frame chunks, leaving a 25-frame gap after each
+one (so there are cutaways to stitch), so the whole flow can be tried with no
+weights. **Development only**: the boxes it draws are invented and the
 chunks are not broadcast shots. The upload page shows a banner while it is on.
 
 ## Using it
@@ -76,7 +134,7 @@ chunks are not broadcast shots. The upload page shows a banner while it is on.
   "tracking clip i of n". Optional quick-run fields cap the frames per clip or
   take every Nth frame.
 - **Jobs** (`/infer/jobs`): all jobs, with status and delete.
-- **Results** (`/infer/jobs/<id>`): pick a clip, watch the overlay, read the
+- **Results** (`/infer/jobs/<id>`): watch the "Full video", or pick a clip and watch its overlay, read the
   summary (frames, fps, player and referee tracklets, ball detected, interpolated
   and none), and download the overlay, the cut clip, `detections.jsonl`,
   `tracklets.jsonl`, `ball_track.jsonl` and `summary.json`. Formats are in
@@ -89,6 +147,30 @@ curl --data-binary @match.mp4 "http://host:8080/infer/api/jobs?name=match.mp4&ma
 curl http://host:8080/infer/api/jobs/<id>
 ```
 
+### Demo clip
+
+To let a visitor see the pipeline in one click, point the app at a sample video
+kept on the server (not in git):
+
+```bash
+FOOTY_INFERENCE_DEMO_CLIP=/path/to/sample.mp4 make infer-web
+# or: python -m footy_track.inference.web --demo-clip /path/to/sample.mp4
+```
+
+The upload page then shows a "Try a demo clip" button. It starts a normal job
+from a copy of that file (cut, track, overlay), with no upload, and honours the
+quick-run fields. If the variable is unset or the file is missing, the button is
+hidden. The server path is never sent to the browser; `GET /infer/api/config`
+reports only `demo` (true or false) and, when true, `demo_name` and
+`demo_duration_s`. From a script:
+
+```bash
+curl -X POST "http://host:8080/infer/api/demo?max_frames=200"
+```
+
+It needs the same token as the rest of the API, and answers 404 when no demo
+clip is available.
+
 ## Settings
 
 Environment variables, with command-line flags that win over them.
@@ -100,13 +182,14 @@ Environment variables, with command-line flags that win over them.
 | `FOOTY_INFERENCE_DEVICE` | `--device` | auto (cuda, mps, cpu) | Detector device |
 | `FOOTY_INFERENCE_MAX_UPLOAD_MB` | `--max-upload-mb` | 8192 | Upload size limit |
 | `FOOTY_INFERENCE_TOKEN` | none | unset | Optional shared token, see below |
+| `FOOTY_INFERENCE_DEMO_CLIP` | `--demo-clip` | unset | Sample video for the demo button |
 | `FOOTY_INFERENCE_FAKE` | `--fake` | off | Dev-only fake detector and cutter |
 
 ## What is stored
 
 Each job is a folder under the jobs directory with a `job.json` (status of each
-stage and clip, counts, timings, errors), the upload, the cut clips and one
-output folder per clip. Folder and file names are generated; the uploaded file
+stage and clip, the timeline, counts, timings, errors), the upload, the cut clips,
+one output folder per clip and `full.mp4`. Folder and file names are generated; the uploaded file
 name is only shown on the page. The state file is rewritten safely, so finished
 jobs are still there after a restart. A job that was running during a restart is
 marked failed ("the server restarted"), and half-finished uploads are removed.
@@ -133,6 +216,10 @@ Deleting a job removes its folder. A running job must be cancelled first.
 - **Speed**: RT-DETR at 1280 px needs a GPU. A full match has many clips and takes
   a while; use the quick-run fields for a preview. Cancelling stops at the next
   batch of frames.
+- **Full video size and time**: encoding every plain stretch and every tracked
+  clip again is CPU work: about 5 seconds for a 40 second 1080p video on the
+  GPU machine, so expect on the order of ten minutes for a full match, and disk
+  space about the size of the upload. It runs after tracking, so per-clip results appear first.
 - One job at a time. Progress on a clip is shown per clip, not per frame.
 - Not run end to end with real weights on a GPU as part of writing this; see the
   pull request for what was and was not tested.

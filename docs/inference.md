@@ -27,7 +27,8 @@ flowchart LR
 ```
 
 To use the pipeline from a browser (upload a whole match, get it cut into shots
-and tracked per clip), see [Inference web app](inference-web.md).
+and tracked per clip, plus one stitched full video with boxes only on the
+broadcast shots), see [Inference web app](inference-web.md).
 
 ## Outputs
 

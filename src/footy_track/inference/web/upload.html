@@ -19,6 +19,10 @@
     <p class="muted" id="limits"></p>
     <input id="file" type="file" accept="video/*,.ts,.mkv" class="hidden" />
   </div>
+  <div id="demoBox" class="panel hidden" style="margin-top:12px">
+    <p><strong>No video handy?</strong> <span class="muted" id="demoText"></span></p>
+    <button id="demoBtn" class="secondary">Try a demo clip</button>
+  </div>
   <details class="panel" style="margin-top:12px">
     <summary>Quick-run options (optional)</summary>
     <p class="muted">Leave empty to track every frame of every clip. Use these to
@@ -50,6 +54,12 @@ let currentJob = null, timer = null;
 api("/config").then((c) => {
   document.getElementById("limits").textContent =
     "Up to " + c.max_upload_mb + " MB. Formats: " + c.extensions.join(" ");
+  if (c.demo) {
+    $("demoText").textContent = "Run the whole pipeline (cut, track, overlay) on a sample clip" +
+      (c.demo_duration_s ? " (about " + fmtSecs(c.demo_duration_s) + " long)" : "") +
+      ". No upload needed. The quick-run options below apply.";
+    $("demoBox").classList.remove("hidden");
+  }
   if (c.fake) document.getElementById("fakeBanner").classList.remove("hidden");
 }).catch(() => {});
 
@@ -63,14 +73,39 @@ fileInput.addEventListener("change", () => { if (fileInput.files[0]) start(fileI
 const $ = (id) => document.getElementById(id);
 const blankJob = { status: "queued", stages: { segment: { status: "queued" }, track: { status: "queued", clips_done: 0, clips_total: 0 } } };
 
+function queryOptions(q) {
+  if ($("maxFrames").value) q.set("max_frames", $("maxFrames").value);
+  if ($("stride").value && $("stride").value !== "1") q.set("stride", $("stride").value);
+  return q;
+}
+
+$("demoBtn").addEventListener("click", async () => {
+  $("demoBtn").disabled = true;
+  $("progress").classList.remove("hidden");
+  $("fileName").firstChild.textContent = "Demo clip";
+  $("error").textContent = "";
+  $("open").classList.add("hidden");
+  try {
+    const job = await api("/demo?" + queryOptions(new URLSearchParams()), { method: "POST" });
+    currentJob = job.id;
+    $("open").href = "/infer/jobs/" + currentJob;
+    $("cancel").classList.remove("hidden");
+    renderStages($("stages"), job, 100);
+    poll();
+  } catch (e) {
+    $("error").textContent = "Could not start the demo: " + e.message;
+  } finally {
+    $("demoBtn").disabled = false;
+  }
+});
+
 function start(file) {
   $("progress").classList.remove("hidden");
   $("fileName").firstChild.textContent = file.name;
   $("error").textContent = "";
   $("open").classList.add("hidden");
   const q = new URLSearchParams({ name: file.name });
-  if ($("maxFrames").value) q.set("max_frames", $("maxFrames").value);
-  if ($("stride").value && $("stride").value !== "1") q.set("stride", $("stride").value);
+  queryOptions(q);
   const xhr = new XMLHttpRequest();
   xhr.open("POST", API + "/jobs?" + q);
   const tok = getCookie("footy_token");
