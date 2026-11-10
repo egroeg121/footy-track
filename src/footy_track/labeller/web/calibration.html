@@ -181,6 +181,7 @@ function marker(layer, x, y, n, colour, draggable) {
 function drawLeft() {
   for (const l of [L.bg, L.lines, L.pts]) l.destroyChildren();
   const b = leftBox();
+  L.lines.clip({ x: b.x0, y: b.y0, width: b.w, height: b.h });  // keep overlay inside the frame
   if (state.frameImg) {
     L.bgImg = new Konva.Image({ image: state.frameImg, x: b.x0, y: b.y0, width: b.w, height: b.h });
     L.bg.add(L.bgImg);
