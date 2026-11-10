@@ -42,6 +42,12 @@
         <video id="player" controls playsinline preload="metadata"></video>
         <div id="cutaway" class="cutaway hidden">cutaway &ndash; not tracked</div>
       </div>
+      <div id="quality" class="row hidden" role="group" aria-label="Video quality">
+        <span class="muted">Quality:</span>
+        <button id="qPreview" type="button" class="secondary">Preview (fast)</button>
+        <button id="qFull" type="button" class="secondary">Full</button>
+        <span class="muted" id="qNote"></span>
+      </div>
       <div id="timeline" class="timeline hidden" title="Click to jump"></div>
       <p id="timelineKey" class="muted hidden"><span class="key tracked"></span> tracked
         <span class="key skipped"></span> cutaway, not tracked (plain footage)</p>
@@ -60,6 +66,48 @@ const $ = (id) => document.getElementById(id);
 const jobId = location.pathname.split("/").filter(Boolean).pop();
 let job = null, selected = null, shownKey = "", timer = null, picked = false;
 const FULL = "full";
+// Quality: a small preview copy loads fast on a slow network; Full is the original.
+let quality = "preview", loadedSel = null;
+try { if (localStorage.getItem("footy_quality") === "full") quality = "full"; } catch (e) {}
+function fullPreviewUrl() { return API + "/jobs/" + jobId + "/full_preview.mp4"; }
+function hasPreview(sel) {
+  if (sel === FULL) return !!(job.full_preview && job.full_preview.status === "done");
+  const c = job.clips.find((x) => x.id === sel);
+  return !!(c && c.preview && c.preview.status === "done");
+}
+// Point the player at ``url``. Within the same view (quality switch, or the
+// preview turning up while watching) keep the playback position and play state.
+function setSrc(url, sel) {
+  const v = $("player");
+  if (v.getAttribute("src") === url) return;
+  const keep = loadedSel === sel && v.getAttribute("src");
+  const t = keep ? v.currentTime : 0, wasPlaying = keep && !v.paused;
+  loadedSel = sel;
+  if (!url) { v.removeAttribute("src"); return; }
+  v.setAttribute("src", url);
+  if (t > 0 || wasPlaying) {
+    v.addEventListener("loadedmetadata", () => {
+      if (t > 0) v.currentTime = t;
+      if (wasPlaying) v.play().catch(() => {});
+    }, { once: true });
+  }
+}
+function showQuality(sel) {
+  const has = hasPreview(sel);
+  $("quality").classList.toggle("hidden", !has);
+  $("qPreview").classList.toggle("sel", quality === "preview");
+  $("qFull").classList.toggle("sel", quality === "full");
+  $("qNote").textContent = quality === "preview"
+    ? "Smaller file, lower resolution. Downloads below are full quality." : "";
+}
+function usePreview(sel) { return hasPreview(sel) && quality === "preview"; }
+function setQuality(q) {
+  quality = q;
+  try { localStorage.setItem("footy_quality", q); } catch (e) {}
+  if (selected === FULL) showFull(); else { const c = job.clips.find((x) => x.id === selected); if (c) showClip(c); }
+}
+$("qPreview").addEventListener("click", () => setQuality("preview"));
+$("qFull").addEventListener("click", () => setQuality("full"));
 function fullUrl() { return API + "/jobs/" + jobId + "/full.mp4"; }
 function spanAt(t) {
   return (job.timeline || []).find((s) => t >= s.start_s && t < s.end_s);
@@ -98,8 +146,8 @@ $("timeline").addEventListener("click", (e) => {
 function showFull() {
   selected = FULL;
   document.querySelectorAll("#clips button").forEach((b) => b.classList.toggle("sel", b.dataset.id === FULL));
-  const v = $("player");
-  if (v.getAttribute("src") !== fullUrl()) v.setAttribute("src", fullUrl());
+  setSrc(usePreview(FULL) ? fullPreviewUrl() : fullUrl(), FULL);
+  showQuality(FULL);
   const spans = job.timeline || [];
   const nt = spans.filter((s) => s.kind === "tracked").length;
   $("clipMeta").textContent = "Whole video in order: " + nt + " tracked clip" + (nt === 1 ? "" : "s") +
@@ -112,6 +160,7 @@ function showFull() {
   updateCutaway();
   const dl = $("downloads");
   dl.replaceChildren(el("a", { class: "btn secondary", href: fullUrl(), download: "full.mp4" }, "full.mp4"));
+  if (hasPreview(FULL)) dl.append(el("a", { class: "btn secondary", href: fullPreviewUrl(), download: "full_preview.mp4" }, "full_preview.mp4"));
 }
 
 
@@ -126,9 +175,10 @@ function showClip(c) {
   $("timelineKey").classList.add("hidden");
   $("cutaway").classList.add("hidden");
   document.querySelectorAll("#clips button").forEach((b) => b.classList.toggle("sel", b.dataset.id === c.id));
-  const v = $("player");
-  const src = c.status === "done" ? clipUrl(c, "overlay.mp4") : "";
-  if (v.getAttribute("src") !== src) { src ? v.setAttribute("src", src) : v.removeAttribute("src"); }
+  const src = c.status === "done"
+    ? clipUrl(c, usePreview(c.id) ? "overlay_preview.mp4" : "overlay.mp4") : "";
+  setSrc(src, c.id);
+  showQuality(c.id);
   $("clipMeta").textContent = "Clip " + c.id + ": " + c.start_s + "s to " + c.end_s +
     "s of the source (" + c.frame_count + " frames)" +
     (c.seconds != null ? ", tracked in " + fmtSecs(c.seconds) : "");
@@ -150,7 +200,7 @@ function showClip(c) {
   const dl = $("downloads");
   dl.replaceChildren();
   if (c.status === "done") {
-    for (const n of ["overlay.mp4", "clip.mp4", "detections.jsonl", "tracklets.jsonl", "ball_track.jsonl", "summary.json"]) {
+    for (const n of ["overlay.mp4", ...(hasPreview(c.id) ? ["overlay_preview.mp4"] : []), "clip.mp4", "detections.jsonl", "tracklets.jsonl", "ball_track.jsonl", "summary.json"]) {
       dl.append(el("a", { class: "btn secondary", href: clipUrl(c, n), download: c.id + "_" + n }, n));
     }
   }

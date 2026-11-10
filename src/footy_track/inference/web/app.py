@@ -14,6 +14,7 @@ Configuration is environment variables with CLI flags that override them:
 ``FOOTY_INFERENCE_MAX_UPLOAD_MB``   upload size limit, default 8192
 ``FOOTY_INFERENCE_TOKEN``           optional shared token for the API and downloads
 ``FOOTY_INFERENCE_DEMO_CLIP``       optional sample video behind the "Try a demo clip" button
+``FOOTY_INFERENCE_PREVIEW``         ``0`` = do not make the small preview copies (default: on)
 ``FOOTY_INFERENCE_FAKE``            ``1`` = DEV ONLY fake detector and fixed-length cutter
 """
 
@@ -153,6 +154,7 @@ def create_router(  # noqa: PLR0915 - one flat list of routes
             "max_upload_mb": max_upload_bytes // (1024 * 1024),
             "extensions": list(ALLOWED_EXTENSIONS),
             "fake": fake,
+            "preview": runner.preview,
             **demo.config(),
         }
 
@@ -234,6 +236,13 @@ def create_router(  # noqa: PLR0915 - one flat list of routes
             _call(runner.full_video_file, job_id), media_type="video/mp4"
         )
 
+    @router.get("/api/jobs/{job_id}/full_preview.mp4", dependencies=auth)
+    async def full_preview(job_id: str) -> FileResponse:
+        """A small, quick-to-load copy of ``full.mp4`` for slow networks."""
+        return FileResponse(
+            _call(runner.full_preview_file, job_id), media_type="video/mp4"
+        )
+
     @router.get("/api/jobs/{job_id}/clips/{clip_id}/{name}", dependencies=auth)
     async def clip_file(job_id: str, clip_id: str, name: str) -> FileResponse:
         path = _call(runner.clip_file, job_id, clip_id, name)
@@ -309,6 +318,13 @@ def build_from_args(
         help="sample video offered as a one-click demo on the upload page",
     )
     ap.add_argument(
+        "--preview",
+        action=argparse.BooleanOptionalAction,
+        default=env("FOOTY_INFERENCE_PREVIEW", "1").strip().lower()
+        not in ("0", "false", "no", "off", ""),
+        help="also make small preview videos for slow networks (default: on)",
+    )
+    ap.add_argument(
         "--fake",
         action="store_true",
         default=env("FOOTY_INFERENCE_FAKE") == "1",
@@ -322,6 +338,7 @@ def build_from_args(
             args.jobs_dir,
             detector_factory=fake_detector_factory,
             segmenter=make_chunk_segmenter(gap_frames=25),
+            preview=args.preview,
         )
     else:
         from footy_track.detectors.ultralytics import (  # noqa: PLC0415
@@ -338,6 +355,7 @@ def build_from_args(
         runner = JobRunner(
             args.jobs_dir,
             detector_factory=make_real_detector_factory(Path(weights), args.device),
+            preview=args.preview,
         )
     app = create_app(
         runner,

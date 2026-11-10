@@ -51,6 +51,7 @@ from footy_track.inference.pipeline import (
     run_inference,
     select_device,
 )
+from footy_track.inference.preview import make_preview
 from footy_track.inference.stitch import (
     StitchCancelled,
     compute_timeline,
@@ -68,6 +69,7 @@ ALLOWED_EXTENSIONS = (".mp4", ".mov", ".mkv", ".ts", ".avi", ".webm", ".m4v")
 CLIP_FILES = {
     "clip.mp4": ("clips", None),  # file name is the clip id + .mp4
     "overlay.mp4": ("out", "overlay.mp4"),
+    "overlay_preview.mp4": ("out", "overlay_preview.mp4"),
     "detections.jsonl": ("out", "detections.jsonl"),
     "tracklets.jsonl": ("out", "tracklets.jsonl"),
     "ball_track.jsonl": ("out", "ball_track.jsonl"),
@@ -402,11 +404,13 @@ class JobRunner:
         detector_factory: DetectorFactory,
         segmenter: Segmenter = subprocess_segmenter,
         start_worker: bool = True,
+        preview: bool = True,
     ) -> None:
         self.jobs_dir = Path(jobs_dir)
         self.jobs_dir.mkdir(parents=True, exist_ok=True)
         self.detector_factory = detector_factory
         self.segmenter = segmenter
+        self.preview = preview  # also make small copies for slow networks
         self._lock = threading.RLock()
         self._jobs: dict[str, dict] = {}
         self._queue: list[str] = []
@@ -453,6 +457,14 @@ class JobRunner:
         path = self.job_dir(job_id) / "full.mp4"
         if not path.is_file():
             raise JobNotFound("full.mp4")
+        return path
+
+    def full_preview_file(self, job_id: str) -> Path:
+        """The small ``full_preview.mp4`` of a job, or ``JobNotFound``."""
+        self.get(job_id)
+        path = self.job_dir(job_id) / "full_preview.mp4"
+        if not path.is_file():
+            raise JobNotFound("full_preview.mp4")
         return path
 
     # -- persistence ------------------------------------------------------
@@ -532,6 +544,7 @@ class JobRunner:
                 "clips": [],
                 "timeline": None,
                 "full_video": None,
+                "full_preview": None,
                 "overlay_note": None,
             }
             self._jobs[job_id] = job
@@ -764,6 +777,23 @@ class JobRunner:
         except Exception as exc:  # noqa: BLE001
             self._fail(job, str(exc))
 
+    def _make_preview(self, src: Path, dst: Path, what: str) -> dict:
+        """Best-effort small copy of ``src``. Never raises except ``Cancelled``.
+
+        Returns ``{"status": "done", "bytes", "seconds"}`` or
+        ``{"status": "failed", "error"}``; ``{"status": "off"}`` when disabled.
+        """
+        if not self.preview:
+            return {"status": "off"}
+        try:
+            info = make_preview(src, dst, self._cancel.is_set)
+            return {"status": DONE, **info}
+        except StitchCancelled:
+            raise Cancelled from None
+        except Exception as exc:  # noqa: BLE001 - the full-quality file is still good
+            logger.warning("preview of %s failed: %s", what, exc)
+            return {"status": FAILED, "error": f"{type(exc).__name__}: {exc}"[:300]}
+
     def _stitch(self, job: dict, video: Path, job_dir: Path) -> None:
         """Stage 3. Never raises except ``Cancelled``: per-clip results stay usable."""
         stitch = job["stages"]["stitch"]
@@ -811,6 +841,12 @@ class JobRunner:
                     j.update(full_video=None),
                 ),
             )
+            return
+        # Outside the try above: a cancel here must stay a cancel, not a stitch failure.
+        preview = self._make_preview(
+            job_dir / "full.mp4", job_dir / "full_preview.mp4", "full video"
+        )
+        self._update(job, lambda j: j.update(full_preview=preview))
 
     @staticmethod
     def _planned_frames(frame_count: int, options: dict) -> int:
@@ -857,6 +893,13 @@ class JobRunner:
                 if (out_dir / "overlay.mp4").exists()
                 else None
             )
+            preview = (
+                self._make_preview(
+                    out_dir / "overlay.mp4", out_dir / "overlay_preview.mp4", cid
+                )
+                if overlay
+                else None
+            )
             summary["video"] = f"{cid}.mp4"  # do not leak server paths
             (out_dir / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")
 
@@ -866,6 +909,7 @@ class JobRunner:
                     seconds=round(time.time() - t0, 2),
                     summary=summary,
                     overlay=overlay,
+                    preview=preview,
                     frames_done=summary["frames_processed"],
                 )
                 if overlay and not overlay["browser_playable"]:
