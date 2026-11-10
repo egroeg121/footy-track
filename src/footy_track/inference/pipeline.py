@@ -5,7 +5,8 @@
 Steps: read frames (OpenCV) -> detect (RT-DETR via ``UltralyticsObjectDetector``,
 imgsz 1280, conf >= 0.1, nothing filtered) -> track players/referees with
 ``LapTracker`` (through ``scripts.track_detections``, same defaults) -> track the
-ball with ``DetectionBallTracker`` -> write everything to ``--out``.
+ball (``DetectionBallTracker`` by default; ``ball_tracker`` selects an offline
+one) -> write everything to ``--out``.
 
 Outputs (all JSONL, one row per line; ``frame_index`` is the index in the source
 video, so ``--start`` / ``--stride`` runs line up with the video):
@@ -57,8 +58,8 @@ from footy_track.ball_trackers.detection_tracker import (
     INTERPOLATED,
     BallCandidate,
     BallPoint,
-    DetectionBallTracker,
 )
+from footy_track.ball_trackers.factory import make_ball_tracker
 from footy_track.constants import BALL_TAG, IN_PLAY_BALL_TAG
 from footy_track.schema import FrameDetections
 from footy_track.scripts.track_detections import (
@@ -98,6 +99,9 @@ class InferenceConfig:
     ball_base_radius_px: float = 40.0
     ball_growth_px: float = 25.0
     ball_max_missed: int = 12
+    # "online" (streaming, the default), "bidirectional" or "viterbi" (offline:
+    # decide once the whole clip's candidates are in; see ball_trackers/)
+    ball_tracker: str = "online"
     overlay: bool = False
 
 
@@ -272,13 +276,19 @@ def run_inference(
 
     model_id = Path(checkpoint).parent.name or Path(checkpoint).stem
     run_id = f"{model_id}__{datetime.now():%Y%m%d-%H%M%S}"
-    ball_tracker = DetectionBallTracker(
-        frame_size=(width, height),
-        start_conf=config.ball_start_conf,
-        jump_conf=config.ball_jump_conf,
-        base_radius_px=config.ball_base_radius_px,
-        growth_px=config.ball_growth_px,
-        max_missed=config.ball_max_missed,
+    # the --ball-* thresholds belong to the online tracker; the offline trackers
+    # use their own tuned defaults (ball_trackers/bidirectional.py, viterbi.py)
+    online_params = {
+        "start_conf": config.ball_start_conf,
+        "jump_conf": config.ball_jump_conf,
+        "base_radius_px": config.ball_base_radius_px,
+        "growth_px": config.ball_growth_px,
+        "max_missed": config.ball_max_missed,
+    }
+    ball_tracker = make_ball_tracker(
+        config.ball_tracker,
+        (width, height),
+        **(online_params if config.ball_tracker == "online" else {}),
     )
 
     t0 = time.time()
