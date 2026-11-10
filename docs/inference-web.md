@@ -89,6 +89,30 @@ curl --data-binary @match.mp4 "http://host:8080/infer/api/jobs?name=match.mp4&ma
 curl http://host:8080/infer/api/jobs/<id>
 ```
 
+### Demo clip
+
+To let a visitor see the pipeline in one click, point the app at a sample video
+kept on the server (not in git):
+
+```bash
+FOOTY_INFERENCE_DEMO_CLIP=/path/to/sample.mp4 make infer-web
+# or: python -m footy_track.inference.web --demo-clip /path/to/sample.mp4
+```
+
+The upload page then shows a "Try a demo clip" button. It starts a normal job
+from a copy of that file (cut, track, overlay), with no upload, and honours the
+quick-run fields. If the variable is unset or the file is missing, the button is
+hidden. The server path is never sent to the browser; `GET /infer/api/config`
+reports only `demo` (true or false) and, when true, `demo_name` and
+`demo_duration_s`. From a script:
+
+```bash
+curl -X POST "http://host:8080/infer/api/demo?max_frames=200"
+```
+
+It needs the same token as the rest of the API, and answers 404 when no demo
+clip is available.
+
 ## Settings
 
 Environment variables, with command-line flags that win over them.
@@ -100,6 +124,7 @@ Environment variables, with command-line flags that win over them.
 | `FOOTY_INFERENCE_DEVICE` | `--device` | auto (cuda, mps, cpu) | Detector device |
 | `FOOTY_INFERENCE_MAX_UPLOAD_MB` | `--max-upload-mb` | 8192 | Upload size limit |
 | `FOOTY_INFERENCE_TOKEN` | none | unset | Optional shared token, see below |
+| `FOOTY_INFERENCE_DEMO_CLIP` | `--demo-clip` | unset | Sample video for the demo button |
 | `FOOTY_INFERENCE_FAKE` | `--fake` | off | Dev-only fake detector and cutter |
 
 ## What is stored
