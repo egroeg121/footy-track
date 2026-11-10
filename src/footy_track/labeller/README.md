@@ -91,6 +91,24 @@ persisted in the JSONL sidecar as the second tag (`tags: [label, model, *markers
   - Tests: `test_review_endpoints.py::test_queue_sam3_legacy_tag_round_trips`,
     `test_session_roundtrip.py::test_roundtrip_preserves_model_tags_label_and_geometry`
 
+The next two requirements are **PLANNED**: nothing implements them and they
+have no tests yet. They belong to the proposed Claude-assisted ball labelling
+loop (`docs/design/claude_autolabel_loop.md`); they are not counted in the
+traceability summary in section 15.
+
+- **LAB-008** (PLANNED, MUST) A Claude proposal has provenance `claude`, which
+  sits at the machine level (tier 3). It lives only in a separate candidate
+  pool, never in a GT sidecar, and it never overwrites or replaces a box at or
+  above its own level (`labeller`, or a machine box carrying `human_checked`).
+  This restates LAB-002 for the new tag. Adding `claude` to the provenance tag
+  sets (`session.py`, `review.py`, `ingest_gt.py`) is part of the work.
+  - Tests: none yet
+- **LAB-009** (PLANNED, MUST) The `claude` tag is kept on a box through every
+  later step: a person's yes (LAB-1014) writes `[label, claude, human_checked]`,
+  so the origin of a tier 2 label can always be told, and the ball eval keeps
+  ignoring it as ground truth.
+  - Tests: none yet
+
 ## 2. Persistence — JSONL sidecar (LAB-1xx)
 
 One `<clip_stem>.jsonl` per clip under the GT-marks dir
@@ -772,6 +790,19 @@ reads `<gt dir>/ball_checks/` (`--ball-checks-dir`) into the feature store's
   Identity rules: `footy_track.clip_id` and
   [feature store §3.1a](../../../docs/design/feature_store.md#31a-clip-identity-canonical-clip-id).
   - Tests: `test_ball_check.py::test_save_box_on_a_raw_named_candidate_writes_into_the_existing_gt_stem`
+- **LAB-1014** (PLANNED, MUST) `/ball_check` can serve cards from the `claude`
+  candidate pool, uncertain first (Claude and the detector disagree, low
+  confidence, cell corrections). A "yes" on such a proposal writes the box to
+  the GT sidecar as `[label, claude, human_checked]` (tier 2). This is the one
+  case where Ball Check writes a box for a yes; a plain `ball` verdict on a
+  detector box still writes only to the verdict log (LAB-1004). A "no" is a
+  `not_ball` verdict as today. Nothing is written until the person acts.
+  - Tests: none yet
+- **LAB-1015** (PLANNED, MUST) Tap-to-place: on a card where the ball is visible
+  but no box is on it (a Claude "cell" answer, or a miss), tapping the ball
+  writes a new box as `[label, labeller]` (tier 1), the same result as a drag.
+  The Claude cell is a hint shown on the card, never a box.
+  - Tests: none yet
 
 ## 12. Confidence sampling — candidates (LAB-11xx)
 
