@@ -916,11 +916,19 @@ tree: the ball GT sidecars and the feature store are not touched.
   overlay, correspondences}`. A `pitch_id` is resolved to metres from the given
   dims. `overlay` is every pitch line projected through `H^-1` into normalised
   image coords as runs of points; points behind the camera are dropped so lines
-  never wrap. Fewer than 4 points, an unknown id, a degenerate configuration or
-  bad dims -> HTTP 400 `{ok: false, error}`.
+  never wrap. Fewer than 4 points, an unknown id, bad dims or a configuration that
+  cannot determine `H` -> HTTP 400 `{ok: false, error}`. The latter means no 4
+  points in general position (no 3 collinear, tested in pitch metres and in
+  image space; brute force up to 12 points, rank check above); `error` names the
+  collinear points by 1-based index, e.g. "points 1, 2, 4 lie on one pitch line".
+  A successful response also carries `warnings: [str]` (only one 4-subset in
+  general position although > 4 points were given, or `H` poorly conditioned).
   - Tests: `test_calibration.py::test_fit_returns_h_errors_and_overlay`,
     `::test_fit_accepts_free_points_and_ransac`,
-    `::test_fit_rejects_bad_input_with_4xx`, `tests/calibration/test_geometry.py`
+    `::test_fit_rejects_bad_input_with_4xx`,
+    `::test_fit_route_400_names_collinear_points`,
+    `tests/calibration/test_geometry.py` (`test_fit_rejects_three_collinear_*`,
+    `test_fit_accepts_three_collinear_plus_two_others`, ...)
 - **LAB-1205** (MUST) `POST /calibration/api/warp` takes `{clip, frame_index,
   H, pitch_dims?, px_per_m?}` and returns a JPEG of the frame warped to a
   top-down raster covering `(L + 2m) x (W + 2m)` metres (`m` =
@@ -930,11 +938,13 @@ tree: the ball GT sidecars and the feature store are not touched.
 - **LAB-1206** (MUST) `PUT /calibration/api/gt/{clip}/{idx}` re-fits `H` from
   the posted correspondences (so stored `H` and points cannot disagree) and
   replaces that frame's record in `calibration_gt/<canonical id>.json`, written
-  atomically. A rejected fit leaves the stored record untouched.
+  atomically. The file keeps its existing mode, or 0664 when new (not
+  mkstemp's 0600). A rejected fit leaves the stored record untouched.
   `GET .../gt/{clip}/{idx}` returns it (404 if absent), `GET .../gt/{clip}`
   summarises all frames, `DELETE .../gt/{clip}/{idx}` removes one.
   - Tests: `test_calibration.py::test_gt_save_load_round_trip`,
-    `::test_gt_save_rejects_too_few_points_and_keeps_existing`
+    `::test_gt_save_rejects_too_few_points_and_keeps_existing`,
+    `::test_gt_file_mode_new_is_664_and_existing_is_preserved`
 - **LAB-1207** (MUST) The GT file is keyed by `canonical_clip_id`, so every
   alias of a clip reads and writes the same file; nothing else under the GT dir
   is created or modified.
@@ -949,7 +959,11 @@ tree: the ball GT sidecars and the feature store are not touched.
 - **LAB-1209** (MUST) UI: with >= 4 complete pairs the page auto-fits, overlays
   the reprojected pitch lines on the frame (toggle), colours each point by
   reprojection error (green < 3 px, amber < 8 px, red above), and can blend the
-  bird's-eye warp over the pitch diagram (toggle, opacity).
+  bird's-eye warp over the pitch diagram (toggle, opacity). Points with no error value
+  (no fit yet) are neutral blue, never red. `state.fit` is cleared as soon as the
+  pair set changes, so a stale fit is never drawn. A failed fit clears the
+  overlay and shows the server's error prominently above the pairs list;
+  `warnings` from a successful fit are shown in an amber box.
   - Tests: UNTESTED-FRONTEND
 
 ## 15. Traceability summary

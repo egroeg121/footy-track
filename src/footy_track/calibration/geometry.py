@@ -9,6 +9,8 @@ what ``project_polyline_to_image`` uses to avoid lines wrapping around.
 
 from __future__ import annotations
 
+import itertools
+
 import cv2
 import numpy as np
 
@@ -71,6 +73,104 @@ def orient_homography(H: Array, img_norm: Array) -> Array:
     return -H if np.median(w) < 0 else H
 
 
+#: Triple is "collinear" when ``|cross| / spread^2`` (twice the triangle area
+#: relative to the squared diameter of the point set) is below these. Pitch
+#: keypoints are exact so that tolerance is tight; clicked image points are
+#: noisy so theirs is looser (~1 px on a 1000 px frame still counts).
+COLLINEAR_TOL_PITCH = 1e-3
+COLLINEAR_TOL_IMAGE = 2e-3
+#: Up to this many points the subset search is brute force (C(12,4) = 495).
+MAX_SUBSET_SEARCH = 12
+
+
+def _collinear_triples(pts: Array, tol: float) -> set[tuple[int, int, int]]:
+    spread = max(float(np.ptp(pts, axis=0).max()), 1e-12)
+    out = set()
+    n = len(pts)
+    for i, j, k in itertools.combinations(range(n), 3):
+        a, b, c = pts[i], pts[j], pts[k]
+        cross = (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])
+        # normalise by the set's extent, not the triple's, so a tight cluster
+        # of near-coincident points is flagged too
+        if abs(cross) / spread**2 < tol:
+            out.add((i, j, k))
+    return out
+
+
+def _collinear_groups(triples: set[tuple[int, int, int]]) -> list[list[int]]:
+    """Merge collinear triples into maximal groups of point indices."""
+    groups: list[set[int]] = []
+    for t in sorted(triples):
+        ts = set(t)
+        for g in groups:
+            if len(g & ts) >= 2:
+                g |= ts
+                break
+        else:
+            groups.append(ts)
+    merged = True
+    while merged:  # chains of overlapping groups
+        merged = False
+        for a, b in itertools.combinations(range(len(groups)), 2):
+            if len(groups[a] & groups[b]) >= 2:
+                groups[a] |= groups.pop(b)
+                merged = True
+                break
+    return sorted(sorted(g) for g in groups)
+
+
+def _fmt_points(idx: list[int]) -> str:
+    return ", ".join(str(i + 1) for i in idx)  # 1-based, as the page numbers them
+
+
+def analyse_configuration(img_norm: Array, pitch_m: Array) -> dict:
+    """Is the point set able to determine ``H``?
+
+    Returns ``{"n_general_subsets": int | None, "groups": [("pitch"|"image",
+    [indices])]}``. ``n_general_subsets`` counts the 4-subsets with no three
+    collinear in either space (``None`` above ``MAX_SUBSET_SEARCH`` points,
+    where only a rank check is done). Indices are 0-based.
+    """
+    src = np.asarray(img_norm, dtype=np.float64).reshape(-1, 2)
+    dst = np.asarray(pitch_m, dtype=np.float64).reshape(-1, 2)
+    n = len(src)
+    if n > MAX_SUBSET_SEARCH:
+        groups = []
+        for space, pts in (("image", src), ("pitch", dst)):
+            sv = np.linalg.svd(pts - pts.mean(0), compute_uv=False)
+            if sv[0] <= 0 or sv[1] / sv[0] < 1e-3:
+                groups.append((space, list(range(n))))
+        return {"n_general_subsets": None, "groups": groups}
+    tp = _collinear_triples(dst, COLLINEAR_TOL_PITCH)
+    ti = _collinear_triples(src, COLLINEAR_TOL_IMAGE)
+    bad = tp | ti
+    good = sum(
+        1
+        for q in itertools.combinations(range(n), 4)
+        if not any(t in bad for t in itertools.combinations(q, 3))
+    )
+    groups = [("pitch", g) for g in _collinear_groups(tp)] + [
+        ("image", g) for g in _collinear_groups(ti)
+    ]
+    return {"n_general_subsets": good, "groups": groups}
+
+
+def _degenerate_message(cfg: dict, n: int) -> str:
+    merged: dict[tuple[int, ...], list[str]] = {}
+    for space, g in cfg["groups"]:
+        merged.setdefault(tuple(g), []).append(space)
+    parts = []
+    for g, spaces in merged.items():
+        where = spaces[0]  # pitch first; an image-space repeat adds nothing
+        who = "all points" if len(g) == n else f"points {_fmt_points(list(g))}"
+        parts.append(f"{who} lie on one {where} line")
+    detail = "; ".join(parts) if parts else "the points are clustered on a line"
+    return (
+        f"degenerate configuration: {detail}. Need 4 points with no 3 on "
+        "one line - add a point off that line"
+    )
+
+
 def fit_homography(
     img_norm: Array,
     pitch_m: Array,
@@ -84,7 +184,9 @@ def fit_homography(
 
     Returns ``(H, inlier_mask)`` with ``H[2,2]`` scaled to unit norm and its
     sign set so the correspondences' image points have ``w > 0``.
-    Raises ``ValueError`` for < 4 points or a degenerate configuration.
+    Raises ``ValueError`` for < 4 points or a configuration that cannot determine
+    ``H`` (no 4 points in general position; the message names the collinear
+    points by 1-based index).
     """
     src = np.asarray(img_norm, dtype=np.float64).reshape(-1, 2)
     dst = np.asarray(pitch_m, dtype=np.float64).reshape(-1, 2)
@@ -94,10 +196,11 @@ def fit_homography(
         raise ValueError("need at least 4 correspondences")
     if method not in ("dlt", "ransac"):
         raise ValueError(f"unknown method {method!r}")
-    if np.linalg.matrix_rank(src - src.mean(0), tol=1e-9) < 2 or (
-        np.linalg.matrix_rank(dst - dst.mean(0), tol=1e-9) < 2
+    cfg = analyse_configuration(src, dst)
+    if cfg["n_general_subsets"] == 0 or (
+        cfg["n_general_subsets"] is None and cfg["groups"]
     ):
-        raise ValueError("degenerate configuration: points are collinear")
+        raise ValueError(_degenerate_message(cfg, len(src)))
 
     if method == "ransac":
         H, mask = cv2.findHomography(
@@ -115,6 +218,23 @@ def fit_homography(
         raise ValueError("fewer than 4 inliers")
 
     return orient_homography(H, src), inliers
+
+
+def conditioning(img_norm: Array, pitch_m: Array, H: Array) -> float:
+    """Condition number of ``H`` in Hartley-normalised coordinates.
+
+    Scale-free, so it measures how close the fit is to singular rather than
+    the unit choice (metres vs normalised image). ~1e1..1e2 is healthy.
+    """
+    def _t(p: Array) -> Array:
+        c = p.mean(0)
+        s = np.sqrt(2) / max(float(np.mean(np.linalg.norm(p - c, axis=1))), 1e-12)
+        return np.array([[s, 0, -s * c[0]], [0, s, -s * c[1]], [0, 0, 1.0]])
+
+    Ts = _t(np.asarray(img_norm, dtype=np.float64).reshape(-1, 2))
+    Td = _t(np.asarray(pitch_m, dtype=np.float64).reshape(-1, 2))
+    Hn = Td @ np.asarray(H) @ np.linalg.inv(Ts)
+    return float(np.linalg.cond(Hn))
 
 
 def reprojection_errors(

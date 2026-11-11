@@ -170,3 +170,27 @@ def test_pages_served(client):
     r = client.get("/calibration")
     assert r.status_code == 200 and "Pitch calibration" in r.text
     assert 'href="/calibration"' in client.get("/main").text
+
+
+_COLL = ["R_PEN_BOX_TOP_OUTER", "R_PEN_ARC_TOP", "R_GOAL_AREA_TOP_OUTER", "R_PEN_ARC_BOTTOM"]
+
+
+def test_fit_route_400_names_collinear_points(client, cal_env):
+    body = _body(correspondences=_corr(_COLL))
+    r = client.post("/calibration/api/fit", json=body)
+    assert r.status_code == 400 and r.json()["ok"] is False
+    assert "points 1, 2, 4 lie on one pitch line" in r.json()["error"]
+    body["correspondences"] = _corr([*_COLL, "R_GOALPOST_TOP"])
+    d = client.post("/calibration/api/fit", json=body).json()
+    assert d["ok"] and any("only one set of 4" in w for w in d["warnings"])
+    assert client.post("/calibration/api/fit", json=_body()).json()["warnings"] == []
+
+
+def test_gt_file_mode_new_is_664_and_existing_is_preserved(client, cal_env):
+    clip = "arsenal_mancity_20250925_seg010"
+    path = cal._gt_path(clip)
+    assert client.put(f"/calibration/api/gt/{clip}/1", json=_body()).status_code == 200
+    assert path.stat().st_mode & 0o777 == 0o664
+    path.chmod(0o640)
+    assert client.put(f"/calibration/api/gt/{clip}/2", json=_body()).status_code == 200
+    assert path.stat().st_mode & 0o777 == 0o640

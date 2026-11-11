@@ -58,6 +58,10 @@
   .ok { color:var(--green); } .warn { color:var(--amber); } .bad { color:var(--red); }
   #status { color:var(--muted); min-height:18px; }
   #status.error { color:var(--red); }
+  #fitError { display:none; margin:6px 10px 0; padding:6px 8px; border-radius:5px;
+              background:#3a1517; border:1px solid var(--red); color:#ffb4ae; font-weight:600; }
+  #fitWarn { margin:6px 10px 0; padding:6px 8px; border-radius:5px; display:none;
+             background:#2e2410; border:1px solid var(--amber); color:#f0cf7a; }
   .row { display:flex; flex-wrap:wrap; gap:6px 12px; align-items:center; margin:2px 0; }
 </style>
 </head>
@@ -101,6 +105,8 @@
       <div class="row" style="color:var(--muted)">points pair up in order: 1st frame point with 1st pitch point, &hellip; Drag frame points to refine. Need &ge;4 pairs.</div>
       <div class="row" id="fitSummary"></div>
     </section>
+    <div id="fitError" role="alert"></div>
+    <div id="fitWarn"></div>
     <div id="pairs"></div>
   </div>
 </div>
@@ -114,7 +120,7 @@ const state = {
   imgPts: [],                  // [{u,v}] normalised
   pitchPts: [],                // [{id|null, x, y}] metres
   fit: null, warpImg: null, warpKey: null, dirty: false, gtFrames: [],
-  hoverKp: null, fitSeq: 0,
+  hoverKp: null, fitSeq: 0, fitError: null,
 };
 
 function status(msg, isErr) { const s = $("status"); s.textContent = msg || ""; s.className = isErr ? "error" : ""; }
@@ -161,10 +167,11 @@ function rightBox() {
 const rPt = (x, y) => { const b = rightBox(); return [b.x0 + (x + b.pl / 2 + b.m) * b.s, b.y0 + (b.pw / 2 + b.m - y) * b.s]; };
 const rInv = (px, py) => { const b = rightBox(); return [(px - b.x0) / b.s - b.pl / 2 - b.m, b.pw / 2 + b.m - (py - b.y0) / b.s]; };
 
+const NEUTRAL = "#58a6ff";  // no error value (yet): neither good nor bad
 function errColour(i) {
-  if (!state.fit) return "#1e90ff";
+  if (!state.fit || !state.fit.err_m || i >= state.fit.err_m.length) return NEUTRAL;
   const e = state.fit.err_px ? state.fit.err_px[i] : null;
-  if (e == null) { const m = state.fit.err_m[i]; return m < 0.5 ? "#3fb950" : m < 1.5 ? "#d29922" : "#f85149"; }
+  if (e == null) { const m = state.fit.err_m[i]; if (m == null) return NEUTRAL; return m < 0.5 ? "#3fb950" : m < 1.5 ? "#d29922" : "#f85149"; }
   return e < 3 ? "#3fb950" : e < 8 ? "#d29922" : "#f85149";
 }
 const nPairs = () => Math.min(state.imgPts.length, state.pitchPts.length);
@@ -247,11 +254,12 @@ function drawPairs() {
     let err = "", cls = "";
     if (!ip) { err = "no frame pt"; cls = "pending"; }
     else if (!pp) { cls = "pending"; }
-    else if (state.fit) {
+    else if (state.fit && i < state.fit.err_m.length) {
       const e = state.fit.err_px ? state.fit.err_px[i] : null;
       const m = state.fit.err_m[i];
       err = e != null ? `${e.toFixed(1)}px ${m.toFixed(2)}m` : `${m.toFixed(2)}m`;
-      cls = errColour(i) === "#3fb950" ? "ok" : errColour(i) === "#d29922" ? "warn" : "bad";
+      const c = errColour(i);
+      cls = c === "#3fb950" ? "ok" : c === "#d29922" ? "warn" : c === "#f85149" ? "bad" : "";
     }
     row.innerHTML = `<span class="n">${i + 1}</span><span class="name" title="${name}">${name}</span>` +
       `<span class="${cls}" style="font-size:11px">${err}</span><button class="del danger" title="delete pair">&times;</button>`;
@@ -260,6 +268,13 @@ function drawPairs() {
   }
   $("pairSummary").textContent = `${nPairs()} complete`;
   const f = state.fit;
+  const fe = $("fitError");
+  fe.style.display = state.fitError ? "block" : "none";
+  fe.textContent = state.fitError ? "Fit failed: " + state.fitError : "";
+  const w = (f && f.warnings) || [];
+  const fw = $("fitWarn");
+  fw.style.display = w.length ? "block" : "none";
+  fw.textContent = w.length ? "Warning: " + w.join(" | ") : "";
   $("fitSummary").innerHTML = f ? `mean err <b>${f.mean_err_m.toFixed(2)} m</b>` : (nPairs() >= 4 ? "" : `<span class="pending">need ${4 - nPairs()} more pair(s) to fit</span>`);
 }
 
@@ -281,22 +296,26 @@ function fitBody() {
 }
 let fitTimer = null;
 function refit() {
+  // A fit describes one exact pair set: drop it the moment the pairs change so
+  // a stale overlay/colour is never drawn while the debounced refit is in flight.
+  state.fit = null; state.warpImg = null; state.fitError = null;
+  state.fitSeq++;   // also invalidates any request already in flight
   redraw();
   clearTimeout(fitTimer);
   fitTimer = setTimeout(doFit, 120);
 }
 async function doFit() {
   const seq = ++state.fitSeq;
-  if (nPairs() < 4) { state.fit = null; state.warpImg = null; redraw(); return; }
+  if (nPairs() < 4) { state.fit = null; state.warpImg = null; state.fitError = null; redraw(); return; }
   try {
     const r = await (await api("/fit", jsonOpts("POST", fitBody()))).json();
     if (seq !== state.fitSeq) return;
-    state.fit = r; status("");
+    state.fit = r; state.fitError = null; status("");
     redraw();
     updateWarp();
   } catch (e) {
     if (seq !== state.fitSeq) return;
-    state.fit = null; state.warpImg = null; status("fit failed: " + e.message, true); redraw();
+    state.fit = null; state.warpImg = null; state.fitError = e.message; status(""); redraw();
   }
 }
 let warpSeq = 0;
@@ -388,7 +407,7 @@ async function gotoFrame(idx, force) {
     $("frameSlider").value = $("frameNum").value = state.frame; return;
   }
   state.frame = idx; $("frameSlider").value = $("frameNum").value = idx;
-  state.imgPts = []; state.pitchPts = []; state.fit = null; state.warpImg = null; state.dirty = false;
+  state.imgPts = []; state.pitchPts = []; state.fit = null; state.warpImg = null; state.fitError = null; state.dirty = false;
   status("loading frame…");
   const img = new Image();
   await new Promise((res, rej) => { img.onload = res; img.onerror = () => rej(new Error("frame failed to load"));

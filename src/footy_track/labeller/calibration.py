@@ -50,6 +50,9 @@ WARP_PX_PER_M = 10.0
 WARP_MARGIN_M = 3.0
 MAX_WARP_PX_PER_M = 20.0
 
+#: mkstemp gives 0600; other GT files are group-writable.
+_NEW_FILE_MODE = 0o664
+
 _VIDEO_SUFFIXES = {".mp4", ".mov", ".avi", ".mkv"}
 
 
@@ -112,10 +115,15 @@ def _read_gt(clip: str) -> dict:
 def _write_gt(clip: str, doc: dict) -> None:
     path = _gt_path(clip)
     path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        mode = path.stat().st_mode & 0o777  # keep an existing file's mode
+    except FileNotFoundError:
+        mode = _NEW_FILE_MODE
     fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=path.name, suffix=".tmp")
     try:
         with os.fdopen(fd, "w") as f:
             json.dump(doc, f, indent=1)
+        os.chmod(tmp, mode)  # mkstemp creates 0600; other GT files are 0664
         os.replace(tmp, path)
     except BaseException:
         Path(tmp).unlink(missing_ok=True)
@@ -183,6 +191,29 @@ def _parse_correspondences(
     return np.array(img).reshape(-1, 2), np.array(ptc).reshape(-1, 2), clean
 
 
+#: Hartley-normalised condition number of H above which the fit is flagged.
+MAX_H_COND = 100.0
+
+
+def _fit_warnings(img: np.ndarray, ptc: np.ndarray, H: np.ndarray) -> list[str]:
+    """Non-fatal notes: H is determined but poorly."""
+    out = []
+    cfg = geo.analyse_configuration(img, ptc)
+    if len(img) > 4 and cfg["n_general_subsets"] == 1:
+        out.append(
+            "only one set of 4 points is in general position; the rest add no "
+            "constraint, so the fit is effectively exact and unchecked - add "
+            "points off the shared line"
+        )
+    cond = geo.conditioning(img, ptc, H)
+    if not np.isfinite(cond) or cond > MAX_H_COND:
+        out.append(
+            f"homography is poorly conditioned (cond {cond:.3g}); the points "
+            "are nearly degenerate - spread them out"
+        )
+    return out
+
+
 def _fit(body: dict) -> dict:
     """Shared by /fit and /gt save. Raises _BadRequest on bad input."""
     pitch = _pitch_from(body)
@@ -200,6 +231,7 @@ def _fit(body: dict) -> dict:
     except ValueError as exc:
         raise _BadRequest(str(exc)) from exc
     errs = geo.reprojection_errors(H, img, ptc, size_t)
+    warnings = _fit_warnings(img, ptc, H)
     overlay = {
         name: [r.tolist() for r in runs]
         for name, runs in geo.project_pitch_model(H, pitch).items()
@@ -216,6 +248,7 @@ def _fit(body: dict) -> dict:
         "err_m": _clean(errs["metres"]),
         "err_px": _clean(errs["px"]),
         "mean_err_m": float(np.mean(errs["metres"])),
+        "warnings": warnings,
         "overlay": overlay,
         "correspondences": clean,
         "pitch_dims": [pitch.length, pitch.width],
