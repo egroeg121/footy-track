@@ -8,11 +8,14 @@ output and the caller must stop; there is no fallback backend.
 from __future__ import annotations
 
 import json
+import os
 import re
 import subprocess
 import time
 from dataclasses import dataclass
 from pathlib import Path
+
+from footy_track.autolabel.prompts_v2 import PROMPTS_V2, build_prompt_v2
 
 PROMPT_VERSION = "verify-v1"
 
@@ -62,7 +65,43 @@ _FENCE = re.compile(r"^```(?:json)?\s*|\s*```$", re.M)
 
 
 class ClaudeCallError(RuntimeError):
-    pass
+    """A call failed. ``kind`` is ``auth``, ``usage_limit`` or ``other``."""
+
+    def __init__(self, msg: str, kind: str = "other"):
+        super().__init__(msg)
+        self.kind = kind
+
+
+_AUTH = re.compile(
+    r"not logged in|please run /login|invalid api key|authentication|"
+    r"oauth token|unauthorized|\b401\b|credit balance",
+    re.I,
+)
+_LIMIT = re.compile(
+    r"usage limit|limit reached|rate limit|\b429\b|quota|overloaded_error|"
+    r"you've hit your|resets? at",
+    re.I,
+)
+
+
+def classify_failure(text: str) -> str:
+    """``usage_limit``, ``auth`` or ``other`` from the CLI's own output."""
+    if _LIMIT.search(text):
+        return "usage_limit"
+    if _AUTH.search(text):
+        return "auth"
+    return "other"
+
+
+def subscription_env() -> dict[str, str]:
+    """Environment for ``claude -p`` with every API-key route removed.
+
+    The subscription login is the only backend here: if an API key were present the CLI
+    would silently bill it instead, so the keys are stripped.
+    """
+    drop = {"ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "CLAUDE_CODE_USE_BEDROCK"}
+    drop |= {"CLAUDE_CODE_USE_VERTEX", "ANTHROPIC_BASE_URL"}
+    return {k: v for k, v in os.environ.items() if k not in drop}
 
 
 @dataclass
@@ -80,8 +119,10 @@ class CallResult:
     answers: list[dict] | None  # None when the output could not be parsed
 
 
-def build_prompt(items: list[dict]) -> str:
-    """``items``: dicts with ``id``, ``image`` (absolute path), ``n_candidates``."""
+def build_prompt(items: list[dict], version: str = PROMPT_VERSION) -> str:
+    """``items``: dicts with ``id``, ``image`` (absolute path), ``n_candidates`` (v1 only)."""
+    if version in PROMPTS_V2:
+        return build_prompt_v2(items, version)
     lines = [
         f"{i}. id={it['id']} image={it['image']} (boxes numbered 1..{it['n_candidates']})"
         if it["n_candidates"]
@@ -109,9 +150,9 @@ def parse_array(text: str, ids: list[str]) -> list[dict] | None:
     return arr
 
 
-def claude_command(model: str) -> list[str]:
+def claude_command(model: str, binary: str | None = None) -> list[str]:
     return [
-        "claude", "-p",
+        binary or os.environ.get("CLAUDE_BIN", "claude"), "-p",
         "--model", model,
         "--output-format", "json",
         "--tools", "Read",
@@ -124,13 +165,20 @@ def claude_command(model: str) -> list[str]:
 
 
 def run_once(
-    items: list[dict], model: str, cwd: Path, *, attempt: int = 1, timeout: int = 900
+    items: list[dict],
+    model: str,
+    cwd: Path,
+    *,
+    attempt: int = 1,
+    timeout: int = 900,
+    prompt_version: str = PROMPT_VERSION,
 ) -> CallResult:
     ids = [it["id"] for it in items]
     t0 = time.monotonic()
     proc = subprocess.run(
         claude_command(model),
-        input=build_prompt(items),
+        input=build_prompt(items, prompt_version),
+        env=subscription_env(),
         capture_output=True,
         text=True,
         cwd=cwd,
@@ -145,7 +193,8 @@ def run_once(
     if proc.returncode != 0 or not isinstance(out, dict) or out.get("is_error"):
         raise ClaudeCallError(
             f"claude -p failed (rc={proc.returncode}, model={model}): "
-            f"stdout={proc.stdout[:1500]!r} stderr={proc.stderr[:1500]!r}"
+            f"stdout={proc.stdout[:1500]!r} stderr={proc.stderr[:1500]!r}",
+            classify_failure(proc.stdout + proc.stderr),
         )
     text = out.get("result") or ""
     return CallResult(
@@ -163,9 +212,15 @@ def run_once(
     )
 
 
-def ask_batch(items: list[dict], model: str, cwd: Path) -> list[CallResult]:
+def ask_batch(
+    items: list[dict],
+    model: str,
+    cwd: Path,
+    prompt_version: str = PROMPT_VERSION,
+) -> list[CallResult]:
     """One call; a malformed reply is retried once. Returns every attempt made."""
-    first = run_once(items, model, cwd)
+    kw = {"prompt_version": prompt_version}
+    first = run_once(items, model, cwd, **kw)
     if first.answers is not None:
         return [first]
-    return [first, run_once(items, model, cwd, attempt=2)]
+    return [first, run_once(items, model, cwd, attempt=2, **kw)]
