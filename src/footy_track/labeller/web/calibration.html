@@ -69,6 +69,7 @@
 <header>
   <a href="/main">&larr; Hub</a>
   <h1>Pitch calibration</h1>
+  <a href="/calibration/review" title="Accept/reject machine proposals">Review proposals &rarr;</a>
   <label>Clip <select id="clipSel"></select></label>
   <label>Pitch <input id="pitchL" type="number" step="0.5" value="105" title="length (m)"> &times;
     <input id="pitchW" type="number" step="0.5" value="68" title="width (m)"> m</label>
@@ -78,6 +79,7 @@
   <button id="delGtBtn" class="danger">Delete GT</button>
   <button id="clearBtn">Clear points</button>
   <span id="status"></span>
+  <span id="propBanner" style="display:none;color:var(--amber)"></span>
 </header>
 <div id="frameRow">
   <button id="prevBtn" title="previous frame (Left, Shift+Left = 10)">&lsaquo;</button>
@@ -121,6 +123,7 @@ const state = {
   pitchPts: [],                // [{id|null, x, y}] metres
   fit: null, warpImg: null, warpKey: null, dirty: false, gtFrames: [],
   hoverKp: null, fitSeq: 0, fitError: null,
+  proposal: null,              // {run_id} while editing a machine proposal: Save accepts it as edited
 };
 
 function status(msg, isErr) { const s = $("status"); s.textContent = msg || ""; s.className = isErr ? "error" : ""; }
@@ -390,7 +393,26 @@ async function selectClip() {
   state.gtFrames = state.meta.gt_frames;
   $("frameSlider").max = $("frameNum").max = Math.max(0, state.meta.frames - 1);
   $("frameTotal").textContent = `/ ${state.meta.frames - 1}`;
-  await gotoFrame(state.gtFrames.length ? state.gtFrames[0] : 0, true);
+  const qp = new URLSearchParams(location.search);
+  const f0 = qp.get("frame") !== null ? parseInt(qp.get("frame")) : null;
+  await gotoFrame(f0 !== null && !isNaN(f0) ? f0 : (state.gtFrames.length ? state.gtFrames[0] : 0), true);
+  const run = qp.get("proposal");
+  if (run && f0 !== null) { qp.delete("proposal"); await loadProposal(run, f0); }
+}
+async function loadProposal(run, idx) {
+  // Load a machine proposal's points into the editor. Save then accepts it
+  // (status "edited" if the points differ from the proposal's).
+  try {
+    const rec = await (await api(`/proposals/${encodeURIComponent(state.clip)}/${encodeURIComponent(run)}/${idx}`)).json();
+    $("pitchL").value = rec.pitch_dims[0]; $("pitchW").value = rec.pitch_dims[1];
+    await loadPitch();
+    const keep = rec.correspondences.filter((c, i) => (rec.inliers || [])[i] !== false);
+    state.imgPts = keep.map(c => ({ u: c.image[0], v: c.image[1] }));
+    state.pitchPts = keep.map(c => ({ id: c.pitch_id, x: c.pitch_xy[0], y: c.pitch_xy[1] }));
+    state.proposal = { run_id: run }; state.dirty = false;
+    const b = $("propBanner"); b.style.display = ""; b.textContent = `editing proposal ${run}: Save accepts it as edited`;
+    refit();
+  } catch (e) { status("proposal: " + e.message, true); }
 }
 function drawChips() {
   const box = $("gtChips"); box.innerHTML = "";
@@ -406,6 +428,7 @@ async function gotoFrame(idx, force) {
   if (state.dirty && state.imgPts.length && !confirm("Discard unsaved points on this frame?")) {
     $("frameSlider").value = $("frameNum").value = state.frame; return;
   }
+  state.proposal = null; $("propBanner").style.display = "none";
   state.frame = idx; $("frameSlider").value = $("frameNum").value = idx;
   state.imgPts = []; state.pitchPts = []; state.fit = null; state.warpImg = null; state.fitError = null; state.dirty = false;
   status("loading frame…");
@@ -429,6 +452,15 @@ async function loadGt(quiet) {
 }
 async function saveGt() {
   if (nPairs() < 4) { status("need at least 4 complete pairs", true); return; }
+  if (state.proposal) {
+    try {
+      const body = { ...fitBody(), overwrite: state.gtFrames.includes(state.frame) };
+      const r = await (await api(`/proposals/${encodeURIComponent(state.clip)}/${encodeURIComponent(state.proposal.run_id)}/${state.frame}/accept`, jsonOpts("POST", body))).json();
+      state.gtFrames = r.gt_frames; state.dirty = false; state.proposal = null; $("propBanner").style.display = "none"; drawChips();
+      status(`accepted as ${r.status} (mean err ${r.record.mean_err_m.toFixed(2)} m)`);
+    } catch (e) { status("accept failed: " + e.message, true); }
+    return;
+  }
   try {
     const r = await (await api(`/gt/${encodeURIComponent(state.clip)}/${state.frame}`, jsonOpts("PUT", fitBody()))).json();
     state.gtFrames = r.gt_frames; state.dirty = false; drawChips();

@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+<meta name="theme-color" content="#0f1419" />
+<meta name="mobile-web-app-capable" content="yes" />
+<title>Calibration review</title>
+<style>
+  :root { --bg:#0f1419; --panel:#1a2129; --ink:#e6edf3; --muted:#9bb0c0;
+          --accent:#1e90ff; --green:#3fb950; --red:#f85149; --amber:#d29922;
+          --border:#2d3742; }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html, body { height:100%; }
+  body { margin:0; background:var(--bg); color:var(--ink); overflow:hidden;
+         font:15px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+         display:flex; flex-direction:column;
+         padding:env(safe-area-inset-top) env(safe-area-inset-right)
+                 env(safe-area-inset-bottom) env(safe-area-inset-left); }
+  header { display:flex; align-items:center; gap:10px; padding:8px 14px;
+           border-bottom:1px solid var(--border); flex:none; }
+  header a, header button.ghost { color:var(--muted); text-decoration:none; font-size:20px;
+           background:none; border:none; padding:6px; width:auto; flex:none; cursor:pointer; }
+  #progress { font-weight:600; }
+  #filterBtn { margin-left:auto; }
+  #filters { display:none; flex:none; gap:8px; padding:8px 14px; flex-wrap:wrap;
+             border-bottom:1px solid var(--border); background:var(--panel); }
+  #filters.open { display:flex; }
+  @media (min-width:700px) { #filters { display:flex; } #filterBtn { display:none; } }
+  #filters label { color:var(--muted); font-size:12px; display:flex; flex-direction:column; gap:2px; flex:1; min-width:120px; }
+  select { background:var(--bg); color:var(--ink); border:1px solid var(--border);
+           border-radius:8px; padding:10px 8px; font:inherit; width:100%; }
+  main { flex:1; position:relative; display:flex; align-items:center;
+         justify-content:center; padding:8px; min-height:0; }
+  #card { position:relative; width:100%; max-width:760px; max-height:100%;
+          background:var(--panel); border:1px solid var(--border);
+          border-radius:16px; overflow:hidden; display:flex; flex-direction:column;
+          touch-action:pan-y; will-change:transform; }
+  #stage { position:relative; line-height:0; background:#000; flex:none; }
+  #shot { width:100%; height:auto; display:block; user-select:none; -webkit-user-drag:none; }
+  #overlay { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; }
+  #info { padding:8px 12px; display:flex; flex-direction:column; gap:3px; min-height:0; overflow:hidden; }
+  #line1 { display:flex; gap:8px; align-items:center; justify-content:space-between; }
+  #score { font-weight:700; font-size:18px; }
+  #score.good { color:var(--green); } #score.mid { color:var(--amber); } #score.bad { color:var(--red); }
+  #clipName { color:var(--muted); font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  #note { font-size:13px; max-height:3.9em; overflow:hidden; }
+  #conf { font-size:12px; color:var(--muted); }
+  #flash { position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+           font-size:80px; opacity:0; pointer-events:none; transition:opacity .15s; }
+  footer { flex:none; padding:6px 12px 12px; display:flex; flex-direction:column; gap:7px; }
+  .row { display:flex; gap:10px; }
+  button { flex:1; border:none; border-radius:14px; padding:16px 8px; font-size:17px; font-weight:700;
+           color:#06121c; background:var(--muted); cursor:pointer; min-height:48px; }
+  button:active { filter:brightness(.85); }
+  button:disabled { opacity:.35; }
+  button.no { background:var(--red); color:#fff; }
+  button.yes { background:var(--green); }
+  button.small, a.small { flex:1; padding:11px 6px; font-size:13px; font-weight:600; text-align:center;
+           background:transparent; color:var(--muted); border:1px solid var(--border);
+           border-radius:14px; text-decoration:none; min-height:44px; display:flex; align-items:center; justify-content:center; }
+  button.small.on { color:var(--ink); border-color:var(--accent); background:#16314d; }
+  #status { text-align:center; color:var(--muted); font-size:12px; min-height:16px; }
+  #empty { display:none; text-align:center; color:var(--muted); padding:40px 20px; }
+  .hidden { display:none !important; }
+</style>
+</head>
+<body>
+  <header>
+    <a href="/main" title="Hub">&#8592;</a>
+    <span id="progress">&hellip;</span>
+    <button class="ghost" id="filterBtn" aria-label="Filters">&#9776;</button>
+  </header>
+  <div id="filters">
+    <label>Run <select id="runSel"></select></label>
+    <label>Status <select id="statusSel">
+      <option value="proposed">to review</option><option value="failed">failed</option>
+      <option value="accepted,edited">accepted</option><option value="rejected">rejected</option>
+      <option value="all">all</option></select></label>
+    <label>Order <select id="sortSel"><option value="score_asc">worst first</option>
+      <option value="score_desc">best first</option></select></label>
+  </div>
+
+  <main>
+    <div id="card">
+      <div id="stage">
+        <img id="shot" alt="frame with proposed pitch overlay" draggable="false" />
+        <svg id="overlay" xmlns="http://www.w3.org/2000/svg"></svg>
+      </div>
+      <div id="info">
+        <div id="line1"><span id="score"></span><span id="clipName"></span></div>
+        <div id="note"></div>
+        <div id="conf"></div>
+      </div>
+      <div id="flash"></div>
+    </div>
+    <div id="empty"><p>Nothing to review with these filters.</p></div>
+  </main>
+
+  <footer>
+    <div class="row">
+      <button class="no" id="btnReject">Reject</button>
+      <button class="yes" id="btnAccept">Accept</button>
+    </div>
+    <div class="row">
+      <button class="small" id="btnSkip">Skip</button>
+      <button class="small" id="btnOverlay">Overlay</button>
+      <button class="small" id="btnWarp">Warp</button>
+      <a class="small" id="editLink" href="/calibration">Open in editor</a>
+    </div>
+    <div id="status">Swipe right = accept, left = reject. Hold the image for the bird&rsquo;s-eye warp.</div>
+  </footer>
+
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const API = "/calibration/api";
+let items = [], idx = 0, reviewed = 0, cur = null, busy = false;
+let showOverlay = true, showWarp = false, warpUrl = null;
+const CACHE = new Map();   // key -> proposal record
+
+const keyOf = (i) => `${i.clip}|${i.run_id}|${i.frame_index}`;
+const shortClip = (c) => c.replace(/_20\d{6}/, "");
+function setStatus(t) { $("status").textContent = t || ""; }
+
+async function getJSON(url, opts) {
+  const r = await fetch(url, opts);
+  let body = null; try { body = await r.json(); } catch (e) {}
+  if (!r.ok) { const err = new Error((body && body.error) || r.statusText); err.status = r.status; throw err; }
+  return body;
+}
+const post = (url, body) => getJSON(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) });
+
+// ---------------------------------------------------------------- queue
+async function loadRuns() {
+  const q = await getJSON(`${API}/proposals?status=all&limit=1`);
+  const sel = $("runSel"); sel.innerHTML = "";
+  const all = document.createElement("option"); all.value = ""; all.textContent = "all runs"; sel.appendChild(all);
+  for (const r of q.runs) {
+    const o = document.createElement("option"); o.value = r.run_id;
+    o.textContent = `${r.run_id} (${r.counts.proposed || 0} to review)`; sel.appendChild(o);
+  }
+  const want = new URLSearchParams(location.search).get("run");
+  if (want) sel.value = want; else if (q.runs.length) sel.value = q.runs[q.runs.length - 1].run_id;
+}
+async function loadQueue() {
+  const p = new URLSearchParams({ status: $("statusSel").value, sort: $("sortSel").value });
+  if ($("runSel").value) p.set("run", $("runSel").value);
+  const q = await getJSON(`${API}/proposals?${p}`);
+  items = q.items; idx = 0; reviewed = 0; CACHE.clear();
+  await show();
+}
+
+// ---------------------------------------------------------------- card
+const scoreClass = (s) => (s >= 0.6 ? "good" : s >= 0.3 ? "mid" : "bad");
+function confSummary(rec) {
+  const corr = rec.correspondences || [], inl = rec.inliers || [];
+  if (!corr.length) return "";
+  const confs = corr.map((c) => c.confidence).filter((c) => c != null);
+  const k = inl.filter(Boolean).length;
+  let s = `${k}/${corr.length} points inlier`;
+  if (confs.length) s += ` · conf min ${Math.min(...confs).toFixed(2)} mean ${(confs.reduce((a, b) => a + b, 0) / confs.length).toFixed(2)}`;
+  if (rec.mean_err_m != null) s += ` · fit ${rec.mean_err_m.toFixed(2)} m`;
+  if (rec.verify) s += ` · verifier: ${rec.verify.match === null ? "n/a" : rec.verify.match ? "match" : "NO match"}`;
+  return s;
+}
+function drawOverlay(rec) {
+  const svg = $("overlay"); const [W, H] = rec.image_size || [1920, 1080];
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`); svg.setAttribute("preserveAspectRatio", "none");
+  if (!showOverlay || showWarp) { svg.innerHTML = ""; return; }
+  let out = "";
+  const sw = Math.max(2, W / 450);
+  for (const [name, runs] of Object.entries(rec.overlay || {})) {
+    const col = name.includes("CIRCLE") || name.includes("ARC") ? "#ffd33d" : "#ff2bd6";
+    for (const run of runs) out += `<polyline fill="none" stroke="${col}" stroke-width="${sw}" opacity="0.85" points="${run.map(([u, v]) => `${u * W},${v * H}`).join(" ")}"/>`;
+  }
+  (rec.correspondences || []).forEach((c, i) => {
+    const ok = (rec.inliers || [])[i] !== false;
+    const col = ok ? "#3fb950" : "#f85149", x = c.image[0] * W, y = c.image[1] * H, r = W / 110;
+    out += `<circle cx="${x}" cy="${y}" r="${r}" fill="#0006" stroke="${col}" stroke-width="${sw}"/>` +
+           `<text x="${x + r * 1.3}" y="${y - r * 1.1}" font-size="${W / 45}" font-weight="700" fill="${col}" stroke="#000" stroke-width="${W / 400}" paint-order="stroke">${i + 1}</text>`;
+  });
+  svg.innerHTML = out;
+}
+async function show() {
+  const rem = items.length;
+  $("progress").textContent = rem ? `${Math.min(idx + 1, rem)} / ${rem} · ${reviewed} done` : `${reviewed} done`;
+  if (!rem) { $("card").style.display = "none"; $("empty").style.display = "block"; return; }
+  if (idx >= rem) idx = 0;
+  $("card").style.display = "flex"; $("empty").style.display = "none";
+  const it = items[idx]; cur = it;
+  const k = keyOf(it);
+  const done = (b) => { if (cur === it) b(); };
+  $("clipName").textContent = `${shortClip(it.clip)} · f${it.frame_index}`;
+  const sc = it.score == null ? 0 : it.score;
+  $("score").textContent = it.status === "failed" ? "failed" : `score ${sc.toFixed(2)}`;
+  $("score").className = it.status === "failed" ? "bad" : scoreClass(sc);
+  $("btnAccept").disabled = it.status === "failed";  // no H: fix the points in the editor first
+  $("note").textContent = ""; $("conf").textContent = "";
+  $("editLink").href = `/calibration?clip=${encodeURIComponent(it.clip)}&frame=${it.frame_index}&proposal=${encodeURIComponent(it.run_id)}`;
+  warpUrl = null;
+  $("shot").src = `${API}/frame/${encodeURIComponent(it.clip)}/${it.frame_index}.jpg`;
+  let rec = CACHE.get(k);
+  if (!rec) {
+    try { rec = await getJSON(`${API}/proposals/${encodeURIComponent(it.clip)}/${encodeURIComponent(it.run_id)}/${it.frame_index}`); CACHE.set(k, rec); }
+    catch (e) { setStatus("load failed: " + e.message); return; }
+  }
+  done(() => {
+    const v = rec.view || {};
+    const bits = [];
+    if (rec.failure) bits.push(rec.failure);
+    if (v.notes) bits.push(v.notes);
+    if (v.end) bits.push(`end ${v.end}`);
+    if (v.reverse_angle_suspected) bits.push("reverse angle?");
+    if (rec.verify && rec.verify.reason) bits.push(`verifier: ${rec.verify.reason}`);
+    $("note").textContent = bits.join(" · ");
+    $("conf").textContent = confSummary(rec) + (it.status !== "proposed" ? ` · ${it.status}` : "");
+    drawOverlay(rec);
+    for (const nx of items.slice(idx + 1, idx + 3)) {  // warm the next frames
+      new Image().src = `${API}/frame/${encodeURIComponent(nx.clip)}/${nx.frame_index}.jpg`;
+    }
+  });
+}
+$("shot").addEventListener("load", () => { if (cur && CACHE.get(keyOf(cur))) drawOverlay(CACHE.get(keyOf(cur))); });
+
+// ---------------------------------------------------------------- toggles
+function syncToggles() {
+  $("btnOverlay").classList.toggle("on", showOverlay); $("btnWarp").classList.toggle("on", showWarp);
+  if (cur && CACHE.get(keyOf(cur))) drawOverlay(CACHE.get(keyOf(cur)));
+}
+async function setWarp(on) {
+  showWarp = on; syncToggles();
+  const it = cur, rec = it && CACHE.get(keyOf(it));
+  if (!on) { if (it) $("shot").src = `${API}/frame/${encodeURIComponent(it.clip)}/${it.frame_index}.jpg`; return; }
+  if (!rec || !rec.H) { setStatus("no H to warp"); showWarp = false; syncToggles(); return; }
+  try {
+    if (!warpUrl) {
+      const r = await fetch(`${API}/warp`, { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ clip: it.clip, frame_index: it.frame_index, H: rec.H, pitch_dims: rec.pitch_dims }) });
+      if (!r.ok) throw new Error((await r.json()).error || r.statusText);
+      warpUrl = URL.createObjectURL(await r.blob());
+    }
+    if (showWarp && cur === it) $("shot").src = warpUrl;
+  } catch (e) { setStatus("warp failed: " + e.message); showWarp = false; syncToggles(); }
+}
+$("btnOverlay").onclick = () => { showOverlay = !showOverlay; syncToggles(); };
+$("btnWarp").onclick = () => setWarp(!showWarp);
+$("filterBtn").onclick = () => $("filters").classList.toggle("open");
+for (const id of ["runSel", "statusSel", "sortSel"]) $(id).onchange = loadQueue;
+
+// ---------------------------------------------------------------- verdicts
+function flash(ch, col) { const f = $("flash"); f.textContent = ch; f.style.color = col; f.style.opacity = "1"; setTimeout(() => (f.style.opacity = "0"), 160); }
+async function act(kind, overwrite) {
+  if (!cur || busy) return;
+  busy = true; const it = cur;
+  try {
+    const base = `${API}/proposals/${encodeURIComponent(it.clip)}/${encodeURIComponent(it.run_id)}/${it.frame_index}`;
+    if (kind === "accept") await post(`${base}/accept`, overwrite ? { overwrite: true } : {});
+    else await post(`${base}/reject`);
+    flash(kind === "accept" ? "✔" : "✖", kind === "accept" ? "#3fb950" : "#f85149");
+    items.splice(items.indexOf(it), 1); reviewed++; setStatus("");
+    await show();
+  } catch (e) {
+    if (e.status === 409 && kind === "accept" && /already has/.test(e.message)) {
+      busy = false;
+      if (confirm("This frame already has GT. Replace it with this proposal?")) return act(kind, true);
+      return;
+    }
+    setStatus(`${kind} failed: ${e.message}`);
+  }
+  busy = false;
+}
+function skip() { if (items.length > 1) { idx = (idx + 1) % items.length; show(); } }
+function back() { if (items.length > 1) { idx = (idx - 1 + items.length) % items.length; show(); } }
+$("btnAccept").onclick = () => act("accept"); $("btnReject").onclick = () => act("reject"); $("btnSkip").onclick = skip;
+
+// swipe: right = accept, left = reject; long-press on the image = warp while held
+(() => {
+  const card = $("card"); let sx = 0, sy = 0, dx = 0, drag = false, held = null, longPressed = false;
+  card.addEventListener("pointerdown", (e) => {
+    if (e.target.closest("button, a")) return;
+    sx = e.clientX; sy = e.clientY; dx = 0; drag = true; longPressed = false;
+    held = setTimeout(() => { if (Math.abs(dx) < 8) { longPressed = true; setWarp(true); } }, 450);
+  });
+  card.addEventListener("pointermove", (e) => {
+    if (!drag) return;
+    dx = e.clientX - sx; const dy = e.clientY - sy;
+    if (Math.abs(dx) > 10) { clearTimeout(held); }
+    if (!longPressed && Math.abs(dx) > Math.abs(dy)) {
+      card.style.transform = `translateX(${dx}px) rotate(${dx / 40}deg)`;
+      card.style.borderColor = dx > 0 ? "#3fb950" : "#f85149";
+    }
+  });
+  const end = () => {
+    if (!drag) return; drag = false; clearTimeout(held);
+    if (longPressed) { setWarp(false); }
+    const go = Math.abs(dx) > Math.min(110, card.clientWidth * 0.3) && !longPressed;
+    card.style.transform = ""; card.style.borderColor = "";
+    if (go) act(dx > 0 ? "accept" : "reject");
+  };
+  card.addEventListener("pointerup", end); card.addEventListener("pointercancel", end);
+  card.addEventListener("contextmenu", (e) => e.preventDefault());
+})();
+
+// keyboard extras (never the only way to do anything)
+document.addEventListener("keydown", (e) => {
+  if (["INPUT", "SELECT", "TEXTAREA"].includes(document.activeElement.tagName)) return;
+  if (e.key === "a") act("accept"); else if (e.key === "r") act("reject");
+  else if (e.key === "j") skip(); else if (e.key === "k") back();
+  else if (e.key === "e" && cur) location.href = $("editLink").href;
+  else if (e.key === "o") { showOverlay = !showOverlay; syncToggles(); } else if (e.key === "w") setWarp(!showWarp);
+});
+
+(async () => {
+  try { await loadRuns(); syncToggles(); await loadQueue(); } catch (e) { setStatus(e.message); }
+})();
+</script>
+</body>
+</html>
