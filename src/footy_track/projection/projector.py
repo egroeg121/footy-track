@@ -12,7 +12,7 @@ import numpy as np
 import pandas as pd
 from pydantic import BaseModel
 
-from footy_track.constants import BALL_TAG
+from footy_track.constants import BALL_TAG, IN_PLAY_BALL_TAG, OUT_OF_PLAY_BALL_TAG
 
 H_QUALITY_THRESHOLD = 0.3
 
@@ -65,7 +65,7 @@ class PitchProjector:
 
     def _anchor(self, det: TrackedDetection) -> tuple[float, float]:
         """Return the image-space anchor point for a detection (normalised)."""
-        if det.label == BALL_TAG:
+        if det.label in (BALL_TAG, IN_PLAY_BALL_TAG, OUT_OF_PLAY_BALL_TAG):
             # centroid
             return det.x + det.w / 2.0, det.y + det.h / 2.0
         # bottom-centre for players and all other classes
