@@ -1,0 +1,342 @@
+"""Pre-labelling pipeline: candidates, fit/score, identifiers (mocked), run, eval.
+
+No network and no real video: frames are synthetic pitches drawn through a
+known homography; the Claude client is a stub.
+"""
+
+from __future__ import annotations
+
+import json
+from types import SimpleNamespace
+
+import cv2
+import numpy as np
+import pytest
+
+from footy_track.calibration import geometry as geo
+from footy_track.calibration.pitch_model import PitchModel
+from footy_track.calibration.prelabel import evaluate as ev
+from footy_track.calibration.prelabel import identifier as idf
+from footy_track.calibration.prelabel import pipeline as pl
+from footy_track.calibration.prelabel.candidates import find_candidates, render_candidates
+from footy_track.calibration.prelabel.fit import Label, fit_and_score, line_support_score
+from footy_track.calibration.prelabel.proposals import read_proposals
+
+from .test_geometry import H, W, _camera_h
+
+PITCH = PitchModel()
+KP = list(PITCH.keypoints())  # _labels_from keeps those that are visible and have a candidate
+
+
+def synth_frame(Hn=None) -> np.ndarray:
+    """Green pitch with white 5 px lines drawn through ``Hn`` (norm image -> pitch)."""
+    Hn = _camera_h() if Hn is None else Hn
+    img = np.zeros((H, W, 3), np.uint8)
+    img[:] = (40, 140, 50)  # BGR green
+    rng = np.random.default_rng(0)
+    img = np.clip(img + rng.integers(-6, 6, img.shape), 0, 255).astype(np.uint8)
+    for name, runs in geo.project_pitch_model(Hn, PITCH).items():
+        for run in runs:
+            pts = np.round(run * np.array([W, H])).astype(np.int32)
+            cv2.polylines(img, [pts], False, (250, 250, 250), 5, cv2.LINE_AA)
+    return img
+
+
+@pytest.fixture(scope="module")
+def frame():
+    return synth_frame()
+
+
+@pytest.fixture(scope="module")
+def det(frame):
+    return find_candidates(frame)
+
+
+def _true_uv(kid: str) -> np.ndarray:
+    xy = np.array([PITCH.keypoints()[kid]])
+    uv, _ = geo.apply_homography(np.linalg.inv(_camera_h()), xy)
+    return uv[0]
+
+
+def test_candidates_find_true_line_intersections(det):
+    assert det.lines and det.candidates
+    w, h = det.size
+    for kid in ("HALFWAY_TOP", "CENTRE_CIRCLE_TOP", "CENTRE_CIRCLE_BOTTOM", "R_PEN_BOX_TOP_OUTER"):
+        uv = _true_uv(kid)
+        if not (0.02 < uv[0] < 0.98 and 0.02 < uv[1] < 0.98):
+            continue
+        d = min(np.hypot((c.uv[0] - uv[0]) * w, (c.uv[1] - uv[1]) * h) for c in det.candidates)
+        assert d < 8, (kid, d)
+
+
+def test_candidate_ids_unique_and_render_size(frame, det):
+    ids = [c.id for c in det.candidates]
+    assert len(ids) == len(set(ids))
+    out = render_candidates(det)
+    assert max(out.shape[:2]) <= 1568 and out.shape == det.work_bgr.shape
+
+
+def test_render_downscales_big_frames():
+    big = np.zeros((2160, 3840, 3), np.uint8)
+    d = find_candidates(big)
+    assert max(d.work_bgr.shape[:2]) <= 1568 and d.scale < 1 and d.candidates == []
+
+
+def _labels_from(det, ids, tol_px=8.0):
+    w, h = det.size
+    out = []
+    for kid in ids:
+        uv = _true_uv(kid)
+        if not (0 <= uv[0] <= 1 and 0 <= uv[1] <= 1):
+            continue
+        best = min(det.candidates, key=lambda c: np.hypot((c.uv[0] - uv[0]) * w, (c.uv[1] - uv[1]) * h))
+        if np.hypot((best.uv[0] - uv[0]) * w, (best.uv[1] - uv[1]) * h) < tol_px:
+            out.append(Label(kid, best.uv, 1.0, best.id))
+    return out
+
+
+def test_fit_recovers_known_homography_and_scores_high(det):
+    labels = _labels_from(det, KP)
+    assert len(labels) >= 4
+    fit = fit_and_score(labels, PITCH, det, (W, H))
+    assert fit.ok and sum(fit.inliers) >= 4
+    assert fit.score > 0.8
+    # reprojected centre-circle top sits where the truth says
+    uv, _ = geo.apply_homography(np.linalg.inv(fit.H), np.array([PITCH.keypoints()["CENTRE_CIRCLE_TOP"]]))
+    assert np.hypot(*((uv[0] - _true_uv("CENTRE_CIRCLE_TOP")) * [W, H])) < 6
+
+
+def test_ransac_rejects_a_wrong_label(det):
+    labels = _labels_from(det, KP)
+    assert len(labels) >= 6
+    labels[-1].keypoint_id = "L_CORNER_BOTTOM"  # one wrong label among >= 5 right ones
+    fit = fit_and_score(labels, PITCH, det, (W, H))
+    assert fit.ok and fit.score > 0.8
+    assert not fit.inliers[-1] and sum(fit.inliers) == len(labels) - 1
+
+
+def test_wrong_homography_scores_low(det):
+    good, _ = line_support_score(_camera_h(), PITCH, det)
+    shifted = _camera_h() @ np.array([[1, 0, 0.12], [0, 1, 0.05], [0, 0, 1.0]])
+    bad, _ = line_support_score(shifted, PITCH, det)
+    assert good > 0.8 and bad < good - 0.3
+
+
+def test_fit_fails_with_reason(det):
+    assert "only 2" in fit_and_score(_labels_from(det, KP)[:2], PITCH, det, (W, H)).failure
+    collinear = [Label("HALFWAY_TOP", (0.5, 0.2)), Label("CENTRE_CIRCLE_TOP", (0.5, 0.4)),
+                 Label("CENTRE_SPOT", (0.5, 0.5)), Label("HALFWAY_BOTTOM", (0.5, 0.9))]
+    r = fit_and_score(collinear, PITCH, det, (W, H))
+    assert not r.ok and "degenerate" in r.failure
+
+
+def test_duplicate_keypoint_labels_are_deduped(det):
+    labels = _labels_from(det, KP)
+    labels.append(Label(labels[0].keypoint_id, (0.9, 0.9), 0.1))
+    fit = fit_and_score(labels, PITCH, det, (W, H))
+    assert len({lb.keypoint_id for lb in fit.labels}) == len(fit.labels)
+
+
+# ---- frame selection --------------------------------------------------------
+
+
+def test_select_frames():
+    assert pl.select_frames(100, 25) == [0, 25, 50, 75]
+    assert pl.select_frames(100, 25, skip={25}) == [0, 50, 75]
+    assert pl.select_frames(100, 25, explicit=[5, 5, 99, 120]) == [5, 99]
+
+
+# ---- identifiers -------------------------------------------------------------
+
+
+def _gt_dir(tmp_path, det, ids=KP, clip="arsenal_mancity_seg010", idx=7):
+    corr = []
+    for kid in ids:
+        uv = _true_uv(kid)
+        if 0 <= uv[0] <= 1 and 0 <= uv[1] <= 1:
+            corr.append({"image": uv.tolist(), "pitch_id": kid, "pitch_xy": list(PITCH.keypoints()[kid])})
+    d = tmp_path / "gt"
+    (d / "calibration_gt").mkdir(parents=True)
+    rec = {"correspondences": corr, "image_size": [W, H], "H": _camera_h().tolist(), "pitch_dims": [105, 68]}
+    (d / "calibration_gt" / f"{clip}.json").write_text(json.dumps({"clip": clip, "frames": {str(idx): rec}}))
+    return d
+
+
+def _inp(det, clip="arsenal_mancity_seg010", idx=7):
+    return idf.IdentifyInput(clip, idx, PITCH, det, b"", b"")
+
+
+def test_mock_identifier_uses_gt_and_flags_missing(tmp_path, det):
+    d = _gt_dir(tmp_path, det)
+    m = idf.MockIdentifier(d)
+    r = m.identify(_inp(det))
+    assert not r.unusable and len(r.labels) >= 4
+    for lb in r.labels:
+        assert np.hypot(*((np.array(lb.uv) - _true_uv(lb.keypoint_id)) * [W, H])) < 8
+    assert m.identify(_inp(det, idx=8)).unusable  # no GT on frame 8
+
+
+def test_mock_corrupt_swaps_labels(tmp_path, det):
+    d = _gt_dir(tmp_path, det)
+    clean = idf.MockIdentifier(d).identify(_inp(det))
+    bad = idf.MockIdentifier(d, corrupt=1).identify(_inp(det))
+    assert [lb.keypoint_id for lb in clean.labels] != [lb.keypoint_id for lb in bad.labels]
+
+
+def test_extra_points_snap_or_drop(det):
+    res = idf.IdentifyResult(extra_points=[
+        {"keypoint_id": "HALFWAY_TOP", "u": float(_true_uv("HALFWAY_TOP")[0]) + 0.003,
+         "v": float(_true_uv("HALFWAY_TOP")[1]) + 0.003, "confidence": 0.8},
+        {"keypoint_id": "CENTRE_SPOT", "u": 0.5, "v": 0.5, "confidence": 0.8},  # not an intersection
+        {"keypoint_id": "HALFWAY_BOTTOM", "u": 0.05, "v": 0.05, "confidence": 0.8},  # nothing there
+    ])
+    idf.resolve_extra_points(res, det)
+    snapped = [e["snapped_uv"] is not None for e in res.extra_points]
+    assert snapped == [True, False, False]
+    assert [lb.keypoint_id for lb in res.labels] == ["HALFWAY_TOP"]
+
+
+def _fake_response(payload, stop="end_turn", usage=(1000, 200)):
+    return SimpleNamespace(
+        stop_reason=stop, stop_details=SimpleNamespace(category="cyber"), model="claude-opus-5-5",
+        content=[SimpleNamespace(type="text", text=json.dumps(payload))],
+        usage=SimpleNamespace(input_tokens=usage[0], output_tokens=usage[1],
+                              cache_creation_input_tokens=0, cache_read_input_tokens=0),
+    )
+
+
+class FakeClient:
+    def __init__(self, resp):
+        self.calls = []
+        self.beta = SimpleNamespace(messages=SimpleNamespace(create=self._create))
+        self.messages = SimpleNamespace(create=self._create)
+        self.resp = resp
+
+    def _create(self, **kw):
+        self.calls.append(kw)
+        return self.resp
+
+
+def _payload(det):
+    labels = _labels_from(det, KP)
+    return {
+        "unusable": False, "unusable_reason": "",
+        "view": {"end": "L", "main_camera_wide": True, "reverse_angle_suspected": False, "notes": "left end"},
+        "labels": [{"candidate_id": lb.candidate_id, "keypoint_id": lb.keypoint_id, "confidence": 0.9} for lb in labels]
+        + [{"candidate_id": 9999, "keypoint_id": "CENTRE_SPOT", "confidence": 0.9}],  # hallucinated id
+        "extra_points": [],
+    }
+
+
+def test_claude_identifier_request_shape_and_parsing(det):
+    client = FakeClient(_fake_response(_payload(det)))
+    ci = idf.ClaudeIdentifier(client=client, effort="low")
+    res = ci.identify(_inp(det))
+    kw = client.calls[0]
+    assert kw["model"] == "claude-opus-5-5" and kw["output_config"]["effort"] == "low"
+    assert kw["output_config"]["format"]["type"] == "json_schema"
+    assert "thinking" not in kw  # adaptive by default: omitted
+    assert kw["betas"] == ["server-side-fallback-2026-07-01"] and kw["fallbacks"] == "default"
+    imgs = [b for b in kw["messages"][0]["content"] if b["type"] == "image"]
+    assert len(imgs) == 2
+    assert not res.unusable and res.view["end"] == "L"
+    assert all(lb.candidate_id != 9999 for lb in res.labels)  # hallucinated id dropped
+    assert res.usage["input_tokens"] == 1000 and res.usage["output_tokens"] == 200
+    assert ci.run_prefix() == f"claude-claude-opus-5-5-{idf.PROMPT_VERSION}"
+
+
+def test_claude_schema_enumerates_keypoints():
+    s = idf.build_schema(PITCH)
+    assert set(s["properties"]["labels"]["items"]["properties"]["keypoint_id"]["enum"]) == set(PITCH.keypoints())
+
+
+def test_claude_refusal_and_truncation_are_errors_not_labels(det):
+    r = idf.ClaudeIdentifier(client=FakeClient(_fake_response({}, stop="refusal"))).identify(_inp(det))
+    assert r.error and "refusal" in r.error and not r.labels
+    r = idf.ClaudeIdentifier(client=FakeClient(_fake_response({}, stop="max_tokens"))).identify(_inp(det))
+    assert r.error and "max_tokens" in r.error
+
+
+def test_claude_without_fallbacks_uses_plain_endpoint(det):
+    client = FakeClient(_fake_response(_payload(det)))
+    idf.ClaudeIdentifier(client=client, fallbacks=False).identify(_inp(det))
+    assert "betas" not in client.calls[0] and "fallbacks" not in client.calls[0]
+
+
+def test_claude_verify(det):
+    client = FakeClient(_fake_response({"match": False, "reason": "mirrored"}))
+    v = idf.ClaudeIdentifier(client=client).verify(b"jpg")
+    assert v["match"] is False and v["reason"] == "mirrored"
+
+
+def test_diagram_has_every_keypoint_and_is_bounded():
+    img = idf.render_diagram(PITCH)
+    assert max(img.shape[:2]) <= 1568
+
+
+# ---- pipeline + eval ---------------------------------------------------------
+
+
+@pytest.fixture
+def run_env(tmp_path, monkeypatch, frame, det):
+    gt = _gt_dir(tmp_path, det)
+    clips = tmp_path / "clips"
+    clips.mkdir()
+    (clips / "arsenal_mancity_20250925_seg010.mp4").touch()
+    monkeypatch.setattr(pl, "video_frame_count", lambda v: 12)
+    monkeypatch.setattr(pl, "read_frame", lambda v, i: frame)
+    return gt, clips
+
+
+def test_pipeline_with_mock_writes_contract_proposals(run_env):
+    gt, clips = run_env
+    cfg = pl.RunConfig(gt_dir=gt, clips_dir=clips, clips=["arsenal_mancity_seg010"], frames=[7, 8],
+                       render_dir=gt.parent / "renders")
+    s = pl.run_prelabel(cfg, idf.MockIdentifier(gt), log=lambda *_: None)
+    assert s.n_frames == 2 and s.n_proposed == 1 and s.n_failed == 1
+    doc = read_proposals(gt, "arsenal_mancity_seg010")
+    assert doc["clip"] == "arsenal_mancity_seg010"
+    run = doc["runs"][s.run_id]
+    assert s.run_id.startswith("mock-") and run["source"] == "classical"
+    ok, bad = run["frames"]["7"], run["frames"]["8"]
+    assert ok["status"] == "proposed" and 0.8 < ok["score"] <= 1 and ok["H"] and len(ok["H"]) == 3
+    assert ok["H_convention"] == "normalised_image_to_pitch_m" and ok["image_size"] == [W, H]
+    assert len(ok["inliers"]) == len(ok["correspondences"])
+    assert bad["status"] == "failed" and "no human GT" in bad["failure"] and bad["H"] is None
+    assert (gt.parent / "renders" / "arsenal_mancity_seg010_7_overlay.jpg").exists()
+    # file mode of a new proposals file
+    assert (gt / "calibration_proposals" / "arsenal_mancity_seg010.json").stat().st_mode & 0o777 == 0o664
+
+
+def test_pipeline_skip_gt_and_limit(run_env):
+    gt, clips = run_env
+    cfg = pl.RunConfig(gt_dir=gt, clips_dir=clips, clips=["mancity_seg010"], every=1, skip_gt=True, limit=3)
+    s = pl.run_prelabel(cfg, idf.MockIdentifier(gt), log=lambda *_: None)
+    frames = set(read_proposals(gt, "mancity_seg010")["runs"][s.run_id]["frames"])  # alias -> same file
+    assert frames == {"0", "1", "2"} and "7" not in frames
+
+
+def test_pipeline_logs_usage_and_handles_claude_errors(run_env, det):
+    gt, clips = run_env
+    client = FakeClient(_fake_response({}, stop="refusal"))
+    cfg = pl.RunConfig(gt_dir=gt, clips_dir=clips, clips=["arsenal_mancity_seg010"], frames=[1])
+    s = pl.run_prelabel(cfg, idf.ClaudeIdentifier(client=client), log=lambda *_: None)
+    run = read_proposals(gt, "arsenal_mancity_seg010")["runs"][s.run_id]
+    assert run["source"] == "claude" and run["frames"]["1"]["status"] == "failed"
+    assert "refusal" in run["frames"]["1"]["failure"]
+    assert run["params"]["usage_total"]["input_tokens"] == 1000
+    assert run["params"]["usage"][0]["frame"] == 1 and run["params"]["prompt_version"] == idf.PROMPT_VERSION
+
+
+def test_eval_scores_good_and_bad_proposals(run_env):
+    gt, clips = run_env
+    for corrupt in (0, 2):
+        cfg = pl.RunConfig(gt_dir=gt, clips_dir=clips, clips=["arsenal_mancity_seg010"], frames=[7],
+                           run_id=f"mock-c{corrupt}")
+        pl.run_prelabel(cfg, idf.MockIdentifier(gt, corrupt=corrupt), log=lambda *_: None)
+    res = ev.evaluate(gt)
+    by = {r["run_id"]: r for r in res["frames"]}
+    assert by["mock-c0"]["mean_px"] < 3 and by["mock-c0"]["agreement"] == 1.0
+    assert by["mock-c2"]["mean_px"] is None or by["mock-c2"]["mean_px"] > by["mock-c0"]["mean_px"]
+    assert res["summary"]["n_frames"] == 2 and 0 <= res["summary"]["success_rate"] <= 1
+    assert "success" in ev.format_table(res)
