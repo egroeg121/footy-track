@@ -39,6 +39,7 @@ from footy_track.calibration.pitch_model import (
     DEFAULT_WIDTH,
     PitchModel,
 )
+from footy_track.calibration.video import read_frame
 from footy_track.clip_id import canonical_clip_id
 from footy_track.labeller.review import _clips_dir, _find_video, _gt_marks_dir
 
@@ -83,13 +84,8 @@ def _video_meta(video: Path) -> dict | None:
 
 
 def _read_frame(video: Path, idx: int) -> np.ndarray | None:
-    cap = cv2.VideoCapture(str(video))
-    try:
-        cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
-        ok, frame = cap.read()
-        return frame if ok else None
-    finally:
-        cap.release()
+    # cv2 with an ffmpeg fallback for clips OpenCV decodes as black.
+    return read_frame(video, idx)
 
 
 # ---------------------------------------------------------------------------
@@ -381,6 +377,26 @@ async def gt_get(clip: str, idx: int):
     return rec
 
 
+def _gt_record(idx: int, res: dict, body: dict, origin: dict | None = None) -> dict:
+    """The GT frame record for a fit result (shared by GT save and proposal accept)."""
+    rec = {
+        "frame_index": idx,
+        "correspondences": res["correspondences"],
+        "H": res["H"],  # normalised image -> pitch metres
+        "H_convention": "normalised_image_to_pitch_m",
+        "pitch_dims": res["pitch_dims"],
+        "image_size": body.get("image_size"),
+        "method": body.get("method", "dlt"),
+        "inliers": res["inliers"],
+        "mean_err_m": res["mean_err_m"],
+        "err_px": res["err_px"],
+        "ts": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+    }
+    if origin:
+        rec["origin"] = origin
+    return rec
+
+
 @router.put("/calibration/api/gt/{clip}/{idx}")
 async def gt_save(clip: str, idx: int, body: dict):
     """Save (replace) the calibration GT of one frame.
@@ -395,19 +411,7 @@ async def gt_save(clip: str, idx: int, body: dict):
         res = _fit(body)
     except _BadRequest as exc:
         return _err(400, str(exc))
-    rec = {
-        "frame_index": idx,
-        "correspondences": res["correspondences"],
-        "H": res["H"],  # normalised image -> pitch metres
-        "H_convention": "normalised_image_to_pitch_m",
-        "pitch_dims": res["pitch_dims"],
-        "image_size": body.get("image_size"),
-        "method": body.get("method", "dlt"),
-        "inliers": res["inliers"],
-        "mean_err_m": res["mean_err_m"],
-        "err_px": res["err_px"],
-        "ts": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
-    }
+    rec = _gt_record(idx, res, body)
 
     def _store() -> None:
         doc = _read_gt(clip)
