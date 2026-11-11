@@ -26,9 +26,11 @@ from footy_track.feature_store.ingest import (
 )
 from footy_track.feature_store.schema import (
     SCHEMA_VERSION,
+    CalibrationRow,
     DetectionRow,
     FrameRow,
     GameRow,
+    PitchKeypointRow,
     Point,
     RunRow,
     Source,
@@ -39,12 +41,14 @@ from footy_track.feature_store.store import FeatureStore
 
 __all__ = [
     "SCHEMA_VERSION",
+    "CalibrationRow",
     "DetectionRow",
     "DifficultyReport",
     "FeatureStore",
     "FrameRow",
     "GameRow",
     "ImportReport",
+    "PitchKeypointRow",
     "Point",
     "RunRow",
     "Source",
