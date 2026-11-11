@@ -22,3 +22,12 @@ the labeller `/calibration` page).
   `reprojection_errors` (px and metres), `project_polyline_to_image` (drops
   points behind the camera so lines never wrap), `warp_to_pitch` (top-down
   raster; the same extents are used by the labeller page).
+
+## Line refinement and pre-labelling
+
+`refine.py`: `refine_homography(H, pitch, lines_mask, grass, prior_points=..., line_labels=...,
+starts=...)` optimises all 8 DOF of `H` so the projected pitch lines/arcs land on a boolean
+white-line mask (robust distance-transform cost, coarse-to-fine, numpy LM; returns the input `H`
+with `applied=False` and a reason when it cannot improve it safely). It only needs masks and an
+`H`, so the manual page can call it too. `prelabel/` (see `docs/design/calibration.md` section 7)
+uses it after the coarse fit.

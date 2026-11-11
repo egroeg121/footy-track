@@ -60,6 +60,10 @@
            background:transparent; color:var(--muted); border:1px solid var(--border);
            border-radius:14px; text-decoration:none; min-height:44px; display:flex; align-items:center; justify-content:center; }
   button.small.on { color:var(--ink); border-color:var(--accent); background:#16314d; }
+  #conflict { display:none; background:#3b1d1d; border:1px solid var(--red); border-radius:14px; padding:10px 12px;
+              font-size:13px; line-height:1.35; }
+  #conflict.show { display:block; }
+  #conflict .row { margin-top:8px; }
   #status { text-align:center; color:var(--muted); font-size:12px; min-height:16px; }
   #empty { display:none; text-align:center; color:var(--muted); padding:40px 20px; }
   .hidden { display:none !important; }
@@ -98,6 +102,13 @@
   </main>
 
   <footer>
+    <div id="conflict" role="alert">
+      <div id="conflictMsg"></div>
+      <div class="row">
+        <button class="small" id="btnKeep">Keep existing, skip</button>
+        <button class="no" id="btnReplace">Replace</button>
+      </div>
+    </div>
     <div class="row">
       <button class="no" id="btnReject">Reject</button>
       <button class="yes" id="btnAccept">Accept</button>
@@ -126,7 +137,7 @@ function setStatus(t) { $("status").textContent = t || ""; }
 async function getJSON(url, opts) {
   const r = await fetch(url, opts);
   let body = null; try { body = await r.json(); } catch (e) {}
-  if (!r.ok) { const err = new Error((body && body.error) || r.statusText); err.status = r.status; throw err; }
+  if (!r.ok) { const err = new Error((body && body.error) || r.statusText); err.status = r.status; err.body = body; throw err; }
   return body;
 }
 const post = (url, body) => getJSON(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) });
@@ -161,6 +172,7 @@ function confSummary(rec) {
   let s = `${k}/${corr.length} points inlier`;
   if (confs.length) s += ` · conf min ${Math.min(...confs).toFixed(2)} mean ${(confs.reduce((a, b) => a + b, 0) / confs.length).toFixed(2)}`;
   if (rec.mean_err_m != null) s += ` · fit ${rec.mean_err_m.toFixed(2)} m`;
+  if (rec.refine) s += rec.refine.applied ? ` · line-refined (dt ${(+rec.dt_residual).toFixed(1)} px)` : ` · unrefined (${rec.refine.reason})`;
   if (rec.verify) s += ` · verifier: ${rec.verify.match === null ? "n/a" : rec.verify.match ? "match" : "NO match"}`;
   return s;
 }
@@ -183,6 +195,7 @@ function drawOverlay(rec) {
   svg.innerHTML = out;
 }
 async function show() {
+  $("conflict").classList.remove("show");
   const rem = items.length;
   $("progress").textContent = rem ? `${Math.min(idx + 1, rem)} / ${rem} · ${reviewed} done` : `${reviewed} done`;
   if (!rem) { $("card").style.display = "none"; $("empty").style.display = "block"; return; }
@@ -262,13 +275,22 @@ async function act(kind, overwrite) {
     await show();
   } catch (e) {
     if (e.status === 409 && kind === "accept" && /already has/.test(e.message)) {
+      // never replace GT silently: say what is there and make Replace an explicit action
       busy = false;
-      if (confirm("This frame already has GT. Replace it with this proposal?")) return act(kind, true);
+      showConflict(it, e.body && e.body.existing_gt === "human");
       return;
     }
     setStatus(`${kind} failed: ${e.message}`);
   }
   busy = false;
+}
+function showConflict(it, human) {
+  $("conflictMsg").textContent = human
+    ? "This frame already has hand GT (labelled by a person). Replacing it throws that label away."
+    : "This frame already has machine-proposed GT from an earlier run. Replace it with this proposal?";
+  $("conflict").classList.add("show");
+  $("btnReplace").onclick = () => { $("conflict").classList.remove("show"); act("accept", true); };
+  $("btnKeep").onclick = () => { $("conflict").classList.remove("show"); skip(); };
 }
 function skip() { if (items.length > 1) { idx = (idx + 1) % items.length; show(); } }
 function back() { if (items.length > 1) { idx = (idx - 1 + items.length) % items.length; show(); } }

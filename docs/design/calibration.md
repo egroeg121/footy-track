@@ -194,22 +194,51 @@ Full spec: [`feature_store.md`](feature_store.md) §3.7.
 To cut the manual GT effort, `footy_track.calibration.prelabel` proposes calibrations
 that a human accepts on a phone (`/calibration/review`).
 
-1. **Candidates (classical, no ML):** HSV grass mask -> white-line mask (top-hat,
+1. **Mask + hints (classical, no ML):** HSV grass mask -> white-line mask (top-hat,
    low saturation, blobs removed) -> Hough segments merged into long lines ->
-   numbered candidate points: line/line intersections, line ends on lines, RANSAC
-   ellipse (centre circle) / line intersections, spots.
-2. **Identify:** an `Identifier` maps candidates to pitch keypoint ids. `ClaudeIdentifier`
-   sends the numbered render + a reference pitch diagram (keypoint ids written
-   on it) and gets structured JSON (view info, labels, optional extra points,
-   unusable flag); `MockIdentifier` derives labels from human GT (tests, debugging).
-   Prompt is versioned (`PROMPT_VERSION`); token usage is logged in the run params.
-3. **Fit + verify:** RANSAC over the labels, refit on inliers, score = fraction of
-   reprojected model-line samples (in image, on grass) within a few px of white-line
-   pixels. No fit -> `failed` with a reason, never a guessed `H`.
-4. **Proposals** go to `<gt dir>/calibration_proposals/<clip>.json` (format: see the
-   labeller README §16); accepting writes `calibration_gt` with an `origin`.
-5. `python -m footy_track.scripts.prelabel_calibration eval` compares a run with human GT
-   (keypoint agreement, mean px / m error, success rate).
+   numbered candidate points (line/line intersections, line ends, ellipse/line
+   intersections, spots). The mask is good; the candidate *points* are sparse
+   (iteration 1 measured only 1-3 of 5-6 GT points per frame within reach), so
+   candidates are only optional hints.
+2. **Localise (Claude, iteration 2):** `ClaudeIdentifier` gets a stable, cached prefix
+   (system prompt, schema, reference diagram with keypoint ids and straight-line
+   ids) and per frame one image: the frame with a light labelled pixel grid (ticks
+   every 100 px of the *sent* image). Claude returns `points` - any clearly visible
+   keypoint from the enum with an approximate x, y (it may cite a hint's
+   `candidate_id` to take its exact position) - and `lines`: visible lines by name
+   (e.g. `R_PEN_BOX_FRONT`, `HALFWAY_LINE`) with two points on each, plus view info
+   and an unusable flag. `MockIdentifier` takes the human GT, optionally adds Gaussian
+   noise (sigma in px @1920), drops or mislabels points, and emits noisy line labels:
+   this simulates Claude's imprecise localisation. Prompt is versioned
+   (`PROMPT_VERSION`, now `p2`); token usage incl. cache read/write is logged in run params.
+3. **Coarse fit:** RANSAC DLT over the point labels (a points+lines DLT when fewer than
+   4 points). No fit -> `failed` with a reason, never a guessed `H`.
+4. **Line refinement** (`calibration/refine.py`, numpy LM, no scipy): all 8 DOF of `H`
+   are optimised so that pitch-model lines and arcs, sampled where they project
+   into the image and onto grass, land on the white-line mask. Cost = Cauchy of a
+   distance transform of the mask, coarse-to-fine (40 px truncated+blurred ->
+   20 -> 8 px sharp). The labels stay in as a weak prior and, because a DLT from a few
+   noisy clustered points can be arbitrarily poor, the refinement is multi-start (the
+   DLT over every 4-subset of the labels plus the all-label fit); the winner is the
+   lowest all-sample DT cost (off-image samples count as a miss, so hiding the model
+   cannot win) plus a small term for label error beyond ~45 px. It is rejected - the
+   coarse `H` is kept - if the cost does not improve, `H` is degenerate (singular / horizon
+   across the bottom of the image), too little of the model stays on grass, or the in-view
+   model moved more than 35 % of the image width.
+5. **Score** = fraction of reprojected model-line samples within a few px of the mask
+   (after refinement) and the final DT residual; both are stored. The proposal keeps
+   `pre_refine` (coarse `H`, score, errors) and `refine` (applied, reason, costs) for the
+   eval. When refinement is applied, correspondences are re-expressed through the refined
+   `H` (`image_label` keeps the as-labelled position) so that accept's re-fit of `H` from
+   the points reproduces it.
+6. **Proposals** go to `<gt dir>/calibration_proposals/<clip>.json` (format: see the
+   labeller README §16); accepting writes `calibration_gt` with an `origin`. Accepting
+   over a frame that already has GT is a 409; for human GT (no `origin`) it needs an
+   explicit `overwrite=true` and the review page asks first. The pipeline skips frames
+   with human GT by default (`--no-skip-gt` to include them).
+7. `prelabel_calibration eval` compares a run with human GT; `prelabel_calibration sweep`
+   is the noise sweep (success rate at <= 5 / <= 10 px before and after refinement per
+   label-noise sigma): it answers how precise Claude has to be.
 
 Frames are read by `calibration.video.read_frame`: OpenCV 5.0 decodes some clips as
 all-black frames ("Cannot convert interlaced to progressive frames"), so it

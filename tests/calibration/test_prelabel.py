@@ -6,6 +6,7 @@ known homography; the Claude client is a stub.
 
 from __future__ import annotations
 
+import base64
 import json
 from types import SimpleNamespace
 
@@ -183,19 +184,6 @@ def test_mock_corrupt_swaps_labels(tmp_path, det):
     assert [lb.keypoint_id for lb in clean.labels] != [lb.keypoint_id for lb in bad.labels]
 
 
-def test_extra_points_snap_or_drop(det):
-    res = idf.IdentifyResult(extra_points=[
-        {"keypoint_id": "HALFWAY_TOP", "u": float(_true_uv("HALFWAY_TOP")[0]) + 0.003,
-         "v": float(_true_uv("HALFWAY_TOP")[1]) + 0.003, "confidence": 0.8},
-        {"keypoint_id": "CENTRE_SPOT", "u": 0.5, "v": 0.5, "confidence": 0.8},  # not an intersection
-        {"keypoint_id": "HALFWAY_BOTTOM", "u": 0.05, "v": 0.05, "confidence": 0.8},  # nothing there
-    ])
-    idf.resolve_extra_points(res, det)
-    snapped = [e["snapped_uv"] is not None for e in res.extra_points]
-    assert snapped == [True, False, False]
-    assert [lb.keypoint_id for lb in res.labels] == ["HALFWAY_TOP"]
-
-
 def _fake_response(payload, stop="end_turn", usage=(1000, 200)):
     return SimpleNamespace(
         stop_reason=stop, stop_details=SimpleNamespace(category="cyber"), model="claude-opus-5-5",
@@ -218,13 +206,22 @@ class FakeClient:
 
 
 def _payload(det):
-    labels = _labels_from(det, KP)
+    w, h = det.size
+    pts = []
+    for kid in ("HALFWAY_TOP", "CENTRE_CIRCLE_TOP", "CENTRE_CIRCLE_BOTTOM", "R_PEN_BOX_TOP_OUTER", "CENTRE_SPOT"):
+        uv = _true_uv(kid)
+        # direct localisation in sent-image pixels (no hint), off by a few px
+        pts.append({"keypoint_id": kid, "x": uv[0] * w + 4, "y": uv[1] * h - 3, "confidence": 0.8, "candidate_id": 0})
+    cands = _labels_from(det, KP)[:1]
+    for lb in cands:  # one cited hint: its exact position is used
+        pts.append({"keypoint_id": lb.keypoint_id, "x": 1.0, "y": 1.0, "confidence": 0.9, "candidate_id": lb.candidate_id})
+    pts.append({"keypoint_id": "CENTRE_SPOT", "x": 5, "y": 5, "confidence": 0.9, "candidate_id": 9999})  # bad id -> use x, y
     return {
         "unusable": False, "unusable_reason": "",
         "view": {"end": "L", "main_camera_wide": True, "reverse_angle_suspected": False, "notes": "left end"},
-        "labels": [{"candidate_id": lb.candidate_id, "keypoint_id": lb.keypoint_id, "confidence": 0.9} for lb in labels]
-        + [{"candidate_id": 9999, "keypoint_id": "CENTRE_SPOT", "confidence": 0.9}],  # hallucinated id
-        "extra_points": [],
+        "points": pts,
+        "lines": [{"line_id": "HALFWAY_LINE", "p1": {"x": 100, "y": 100}, "p2": {"x": 300, "y": 120}, "confidence": 0.9},
+                  {"line_id": "HALFWAY_LINE", "p1": {"x": 100, "y": 100}, "p2": {"x": 101, "y": 100}, "confidence": 0.9}],
     }
 
 
@@ -236,18 +233,61 @@ def test_claude_identifier_request_shape_and_parsing(det):
     assert kw["model"] == "claude-opus-5-5" and kw["output_config"]["effort"] == "low"
     assert kw["output_config"]["format"]["type"] == "json_schema"
     assert "thinking" not in kw  # adaptive by default: omitted
+    assert kw["max_tokens"] >= 8000
     assert kw["betas"] == ["server-side-fallback-2026-07-01"] and kw["fallbacks"] == "default"
     imgs = [b for b in kw["messages"][0]["content"] if b["type"] == "image"]
     assert len(imgs) == 2
     assert not res.unusable and res.view["end"] == "L"
-    assert all(lb.candidate_id != 9999 for lb in res.labels)  # hallucinated id dropped
+    w, h = _inp(det).detection.size
+    direct = [lb for lb in res.labels if lb.candidate_id is None]
+    assert len(direct) >= 5  # localised directly, no candidate needed
+    top = next(lb for lb in direct if lb.keypoint_id == "HALFWAY_TOP")
+    assert np.allclose(np.array(top.uv) * [w, h], _true_uv("HALFWAY_TOP") * [w, h] + [4, -3], atol=1e-6)
+    assert all(lb.candidate_id != 9999 for lb in res.labels)  # hallucinated id is not trusted
+    assert [ll.line_id for ll in res.line_labels] == ["HALFWAY_LINE"]  # the degenerate (1 px) line is dropped
+    assert any(lb.candidate_id is not None for lb in res.labels)  # a cited hint keeps its candidate id
     assert res.usage["input_tokens"] == 1000 and res.usage["output_tokens"] == 200
     assert ci.run_prefix() == f"claude-claude-opus-5-5-{idf.PROMPT_VERSION}"
 
 
 def test_claude_schema_enumerates_keypoints():
     s = idf.build_schema(PITCH)
-    assert set(s["properties"]["labels"]["items"]["properties"]["keypoint_id"]["enum"]) == set(PITCH.keypoints())
+    assert set(s["properties"]["points"]["items"]["properties"]["keypoint_id"]["enum"]) == set(PITCH.keypoints())
+    assert set(s["properties"]["lines"]["items"]["properties"]["line_id"]["enum"]) == set(PITCH.segments())
+
+
+def test_claude_prompt_caches_the_stable_prefix_only(det):
+    client = FakeClient(_fake_response(_payload(det)))
+    idf.ClaudeIdentifier(client=client).identify(IdentifyInput_(det, b"FRAME", b"DIAGRAM"))
+    kw = client.calls[0]
+    content = kw["messages"][0]["content"]
+    marked = [i for i, b in enumerate(content) if "cache_control" in b]
+    assert len(marked) == 1 and content[marked[0]]["cache_control"] == {"type": "ephemeral"}
+    before, after = content[: marked[0] + 1], content[marked[0] + 1 :]
+    imgs = lambda blocks: [base64.b64decode(b["source"]["data"]) for b in blocks if b["type"] == "image"]  # noqa: E731
+    assert imgs(before) == [b"DIAGRAM"] and imgs(after) == [b"FRAME"]  # per-frame stuff is after the breakpoint
+    assert "cache_control" not in kw["system"] if isinstance(kw["system"], dict) else True
+    # the prefix is byte-identical between two different frames
+    client2 = FakeClient(_fake_response(_payload(det)))
+    idf.ClaudeIdentifier(client=client2).identify(IdentifyInput_(det, b"OTHER", b"DIAGRAM", idx=9))
+    assert json.dumps(client2.calls[0]["messages"][0]["content"][: marked[0] + 1], sort_keys=True) == json.dumps(
+        content[: marked[0] + 1], sort_keys=True)
+    assert client2.calls[0]["system"] == kw["system"] and client2.calls[0]["output_config"] == kw["output_config"]
+    assert idf.PROMPT_VERSION == "p2"
+
+
+def IdentifyInput_(det, frame_jpg, diagram_jpg, idx=7):  # noqa: N802
+    return idf.IdentifyInput("arsenal_mancity_seg010", idx, PITCH, det, frame_jpg, diagram_jpg)
+
+
+def test_prompt_frame_has_a_labelled_grid(det):
+    img = idf.render_prompt_frame(det)
+    assert img.shape == det.work_bgr.shape
+    plain = idf.render_prompt_frame(det, hints=False)
+    assert not np.array_equal(img, plain)
+    # grid lines are drawn every 100 px: the gridline column is brighter than its neighbours on dark grass
+    row = plain[det.size[1] // 2 + 3]
+    assert row[100:101].mean() > row[103:104].mean() - 1  # a tick column exists (no crash; weak check)
 
 
 def test_claude_refusal_and_truncation_are_errors_not_labels(det):
@@ -291,7 +331,7 @@ def run_env(tmp_path, monkeypatch, frame, det):
 def test_pipeline_with_mock_writes_contract_proposals(run_env):
     gt, clips = run_env
     cfg = pl.RunConfig(gt_dir=gt, clips_dir=clips, clips=["arsenal_mancity_seg010"], frames=[7, 8],
-                       render_dir=gt.parent / "renders")
+                       skip_gt=False, render_dir=gt.parent / "renders")
     s = pl.run_prelabel(cfg, idf.MockIdentifier(gt), log=lambda *_: None)
     assert s.n_frames == 2 and s.n_proposed == 1 and s.n_failed == 1
     doc = read_proposals(gt, "arsenal_mancity_seg010")
@@ -310,7 +350,7 @@ def test_pipeline_with_mock_writes_contract_proposals(run_env):
 
 def test_pipeline_skip_gt_and_limit(run_env):
     gt, clips = run_env
-    cfg = pl.RunConfig(gt_dir=gt, clips_dir=clips, clips=["mancity_seg010"], every=1, skip_gt=True, limit=3)
+    cfg = pl.RunConfig(gt_dir=gt, clips_dir=clips, clips=["mancity_seg010"], every=1, limit=3)
     s = pl.run_prelabel(cfg, idf.MockIdentifier(gt), log=lambda *_: None)
     frames = set(read_proposals(gt, "mancity_seg010")["runs"][s.run_id]["frames"])  # alias -> same file
     assert frames == {"0", "1", "2"} and "7" not in frames
@@ -332,7 +372,7 @@ def test_eval_scores_good_and_bad_proposals(run_env):
     gt, clips = run_env
     for corrupt in (0, 2):
         cfg = pl.RunConfig(gt_dir=gt, clips_dir=clips, clips=["arsenal_mancity_seg010"], frames=[7],
-                           run_id=f"mock-c{corrupt}")
+                           skip_gt=False, run_id=f"mock-c{corrupt}")
         pl.run_prelabel(cfg, idf.MockIdentifier(gt, corrupt=corrupt), log=lambda *_: None)
     res = ev.evaluate(gt)
     by = {r["run_id"]: r for r in res["frames"]}

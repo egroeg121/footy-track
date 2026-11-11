@@ -997,7 +997,7 @@ becomes GT without a human accepting it; accepted GT carries
   (`proposal_status` `accepted`), then sets the proposal `accepted`. A body
   `{correspondences, method?, overwrite?}` accepts the operator's points instead and
   yields `edited` when they differ from the proposal's. A frame that already has GT
-  -> 409 unless `overwrite`; a `failed` proposal can only be accepted with points.
+  -> 409 unless `overwrite` (see LAB-1220); a `failed` proposal can only be accepted with points.
   - Tests: `test_calibration_proposals.py::test_accept_copies_to_gt_with_origin_and_flips_status`,
     `::test_accept_drops_outliers_and_does_not_touch_real_gt_of_other_frames`,
     `::test_accept_with_changed_points_is_edited`, `::test_accept_failed_needs_points_and_bad_points_400`
@@ -1018,7 +1018,8 @@ becomes GT without a human accepting it; accepted GT carries
   big Accept / Reject / Skip buttons, swipe right = accept, swipe left = reject,
   a Warp toggle (and press-and-hold on the image) for the bird's-eye warp, and an
   "Open in editor" link to `/calibration?clip=..&frame=..&proposal=<run_id>`. Keys
-  a/r/j/k/e/o/w are extras. A 409 on accept asks before overwriting.
+  a/r/j/k/e/o/w are extras. A 409 on accept shows an in-page notice ("already has hand
+  GT" / earlier machine GT) with an explicit Replace action or Keep-and-skip (LAB-1220).
   - Tests: UNTESTED-FRONTEND
 - **LAB-1217** (MUST) `/calibration?clip=&frame=&proposal=` opens that frame with the
   proposal's inlier points loaded in the editor; Save then accepts it through
@@ -1027,9 +1028,30 @@ becomes GT without a human accepting it; accepted GT carries
 - **LAB-1218** (MUST) The pre-labelling pipeline writes proposals in the contract
   format atomically (file mode 0664), run id `claude-<model>-<prompt_version>-<ts>`
   or `mock-...`, logs token usage per call in the run's `params`, never writes
-  `calibration_gt`, and marks frames with no usable fit `failed` with a reason.
+  `calibration_gt`, and marks frames with no usable fit `failed` with a reason. It skips
+  frames that already have human GT unless told not to (`--no-skip-gt`).
   - Tests: `tests/calibration/test_prelabel.py::test_pipeline_with_mock_writes_contract_proposals`,
     `::test_pipeline_logs_usage_and_handles_claude_errors`
+- **LAB-1220** (MUST) Accepting a proposal never silently replaces existing calibration GT.
+  For a frame whose GT has no `origin` (hand-labelled) the accept route answers 409
+  `{ok: false, existing_gt: "human", error: "this frame already has hand-labelled
+  calibration GT ..."}` and writes nothing (the proposal stays `proposed`), also when the
+  body carries operator points; GT written by an earlier machine proposal answers 409 with
+  `existing_gt: "machine"`. Only `overwrite: true` replaces it (the new record carries
+  `origin`). The review page shows "this frame already has hand GT" with explicit
+  Replace / Keep-and-skip buttons instead of a bare confirm.
+  - Tests: `test_calibration_proposals.py::test_accept_never_silently_overwrites_hand_gt`,
+    `::test_accept_conflict_with_machine_gt_is_labelled_as_such`, `::test_accept_copies_to_gt_with_origin_and_flips_status`,
+    `::test_review_page_has_an_explicit_replace_flow` (page markers only; the flow itself is UNTESTED-FRONTEND)
+- **LAB-1221** (MUST) Proposals are fitted in two stages: a coarse homography from the
+  identifier's point (and named-line) labels, then line refinement
+  (`calibration/refine.py`: all 8 DOF, robust distance-transform cost of the white-line
+  mask, coarse-to-fine, labels as a weak prior, rejected when the cost does not improve or
+  `H` degenerates). The proposal stores the final `H`, `score`, `dt_residual`, the coarse
+  fit under `pre_refine` and the outcome under `refine`; the eval reports both. The
+  `sweep` command measures the success rate (mean GT reprojection error <= 5 / <= 10 px)
+  before and after refinement per label-noise level with the noisy `MockIdentifier`.
+  - Tests: `tests/calibration/test_refine.py` (all), `tests/calibration/test_prelabel.py::test_fit_*`
 - **LAB-1219** (SHOULD) Frames are read through `footy_track.calibration.video.read_frame`
   (cv2, falling back to the ffmpeg CLI when cv2 fails or returns an all-black frame,
   frame-accurate, reader cached per video); `/calibration/api/frame` and `/warp` use it.
@@ -1051,8 +1073,8 @@ becomes GT without a human accepting it; accepted GT carries
 | 10. Review UI (LAB-9xx) | 7 | 0 | 0 | 7 |
 | 11. Ball Check (LAB-10xx) | 12 | 11 | 0 | 1 |
 | 12. Confidence sampling (LAB-11xx) | 5 | 5 | 0 | 0 |
-| 16. Pitch calibration (LAB-12xx) | 19 | 14 | 0 | 5 |
-| **Total** | **120** | **85** | **8** | **27** |
+| 16. Pitch calibration (LAB-12xx) | 21 | 16 | 0 | 5 |
+| **Total** | **122** | **87** | **8** | **27** |
 
 Open items: 4 (OPEN-1..4) + 1 fixed on main (undo provenance, `95b60cc`).
 Test suite: 138 tests in `tests/labeller/` (all green), plus the

@@ -13,14 +13,14 @@ import numpy as np
 
 from footy_track.calibration import geometry as geo
 from footy_track.calibration.pitch_model import DEFAULT_LENGTH, DEFAULT_WIDTH, PitchModel
-from footy_track.calibration.prelabel.candidates import find_candidates, render_candidates
+from footy_track.calibration.prelabel.candidates import find_candidates
 from footy_track.calibration.prelabel.fit import fit_and_score
 from footy_track.calibration.prelabel.identifier import (
     IdentifyInput,
     Identifier,
     jpeg,
     render_diagram,
-    resolve_extra_points,
+    render_prompt_frame,
 )
 from footy_track.calibration.prelabel.proposals import update_proposals
 from footy_track.calibration.video import read_frame
@@ -113,32 +113,51 @@ def _base_record(idx: int, image_size: tuple[int, int], pitch: PitchModel) -> di
     }
 
 
+def _corr_record(lb, pitch) -> dict:
+    c = {"image": [float(lb.uv[0]), float(lb.uv[1])], "pitch_id": lb.keypoint_id,
+         "pitch_xy": list(pitch.keypoints()[lb.keypoint_id]), "confidence": lb.confidence,
+         "candidate_id": lb.candidate_id}
+    if lb.uv_label is not None:  # moved by refinement: keep where it was labelled
+        c["image_label"] = [float(lb.uv_label[0]), float(lb.uv_label[1])]
+    if lb.synthetic:
+        c["synthetic"] = True
+    return c
+
+
 def failed_record(idx, image_size, pitch, reason, res=None, labels=None) -> dict:
     rec = _base_record(idx, image_size, pitch)
     rec.update(status="failed", score=0.0, failure=reason, view=_view_record(res) if res else None)
     if labels:
-        rec["correspondences"] = [
-            {"image": list(lb.uv), "pitch_id": lb.keypoint_id,
-             "pitch_xy": list(pitch.keypoints()[lb.keypoint_id]), "confidence": lb.confidence,
-             "candidate_id": lb.candidate_id}
-            for lb in labels
-        ]
+        rec["correspondences"] = [_corr_record(lb, pitch) for lb in labels]
     return rec
 
 
+def _pre_refine_record(fit) -> dict:
+    """The coarse (pre-refinement) fit, kept for the eval and the review page."""
+    return {
+        "H": fit.H_coarse.tolist(), "score": fit.score_coarse, "mean_err_m": fit.mean_err_m_coarse,
+        "err_px": fit.err_px_coarse,
+    }
+
+
 def proposal_record(idx, image_size, pitch, fit, res) -> dict:
-    kps = pitch.keypoints()
     rec = _base_record(idx, image_size, pitch)
-    rec["correspondences"] = [
-        {"image": [float(lb.uv[0]), float(lb.uv[1])], "pitch_id": lb.keypoint_id,
-         "pitch_xy": list(kps[lb.keypoint_id]), "confidence": lb.confidence, "candidate_id": lb.candidate_id}
-        for lb in fit.labels
-    ]
+    rec["correspondences"] = [_corr_record(lb, pitch) for lb in fit.labels]
     rec["H"] = fit.H.tolist()
     rec["inliers"] = fit.inliers
     rec["mean_err_m"] = fit.mean_err_m
     rec["err_px"] = fit.err_px
     rec.update(status="proposed", score=fit.score, failure=None, view=_view_record(res))
+    rec["dt_residual"] = fit.dt_residual
+    if fit.H_coarse is not None:
+        rec["pre_refine"] = _pre_refine_record(fit)
+    if fit.refine is not None:
+        rec["refine"] = fit.refine.to_dict()
+    if fit.line_labels:
+        rec["line_labels"] = [
+            {"line_id": ll.line_id, "points": [list(p) for p in ll.points], "confidence": ll.confidence}
+            for ll in fit.line_labels
+        ]
     return rec
 
 
@@ -147,6 +166,7 @@ def overlay_render(frame_bgr: np.ndarray, H: np.ndarray, pitch: PitchModel) -> n
     from footy_track.calibration.prelabel.candidates import resize_to_work  # noqa: PLC0415
 
     img, _ = resize_to_work(frame_bgr)
+    img = img.copy()  # resize_to_work returns the input itself for small frames: never draw on the caller's array
     h, w = img.shape[:2]
     for name, runs in geo.project_pitch_model(np.asarray(H), pitch).items():
         col = (0, 215, 255) if ("CIRCLE" in name or "ARC" in name) else (255, 43, 214)
@@ -167,11 +187,12 @@ class RunConfig:
     clips: list[str]
     frames: list[int] | None = None  # explicit frames (applied to every clip)
     every: int = 25
-    skip_gt: bool = False
+    skip_gt: bool = True  # never propose over a frame that already has human GT
     limit: int | None = None  # max frames processed in total
     pitch_dims: tuple[float, float] = (DEFAULT_LENGTH, DEFAULT_WIDTH)
     render_dir: Path | None = None
     verify: bool = False
+    refine: bool = True  # line refinement of the coarse fit
     run_id: str | None = None
 
 
@@ -221,23 +242,21 @@ def run_prelabel(cfg: RunConfig, identifier: Identifier, log=print) -> RunSummar
                 continue
             ih, iw = frame.shape[:2]
             det = find_candidates(frame)
-            cand_img = render_candidates(det)
-            cand_jpg = jpeg(cand_img)
+            prompt_jpg = jpeg(render_prompt_frame(det))
             if cfg.render_dir:
-                (Path(cfg.render_dir) / f"{canon}_{idx}_candidates.jpg").write_bytes(cand_jpg)
+                (Path(cfg.render_dir) / f"{canon}_{idx}_prompt.jpg").write_bytes(prompt_jpg)
             res = identifier.identify(
-                IdentifyInput(clip, idx, pitch, det, cand_jpg, diagram)
+                IdentifyInput(clip, idx, pitch, det, prompt_jpg, diagram)
             )
             if res.usage:
                 usage_log.append({"clip": canon, "frame": idx, **res.usage})
                 _add_usage(summary.usage_total, res.usage)
-            resolve_extra_points(res, det)
             if res.error:
                 rec = failed_record(idx, (iw, ih), pitch, f"identifier error: {res.error}", res)
             elif res.unusable:
                 rec = failed_record(idx, (iw, ih), pitch, f"unusable: {res.unusable_reason or 'unspecified'}", res)
             else:
-                fit = fit_and_score(res.labels, pitch, det, (iw, ih))
+                fit = fit_and_score(res.labels, pitch, det, (iw, ih), line_labels=res.line_labels, refine=cfg.refine)
                 if not fit.ok:
                     rec = failed_record(idx, (iw, ih), pitch, fit.failure, res, fit.labels)
                 else:
@@ -250,8 +269,6 @@ def run_prelabel(cfg: RunConfig, identifier: Identifier, log=print) -> RunSummar
                         _add_usage(summary.usage_total, v.get("usage"))
                         usage_log.append({"clip": canon, "frame": idx, "call": "verify", **(v.get("usage") or {})})
                         rec["verify"] = {"match": v["match"], "reason": v["reason"]}
-            if res.extra_points:
-                rec["extra_points"] = res.extra_points
             rec["n_candidates"] = len(det.candidates)
             summary.n_frames += 1
             if rec["status"] == "proposed":
@@ -261,6 +278,8 @@ def run_prelabel(cfg: RunConfig, identifier: Identifier, log=print) -> RunSummar
             log(
                 f"[{canon}:{idx}] {rec['status']}"
                 + (f" score={rec['score']:.2f} inliers={sum(rec['inliers'])}/{len(rec['inliers'])}"
+                   + (f" refined dt={rec['refine']['cost_after']:.1f}px" if (rec.get("refine") or {}).get("applied")
+                      else f" unrefined ({(rec.get('refine') or {}).get('reason')})" if rec.get("refine") else "")
                    if rec["status"] == "proposed" else f" ({rec['failure']})")
             )
             params = {**identifier.run_params(), "n_candidates_max": 70, "usage": usage_log,

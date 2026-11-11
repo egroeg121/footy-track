@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 
 from fastapi import APIRouter
+from fastapi.responses import JSONResponse
 
 from footy_track.calibration import geometry as geo
 from footy_track.calibration.pitch_model import PitchModel
@@ -111,6 +112,14 @@ async def get_proposal(clip: str, run_id: str, idx: int):
     return out
 
 
+def _existing_gt(clip: str, idx: int) -> dict | None:
+    """The calibration GT record of this frame, or ``None``."""
+    try:
+        return cal._read_gt(clip)["frames"].get(str(idx))
+    except (OSError, ValueError, KeyError):
+        return None
+
+
 def _same_points(a: list[dict], b: list[dict]) -> bool:
     if len(a) != len(b):
         return False
@@ -130,12 +139,25 @@ async def accept_proposal(clip: str, run_id: str, idx: int, body: dict | None = 
     No body: accept as proposed (its inlier points). Body ``{correspondences,
     method?, overwrite?}``: the operator's points; status becomes ``edited`` when they
     differ from the proposal's. A frame that already has GT -> 409 unless
-    ``overwrite``.
+    ``overwrite`` (checked first); the 409 says whether that GT is hand-labelled
+    (no ``origin``) or from an earlier machine proposal, as ``existing_gt``.
     """
     body = body or {}
     got = await asyncio.to_thread(_get, clip, run_id, idx)
     if got is None:
         return cal._err(404, "no such proposal")
+    existing = await asyncio.to_thread(_existing_gt, clip, idx)
+    if existing is not None and not body.get("overwrite"):
+        human = not existing.get("origin")
+        msg = (
+            "this frame already has hand-labelled calibration GT; it is not replaced unless you "
+            "resend with overwrite=true"
+            if human else
+            f"this frame already has calibration GT from machine run {existing['origin'].get('run_id')!r}; "
+            "resend with overwrite=true to replace it"
+        )
+        return JSONResponse({"ok": False, "error": msg, "existing_gt": "human" if human else "machine"},
+                            status_code=409)
     run, rec = got
     corr = rec.get("correspondences", [])
     inl = rec.get("inliers") or [True] * len(corr)
@@ -157,8 +179,6 @@ async def accept_proposal(clip: str, run_id: str, idx: int, body: dict | None = 
     if status is None:
         # compare the operator's cleaned points with what was proposed
         status = "accepted" if _same_points(res["correspondences"], proposed_pts) else "edited"
-    if idx in await asyncio.to_thread(cal._gt_frames, clip) and not body.get("overwrite"):
-        return cal._err(409, "this frame already has calibration GT (resend with overwrite=true to replace)")
     origin = {"source": run.get("source") or "claude", "run_id": run_id, "proposal_status": status}
     gt_rec = cal._gt_record(idx, res, fit_body, origin)
 

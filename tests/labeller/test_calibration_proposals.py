@@ -139,3 +139,51 @@ def test_reject_flips_status_and_writes_no_gt(client, prop_env):
     assert client.post(f"/calibration/api/proposals/{CLIP}/{run}/77/reject").status_code == 404
     rej = client.get("/calibration/api/proposals?status=rejected").json()
     assert [i["frame_index"] for i in rej["items"]] == [1]
+
+
+def _human_gt(idx, marker):
+    """A hand-labelled GT record (no ``origin``) for ``idx``; ``marker`` makes it recognisable."""
+    pts = _record(0.9)["correspondences"]
+    res = cal._fit({"correspondences": pts, "pitch_dims": [105, 68], "image_size": [W, H], "method": "dlt"})
+    rec = cal._gt_record(idx, res, {"image_size": [W, H], "method": "dlt"})
+    rec["note"] = marker
+    doc = cal._read_gt(CLIP)
+    doc["frames"][str(idx)] = rec
+    cal._write_gt(CLIP, doc)
+
+
+def test_accept_never_silently_overwrites_hand_gt(client, prop_env):
+    run = "claude-x-p1-20260101T000000"
+    _human_gt(0, "hand-labelled")
+    r = client.post(f"/calibration/api/proposals/{CLIP}/{run}/0/accept")
+    assert r.status_code == 409
+    body = r.json()
+    assert body["ok"] is False and body["existing_gt"] == "human" and "hand-labelled" in body["error"]
+    assert "overwrite=true" in body["error"]
+    # the hand GT is untouched and the proposal still waits for review
+    assert cal._read_gt(CLIP)["frames"]["0"]["note"] == "hand-labelled"
+    assert "origin" not in cal._read_gt(CLIP)["frames"]["0"]
+    assert read_proposals(prop_env, CLIP)["runs"][run]["frames"]["0"]["status"] == "proposed"
+    # operator-edited points do not bypass it either
+    pts = _record(0.9)["correspondences"]
+    assert client.post(f"/calibration/api/proposals/{CLIP}/{run}/0/accept", json={"correspondences": pts}).status_code == 409
+    assert cal._read_gt(CLIP)["frames"]["0"]["note"] == "hand-labelled"
+    # only an explicit overwrite replaces it, and the result is marked as machine-origin
+    r = client.post(f"/calibration/api/proposals/{CLIP}/{run}/0/accept", json={"overwrite": True})
+    assert r.status_code == 200
+    assert cal._read_gt(CLIP)["frames"]["0"]["origin"]["run_id"] == run
+
+
+def test_accept_conflict_with_machine_gt_is_labelled_as_such(client, prop_env):
+    run = "claude-x-p1-20260101T000000"
+    assert client.post(f"/calibration/api/proposals/{CLIP}/{run}/0/accept").status_code == 200
+    r = client.post(f"/calibration/api/proposals/{CLIP}/mock-20260102T000000/10/accept")
+    assert r.status_code == 200  # a different frame is fine
+    _record_again = client.post(f"/calibration/api/proposals/{CLIP}/{run}/0/accept")
+    assert _record_again.status_code == 409 and _record_again.json()["existing_gt"] == "machine"
+    assert "hand-labelled" not in _record_again.json()["error"]
+
+
+def test_review_page_has_an_explicit_replace_flow(client):
+    html = client.get("/calibration/review").text
+    assert "already has hand GT" in html and 'id="btnReplace"' in html and "existing_gt" in html
