@@ -36,6 +36,7 @@ uv run uvicorn footy_track.labeller.server:app --reload
 | `/object_review` | Tinder-style crop review/correction |
 | `/ball_check` | Mobile ball verification (swipe yes/no) |
 | `/calibration` | Manual pitch calibration (frame <-> pitch point pairs, §16) |
+| `/calibration/review` | Mobile accept/reject of machine pitch-calibration proposals (§16, LAB-1210..1219) |
 | `/ingest` | Clip ingestion (page currently broken — OPEN-1) |
 
 Test suite: `tests/labeller/` (run `uv run pytest tests/labeller/`). Test
@@ -966,6 +967,74 @@ tree: the ball GT sidecars and the feature store are not touched.
   `warnings` from a successful fit are shown in an amber box.
   - Tests: UNTESTED-FRONTEND
 
+### Machine proposals and their review (LAB-1210..1219)
+
+Claude-assisted pre-labelling (`footy_track/calibration/prelabel/`, CLI
+`python -m footy_track.scripts.prelabel_calibration`) writes *proposals* to
+`<gt dir>/calibration_proposals/<canonical clip id>.json`:
+`{clip, runs: {run_id: {source: claude|classical, created, params, frames:
+{"<idx>": GT-shaped record + status proposed|accepted|edited|rejected|failed,
+score in [0,1], failure, view}}}}`. The review page `web/calibration_review.html`
+(`/calibration/review`, mobile-first, mirrors Ball Check) and the routes in
+`calibration_proposals.py` turn them into calibration GT. A proposal never
+becomes GT without a human accepting it; accepted GT carries
+`origin: {source, run_id, proposal_status: accepted|edited}`.
+
+- **LAB-1210** (MUST) `GET /calibration/api/proposals?run=&status=&clip=&sort=&limit=`
+  lists proposals across all clips: `status` is comma separated (default
+  `proposed`; `all` = every status), `sort` is `score_asc` (worst first, the
+  default) or `score_desc`; unknown status or sort -> HTTP 400. Response
+  `{items: [{clip, run_id, frame_index, status, score, failure, source,
+  n_points, n_inliers, view, verify}], total, runs: [{run_id, source, created,
+  params, counts}]}`.
+  - Tests: `test_calibration_proposals.py::test_list_filters_and_sorts_by_score`
+- **LAB-1211** (MUST) `GET /calibration/api/proposals/{clip}/{run_id}/{idx}` returns
+  the full record plus `overlay` (the pitch model projected through `H`, as in
+  LAB-1204); unknown run/frame -> 404; clip aliases resolve to one file.
+  - Tests: `test_calibration_proposals.py::test_get_one_has_overlay_and_404`
+- **LAB-1212** (MUST) `POST .../accept` re-fits `H` from the proposal's inlier points
+  (outliers dropped) and writes the record into `calibration_gt` with `origin`
+  (`proposal_status` `accepted`), then sets the proposal `accepted`. A body
+  `{correspondences, method?, overwrite?}` accepts the operator's points instead and
+  yields `edited` when they differ from the proposal's. A frame that already has GT
+  -> 409 unless `overwrite`; a `failed` proposal can only be accepted with points.
+  - Tests: `test_calibration_proposals.py::test_accept_copies_to_gt_with_origin_and_flips_status`,
+    `::test_accept_drops_outliers_and_does_not_touch_real_gt_of_other_frames`,
+    `::test_accept_with_changed_points_is_edited`, `::test_accept_failed_needs_points_and_bad_points_400`
+- **LAB-1213** (MUST) `POST .../reject` sets status `rejected` (optional `reason`),
+  writes no GT; unknown proposal -> 404.
+  - Tests: `test_calibration_proposals.py::test_reject_flips_status_and_writes_no_gt`
+- **LAB-1214** (MUST) `GET /calibration/review` serves the page with `Cache-Control:
+  no-store` and a mobile viewport (`width=device-width`); the hub links to it.
+  - Tests: `test_calibration_proposals.py::test_pages_served`
+- **LAB-1215** (MUST) Review UI: one proposal per screen: the frame at full width
+  with the projected pitch overlay (toggle) and numbered points (green inlier, red
+  outlier), the score, the Claude view note, a confidence summary (inliers, min/mean
+  confidence, fit error, verifier verdict) and the failure reason when failed.
+  Queue ordered worst-first by default, filterable by run and status, with a
+  progress counter.
+  - Tests: UNTESTED-FRONTEND (server contract LAB-1210/1211)
+- **LAB-1216** (MUST) Review UI actions are reachable by touch without hover or keys:
+  big Accept / Reject / Skip buttons, swipe right = accept, swipe left = reject,
+  a Warp toggle (and press-and-hold on the image) for the bird's-eye warp, and an
+  "Open in editor" link to `/calibration?clip=..&frame=..&proposal=<run_id>`. Keys
+  a/r/j/k/e/o/w are extras. A 409 on accept asks before overwriting.
+  - Tests: UNTESTED-FRONTEND
+- **LAB-1217** (MUST) `/calibration?clip=&frame=&proposal=` opens that frame with the
+  proposal's inlier points loaded in the editor; Save then accepts it through
+  LAB-1212 (`edited` if the points changed) instead of a plain GT save.
+  - Tests: UNTESTED-FRONTEND (server contract LAB-1212)
+- **LAB-1218** (MUST) The pre-labelling pipeline writes proposals in the contract
+  format atomically (file mode 0664), run id `claude-<model>-<prompt_version>-<ts>`
+  or `mock-...`, logs token usage per call in the run's `params`, never writes
+  `calibration_gt`, and marks frames with no usable fit `failed` with a reason.
+  - Tests: `tests/calibration/test_prelabel.py::test_pipeline_with_mock_writes_contract_proposals`,
+    `::test_pipeline_logs_usage_and_handles_claude_errors`
+- **LAB-1219** (SHOULD) Frames are read through `footy_track.calibration.video.read_frame`
+  (cv2, falling back to the ffmpeg CLI when cv2 fails or returns an all-black frame,
+  frame-accurate, reader cached per video); `/calibration/api/frame` and `/warp` use it.
+  - Tests: `tests/calibration/test_video.py`
+
 ## 15. Traceability summary
 
 | Section | Requirements | Tested | UNTESTED | UNTESTED-FRONTEND |
@@ -982,8 +1051,8 @@ tree: the ball GT sidecars and the feature store are not touched.
 | 10. Review UI (LAB-9xx) | 7 | 0 | 0 | 7 |
 | 11. Ball Check (LAB-10xx) | 12 | 11 | 0 | 1 |
 | 12. Confidence sampling (LAB-11xx) | 5 | 5 | 0 | 0 |
-| 16. Pitch calibration (LAB-12xx) | 9 | 7 | 0 | 2 |
-| **Total** | **110** | **78** | **8** | **24** |
+| 16. Pitch calibration (LAB-12xx) | 19 | 14 | 0 | 5 |
+| **Total** | **120** | **85** | **8** | **27** |
 
 Open items: 4 (OPEN-1..4) + 1 fixed on main (undo provenance, `95b60cc`).
 Test suite: 138 tests in `tests/labeller/` (all green), plus the
