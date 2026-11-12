@@ -1,5 +1,9 @@
 """Pre-label pitch calibration frames (classical candidates + an identifier).
 
+    # Claude via the Claude Code CLI (subscription login, no API key)
+    python -m footy_track.scripts.prelabel_calibration run --identifier claude-cli \
+        --clips arsenal_mancity_seg010 --every 25 --limit 40
+
     # live Claude pilot (needs ANTHROPIC_API_KEY and `uv sync --extra llm`)
     python -m footy_track.scripts.prelabel_calibration run --identifier claude \
         --clips arsenal_mancity_seg010 --every 25 --limit 40
@@ -32,6 +36,7 @@ from footy_track.calibration.prelabel import evaluate as ev
 from footy_track.calibration.prelabel.identifier import (
     DEFAULT_EFFORT,
     DEFAULT_MODEL,
+    ClaudeCLIIdentifier,
     ClaudeIdentifier,
     MockIdentifier,
 )
@@ -50,7 +55,12 @@ def _dirs(args) -> tuple[Path, Path]:
 
 def _cmd_run(args) -> int:
     gt, clips = _dirs(args)
-    if args.identifier == "claude":
+    if args.identifier == "claude-cli":
+        model = "opus" if args.model is None else args.model
+        ident = ClaudeCLIIdentifier(model=model, effort=args.effort, timeout=args.timeout)
+    elif args.identifier == "claude":
+        if args.model is None:
+            args.model = DEFAULT_MODEL
         ident = ClaudeIdentifier(model=args.model, effort=args.effort, fallbacks=not args.no_fallbacks)
     else:
         ident = MockIdentifier(
@@ -103,7 +113,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--clips-dir")
     sub = ap.add_subparsers(dest="cmd", required=True)
     r = sub.add_parser("run", help="generate proposals")
-    r.add_argument("--identifier", choices=["claude", "mock"], default="claude")
+    r.add_argument("--identifier", choices=["claude", "claude-cli", "mock"], default="claude")
     r.add_argument("--clips", nargs="+", required=True, help="clip names or aliases")
     r.add_argument("--frames", help="comma-separated frame indices (default: keyframes)")
     r.add_argument("--every", type=int, default=25, help="keyframe stride (default 25)")
@@ -111,7 +121,8 @@ def main(argv: list[str] | None = None) -> int:
                    help="skip frames that already have human GT (default on; --no-skip-gt to include them)")
     r.add_argument("--no-refine", action="store_true", help="coarse fit only (no line refinement)")
     r.add_argument("--limit", type=int, help="max frames processed in total")
-    r.add_argument("--model", default=DEFAULT_MODEL)
+    r.add_argument("--model", help="default: claude-opus-5-5 (claude) / opus alias (claude-cli)")
+    r.add_argument("--timeout", type=float, default=300.0, help="claude-cli: seconds per call")
     r.add_argument("--effort", choices=EFFORTS, default=DEFAULT_EFFORT)
     r.add_argument("--no-fallbacks", action="store_true", help="disable server-side refusal fallbacks")
     r.add_argument("--verify", action="store_true", help="second Claude call judging the overlay (extra cost)")

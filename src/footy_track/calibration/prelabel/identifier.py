@@ -323,6 +323,58 @@ def _usage_dict(resp) -> dict:
     return out
 
 
+def build_content(inp: IdentifyInput, cache_breakpoint: bool = True) -> list[dict]:
+    """The user-message content blocks (identical for the API and CLI identifiers).
+
+    Stable prefix first (reference diagram) with ONE cache breakpoint at its end;
+    everything per-frame (image, its size) comes after it."""
+    w, h = inp.detection.size
+    blocks = [
+        {"type": "text", "text": "REFERENCE DIAGRAM (keypoint ids in yellow, straight line ids in light blue):"},
+        _img_block(inp.diagram_jpeg),
+        {"type": "text", "text": "End of reference. The frame to analyse follows.",
+         "cache_control": {"type": "ephemeral"}},
+        {"type": "text", "text": f"FRAME ({w} x {h} px; grid ticks every {GRID_STEP} px):"},
+        _img_block(inp.frame_jpeg),
+        {"type": "text", "text": "Locate the visible keypoints and name the visible lines."},
+    ]
+    if not cache_breakpoint:  # the CLI manages its own cache_control; a second one is a 400
+        for b in blocks:
+            b.pop("cache_control", None)
+    return blocks
+
+
+def result_from_data(data: dict, inp: IdentifyInput, usage: dict | None) -> IdentifyResult:
+    """Structured JSON from the model -> labels (normalised image coords)."""
+    w, h = inp.detection.size
+    valid = {c.id: c for c in inp.detection.candidates}
+    kps = inp.pitch.keypoints()
+    labels = []
+    for pt in data.get("points", []):
+        if pt.get("keypoint_id") not in kps:
+            continue
+        cand = valid.get(int(pt.get("candidate_id") or 0))
+        if cand is not None:  # a valid hint id: its exact position beats the estimate
+            labels.append(Label(pt["keypoint_id"], cand.uv, float(pt["confidence"]), cand.id))
+            continue
+        u, v = float(pt["x"]) / w, float(pt["y"]) / h
+        if -0.02 <= u <= 1.02 and -0.02 <= v <= 1.02:
+            labels.append(Label(pt["keypoint_id"], (u, v), float(pt["confidence"]), None))
+    segs = inp.pitch.segments()
+    line_labels = []
+    for ln in data.get("lines", []):
+        if ln.get("line_id") not in segs:
+            continue
+        pts = [(float(ln[k]["x"]) / w, float(ln[k]["y"]) / h) for k in ("p1", "p2")]
+        if np.hypot((pts[0][0] - pts[1][0]) * w, (pts[0][1] - pts[1][1]) * h) < 0.05 * w:
+            continue  # too short to define a direction
+        line_labels.append(LineLabel(ln["line_id"], pts, float(ln["confidence"])))
+    return IdentifyResult(
+        unusable=bool(data.get("unusable")), unusable_reason=data.get("unusable_reason") or None,
+        view=data.get("view") or {}, labels=labels, line_labels=line_labels, usage=usage,
+    )
+
+
 class ClaudeIdentifier:
     """Claude via the Messages API with structured outputs. Never called in tests
     with a real client: pass ``client=`` (a mock) or mock the module."""
@@ -390,50 +442,12 @@ class ClaudeIdentifier:
 
     # --- identify ---------------------------------------------------------
     def identify(self, inp: IdentifyInput) -> IdentifyResult:
-        w, h = inp.detection.size
-        # Stable prefix first (system prompt + schema + reference diagram), with ONE cache
-        # breakpoint at its end; everything per-frame (image, its size) comes after it, so
-        # the per-frame cost is the frame image plus the output only.
-        content = [
-            {"type": "text", "text": "REFERENCE DIAGRAM (keypoint ids in yellow, straight line ids in light blue):"},
-            _img_block(inp.diagram_jpeg),
-            {"type": "text", "text": "End of reference. The frame to analyse follows.",
-             "cache_control": {"type": "ephemeral"}},
-            {"type": "text", "text": f"FRAME ({w} x {h} px; grid ticks every {GRID_STEP} px):"},
-            _img_block(inp.frame_jpeg),
-            {"type": "text", "text": "Locate the visible keypoints and name the visible lines."},
-        ]
-        resp = self._call(SYSTEM, content, build_schema(inp.pitch))
+        resp = self._call(SYSTEM, build_content(inp), build_schema(inp.pitch))
         usage = _usage_dict(resp)
         data, err = self._parse(resp)
         if err:
             return IdentifyResult(error=err, usage=usage)
-        valid = {c.id: c for c in inp.detection.candidates}
-        kps = inp.pitch.keypoints()
-        labels = []
-        for pt in data.get("points", []):
-            if pt.get("keypoint_id") not in kps:
-                continue
-            cand = valid.get(int(pt.get("candidate_id") or 0))
-            if cand is not None:  # a valid hint id: its exact position beats the estimate
-                labels.append(Label(pt["keypoint_id"], cand.uv, float(pt["confidence"]), cand.id))
-                continue
-            u, v = float(pt["x"]) / w, float(pt["y"]) / h
-            if -0.02 <= u <= 1.02 and -0.02 <= v <= 1.02:
-                labels.append(Label(pt["keypoint_id"], (u, v), float(pt["confidence"]), None))
-        segs = inp.pitch.segments()
-        line_labels = []
-        for ln in data.get("lines", []):
-            if ln.get("line_id") not in segs:
-                continue
-            pts = [(float(ln[k]["x"]) / w, float(ln[k]["y"]) / h) for k in ("p1", "p2")]
-            if np.hypot((pts[0][0] - pts[1][0]) * w, (pts[0][1] - pts[1][1]) * h) < 0.05 * w:
-                continue  # too short to define a direction
-            line_labels.append(LineLabel(ln["line_id"], pts, float(ln["confidence"])))
-        return IdentifyResult(
-            unusable=bool(data.get("unusable")), unusable_reason=data.get("unusable_reason") or None,
-            view=data.get("view") or {}, labels=labels, line_labels=line_labels, usage=usage,
-        )
+        return result_from_data(data, inp, usage)
 
     def verify(self, overlay_jpeg: bytes) -> dict:
         """Optional second call: does the projected model sit on the markings?"""
@@ -444,6 +458,102 @@ class ClaudeIdentifier:
         if err:
             return {"match": None, "reason": err, "usage": usage}
         return {"match": bool(data["match"]), "reason": data["reason"], "usage": usage}
+
+
+class ClaudeCLIIdentifier:
+    """Claude via the Claude Code CLI (``claude -p``), for machines with a claude.ai
+    subscription login but no API key. One subprocess per frame, no tools, no
+    session persistence, run from a scratch cwd with no settings/MCP/skills so
+    no project context leaks in. Same prompt/schema as :class:`ClaudeIdentifier`.
+
+    ``--input-format stream-json`` needs ``--output-format stream-json``; the
+    structured answer is ``structured_output`` on the final ``result`` event.
+    ``command`` is injectable (tests use a fake executable)."""
+
+    source = "claude"
+
+    def __init__(
+        self,
+        model: str = "opus",
+        effort: str = DEFAULT_EFFORT,
+        command: str | list[str] = "claude",
+        timeout: float = 300.0,
+        retries: int = 1,
+        cwd: str | Path | None = None,
+    ) -> None:
+        self.model, self.effort, self.timeout, self.retries = model, effort, timeout, retries
+        self.command = [command] if isinstance(command, str) else list(command)
+        self._cwd = Path(cwd) if cwd else None
+
+    def run_prefix(self) -> str:
+        return f"claudecli-{self.model}-{PROMPT_VERSION}"
+
+    def run_params(self) -> dict:
+        return {"model": self.model, "prompt_version": PROMPT_VERSION, "effort": self.effort, "backend": "claude-cli"}
+
+    def _argv(self, schema: dict) -> list[str]:
+        return [
+            *self.command, "-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose",
+            "--json-schema", json.dumps(schema), "--tools", "", "--system-prompt", SYSTEM,
+            "--model", self.model, "--effort", self.effort, "--no-session-persistence",
+            "--setting-sources", "", "--strict-mcp-config", "--mcp-config", '{"mcpServers":{}}',
+            "--disable-slash-commands",
+        ]
+
+    def _run_once(self, schema: dict, content: list[dict]) -> tuple[dict | None, dict, str | None]:
+        """-> (structured_output, usage, error)."""
+        import subprocess  # noqa: PLC0415
+        import tempfile  # noqa: PLC0415
+
+        msg = json.dumps({"type": "user", "message": {"role": "user", "content": content}})
+        cwd = self._cwd or Path(tempfile.gettempdir())
+        usage: dict = {}
+        try:
+            cp = subprocess.run(
+                self._argv(schema), input=msg, capture_output=True, text=True, timeout=self.timeout, cwd=cwd,
+            )
+        except subprocess.TimeoutExpired:
+            return None, usage, f"claude CLI timed out after {self.timeout:.0f}s"
+        except OSError as exc:
+            return None, usage, f"cannot run claude CLI: {exc}"
+        result = None
+        for line in cp.stdout.splitlines():
+            try:
+                ev = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(ev, dict) and ev.get("type") == "result":
+                result = ev
+        if result is None:
+            return None, usage, f"no result event (exit {cp.returncode}): {(cp.stderr or cp.stdout)[-300:].strip()}"
+        u = result.get("usage") or {}
+        mu = result.get("modelUsage") or {}
+        usage = {
+            "model_served": next(iter(mu), None),
+            **{k: u.get(k) for k in ("input_tokens", "output_tokens", "cache_creation_input_tokens",
+                                     "cache_read_input_tokens")},
+            "cost_usd": result.get("total_cost_usd"), "duration_ms": result.get("duration_ms"),
+            "duration_api_ms": result.get("duration_api_ms"),
+        }
+        if result.get("is_error") or result.get("subtype") != "success":
+            return None, usage, f"claude CLI error ({result.get('subtype')}): {str(result.get('result'))[:300]}"
+        so = result.get("structured_output")
+        if not isinstance(so, dict):
+            return None, usage, f"no structured_output (stop_reason={result.get('stop_reason')})"
+        return so, usage, None
+
+    def identify(self, inp: IdentifyInput) -> IdentifyResult:
+        content, schema = build_content(inp, cache_breakpoint=False), build_schema(inp.pitch)
+        err, usage = None, {}
+        for _ in range(self.retries + 1):
+            data, usage, err = self._run_once(schema, content)
+            if err is None:
+                try:
+                    return result_from_data(data, inp, usage)
+                except (KeyError, TypeError, ValueError) as exc:
+                    err = f"malformed structured output: {exc!r}"
+        return IdentifyResult(error=err, usage=usage)
+
 
 
 # --------------------------------------------------------------------------

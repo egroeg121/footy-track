@@ -31,3 +31,11 @@ white-line mask (robust distance-transform cost, coarse-to-fine, numpy LM; retur
 with `applied=False` and a reason when it cannot improve it safely). It only needs masks and an
 `H`, so the manual page can call it too. `prelabel/` (see `docs/design/calibration.md` section 7)
 uses it after the coarse fit.
+
+## Claude via the Claude Code CLI (no API key)
+
+`--identifier claude-cli` runs `claude -p` once per frame (stream-json in/out, `--json-schema`,
+`--tools ""`, `--setting-sources ""`, no MCP, no session persistence, scratch cwd), default model
+alias `opus`, effort `medium`. Same prompt/schema as the API identifier (`build_content`), minus our
+`cache_control` (the CLI adds its own; a second one is a 400). Answer is `structured_output` on the
+final `result` event; cost/duration land in the run's `params.usage`.

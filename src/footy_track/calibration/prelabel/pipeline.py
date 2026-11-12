@@ -207,7 +207,8 @@ class RunSummary:
 
 
 def _add_usage(total: dict, u: dict | None) -> None:
-    for k in ("input_tokens", "output_tokens", "cache_creation_input_tokens", "cache_read_input_tokens"):
+    for k in ("input_tokens", "output_tokens", "cache_creation_input_tokens", "cache_read_input_tokens",
+              "cost_usd", "duration_ms"):
         if u and u.get(k):
             total[k] = total.get(k, 0) + u[k]
 

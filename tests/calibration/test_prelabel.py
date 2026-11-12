@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import base64
 import json
+import sys
 from types import SimpleNamespace
 
 import cv2
@@ -380,3 +381,92 @@ def test_eval_scores_good_and_bad_proposals(run_env):
     assert by["mock-c2"]["mean_px"] is None or by["mock-c2"]["mean_px"] > by["mock-c0"]["mean_px"]
     assert res["summary"]["n_frames"] == 2 and 0 <= res["summary"]["success_rate"] <= 1
     assert "success" in ev.format_table(res)
+
+
+# --------------------------------------------------------------------------
+# claude CLI identifier (fake executable; never a real call)
+# --------------------------------------------------------------------------
+
+
+def _fake_claude(tmp_path, mode="ok", payload=None):
+    """A python script standing in for `claude`: logs argv/stdin/cwd, prints stream-json."""
+    log = tmp_path / "calls.jsonl"
+    (tmp_path / "payload.json").write_text(json.dumps(payload or {}))
+    script = tmp_path / "fakeclaude"
+    script.write_text(f"""#!{sys.executable}
+import json, os, sys, time
+stdin = sys.stdin.read()
+n = sum(1 for _ in open({str(log)!r})) if os.path.exists({str(log)!r}) else 0
+open({str(log)!r}, "a").write(json.dumps({{"argv": sys.argv[1:], "stdin": stdin, "cwd": os.getcwd()}}) + "\\n")
+mode = {mode!r}
+if mode == "sleep":
+    time.sleep(30)
+print(json.dumps({{"type": "system", "subtype": "init"}}))
+if mode == "garbage":
+    print("not json")
+    sys.exit(3)
+if mode == "flaky" and n == 0:
+    print(json.dumps({{"type": "result", "subtype": "error_during_execution", "is_error": True, "result": "boom"}}))
+    sys.exit(1)
+res = {{"type": "result", "subtype": "success", "is_error": False, "total_cost_usd": 0.25, "duration_ms": 4000,
+       "duration_api_ms": 3900, "stop_reason": "end_turn",
+       "usage": {{"input_tokens": 5, "output_tokens": 300, "cache_creation_input_tokens": 100, "cache_read_input_tokens": 7}},
+       "modelUsage": {{"claude-opus-5-5": {{}}}}}}
+if mode != "nostruct":
+    res["structured_output"] = json.load(open({str(tmp_path / "payload.json")!r}))
+print(json.dumps(res))
+""")
+    script.chmod(0o755)
+    return str(script), log
+
+
+def test_claude_cli_request_shape_and_parsing(det, tmp_path):
+    cmd, log = _fake_claude(tmp_path, payload=_payload(det))
+    ci = idf.ClaudeCLIIdentifier(command=cmd, effort="low", cwd=tmp_path)
+    res = ci.identify(_inp(det))
+    call = json.loads(log.read_text().splitlines()[0])
+    argv = call["argv"]
+    assert argv[:1] == ["-p"] and call["cwd"] == str(tmp_path.resolve())
+    assert argv[argv.index("--model") + 1] == "opus" and argv[argv.index("--effort") + 1] == "low"
+    assert argv[argv.index("--tools") + 1] == "" and argv[argv.index("--system-prompt") + 1] == idf.SYSTEM
+    assert "--no-session-persistence" in argv and argv[argv.index("--output-format") + 1] == "stream-json"
+    assert json.loads(argv[argv.index("--json-schema") + 1]) == idf.build_schema(PITCH)
+    msg = json.loads(call["stdin"])
+    assert msg["type"] == "user" and msg["message"]["content"] == idf.build_content(_inp(det), cache_breakpoint=False)  # same prompt as the API path
+    assert "cache_control" not in call["stdin"]
+    assert len([b for b in msg["message"]["content"] if b["type"] == "image"]) == 2
+    direct = [lb for lb in res.labels if lb.candidate_id is None]
+    assert not res.unusable and len(direct) >= 5 and [ll.line_id for ll in res.line_labels] == ["HALFWAY_LINE"]
+    assert res.usage["cost_usd"] == 0.25 and res.usage["duration_ms"] == 4000 and res.usage["output_tokens"] == 300
+    assert res.usage["model_served"] == "claude-opus-5-5"
+    assert ci.run_prefix() == f"claudecli-opus-{idf.PROMPT_VERSION}"
+
+
+def test_claude_cli_retries_once_then_reports_errors(det, tmp_path):
+    cmd, log = _fake_claude(tmp_path, mode="flaky", payload=_payload(det))
+    res = idf.ClaudeCLIIdentifier(command=cmd).identify(_inp(det))
+    assert res.error is None and res.labels and len(log.read_text().splitlines()) == 2
+    for mode, frag in (("garbage", "no result event"), ("nostruct", "no structured_output")):
+        d = tmp_path / mode
+        d.mkdir()
+        cmd, log = _fake_claude(d, mode=mode)
+        r = idf.ClaudeCLIIdentifier(command=cmd).identify(_inp(det))
+        assert frag in r.error and not r.labels and len(log.read_text().splitlines()) == 2
+
+
+def test_claude_cli_timeout_and_missing_binary(det, tmp_path):
+    cmd, _ = _fake_claude(tmp_path, mode="sleep")
+    r = idf.ClaudeCLIIdentifier(command=cmd, timeout=0.5, retries=0).identify(_inp(det))
+    assert "timed out" in r.error
+    r = idf.ClaudeCLIIdentifier(command=str(tmp_path / "nope"), retries=0).identify(_inp(det))
+    assert "cannot run claude CLI" in r.error
+
+
+def test_pipeline_with_claude_cli_records_cost(run_env, det, tmp_path):
+    gt, clips = run_env
+    cmd, _ = _fake_claude(tmp_path, payload=_payload(det))
+    cfg = pl.RunConfig(gt_dir=gt, clips_dir=clips, clips=["arsenal_mancity_seg010"], frames=[1])
+    s = pl.run_prelabel(cfg, idf.ClaudeCLIIdentifier(command=cmd), log=lambda *_: None)
+    run = read_proposals(gt, "arsenal_mancity_seg010")["runs"][s.run_id]
+    assert run["params"]["backend"] == "claude-cli" and run["params"]["usage_total"]["cost_usd"] == 0.25
+    assert run["params"]["usage"][0]["duration_ms"] == 4000
