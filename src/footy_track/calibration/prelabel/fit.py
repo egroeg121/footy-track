@@ -331,6 +331,15 @@ def fit_and_score(
             H=H_final, labels=final_labels, inliers=final_inl.tolist(), err_px=err_f, n_samples=n,
             H_coarse=H, err_px_coarse=err_c, refine=rr, line_labels=lines,
         )
+    if len(labels) < 4 and not (rr and rr.applied):
+        # A <4-point (points+lines) DLT is barely constrained: it can match a few
+        # line samples perfectly (score ~1.0) while the rest of the pitch is
+        # garbage. Only trust it when line refinement confirmed it.
+        return FitResult(
+            False, f"only {len(labels)} point labels and line refinement did not confirm the fit",
+            H=H_final, labels=final_labels, inliers=final_inl.tolist(), err_px=err_f, n_samples=n, score=float(score),
+            H_coarse=H, err_px_coarse=err_c, refine=rr, line_labels=lines,
+        )
     if score < MIN_PROPOSAL_SCORE:
         return FitResult(
             False, f"the fitted pitch lines do not match the white lines (score {score:.2f} < {MIN_PROPOSAL_SCORE})",
