@@ -790,6 +790,20 @@ reads `<gt dir>/ball_checks/` (`--ball-checks-dir`) into the feature store's
   Identity rules: `footy_track.clip_id` and
   [feature store §3.1a](../../../docs/design/feature_store.md#31a-clip-identity-canonical-clip-id).
   - Tests: `test_ball_check.py::test_save_box_on_a_raw_named_candidate_writes_into_the_existing_gt_stem`
+- **LAB-1013b** (MAY) `GET /ball_check/queue?source=list` serves the explicit
+  cards of the review list named by `FOOTY_BALL_CHECK_LIST` (`{"items": [{clip,
+  frame_index, bbox, other_bbox?, label?, note?, ...}]}`, normalised boxes), in
+  file order, skipping cards that have a verdict. A card's `box_index` is its
+  position in the file and its source is `list`; `/ball_check/crop` and
+  `crop_meta` with `src=list` resolve the box from the file and draw
+  `other_bbox` in magenta. The page forwards `?source=` and `?clip=` to the
+  queue (`/ball_check?source=list`). No file configured means an empty pool.
+  List verdicts go to the normal log and are excluded from `/ball_check/stats`
+  and the confidence-band estimate (hand-picked cards are not a sample).
+  Used by the Claude-verify re-check (`docs/design/claude_autolabel_loop.md`
+  section 8); a minimal piece of T-47, not the `claude` candidate pool.
+  - Tests: `test_ball_check.py::test_list_queue_file_order_skips_judged`,
+    `test_list_crop_and_meta`
 - **LAB-1014** (PLANNED, MUST) `/ball_check` can serve cards from the `claude`
   candidate pool, uncertain first (Claude and the detector disagree, low
   confidence, cell corrections). A "yes" on such a proposal writes the box to

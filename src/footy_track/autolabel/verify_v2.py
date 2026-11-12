@@ -351,3 +351,231 @@ def ball_precision_by_det_conf(rows: Iterable[dict]) -> dict[str, list[int]]:
 
 def cand_to_dict(c: Candidate) -> dict:
     return asdict(c)
+
+
+# --------------------------------------------------------------------------- recheck
+#
+# A person re-checks the frames where Claude and the human marks disagree (the marks
+# have no second human pass). Each disagreement frame becomes Ball Check "list" cards:
+# one per human mark ("is the GT mark the in-play match ball?") and one per disagreeing
+# Claude box (same question). Verdicts map onto the existing ones; a spare or crowd ball
+# is simply ``not_ball`` for the question asked (the in-play ball), nothing new.
+
+RECHECK_SOURCE = "list"
+GT_BOX_PX = 12.0  # the marks store centres only here; drawn as a small square
+
+
+def find_disagreements(
+    questions: Sequence[dict],
+    truth: dict[str, dict],
+    answers: dict[str, dict],
+    radius: float = NEAR_PX,
+) -> list[dict]:
+    """Candidates where Claude and the human marks disagree.
+
+    ``false_not_ball``: a candidate within R of a mark answered ``not_ball`` or
+    ``unsure`` (the ``verdict`` column says which). ``false_ball``: a candidate farther
+    than R from every mark answered ``ball``, on a ball frame; ``false_ball_no_ball_frame``
+    the same on a frame the human marked as having no ball.
+    """
+    qs = {q["id"]: q for q in questions}
+    out = []
+    for r in score_candidates(questions, truth, answers, radius):
+        if r["near"] and r["verdict"] != "ball":
+            kind = "false_not_ball"
+        elif not r["near"] and r["verdict"] == "ball":
+            kind = "false_ball" if r["kind"] == "ball" else "false_ball_no_ball_frame"
+        else:
+            continue
+        q = qs[r["id"]]
+        gts = [tuple(g) for g in truth[r["fkey"]]["gt"]]
+        near = nearest((q["cand"]["cx"], q["cand"]["cy"]), gts)
+        out.append(
+            {
+                "type": kind,
+                "qid": r["id"],
+                "fkey": r["fkey"],
+                "clip": q["clip"],
+                "frame": q["frame"],
+                "split": q["split"],
+                "source": r["source"],
+                "verdict": r["verdict"],
+                "claude_conf": r["confidence"],
+                "reason": answers[r["id"]].get("reason", ""),
+                "det_conf": r["det_conf"],
+                "cand_cx": q["cand"]["cx"],
+                "cand_cy": q["cand"]["cy"],
+                "cand_w": q["cand"]["w"],
+                "cand_h": q["cand"]["h"],
+                "gt": [list(g) for g in gts],
+                "dist_to_nearest_gt": None if near is None else round(near, 1),
+            }
+        )
+    out.sort(key=lambda d: (d["clip"], d["frame"], d["qid"]))
+    return out
+
+
+def _box(cx: float, cy: float, w: float, h: float, size: tuple[int, int]) -> dict:
+    fw, fh = size
+    x = max(0.0, min(1.0, (cx - w / 2) / fw))
+    y = max(0.0, min(1.0, (cy - h / 2) / fh))
+    return {
+        "x": round(x, 5),
+        "y": round(y, 5),
+        "w": round(min(w / fw, 1 - x), 5),
+        "h": round(min(h / fh, 1 - y), 5),
+    }
+
+
+def build_review_items(
+    disagreements: Sequence[dict],
+    frame_sizes: dict[str, tuple[int, int]],
+    video_stems: dict[str, str],
+) -> list[dict]:
+    """Ball Check cards for ``disagreements``, grouped by frame, human mark first.
+
+    ``video_stems`` maps the run's clip id to the stem the labeller serves the video
+    under (``clip`` of a card must resolve to a video). Boxes are normalised.
+    """
+    by_frame: dict[str, list[dict]] = defaultdict(list)
+    for d in disagreements:
+        by_frame[d["fkey"]].append(d)
+    items: list[dict] = []
+    for fkey in sorted(
+        by_frame, key=lambda k: (by_frame[k][0]["clip"], by_frame[k][0]["frame"])
+    ):
+        ds = by_frame[fkey]
+        clip, frame = ds[0]["clip"], ds[0]["frame"]
+        size = frame_sizes[clip]
+        stem = video_stems[clip]
+        types = ", ".join(sorted({d["type"] for d in ds}))
+        first = ds[0]
+        for gi, g in enumerate(first["gt"]):
+            others = sorted(
+                ds, key=lambda d: dist((d["cand_cx"], d["cand_cy"]), tuple(g))
+            )
+            o = others[0]
+            items.append(
+                {
+                    "id": f"{fkey}|gt{gi}",
+                    "role": "gt",
+                    "fkey": fkey,
+                    "gt_index": gi,
+                    "clip": stem,
+                    "run_clip": clip,
+                    "frame_size": list(size),
+                    "frame_index": frame,
+                    "bbox": _box(g[0], g[1], GT_BOX_PX, GT_BOX_PX, size),
+                    "other_bbox": _box(
+                        o["cand_cx"], o["cand_cy"], o["cand_w"], o["cand_h"], size
+                    ),
+                    "label": "in_play_ball",
+                    "provenance": "gt mark",
+                    "confidence": None,
+                    "type": types,
+                    "note": (
+                        f"GT MARK (yellow). Is it the in-play match ball? Magenta = Claude's "
+                        f"box ({o['verdict']}, conf {o['claude_conf']}). [{types}]"
+                    ),
+                }
+            )
+        for d in ds:
+            near = min(
+                (tuple(g) for g in d["gt"]),
+                key=lambda g: dist((d["cand_cx"], d["cand_cy"]), g),
+                default=None,
+            )
+            items.append(
+                {
+                    "id": d["qid"],
+                    "role": "claude",
+                    "fkey": fkey,
+                    "qid": d["qid"],
+                    "clip": stem,
+                    "run_clip": clip,
+                    "frame_size": list(size),
+                    "frame_index": frame,
+                    "bbox": _box(
+                        d["cand_cx"], d["cand_cy"], d["cand_w"], d["cand_h"], size
+                    ),
+                    "other_bbox": None
+                    if near is None
+                    else _box(near[0], near[1], GT_BOX_PX, GT_BOX_PX, size),
+                    "label": "in_play_ball",
+                    "provenance": f"claude {d['source']}",
+                    "confidence": None,
+                    "type": d["type"],
+                    "note": (
+                        f"CLAUDE'S BOX (yellow), Claude said {d['verdict']} "
+                        f"(conf {d['claude_conf']}). Is it the in-play match ball? "
+                        f"Spare or crowd ball = Not a ball. Magenta = GT mark. [{d['type']}]"
+                    ),
+                }
+            )
+    return items
+
+
+def apply_decisions(
+    truth: dict[str, dict],
+    questions: Sequence[dict],
+    items: Sequence[dict],
+    decisions: dict[str, dict],
+) -> tuple[dict[str, dict], dict]:
+    """Truth after a person's verdicts on the review cards.
+
+    ``decisions`` maps card ``id`` to the latest live Ball Check record. Rules, per frame:
+
+    * a GT card ``not_ball`` removes that mark; ``corrected`` moves it to the dragged
+      box; ``ball`` / ``box_off`` / ``unsure`` / no verdict keep it;
+    * a Claude card ``ball`` adds its box (a ``corrected`` adds the dragged box) as a
+      mark; ``not_ball`` / ``unsure`` / none add nothing, so a ``ball`` answer from Claude
+      on that box scores as a false ``ball``. A spare or crowd ball is ``not_ball``;
+    * a frame left with no mark is a no-ball frame; a frame with a mark is a ball frame.
+
+    Frames without decisions are untouched. Returns (new truth, change counts).
+    """
+    new = {
+        k: {"kind": v["kind"], "gt": [list(g) for g in v["gt"]]}
+        for k, v in truth.items()
+    }
+    by_frame: dict[str, list[dict]] = defaultdict(list)
+    for it in items:
+        by_frame[it["fkey"]].append(it)
+    qcand = {q["id"]: q["cand"] for q in questions}
+    stats: dict[str, int] = defaultdict(int)
+    for fkey, its in by_frame.items():
+        decided = [(it, decisions[it["id"]]) for it in its if it["id"] in decisions]
+        stats["cards"] += len(its)
+        stats["cards_decided"] += len(decided)
+        if not decided:
+            continue
+        gts = [list(g) for g in truth[fkey]["gt"]]
+        removed: set[int] = set()
+        added: list[list[float]] = []
+        for it, rec in decided:
+            v = rec["verdict"]
+            stats[f"{it['role']}_{v}"] += 1
+            cb = rec.get("corrected_bbox")
+            pos = None
+            if v == "corrected" and isinstance(cb, dict):
+                fw, fh = it["frame_size"]
+                pos = [(cb["x"] + cb["w"] / 2) * fw, (cb["y"] + cb["h"] / 2) * fh]
+            if it["role"] == "gt":
+                if v == "not_ball":
+                    removed.add(it["gt_index"])
+                elif v == "corrected" and pos is not None:
+                    removed.add(it["gt_index"])
+                    added.append(pos)
+            elif v == "ball":
+                c = qcand[it["qid"]]
+                added.append([c["cx"], c["cy"]])
+            elif v == "corrected" and pos is not None:
+                added.append(pos)
+        kept = [g for i, g in enumerate(gts) if i not in removed] + added
+        kind_before = new[fkey]["kind"]
+        new[fkey] = {"kind": "ball" if kept else "no_ball", "gt": kept}
+        if new[fkey] != {"kind": kind_before, "gt": gts}:
+            stats["frames_changed"] += 1
+            if kind_before != new[fkey]["kind"]:
+                stats[f"frames_{kind_before}_to_{new[fkey]['kind']}"] += 1
+    return new, dict(stats)

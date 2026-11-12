@@ -113,6 +113,10 @@ _CANDIDATES_DIR = _env_dir(
     Path.home() / "footy" / "footy_data" / "ball_candidates",
 )
 
+#: Optional review list for Ball Check's ``source=list`` pool (explicit cards,
+#: served in file order). Unset means the pool is empty. See README section 11.
+_BALL_CHECK_LIST = os.environ.get("FOOTY_BALL_CHECK_LIST") or None
+
 
 from footy_track.labeller import identity_routes  # noqa: E402
 

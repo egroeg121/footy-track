@@ -15,6 +15,17 @@
     python -m footy_track.scripts.claude_verify_v2 score --run R \
         --answers R/answers_verify-v2_opus.json --label opus
 
+    # 4. list the frames where Claude and the human marks disagree (writes
+    #    disagreements.csv and review_list.json), then a person re-checks them in
+    #    Ball Check (see docs/design/claude_autolabel_loop.md, section 8):
+    #    FOOTY_BALL_CHECK_LIST=R/review_list.json  ->  /ball_check?source=list
+    python -m footy_track.scripts.claude_verify_v2 disagreements --run R \
+        --answers R/answers_verify-v2.2_opus.json --videos V
+    # 5. re-score against the marks as corrected by those verdicts
+    python -m footy_track.scripts.claude_verify_v2 score --run R \
+        --answers R/answers_verify-v2.2_opus.json --label opus \
+        --decisions <gt dir>/ball_checks
+
 ``questions.json`` is what Claude is shown (an image per candidate); ``truth.json`` holds
 the human marks and is read only by ``score``. The marks never choose a crop or a
 candidate. Exit codes of ``ask``: 0 done, 2 failed, 3 stopped on an auth or usage-limit
@@ -24,6 +35,7 @@ error (never retried, no other backend is tried).
 from __future__ import annotations
 
 import argparse
+import csv
 import hashlib
 import json
 import sys
@@ -42,10 +54,14 @@ from footy_track.autolabel.verify_pilot import (
 )
 from footy_track.autolabel.verify_v2 import (
     MAX_REDETECT,
+    NEAR_PX,
     RADII_PX,
     REDETECT_CROP_PX,
     TOP_OTHERS,
+    apply_decisions,
     ball_precision_by_det_conf,
+    build_review_items,
+    find_disagreements,
     frame_key,
     normalise_answer,
     question_id,
@@ -464,12 +480,88 @@ def load_answers(paths: list[Path]) -> dict[str, dict]:
     return out
 
 
+def load_decisions(items: list[dict], ball_checks_dir: Path) -> dict[str, dict]:
+    """Latest live Ball Check verdict per review card id (source ``list``)."""
+    from footy_track.feature_store.ball_checks import (  # noqa: PLC0415
+        read_latest_verdicts,
+    )
+
+    out: dict[str, dict] = {}
+    by_clip: dict[str, dict] = {}
+    for i, it in enumerate(items):
+        path = ball_checks_dir / f"{it['clip']}.jsonl"
+        if it["clip"] not in by_clip:
+            by_clip[it["clip"]] = read_latest_verdicts(path) if path.exists() else {}
+        rec = by_clip[it["clip"]].get(("list", it["frame_index"], i))
+        if rec is not None:
+            out[it["id"]] = rec
+    return out
+
+
+def cmd_disagreements(args: argparse.Namespace) -> int:
+    import cv2  # noqa: PLC0415
+
+    from footy_track.clip_id import canonical_clip_id  # noqa: PLC0415
+
+    run = args.run
+    questions = json.loads((run / "questions.json").read_text())
+    truth = json.loads((run / "truth.json").read_text())
+    answers = load_answers(args.answers)
+    questions = [q for q in questions if args.split in ("all", q["split"])]
+    dis = find_disagreements(questions, truth, answers, args.radius)
+    videos = {}
+    for d in args.videos:
+        for p in sorted(d.iterdir()):
+            if p.suffix.lower() in VIDEO_SUFFIXES:
+                videos.setdefault(canonical_clip_id(p.name), p)
+    sizes, stems = {}, {}
+    for clip in sorted({d["clip"] for d in dis}):
+        if clip not in videos:
+            print(f"no video for {clip}", file=sys.stderr)
+            return 2
+        cap = cv2.VideoCapture(str(videos[clip]))
+        sizes[clip] = (
+            int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)),
+            int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)),
+        )
+        cap.release()
+        stems[clip] = videos[clip].stem
+    items = build_review_items(dis, sizes, stems)
+    _atomic(run / "review_list.json", {"version": 1, "items": items})
+    _atomic(run / "disagreements.json", dis)
+    cols = [
+        "type", "clip", "frame", "split", "source", "verdict", "claude_conf",
+        "det_conf", "cand_cx", "cand_cy", "cand_w", "cand_h", "gt",
+        "dist_to_nearest_gt", "qid", "reason",
+    ]  # fmt: skip
+    with (run / "disagreements.csv").open("w", newline="") as fh:
+        w = csv.DictWriter(fh, fieldnames=cols, extrasaction="ignore")
+        w.writeheader()
+        for d in dis:
+            w.writerow(d | {"gt": json.dumps(d["gt"])})
+    by_type: dict[str, int] = {}
+    for d in dis:
+        k = d["type"] + (" (unsure)" if d["verdict"] == "unsure" else "")
+        by_type[k] = by_type.get(k, 0) + 1
+    print(f"{len(dis)} disagreements on {len({d['fkey'] for d in dis})} frames")
+    print("by type:", by_type)
+    print(f"{len(items)} review cards -> {run / 'review_list.json'}")
+    return 0
+
+
 def cmd_score(args: argparse.Namespace) -> int:
     run = args.run
     questions = json.loads((run / "questions.json").read_text())
     frames = json.loads((run / "frames.json").read_text())
     truth = json.loads((run / "truth.json").read_text())
     answers = load_answers(args.answers)
+    if args.decisions:
+        items = json.loads((run / "review_list.json").read_text())["items"]
+        decisions = load_decisions(items, args.decisions)
+        truth, changes = apply_decisions(truth, questions, items, decisions)
+        args.label = f"{args.label}_rechecked"
+        _atomic(run / f"truth_{args.label}.json", truth)
+        print("recheck decisions applied:", json.dumps(changes))
     summary: dict = {}
     for radius in args.radii:
         rows = score_candidates(questions, truth, answers, radius)
@@ -601,7 +693,20 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("--calls", type=Path, nargs="*", default=[])
     s.add_argument("--label", default="run")
     s.add_argument("--radii", type=float, nargs="+", default=list(RADII_PX))
+    s.add_argument(
+        "--decisions",
+        type=Path,
+        help="ball_checks dir holding a person's verdicts on review_list.json cards; "
+        "re-scores against the marks as corrected by them (label gets _rechecked)",
+    )
     s.set_defaults(fn=cmd_score)
+    d = sub.add_parser("disagreements")
+    d.add_argument("--run", type=Path, required=True)
+    d.add_argument("--answers", type=Path, nargs="+", required=True)
+    d.add_argument("--videos", type=Path, nargs="+", required=True)
+    d.add_argument("--radius", type=float, default=NEAR_PX)
+    d.add_argument("--split", choices=("held_out", "seen", "all"), default="all")
+    d.set_defaults(fn=cmd_disagreements)
     args = ap.parse_args(argv)
     return args.fn(args)
 

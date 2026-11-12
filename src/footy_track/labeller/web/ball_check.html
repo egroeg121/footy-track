@@ -76,6 +76,7 @@
         <svg id="overlay" xmlns="http://www.w3.org/2000/svg"></svg>
       </div>
       <div id="meta"><span id="clipName"></span><span id="provName"></span></div>
+      <div id="note" style="padding:0 12px 8px;font-size:12px;color:var(--muted)"></div>
       <div id="verdictFlash"></div>
     </div>
     <div id="empty">
@@ -126,6 +127,13 @@ let box = null;                // live box in frame pixels {x1,y1,x2,y2}
 let edited = false;
 
 const $ = (id) => document.getElementById(id);
+// ?source=list|candidates|sidecar and ?clip=... steer the queue (default: auto).
+const QS = new URLSearchParams(location.search);
+const queueUrl = () => {
+  const p = new URLSearchParams({ limit: '60' });
+  for (const k of ['source', 'clip']) if (QS.get(k)) p.set(k, QS.get(k));
+  return `/ball_check/queue?${p}`;
+};
 const srcOf = (item) => item.source || 'sidecar';
 // Clip stems carry a date that eats the width the confidence needs.
 const shortClip = (c) => c.replace(/_20\d{6}/, '');
@@ -239,6 +247,7 @@ function render() {
   $('provName').textContent = item.confidence === null || item.confidence === undefined
     ? `${item.label} · ${item.provenance}`
     : `${item.label} · conf ${item.confidence.toFixed(2)}`;
+  $('note').textContent = item.note || '';
   $('progress').textContent = `${judged} checked · ${remaining} left`;
   loadMeta(item);
   prefetch();
@@ -250,7 +259,7 @@ window.addEventListener('resize', drawBox);
 // ---- queue ----------------------------------------------------------------
 
 async function loadQueue(reset) {
-  const data = await (await fetch('/ball_check/queue?limit=60')).json();
+  const data = await (await fetch(queueUrl())).json();
   remaining = data.remaining;
   judged = data.judged;
   if (data.tau !== undefined) {

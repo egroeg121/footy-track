@@ -160,6 +160,63 @@ def _append_verdict(rec: dict) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Review list (explicit cards, source "list")
+# ---------------------------------------------------------------------------
+
+_LIST_CACHE: dict[str, tuple[float, list[dict]]] = {}
+
+
+def _list_path() -> Path | None:
+    from footy_track.labeller import server  # noqa: PLC0415 — avoid import cycle
+
+    raw = server._BALL_CHECK_LIST
+    return Path(raw).expanduser() if raw else None
+
+
+def _list_items() -> list[dict]:
+    """Cards of the review list, in file order; ``box_index`` is the position.
+
+    The file is ``{"items": [{"clip", "frame_index", "bbox": {x,y,w,h},
+    "label", "note", "other_bbox"?, ...}]}`` with normalised boxes. A missing or
+    unreadable file is an empty pool. Extra keys pass through to the page.
+    """
+    path = _list_path()
+    if path is None or not path.exists():
+        return []
+    mtime = path.stat().st_mtime
+    hit = _LIST_CACHE.get(str(path))
+    if hit is not None and hit[0] == mtime:
+        return hit[1]
+    try:
+        raw = json.loads(path.read_text())
+        items = raw["items"] if isinstance(raw, dict) else raw
+        out = []
+        for i, it in enumerate(items):
+            out.append({**it, "box_index": i, "frame_index": int(it["frame_index"])})
+    except (OSError, json.JSONDecodeError, KeyError, TypeError, ValueError):
+        LOGGER.warning("ball_check: review list %s unreadable", path)
+        return []
+    _LIST_CACHE[str(path)] = (mtime, out)
+    return out
+
+
+def _list_item(clip: str, frame_index: int, box_index: int) -> dict | None:
+    items = _list_items()
+    if 0 <= box_index < len(items):
+        it = items[box_index]
+        if it["clip"] == clip and it["frame_index"] == frame_index:
+            return it
+    return None
+
+
+def _list_box(it: dict, key: str = "bbox") -> tuple[float, float, float, float] | None:
+    b = it.get(key)
+    if not isinstance(b, dict):
+        return None
+    return float(b["x"]), float(b["y"]), float(b["w"]), float(b["h"])
+
+
+# ---------------------------------------------------------------------------
 # Queue
 # ---------------------------------------------------------------------------
 
@@ -237,6 +294,8 @@ async def ball_check_queue(
     ``source=candidates`` draws from the detector's own output, which carries
     real confidences, and orders them by confidence-stratified sampling.
     ``source=sidecar`` reviews the boxes already in the GT sidecars.
+    ``source=list`` serves the explicit cards of the review list
+    (``FOOTY_BALL_CHECK_LIST``) in file order, skipping judged ones.
     ``auto`` (default) prefers candidates when any have been pulled down.
     """
     judged = await asyncio.to_thread(_read_verdicts)
@@ -249,8 +308,40 @@ async def ball_check_queue(
         )
         source = "candidates" if have_cands else "sidecar"
 
+    if source == "list":
+        all_items = [
+            it
+            for it in await asyncio.to_thread(_list_items)
+            if clip is None or it["clip"] == clip
+        ]
+        todo = [
+            it
+            for it in all_items
+            if ("list", it["clip"], it["frame_index"], it["box_index"]) not in judged
+        ]
+        return {
+            "source": "list",
+            "remaining": len(todo),
+            "judged": len(all_items) - len(todo),
+            "items": [
+                {
+                    **it,
+                    "source": "list",
+                    "label": it.get("label") or "in_play_ball",
+                    "provenance": it.get("provenance") or it.get("role") or "list",
+                    "confidence": it.get("confidence"),
+                    "image_url": (
+                        f"/ball_check/crop/{it['clip']}/{it['frame_index']}"
+                        f"/{it['box_index']}.jpg?src=list"
+                    ),
+                }
+                for it in todo[:limit]
+            ],
+        }
+
     if source == "candidates":
         pool = await asyncio.to_thread(cand.binned_pool, clip)
+        n_judged = sum(1 for k in judged if k[0] != "list")
         stats = cand.band_stats(list(judged.values()), BALL_PRESENT_VERDICTS)
         # tau < 0 means "measure it": the boundary is re-estimated from the
         # verdicts so far on every fetch, so the queue follows the labeller.
@@ -287,9 +378,9 @@ async def ball_check_queue(
             "source": "candidates",
             # Events, not raw rows: consecutive detections of one ball are one
             # card, so counting rows overstates the work left by ~2.7x.
-            "remaining": max(0, pool.events - len(judged)),
+            "remaining": max(0, pool.events - n_judged),
             "rows": pool.total,
-            "judged": len(judged),
+            "judged": n_judged,
             "items": items,
             "tau": round(tau_used, 4),
             "bands": stats,
@@ -335,7 +426,9 @@ async def ball_check_stats() -> dict:
     """Verdict tallies plus the precision they imply (unsure excluded)."""
     judged = await asyncio.to_thread(_read_verdicts)
     counts = dict.fromkeys(VERDICTS, 0)
-    for rec in judged.values():
+    for key, rec in judged.items():
+        if key[0] == "list":
+            continue  # hand-picked disagreement cards: not a detector precision sample
         verdict = rec.get("verdict")
         if verdict in counts:
             counts[verdict] += 1
@@ -344,7 +437,7 @@ async def ball_check_stats() -> dict:
     decided = present + counts["not_ball"]
     return {
         "counts": counts,
-        "judged": len(judged),
+        "judged": sum(1 for k in judged if k[0] != "list"),
         # A box_off card still found the ball, so it counts as a true positive
         # for detection precision; it is excluded from clean_precision, which
         # is the share good enough to train on as-is.
@@ -364,6 +457,9 @@ def _read_box(
     """Resolve a box from whichever source the card came from."""
     if src == "cand":
         return cand.read_candidate_box(clip_stem, frame_idx, box_idx)
+    if src == "list":
+        it = _list_item(clip_stem, frame_idx, box_idx)
+        return _list_box(it) if it else None
     from footy_track.labeller.review import _read_frame_box  # noqa: PLC0415
 
     return _read_frame_box(clip_stem, frame_idx, box_idx)
@@ -511,6 +607,19 @@ async def ball_check_crop(
             return None
         h_px, w_px = frame.shape[:2]
         x1, y1, x2, y2 = _crop_window(bx, by, bw, bh, w_px, h_px, pad)
+        if src == "list" and at_frame == frame_idx:
+            # The other box of the pair (GT mark vs Claude's box), magenta,
+            # so one card shows both.
+            it = _list_item(clip_stem, frame_idx, box_idx)
+            ob = _list_box(it, "other_bbox") if it else None
+            if ob is not None:
+                ox1, oy1 = int(ob[0] * w_px), int(ob[1] * h_px)
+                ox2, oy2 = int((ob[0] + ob[2]) * w_px), int((ob[1] + ob[3]) * h_px)
+                # Inflated a little and 2 px thick: at 1:1 a 1 px box around a
+                # 10 px object vanishes once the crop is upscaled and compressed.
+                cv2.rectangle(
+                    frame, (ox1 - 4, oy1 - 4), (ox2 + 4, oy2 + 4), (255, 0, 255), 2
+                )
         if not reticle:
             return _encode_window(frame, x1, y1, x2, y2)
         # Reticle first, on the full frame: without it the card is ambiguous
@@ -612,6 +721,8 @@ async def ball_check_step(
             rows = [
                 r for r in cand.read_candidates(clip_stem) if r["frame_index"] == target
             ]
+        elif src == "list":
+            rows = []  # explicit cards carry a box on their own frame only
         else:
             rows = [
                 {**r, "confidence": None}

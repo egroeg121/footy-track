@@ -10,7 +10,7 @@ import json
 
 import pytest
 
-from footy_track.labeller import ball_check
+from footy_track.labeller import ball_check, server
 
 from .conftest import FAKE_JPEG
 
@@ -710,3 +710,74 @@ def test_ball_check_page_is_not_cacheable(client):
     # the server log because the old route still answers 200.
     res = client.get("/ball_check")
     assert "no-store" in res.headers.get("cache-control", "")
+
+
+# ---------------------------------------------------------------------------
+# source=list: explicit review cards, in file order
+# ---------------------------------------------------------------------------
+
+
+def _write_list(tmp_path, monkeypatch, items):
+    path = tmp_path / "review_list.json"
+    path.write_text(json.dumps({"items": items}))
+    monkeypatch.setattr(server, "_BALL_CHECK_LIST", str(path))
+
+
+def _card(clip, frame, **kw):
+    return {
+        "clip": clip,
+        "frame_index": frame,
+        "bbox": {"x": 0.4, "y": 0.2, "w": 0.01, "h": 0.01},
+        "other_bbox": {"x": 0.1, "y": 0.5, "w": 0.01, "h": 0.01},
+        "note": "n",
+        **kw,
+    }
+
+
+def test_list_queue_file_order_skips_judged(
+    client, clips_dir, gt_marks_dir, tmp_path, monkeypatch
+):
+    (clips_dir / "clip.mp4").touch()
+    _write_list(
+        tmp_path, monkeypatch, [_card("clip", 9), _card("clip", 3), _card("clip", 5)]
+    )
+    data = client.get("/ball_check/queue?source=list").json()
+    assert [i["frame_index"] for i in data["items"]] == [9, 3, 5]
+    assert [i["box_index"] for i in data["items"]] == [0, 1, 2]
+    assert data["items"][0]["source"] == "list"
+    assert data["items"][0]["image_url"].endswith("/clip/9/0.jpg?src=list")
+    assert data["items"][0]["note"] == "n"
+    assert data["remaining"] == 3
+    assert (
+        client.post(
+            "/ball_check/verdict",
+            json={
+                "clip": "clip",
+                "frame_index": 9,
+                "box_index": 0,
+                "source": "list",
+                "verdict": "not_ball",
+            },
+        ).json()["ok"]
+        is True
+    )
+    data = client.get("/ball_check/queue?source=list").json()
+    assert [i["frame_index"] for i in data["items"]] == [3, 5]
+    assert (data["remaining"], data["judged"]) == (2, 1)
+    # list verdicts are not a detector precision sample
+    assert client.get("/ball_check/stats").json()["judged"] == 0
+    # no list configured -> empty pool, never an error
+    monkeypatch.setattr(server, "_BALL_CHECK_LIST", None)
+    assert client.get("/ball_check/queue?source=list").json()["items"] == []
+
+
+@pytest.mark.usefixtures("bc_cache")
+def test_list_crop_and_meta(client, clips_dir, tmp_path, monkeypatch, fake_cv2):
+    (clips_dir / "clip.mp4").touch()
+    _write_list(tmp_path, monkeypatch, [_card("clip", 9)])
+    meta = client.get("/ball_check/crop_meta/clip/9/0?src=list").json()
+    assert meta["ok"] and meta["bbox"]["x"] == pytest.approx(0.4)
+    r = client.get("/ball_check/crop/clip/9/0.jpg?src=list&reticle=false")
+    assert r.status_code == 200 and r.content == FAKE_JPEG
+    # a card that does not match the list entry is a 404, not someone else's box
+    assert client.get("/ball_check/crop/clip/8/0.jpg?src=list").status_code == 404
