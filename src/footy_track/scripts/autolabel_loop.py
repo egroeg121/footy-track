@@ -82,6 +82,12 @@ def _thr(args) -> Thresholds:
 
 def cmd_pool(args) -> int:
     eval_ids = _eval_ids(args)
+    existing = args.run / "clips.json"
+    if existing.exists() and not args.force:  # idempotent: keep the round's pool
+        clips = json.loads(existing.read_text())["clips"]
+        loop.assert_not_eval(clips, eval_ids)
+        print(f"pool already chosen: {clips}")
+        return 0
     exclude = set()
     if args.rounds_dir and args.rounds_dir.is_dir():
         for p in args.rounds_dir.glob("*/clips.json"):
@@ -869,6 +875,7 @@ def main(  # noqa: PLR0915
         default=None,
         help="earlier rounds: their clips are skipped",
     )
+    p.add_argument("--force", action="store_true", help="choose again")
     p.set_defaults(fn=cmd_pool)
 
     p = sub.add_parser("check")
