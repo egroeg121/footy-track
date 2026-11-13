@@ -6,9 +6,12 @@ append-only verdict log; video IO for crops goes through the fake cv2 layer.
 
 from __future__ import annotations
 
+import io
 import json
 
+import numpy as np
 import pytest
+from PIL import Image
 
 from footy_track.labeller import ball_check, server
 
@@ -781,3 +784,68 @@ def test_list_crop_and_meta(client, clips_dir, tmp_path, monkeypatch, fake_cv2):
     assert r.status_code == 200 and r.content == FAKE_JPEG
     # a card that does not match the list entry is a 404, not someone else's box
     assert client.get("/ball_check/crop/clip/8/0.jpg?src=list").status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# /ball_check/clip  (context GIF)
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def clip_cache(monkeypatch):
+    monkeypatch.setattr(ball_check, "_BC_CLIP_CACHE", type(ball_check._BC_CLIP_CACHE)())
+
+
+def test_clip_frame_indices_clamp_to_the_video():
+    # 25 fps: +-1.5 s = +-38 frames, subsampled by 2 (to ~12 fps).
+    assert ball_check._clip_frame_indices(100, 25.0, 1000) == (62, 138, 2)
+    assert ball_check._clip_frame_indices(5, 25.0, 1000)[0] == 0
+    first, last, _ = ball_check._clip_frame_indices(990, 25.0, 1000)
+    assert (first, last) == (952, 999)
+    # 50 fps source -> every 5th frame (10 fps)
+    assert ball_check._clip_frame_indices(200, 50.0, 0) == (125, 275, 5)
+
+
+def test_gif_bytes_is_a_play_once_animation():
+    frames = [np.full((20, 30, 3), v, np.uint8) for v in (0, 90, 180, 250)]
+    im = Image.open(io.BytesIO(ball_check._gif_bytes(frames, [100, 100, 400, 100])))
+    assert im.format == "GIF" and im.n_frames == 4 and im.size == (30, 20)
+    assert "loop" not in im.info  # no NETSCAPE loop extension = plays once
+
+
+@pytest.mark.usefixtures("bc_cache", "clip_cache")
+def test_clip_endpoint_serves_gif_and_clamps_range(
+    client, clips_dir, gt_marks_dir, fake_cv2, monkeypatch
+):
+    (clips_dir / "clip.mp4").touch()
+    _write_sidecar(gt_marks_dir, "clip", [_line(2, ["in_play_ball", "yolo"])])
+    seen = {}
+
+    def fake_gif(frames, durations):
+        seen["n"], seen["d"] = len(frames), durations
+        return b"GIF89a-fake"
+
+    monkeypatch.setattr(ball_check, "_gif_bytes", fake_gif)
+    # fake video: 25 fps, 10 frames -> frames 0..9, step 2, centre on 2
+    res = client.get("/ball_check/clip/clip/2/0.gif")
+    assert res.status_code == 200
+    assert res.headers["content-type"] == "image/gif"
+    assert res.content == b"GIF89a-fake"
+    assert seen["n"] == 5  # frames 0,2,4,6,8 - clamped at both ends
+    assert ball_check._CLIP_HOLD_MS in seen["d"]  # centre frame held
+    assert res.headers["x-clip-frames"] == "5"
+    # second request is a cache hit, not a re-render
+    monkeypatch.setattr(ball_check, "_gif_bytes", lambda *a: 1 / 0)
+    assert client.get("/ball_check/clip/clip/2/0.gif").status_code == 200
+
+
+@pytest.mark.usefixtures("bc_cache", "clip_cache")
+def test_clip_endpoint_list_source_and_404s(
+    client, clips_dir, tmp_path, monkeypatch, fake_cv2
+):
+    (clips_dir / "clip.mp4").touch()
+    monkeypatch.setattr(ball_check, "_gif_bytes", lambda f, d: b"GIF89a")
+    _write_list(tmp_path, monkeypatch, [_card("clip", 9)])
+    assert client.get("/ball_check/clip/clip/9/0.gif?src=list").status_code == 200
+    assert client.get("/ball_check/clip/nosuch/0/0.gif").status_code == 404
+    assert client.get("/ball_check/clip/clip/8/0.gif?src=list").status_code == 404

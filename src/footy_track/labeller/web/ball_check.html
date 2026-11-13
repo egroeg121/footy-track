@@ -34,6 +34,12 @@
   #shot { width:100%; height:100%; display:block; background:#000;
           object-fit:contain; }
   #overlay { position:absolute; inset:0; touch-action:none; }
+  /* Context clip: same box as the still, shown over it while it plays. */
+  #clip { position:absolute; inset:0; width:100%; height:100%; display:none;
+          object-fit:contain; background:#000; image-rendering:pixelated;
+          pointer-events:none; }
+  #stage.playing #clip { display:block; }
+  #stage.playing #overlay { visibility:hidden; pointer-events:none; }
   #meta { flex:none; padding:8px 12px; font-size:12px; color:var(--muted);
           display:flex; gap:8px; justify-content:space-between;
           white-space:nowrap; overflow:hidden; }
@@ -73,6 +79,7 @@
     <div id="card">
       <div id="stage">
         <img id="shot" alt="candidate ball crop" />
+        <img id="clip" alt="3 second context clip" />
         <svg id="overlay" xmlns="http://www.w3.org/2000/svg"></svg>
       </div>
       <div id="meta"><span id="clipName"></span><span id="provName"></span></div>
@@ -99,6 +106,7 @@
     </div>
     <div class="row">
       <button class="small" id="btnBoxOff">Box off</button>
+      <button class="small" id="btnReplay">Replay</button>
       <button class="small" id="btnUnsure">Unsure</button>
       <button class="small" id="btnZoom">Zoom</button>
       <button class="small" id="btnReset">Reset</button>
@@ -145,11 +153,58 @@ const metaUrl = (item, pad) =>
   `/ball_check/crop_meta/${item.clip}/${item.frame_index}/${item.box_index}` +
   `?pad=${pad}&src=${srcOf(item)}`;
 
+// ---- context clip: ~3 s GIF centred on the card's frame, then the still ----
+
+const clipUrl = (item, pad) =>
+  `/ball_check/clip/${item.clip}/${item.frame_index}/${item.box_index}.gif` +
+  `?pad=${pad}&src=${srcOf(item)}`;
+const clipCache = new Map();   // url -> Promise<{blob, ms}|null>
+const CLIP_PREFETCH = 2;       // clips are ~0.3 MB and ~1 s to render: stay shallow
+let clipTimer = null, clipObjUrl = null, clipToken = 0;
+
+function fetchClip(url) {
+  if (!clipCache.has(url)) {
+    clipCache.set(url, fetch(url).then(async (r) => {
+      if (!r.ok) return null;
+      const ms = parseInt(r.headers.get('X-Clip-Duration-Ms') || '3000', 10);
+      return { blob: await r.blob(), ms };
+    }).catch(() => null));
+    while (clipCache.size > 8) clipCache.delete(clipCache.keys().next().value);
+  }
+  return clipCache.get(url);
+}
+
+function stopClip() {
+  clipToken += 1;
+  clearTimeout(clipTimer);
+  $('stage').classList.remove('playing');
+  $('clip').removeAttribute('src');
+  if (clipObjUrl) { URL.revokeObjectURL(clipObjUrl); clipObjUrl = null; }
+}
+
+// A fresh object URL each time restarts the GIF from frame 0 (re-assigning the
+// same src would not), so Replay and the first play share one path.
+async function playClip(item) {
+  stopClip();
+  const token = clipToken;
+  const got = await fetchClip(clipUrl(item, PADS[padIdx]));
+  if (!got || token !== clipToken || queue[0] !== item || offset !== 0) return;
+  clipObjUrl = URL.createObjectURL(got.blob);
+  const img = $('clip');
+  img.onload = () => {
+    if (token !== clipToken) return;
+    $('stage').classList.add('playing');
+    clipTimer = setTimeout(() => { if (token === clipToken) stopClip(); }, got.ms + 150);
+  };
+  img.src = clipObjUrl;
+}
+
 function prefetch() {
   for (const item of queue.slice(1, 1 + PREFETCH)) {
     const img = new Image();
     img.src = cropUrl(item, PADS[padIdx]);
   }
+  for (const item of queue.slice(1, 1 + CLIP_PREFETCH)) fetchClip(clipUrl(item, PADS[padIdx]));
 }
 
 // ---- geometry: frame pixels <-> displayed image pixels ---------------------
@@ -250,6 +305,7 @@ function render() {
   $('note').textContent = item.note || '';
   $('progress').textContent = `${judged} checked · ${remaining} left`;
   loadMeta(item);
+  playClip(item);
   prefetch();
 }
 
@@ -502,6 +558,7 @@ $('btnSmaller').onclick = () => scaleBox(0.8);
 async function step(delta) {
   const item = queue[0];
   if (!item || !meta) return;
+  stopClip();
   const target = delta === 0 ? 0 : offset + delta;
   const res = await (await fetch(
     `/ball_check/step/${item.clip}/${item.frame_index}/${item.box_index}` +
@@ -533,6 +590,7 @@ $('btnNo').onclick = () => judge('not_ball');
 $('btnBoxOff').onclick = () => judge('box_off');
 $('btnUnsure').onclick = () => judge('unsure');
 $('btnUndo').onclick = undo;
+$('btnReplay').onclick = () => { if (queue[0]) { if (offset) $('btnHome').onclick(); else playClip(queue[0]); } };
 $('btnReset').onclick = () => { if (queue[0]) loadMeta(queue[0]); $('status').textContent = ''; };
 $('btnZoom').onclick = () => {
   padIdx = (padIdx + 1) % PADS.length;
@@ -574,6 +632,7 @@ window.addEventListener('keydown', (e) => {
   else if (e.key === '[' || e.key === '-') scaleBox(0.8);
   else if (e.key === ']' || e.key === '=') scaleBox(1.25);
   else if (e.key === 'z') undo();
+  else if (e.key === 'p') $('btnReplay').onclick();
 });
 
 loadQueue(true);

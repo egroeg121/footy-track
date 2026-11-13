@@ -90,6 +90,22 @@ _MAX_PAD_FACTOR = 40.0
 _BC_CROP_CACHE: collections.OrderedDict[tuple, bytes] = collections.OrderedDict()
 _BC_CROP_CACHE_MAX = 200
 
+# Context clip (animated GIF) -------------------------------------------------
+#: Seconds of footage either side of the card's frame.
+_CLIP_HALF_S = 1.5
+#: Playback rate of the clip; the source is subsampled to this.
+_CLIP_FPS = 10.0
+#: Max rendered width in px. Windows narrower than this are NOT upscaled (the
+#: page scales them, pixelated): GIF size is dominated by broadcast grain, and
+#: encoding at the native crop size is ~4x smaller than at 360 px.
+_CLIP_W = 240
+#: The centre frame (the one the box belongs to) is held this long, ms.
+_CLIP_HOLD_MS = 400
+_BC_CLIP_CACHE: collections.OrderedDict[tuple, tuple[bytes, int, int]] = (
+    collections.OrderedDict()
+)
+_BC_CLIP_CACHE_MAX = 40
+
 #: clip stem -> (width, height); frame size never changes within a clip.
 _CLIP_SIZES: dict[str, tuple[int, int]] = {}
 
@@ -653,6 +669,181 @@ async def ball_check_crop(
     if len(_BC_CROP_CACHE) > _BC_CROP_CACHE_MAX:
         _BC_CROP_CACHE.popitem(last=False)
     return Response(content=data, media_type="image/jpeg")
+
+
+def _draw_box(frame, bx, by, bw, bh, w_px, h_px, colour, thickness=1, bracket=True):
+    """The still's reticle: the true box, plus corner brackets outside it."""
+    rx1, ry1 = int(bx * w_px), int(by * h_px)
+    rx2, ry2 = int((bx + bw) * w_px), int((by + bh) * h_px)
+    cv2.rectangle(frame, (rx1, ry1), (rx2, ry2), colour, thickness)
+    if not bracket:
+        return
+    gap = max(3, int(max(rx2 - rx1, ry2 - ry1) * 0.35))
+    arm = max(4, int(max(rx2 - rx1, ry2 - ry1) * 0.5))
+    for cx_, cy_, sx, sy in (
+        (rx1, ry1, -1, -1),
+        (rx2, ry1, 1, -1),
+        (rx1, ry2, -1, 1),
+        (rx2, ry2, 1, 1),
+    ):
+        ox, oy = cx_ + sx * gap, cy_ + sy * gap
+        cv2.line(frame, (ox, oy), (ox + sx * arm, oy), colour, 2)
+        cv2.line(frame, (ox, oy), (ox, oy + sy * arm), colour, 2)
+
+
+def _clip_frame_indices(frame_idx: int, fps: float, total: int) -> tuple[int, int, int]:
+    """(first, last, step) source frames for the clip, clamped to the video.
+
+    ``step`` subsamples to ~``_CLIP_FPS``; the centre frame is always on the
+    sampling grid because the grid is anchored at ``frame_idx``.
+    """
+    fps = fps if fps and fps > 1 else 25.0
+    half = int(round(_CLIP_HALF_S * fps))
+    step = max(1, int(round(fps / _CLIP_FPS)))
+    first = max(0, frame_idx - half)
+    last = frame_idx + half
+    if total > 0:
+        last = min(last, total - 1)
+    return first, max(first, last), step
+
+
+def _gif_bytes(frames: list, durations: list[int]) -> bytes:
+    """Encode BGR ndarrays as a play-once GIF (no loop extension)."""
+    import io  # noqa: PLC0415
+
+    from PIL import Image  # noqa: PLC0415
+
+    imgs = [
+        Image.fromarray(f[:, :, ::-1]).quantize(colors=40, dither=Image.Dither.NONE)
+        for f in frames
+    ]
+    buf = io.BytesIO()
+    imgs[0].save(
+        buf,
+        format="GIF",
+        save_all=True,
+        append_images=imgs[1:],
+        duration=durations,
+        disposal=1,
+        optimize=False,
+    )
+    return buf.getvalue()
+
+
+def _render_clip(
+    video_path: Path,
+    src: str,
+    clip_stem: str,
+    frame_idx: int,
+    box_idx: int,
+    bbox: tuple[float, float, float, float],
+    pad: float,
+) -> tuple[bytes, int, int] | None:
+    """Decode once (seek, then sequential reads) and encode the GIF."""
+    bx, by, bw, bh = bbox
+    cap = cv2.VideoCapture(str(video_path))
+    try:
+        fps = float(cap.get(cv2.CAP_PROP_FPS) or 0.0)
+        total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
+        first, last, step = _clip_frame_indices(frame_idx, fps, total)
+        cap.set(cv2.CAP_PROP_POS_FRAMES, first)
+        frames: list = []
+        durations: list[int] = []
+        win = None
+        ob = None
+        if src == "list":
+            it = _list_item(clip_stem, frame_idx, box_idx)
+            ob = _list_box(it, "other_bbox") if it else None
+        base_ms = int(round(1000 / _CLIP_FPS))
+        for idx in range(first, last + 1):
+            ok, frame = cap.read()
+            if not ok:
+                break
+            if (idx - frame_idx) % step:
+                continue
+            h_px, w_px = frame.shape[:2]
+            if win is None:
+                win = _crop_window(bx, by, bw, bh, w_px, h_px, pad)
+            x1, y1, x2, y2 = win
+            centre = idx == frame_idx
+            if centre:
+                if ob is not None:
+                    _draw_box(frame, *ob, w_px, h_px, (255, 0, 255), 2, bracket=False)
+                _draw_box(frame, bx, by, bw, bh, w_px, h_px, (0, 255, 255))
+            crop = frame[y1:y2, x1:x2]
+            if crop.size == 0:
+                continue
+            scale = _CLIP_W / max(1, x2 - x1)
+            if scale < 1:
+                crop = cv2.resize(
+                    crop,
+                    None,
+                    fx=scale,
+                    fy=scale,
+                    interpolation=getattr(cv2, "INTER_AREA", cv2.INTER_NEAREST),
+                )
+            frames.append(crop)
+            durations.append(_CLIP_HOLD_MS if centre else base_ms)
+    finally:
+        cap.release()
+    if not frames:
+        return None
+    return _gif_bytes(frames, durations), len(frames), sum(durations)
+
+
+@router.get("/ball_check/clip/{clip_stem}/{frame_idx}/{box_idx}.gif")
+async def ball_check_clip(
+    clip_stem: str,
+    frame_idx: int,
+    box_idx: int,
+    pad: float = _PAD_FACTOR,
+    src: str = "sidecar",
+) -> Response:
+    """~3 s animated context clip centred on the card's frame.
+
+    Shows whether the marked object is moving like the in-play ball or is a
+    spare/crowd ball, which a single still cannot. The crop window is the
+    still's window, fixed for every frame, so the view never jumps. The box
+    (and, for ``src=list``, the magenta other box) is drawn on the centre
+    frame only: the ball moves, so a box carried onto other frames would lie.
+    Plays once; the page then shows the still.
+    """
+    pad = max(0.0, min(float(pad), _MAX_PAD_FACTOR))
+    cache_key = (src, clip_stem, frame_idx, box_idx, round(pad, 2))
+    hit = _BC_CLIP_CACHE.get(cache_key)
+    if hit is not None:
+        _BC_CLIP_CACHE.move_to_end(cache_key)
+        return _clip_response(*hit)
+
+    video_path = _find_video(clip_stem)
+    if video_path is None:
+        return Response(status_code=404)
+    bbox_raw = await asyncio.to_thread(_read_box, src, clip_stem, frame_idx, box_idx)
+    if bbox_raw is None:
+        return Response(status_code=404)
+    out = await asyncio.to_thread(
+        _render_clip, video_path, src, clip_stem, frame_idx, box_idx, bbox_raw, pad
+    )
+    if out is None:
+        return Response(status_code=404)
+    _BC_CLIP_CACHE[cache_key] = out
+    _BC_CLIP_CACHE.move_to_end(cache_key)
+    if len(_BC_CLIP_CACHE) > _BC_CLIP_CACHE_MAX:
+        _BC_CLIP_CACHE.popitem(last=False)
+    return _clip_response(*out)
+
+
+def _clip_response(data: bytes, n_frames: int, duration_ms: int) -> Response:
+    return Response(
+        content=data,
+        media_type="image/gif",
+        headers={
+            "X-Clip-Frames": str(n_frames),
+            "X-Clip-Duration-Ms": str(duration_ms),
+            "Access-Control-Expose-Headers": "X-Clip-Frames, X-Clip-Duration-Ms",
+            "Cache-Control": "private, max-age=600",
+        },
+    )
 
 
 def _sidecar_ball_boxes(clip_stem: str, frame_index: int) -> list[dict]:
