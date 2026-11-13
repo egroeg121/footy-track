@@ -359,7 +359,7 @@ def _tag(version: str, model: str) -> str:
     return f"{version}_{model}"
 
 
-def cmd_ask(args: argparse.Namespace) -> int:
+def cmd_ask(args: argparse.Namespace) -> int:  # noqa: PLR0915
     if args.backend == "api":
         print(
             "backend=api is not wired: only the Claude Code CLI backend exists",
@@ -385,6 +385,18 @@ def cmd_ask(args: argparse.Namespace) -> int:
         questions[i : i + args.batch] for i in range(0, len(questions), args.batch)
     ]
     todo = [b for b in batches if not all(q["id"] in done for q in b)]
+    if args.budget:  # a per-run cap on NEW questions (answers already saved are free)
+        left, capped = args.budget, []
+        for b in todo:
+            fresh = [q for q in b if q["id"] not in done]
+            if left <= 0:
+                break
+            capped.append(fresh[:left])
+            left -= len(capped[-1])
+        todo = capped
+        print(
+            f"budget {args.budget}: asking at most {sum(map(len, todo))} new questions"
+        )
     print(
         f"{len(questions)} questions, {len(todo)} of {len(batches)} batches to run "
         f"with {args.model} ({args.prompt_version})",
@@ -681,6 +693,12 @@ def main(argv: list[str] | None = None) -> int:
     a.add_argument("--model", default="opus")
     a.add_argument("--prompt-version", default=DEFAULT_V2, choices=sorted(PROMPTS_V2))
     a.add_argument("--limit", type=int, default=0)
+    a.add_argument(
+        "--budget",
+        type=int,
+        default=0,
+        help="ask at most this many NEW questions in this run (0 = no cap)",
+    )
     a.add_argument("--batch", type=int, default=BATCH)
     a.add_argument("--parallel", type=int, default=3)
     a.add_argument("--backend", choices=("cli", "api"), default="cli")

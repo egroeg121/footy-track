@@ -23,6 +23,9 @@ Provenance tags and their tier mapping (default, per-tag tiering):
                                                      model tier, not human)
     yolo     -> source=yolo,       reviewed=False
     sam3     -> source=sam3,       reviewed=False
+    claude   -> source=claude,     reviewed=False (True with human_checked: tier 2)
+    claude_auto -> source=claude_auto, reviewed=False (tier 3, Claude + tracker only;
+                                        left out of the training export by default)
 
 Lines whose tags carry no recognized provenance tag are dropped (no
 detection emitted) — same fallback as before this change, now documented
@@ -73,7 +76,7 @@ DEFAULT_WIDTH = 1920
 DEFAULT_HEIGHT = 1080
 
 _SKIP_TAGS = {"no_ball", "not_broadcast"}
-_PROVENANCE_TAGS = {"labeller", "vittrack", "yolo", "sam3"}
+_PROVENANCE_TAGS = {"labeller", "vittrack", "yolo", "sam3", "claude", "claude_auto"}
 #: Review marker written alongside a provenance tag: a human looked at this
 #: machine box and kept it. It is NOT a provenance and NOT an object class —
 #: 15,377 sidecar lines already carry it, and before this was recognised
@@ -84,6 +87,10 @@ _PROVENANCE_TO_SOURCE = {
     "vittrack": "vittrack",
     "yolo": "yolo",
     "sam3": "sam3",
+    # The auto-labelling loop: ``claude`` + ``human_checked`` is tier 2 (a person
+    # confirmed the object), ``claude_auto`` is tier 3 (Claude and the tracker, no person).
+    "claude": "claude",
+    "claude_auto": "claude_auto",
 }
 # Per-tag reviewed default: only human-labelled rows are "reviewed" by
 # default. Model-tier tags (vittrack, yolo, sam3) are reviewed=False.
@@ -92,6 +99,8 @@ _PROVENANCE_TO_REVIEWED = {
     "vittrack": False,
     "yolo": False,
     "sam3": False,
+    "claude": False,
+    "claude_auto": False,
 }
 _VIDEO_SUFFIXES = (".mp4", ".mov", ".avi", ".mkv")
 

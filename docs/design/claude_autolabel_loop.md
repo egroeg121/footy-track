@@ -1,6 +1,6 @@
 # Claude-assisted ball labelling loop
 
-Status: **PROPOSAL.** Only the calibration pilot of [section 8](#calibration-results-pilot-2026-11) is built; nothing else in this page is · Date: 2026-11-10 · Code reviewed: the ball-tracker branch (PR #36), which stacks on `main` @ `26d2506` plus the merged T-01 to T-04 fixes
+Status: **PROPOSAL, with the labelling mode of [section 12](#12-labelling-mode-built-2026-11) built.** The calibration pilot and method v2 ([section 8](#calibration-results-pilot-2026-11)) and the labelling loop of section 12 exist; the overview pass, the API backend and the retrain proposal do not · Date: 2026-11-10 · Code reviewed: the ball-tracker branch (PR #36), which stacks on `main` @ `26d2506` plus the merged T-01 to T-04 fixes
 
 This page is for anyone deciding how to get many more ball labels, from many more matches, without a person drawing every box. It proposes **route J, "Claude-assisted ball labels"**: a loop in which the detector and tracker propose, a Claude model checks, and a person confirms only what is uncertain. It builds on two June notes, the [autolabelling architecture review](autolabelling_architecture_review.md) and the [bidirectional tracking research](bidirectional_tracking_research.md), and on the scored measurement in [Ball tracking evaluation](../ball-tracking-eval.md).
 
@@ -378,5 +378,245 @@ This corrects a claim older pages still make. T-02 is merged: Ball Check verdict
 6. Do replays and close-ups need their own handling, since the ball there is large and the tracker has no pitch context?
 7. Where does the candidate pool live, and does it share the `ball_candidates` format so `/ball_check` can read it unchanged?
 8. Who owns the held-out registry, and how is time-span overlap between new matches checked?
+
+## 12. Labelling mode (built, 2026-11)
+
+This is the loop of section 2 as built for new clips, from the evidence of section 8 and
+the re-check of the 65 disagreement cards. Code: `autolabel/loop.py` (pure logic),
+`autolabel/camera.py`, `scripts/autolabel_loop.py` (steps), `scripts/claude_verify_v2.py ask`
+(the Claude step, reused), jobs `footy_autolabel.py` (`autolabel-pool`, `-detect`,
+`-candidates`, `-verify`, `-decide`, `-ingest`, and `autolabel-pipeline mode=labelling`).
+Where this section and section 2 to 7 differ, this section is what runs. Tests:
+`tests/test_autolabel_loop.py`.
+
+**What the re-check showed, and the rules it sets.** After a person re-checked all 65
+disagreement cards of the held-out run, Claude's `ball` on **the tracker's own candidate**
+was right 61 of 62 times (0.98; confidence at least 0.95: 33 of 33), but on the other top
+detector candidates only 10 of 33 (0.30). Nearly all of those errors are static spare
+balls by the advertising hoardings, mostly in the Bournemouth clips. 37% of the human ball
+frames had no candidate within 25 px, which Claude cannot repair. Hence: only a tracker
+candidate can be accepted without a person; everything else that might be the ball goes to
+the queue, and the reviewer sees one card per object, blind.
+
+### 12.1 One round
+
+| step | job (pool) | what | idempotent by |
+|---|---|---|---|
+| pool | `autolabel-pool` (cpu, desktop) | clips by name, glob or N random unlabelled ones, as canonical ids, into `clips.json`; **hard-fails on any evaluation clip** | an existing `clips.json` is kept |
+| detect | `autolabel-detect` (gpu) | `rtdetr_1920_v11` candidate cache (conf 0.1, imgsz 1280) in the loop's own cache folder | cached clips skipped, temp dir then rename |
+| candidates | `autolabel-candidates` (cpu, desktop) | bidirectional tracker, camera motion, static filter, every 5th frame, per frame the tracker's detection plus the top 2 other candidates, a question image per candidate, a per-run question budget, and the missed-ball (gap) frames | a finished run dir with the same parameters is skipped |
+| verify | `autolabel-verify` (cpu, desktop) | `claude -p`, prompt `verify-v2.2`, `opus`, answers saved per batch; `--budget` caps new questions; exit 3 and a failed run on an auth or usage-limit error, progress kept | answered questions skipped |
+| decide | `autolabel-decide` (cpu, desktop) | decision rule, objects, blind review list, circuit breaker, round report | pure recomputation, stable ids |
+| (review) | person, Ball Check `source=list` | one card per object, blind | verdicts keyed by card id |
+| ingest | `autolabel-ingest` (cpu, desktop) | apply verdicts, write labels, audit precision, breaker for the next round | recomputes from the verdict log |
+
+Re-crop-and-re-detect (section 2, step 4) is **not** part of the labelling mode: it recovered
+2 of 44 unanswerable held-out frames at a GPU cost, so `max_redetect` is 0 here.
+
+### 12.2 Eval clips never enter
+
+`eval_clip_ids` is the union of every clip in the eval split file (held-out and seen), every
+clip with a GT sidecar or a Ball Check verdict log in the GT-marks folder, every video in the
+eval folders and every cached eval clip, as canonical ids (`footy_track.clip_id`, so every
+alias is caught). A missing or empty split file is an error. `pool`, `check`, `prepare` and
+`ingest` all call `assert_not_eval` and exit 4 (the jobs fail the step) on a match; random
+picks skip eval clips and the clips of earlier rounds. Not caught: footage overlap between
+a new clip and an eval clip under a different name (T-33, T-49 are still open), and clips the
+detector was trained on. The loop's labels go to their own folder, never into the GT-marks
+folder, so a labelled clip cannot become an eval clip by having a sidecar.
+
+### 12.3 Static-object filter
+
+A candidate is dropped before Claude is asked when, within 75 frames, at least 8 frames
+(itself included) have a candidate within 6 px of its image position **while the global
+camera shift between those frames reaches 30 px**. The shift is a cumulative phase
+correlation of consecutive frames (480 px wide, windowed; a weak peak counts as no motion).
+With no camera estimate, or a still camera, the candidate is kept (a ball at rest under a
+still camera is real). All of it uses the cached candidates of every frame, not only the
+sampled ones; the parameters are `StaticParams`.
+
+*Measured* on the held-out run (355 candidates, Claude `verify-v2.2` Opus answers, scored
+against the marks as corrected by the 65 re-check verdicts; 26 candidates called `ball` far
+from any mark, of which 23 `top`, 2 `redetect`, 1 `tracker`; 73 called `ball` near a mark):
+
+| radius px | frames | window | camera px | false `ball` removed | of which `top` | true balls removed | all candidates removed |
+|---|---|---|---|---|---|---|---|
+| 6 (default) | 8 | 75 | 30 | 4 of 26 | 4 | **0 of 73** | 8 of 355 |
+| 6 | 12 | 75 | 30 | 4 | 4 | 0 | 8 |
+| 4 | 8 | 75 | 30 | 4 | 4 | 0 | 8 |
+| 8 | 8 | 75 | 30 | 5 | 5 | 1 | 13 |
+| 6 | 5 | 50 | 20 | 5 | 5 | 2 | 22 |
+| 10 | 6 | 75 | 30 | 5 | 5 | 4 | 22 |
+| 6 | 8 | 75 | 60 | 0 | 0 | 0 | 1 |
+
+So the filter is **safe but weak**: at the default it removes 4 of the 23 false `top` calls
+(17%) and no true ball; looser settings add one more false call at the price of true balls.
+The reason is visible in the numbers: in the Bournemouth clip the camera pans only 27 to 40
+px over the 3 s window in which the spare ball is seen at one image position, while genuine
+balls at rest (a ball held for a set piece) sit at one position for up to 43 frames with 24
+px of camera travel. Image position alone cannot separate them at that pan speed, and the
+default was not tuned on the held-out clips beyond this table. What protects the labels is
+therefore the decision rule and the review, not this filter; it saves a few questions and
+queue cards. (Camera-compensated "world" position was also tried in a one-off analysis
+and did not separate them better.)
+
+### 12.4 Decision rule (defaults in `Thresholds`, all configurable)
+
+| candidate | Claude | outcome |
+|---|---|---|
+| tracker's | `ball`, conf at least 0.95 | **auto-accepted** (`claude_auto`, tier 3) |
+| tracker's | `ball`, conf below 0.95 | queue (second tier) |
+| tracker's | `not_ball`, `unsure`, invalid | queue: tracker and Claude disagree, one is wrong |
+| other (`top`) | `ball`, any conf | queue |
+| other | `not_ball`, conf at least 0.8 | dropped, but a share is queued as a control |
+| other | `not_ball` below 0.8, `unsure` | queue |
+| any | removed by the static filter | dropped, never asked, same control sampling |
+
+The second tier (tracker `ball`, 0.8 to 0.95) is queued, not accepted: over all candidates the
+0.8 to 0.95 band was right 28 of 43 times, and the sample for the tracker alone is too small to
+say it is better. Whether to accept it later is for the audit numbers to decide.
+
+### 12.5 Objects and the review list
+
+Candidates of one clip are grouped into **objects** within each outcome class: two tracker
+candidates with the same tracker id are one object; otherwise a candidate joins the object
+whose last member is at most 12 frames earlier and within 12 px plus 12 px per frame (20 px
+plus 40 px per frame between two tracker picks), never two members on one frame. The card
+shows the member Claude was most sure of (else the highest detector confidence); the verdict
+applies to the object's frames. An object of 5 or more members also gets 2 **spot-check**
+cards on other members: if a spot verdict contradicts the object card the object is reported
+as inconsistent and nothing is written for it.
+
+**Queue order: reviewer time goes where the model fails.** Priority, highest first:
+
+1. **Missed balls.** Detector recall is the ceiling of the loop (37% of held-out ball
+   frames have no candidate within 25 px). A sampled frame where the tracker's path has a
+   position (interpolated) but no cached candidate lies within 25 px of it is a *gap*
+   frame; runs of gap frames are one object (at most 40 cards per round, the rest are
+   reported as capped). The card shows the predicted position; the person drags the
+   ball onto it (`corrected`: a tier 1 hard positive the detector missed), says it is
+   right (`ball`) or that no ball is visible (`not_ball`). Not asked to Claude.
+2. **Spare balls and false starts**: queued objects with any non-tracker candidate
+   (confident detector candidates, objects Claude was unsure about), after the static filter.
+3. **Claude-uncertain tracker candidates**: queued objects made only of tracker candidates
+   (conf below 0.95, or `not_ball` / `unsure` on the tracker's own candidate).
+4. The blind **audit** sample of auto-accepted objects (10%, at least one) and the
+   **control** sample of dropped objects (5%), mixed.
+5. Spot-check cards.
+
+Inside a priority the cards interleave the clips (hash order inside each clip, then
+round-robin). Each object is one card showing its most informative frame, never a run of
+consecutive frames: the frame of fastest motion for an object of 3 or more members, its
+first member for a shorter one, the middle frame for a gap. A card is `{id, clip,
+frame_index, frame_size, bbox, label, provenance: "list"}`: no source, role or Claude answer
+is on it. The roles and priorities live in `cards_meta.json`, which the reviewer never
+sees. A card `id` is a hash of the round, role and object, so the list can be regenerated;
+the Ball Check list format gains this id (labeller README, LAB-1013b), with the verdict
+keyed by a hash of it instead of the list position, and old position-keyed lists still
+work. Since the file order is the priority order, the blind property is the card content,
+not a shuffle. The 3 s context clip of Ball Check is the aid for in-play versus spare ball;
+spare and crowd balls are `not_ball`.
+
+### 12.6 Provenance and write-back
+
+| what | tags in the loop's label file | tier | how |
+|---|---|---|---|
+| auto-accepted, not audited (or audit unsure) | `[in_play_ball, claude_auto]` | 3 | machine; feature store source `claude_auto`, unreviewed |
+| auto-accepted object a person confirmed (audit) | `[in_play_ball, claude, human_checked]` | 2 | the whole object |
+| queued object a person confirmed | `[in_play_ball, claude, human_checked]` | 2 | its queued members |
+| `corrected` (a drag) | `[in_play_ball, labeller]` | 1 | the card's frame only; on a missed-ball card this is the hard positive |
+| missed-ball card, `ball` | `[in_play_ball, claude, human_checked]` | 2 | the tracker's predicted box, that frame only |
+| missed-ball card, `not_ball` (no ball visible) | none: a no-ball frame | - | `hard_negatives.jsonl` reason `gap_no_ball` |
+| `not_ball` | none: hard negative | - | `hard_negatives.jsonl` and a `not_ball` record in `ball_checks/` |
+| `box_off`, `unsure`, no verdict | nothing | - | |
+
+Labels go to `autolabel_labels/<clip>.jsonl` (the sidecar format) and hard negatives and the
+confirmed boxes to `autolabel_labels/ball_checks/<clip>.jsonl` (the Ball Check log format), both
+**rebuilt from every round's own files** (`<run>/labels`, `<run>/ball_checks_propagated`),
+merged so that on one frame overlapping boxes keep only the strongest tier. A file that
+would change is copied to `autolabel_labels/.backups` first; nothing in the GT-marks folder
+is written. Run `ingest_gt --gt-dir autolabel_labels` to bring them into the feature store.
+
+**Training export.** `export_training_dataset` leaves `claude_auto` rows out unless
+`--include-auto` is given (`include_auto=True`); asking for the source in `--sources`
+without it is an error. Tier 2 `claude` boxes (reviewed) are exported like any reviewed
+box; hard negatives are dropped from positives through `detection_review` as before.
+Eval clips are excluded by canonical id as before.
+
+**The 65 earlier verdicts.** `autolabel_loop legacy-import` applies them to the held-out
+truth (`truth_<label>_rechecked.json` logic, duplicates within 4 px merged) and lists the
+`not_ball` boxes as hard negatives, in `eval_corrections.json`, marked `eval_only`. It has no
+path to a label folder: the clips are evaluation clips, so those verdicts correct the eval
+truth and never reach training data.
+
+### 12.7 Round report and circuit breaker
+
+`round_report.json` and `.md` per round: clips, frames sampled, candidates, dropped by the
+static filter, questions asked and answered, auto-accepted candidates, objects by class,
+cards by role. After `ingest`: audit of the auto-accepted objects (ball, not ball, unsure;
+precision by objects and by frames) and the controls (dropped objects a person found to be
+the ball), the labels written, inconsistent objects.
+
+**Circuit breaker.** The latest round with at least 5 audited objects decides: audit
+precision (by frames) below 0.97 opens it, and the next round sends every would-be
+auto-accept to the queue (`would_auto` is still measured on those cards, so a later round
+can close it again). No audited round: closed. Thresholds are in `Thresholds`.
+
+### 12.8 First round (round-001)
+
+Three random unlabelled clips (none in the eval split, none with GT marks), Opus,
+`verify-v2.2`, budget 300 questions, every 5th frame, run through the Prefect pipeline
+(`mode=labelling`; pool, detect, candidates, verify, decide). Nothing has been reviewed yet,
+so the audit precision, the controls and the breaker have no numbers: they come from the
+review and `autolabel-ingest`.
+
+| count | value |
+|---|---|
+| clips / frames sampled | 3 / 196 |
+| candidates (tracker pick plus top 2 others, per sampled frame) | 406 |
+| dropped by the static filter | 9 |
+| over the question budget (not asked) | 97 |
+| Claude questions answered | 300 (171 `ball`, 101 `not_ball`, 28 `unsure`; 38 calls, about 11 minutes of calls, 3 in parallel, no stop) |
+| Claude on tracker candidates (155) | `ball` 146 (54 at conf 0.95 or more), `not_ball` 4, `unsure` 5 |
+| Claude on other candidates (145) | `ball` 25, `not_ball` 97 (47 at conf 0.95 or more), `unsure` 23 |
+| auto-accepted candidates / objects | 54 / 7 |
+| queued candidates | 163, in 58 objects |
+| dropped candidates | 92 (83 confident `not_ball`, 9 static) |
+| missed-ball (gap) frames / cards | 8 / 6 |
+| review cards | 88: 6 missed ball, 49 spare ball or false start, 9 tracker-uncertain, 1 audit, 4 control, 19 spot |
+
+Observations, all before any human check. Only 54 of the 146 tracker `ball` answers reach
+0.95, so most tracker candidates go to the queue as second tier; the audit sample is one
+object this round, below the 5 needed for the breaker to judge. The round was first
+decided with an earlier commit and then re-decided with the priority order (same answers).
+Prefect runs: pipeline 856f5990-e1bf-478f-a534-18e20329caac (pool 06a255c2, detect
+72f3e6d9, candidates de2dc475, verify 7b6c0950, decide 91f2b800); re-decide with the
+queue priority b86da0a9-c073-4f60-ba3d-1fe24be7edba. The missed-ball items of this round
+were added to the prepared run with `autolabel_loop add-gaps` (the candidates step of a
+fresh run does it itself). The review queue is served at the desktop's tailnet address,
+port 8093 (`/ball_check?source=list`), from a GT folder of its own so no verdict lands in
+the real GT marks.
+
+### 12.9 Choices the design left open, and what is not verified
+
+- Sampling: every 5th frame (5 fps), the tracker's detection plus the top 2 others; budget
+  60% tracker candidates. Not tuned.
+- The audit and control rates (10%, 5%) and the 0.97 breaker threshold are defaults, not
+  measured; with few auto-accepted objects per round the audit has too few samples to
+  trip the breaker (minimum 5 objects).
+- Object linking is a heuristic; a wrong merge propagates one verdict to a different
+  object, which the spot-check cards only partly catch.
+- The review UI was not changed beyond the list format; spot cards look like any other card.
+- **Next step, not built: sparse eval labelling mode.** For *new* held-out clips, about one
+  frame per second, one card per frame: tap the ball, or "no ball visible". This grows the
+  eval set (only 119 held-out ball frames today) and needs what is not there yet: the
+  tap-to-place card (LAB-1015; today a card shows a box to confirm or drag), a card list of
+  frames without any proposed box, a registry entry (T-49) that makes the clip held-out
+  before any other step touches it, and writing `labeller` marks to the GT-marks folder
+  and the split file (the reverse of the loop's rule: these clips must stay out of
+  training and out of auto-labelling, which `assert_not_eval` already enforces once they
+  are in the split file). The missed-ball cards of this section are the one-frame form of it.
+- Not built: the API backend (`--backend api` still stops), crop-and-re-detect in the labelling
+  mode, the held-out registry (T-49), tap-to-place (LAB-1015), the retrain proposal.
 
 Related: [Architecture](../architecture.md), [Best pipeline and label needs](../pipeline-and-labels.md), [Tracking pipeline design](tracking-pipeline.md), [Ball tracking evaluation](../ball-tracking-eval.md), [TODO](../todo.md) T-44 to T-49.

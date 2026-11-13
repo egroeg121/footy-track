@@ -954,3 +954,65 @@ def test_clip_endpoint_list_source_and_404s(
     assert client.get("/ball_check/clip/clip/9/0.mp4?src=list").status_code == 200
     assert client.get("/ball_check/clip/nosuch/0/0.mp4").status_code == 404
     assert client.get("/ball_check/clip/clip/8/0.mp4?src=list").status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# source=list: id-keyed cards (stable under reordering / regeneration)
+# ---------------------------------------------------------------------------
+
+
+def test_id_keyed_cards_keep_their_verdict_when_the_list_is_reordered(
+    client, clips_dir, gt_marks_dir, tmp_path, monkeypatch
+):
+    (clips_dir / "clip.mp4").touch()
+    a = _card("clip", 9, id="card-a")
+    b = _card("clip", 3, id="card-b")
+    c = _card("clip", 5, id="card-c")
+    _write_list(tmp_path, monkeypatch, [a, b, c])
+    items = client.get("/ball_check/queue?source=list").json()["items"]
+    assert [i["box_index"] for i in items] == [
+        ball_check.card_box_index(x) for x in ("card-a", "card-b", "card-c")
+    ]
+    assert not {"note", "type", "other_bbox"} & set(items[0])  # still blind
+    first = items[0]
+    assert (
+        client.post(
+            "/ball_check/verdict",
+            json={
+                "clip": "clip",
+                "frame_index": first["frame_index"],
+                "box_index": first["box_index"],
+                "source": "list",
+                "verdict": "not_ball",
+            },
+        ).json()["ok"]
+        is True
+    )
+    log = (gt_marks_dir / "ball_checks" / "clip.jsonl").read_text()
+    assert json.loads(log.splitlines()[-1])["card_id"] == "card-a"
+    # regenerate the list in another order, with a new card in front: card-a stays judged
+    _write_list(tmp_path, monkeypatch, [_card("clip", 7, id="card-d"), c, b, a])
+    data = client.get("/ball_check/queue?source=list").json()
+    assert [i["frame_index"] for i in data["items"]] == [7, 5, 3]
+    assert (data["remaining"], data["judged"]) == (3, 1)
+    # crops and meta resolve by the stable index, whatever the position
+    idx = ball_check.card_box_index("card-b")
+    assert client.get(f"/ball_check/crop_meta/clip/3/{idx}?src=list").json()["ok"]
+    # the old position (1) no longer points at card-b
+    assert client.get("/ball_check/crop/clip/3/1.jpg?src=list").status_code == 404
+
+
+def test_positional_cards_unchanged_and_duplicate_ids_skipped(
+    client, clips_dir, tmp_path, monkeypatch
+):
+    (clips_dir / "clip.mp4").touch()
+    _write_list(tmp_path, monkeypatch, [_card("clip", 9), _card("clip", 3, id="x")])
+    _write_list(
+        tmp_path,
+        monkeypatch,
+        [_card("clip", 9), _card("clip", 3, id="x"), _card("clip", 4, id="x")],
+    )
+    items = client.get("/ball_check/queue?source=list").json()["items"]
+    assert [i["frame_index"] for i in items] == [9, 3]
+    assert items[0]["box_index"] == 0  # no id: the list position, as before
+    assert items[1]["box_index"] == ball_check.card_box_index("x")

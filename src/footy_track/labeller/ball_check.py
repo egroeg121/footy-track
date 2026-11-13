@@ -43,6 +43,7 @@ from footy_track.labeller.constants import (
     NO_BALL_TAG,
     NOT_BROADCAST_TAG,
     PROV_LABELLER,
+    card_box_index,
 )
 from footy_track.labeller.review import _find_video, _gt_marks_dir, _read_all_boxes
 
@@ -197,10 +198,12 @@ def _list_path() -> Path | None:
 
 
 def _list_items() -> list[dict]:
-    """Cards of the review list, in file order; ``box_index`` is the position.
+    """Cards of the review list, in file order.
 
-    The file is ``{"items": [{"clip", "frame_index", "bbox": {x,y,w,h},
-    "label", "note", "other_bbox"?, ...}]}`` with normalised boxes. A missing or
+    The file is ``{"items": [{"id"?, "clip", "frame_index", "bbox": {x,y,w,h},
+    "label", "note", "other_bbox"?, ...}]}`` with normalised boxes. ``box_index`` is
+    the list position, or :func:`card_box_index` of ``id`` when the card has one
+    (stable under reordering; a repeated id keeps its first card only). A missing or
     unreadable file is an empty pool. Extra keys pass through to the page.
     """
     path = _list_path()
@@ -214,8 +217,22 @@ def _list_items() -> list[dict]:
         raw = json.loads(path.read_text())
         items = raw["items"] if isinstance(raw, dict) else raw
         out = []
+        seen: set[str] = set()
         for i, it in enumerate(items):
-            out.append({**it, "box_index": i, "frame_index": int(it["frame_index"])})
+            cid = it.get("id")
+            if cid is not None:
+                cid = str(cid)
+                if cid in seen:
+                    LOGGER.warning("ball_check: duplicate card id %r skipped", cid)
+                    continue
+                seen.add(cid)
+            out.append(
+                {
+                    **it,
+                    "box_index": i if cid is None else card_box_index(cid),
+                    "frame_index": int(it["frame_index"]),
+                }
+            )
     except (OSError, json.JSONDecodeError, KeyError, TypeError, ValueError):
         LOGGER.warning("ball_check: review list %s unreadable", path)
         return []
@@ -224,10 +241,12 @@ def _list_items() -> list[dict]:
 
 
 def _list_item(clip: str, frame_index: int, box_index: int) -> dict | None:
-    items = _list_items()
-    if 0 <= box_index < len(items):
-        it = items[box_index]
-        if it["clip"] == clip and it["frame_index"] == frame_index:
+    for it in _list_items():
+        if (
+            it["box_index"] == box_index
+            and it["clip"] == clip
+            and it["frame_index"] == frame_index
+        ):
             return it
     return None
 
@@ -1300,6 +1319,19 @@ def _gt_sidecar_stem(marks_dir: Path, clip: str) -> str:
 # ---------------------------------------------------------------------------
 
 
+def _card_id_of(body: dict) -> str | None:
+    """The ``id`` of the list card a verdict is for, resolved server side."""
+    if (body.get("source") or "sidecar") != "list":
+        return None
+    try:
+        it = _list_item(
+            str(body["clip"]), int(body["frame_index"]), int(body["box_index"])
+        )
+    except (KeyError, TypeError, ValueError):
+        return None
+    return None if it is None or it.get("id") is None else str(it["id"])
+
+
 @router.post("/ball_check/verdict")
 async def ball_check_verdict(body: dict) -> dict:
     """Append one verdict. Never touches the clip's GT sidecar."""
@@ -1325,6 +1357,9 @@ async def ball_check_verdict(body: dict) -> dict:
         "bbox": body.get("bbox"),
         "label": body.get("label"),
         "provenance": body.get("provenance"),
+        # Id of an id-keyed list card (the verdict is keyed by its hash, this
+        # lets a reader tie it back to the card after the list is regenerated).
+        "card_id": _card_id_of(body),
         # Present for `corrected`: the box the human actually dragged, so the
         # log records the new geometry as well as the sidecar rewrite.
         "corrected_bbox": body.get("corrected_bbox"),

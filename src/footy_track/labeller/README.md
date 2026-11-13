@@ -96,18 +96,25 @@ have no tests yet. They belong to the proposed Claude-assisted ball labelling
 loop (`docs/design/claude_autolabel_loop.md`); they are not counted in the
 traceability summary in section 15.
 
-- **LAB-008** (PLANNED, MUST) A Claude proposal has provenance `claude`, which
-  sits at the machine level (tier 3). It lives only in a separate candidate
-  pool, never in a GT sidecar, and it never overwrites or replaces a box at or
-  above its own level (`labeller`, or a machine box carrying `human_checked`).
-  This restates LAB-002 for the new tag. Adding `claude` to the provenance tag
-  sets (`session.py`, `review.py`, `ingest_gt.py`) is part of the work.
-  - Tests: none yet
-- **LAB-009** (PLANNED, MUST) The `claude` tag is kept on a box through every
-  later step: a person's yes (LAB-1014) writes `[label, claude, human_checked]`,
-  so the origin of a tier 2 label can always be told, and the ball eval keeps
-  ignoring it as ground truth.
-  - Tests: none yet
+- **LAB-008** (MUST, implemented by the labelling loop, no labeller test) A
+  Claude proposal sits at the machine level. Two provenance tags exist:
+  `claude_auto` (tier 3: Claude said ball on the tracker's own candidate with
+  high confidence and no person looked) and `claude` (tier 2 only together with
+  `human_checked`). Both are in the labeller's `PROVENANCE_TAGS` (so a sidecar
+  line carrying one is never read back as `labeller`) and in `ingest_gt`
+  (`claude_auto` -> source `claude_auto`, unreviewed; `claude` + `human_checked`
+  -> source `claude`, reviewed). Proposals live in the round's review list, and
+  the loop writes its labels to its own directory (`autolabel_labels/`), never
+  into the GT-marks directory, so no evaluation clip can pick them up and no
+  box at or above its own level is overwritten. This restates LAB-002.
+  - Tests: `tests/test_autolabel_loop.py::test_ingest_provenance_tiers`,
+    `tests/feature_store/test_export_training_dataset.py::test_ingest_maps_loop_tags_to_tiers_and_export_excludes_auto_by_default`
+- **LAB-009** (MUST, implemented by the labelling loop) The `claude` tag is kept
+  on a box through every later step: a person's yes on an object writes its
+  frames as `[label, claude, human_checked]` (tier 2), so the origin of a tier 2
+  label can always be told, and the ball eval keeps ignoring it as ground truth
+  (`detection_replay` skips unknown provenance).
+  - Tests: `tests/test_autolabel_loop.py::test_ingest_provenance_tiers`
 
 ## 2. Persistence — JSONL sidecar (LAB-1xx)
 
@@ -827,21 +834,33 @@ reads `<gt dir>/ball_checks/` (`--ball-checks-dir`) into the feature store's
   note and provenance, so a reviewer cannot tell human from Claude boxes.
   `?blind=0` on the page (`blind=false` on queue/crop/clip) restores the old
   two-box view; the clip and crop cache keys include the flag.
+  A card may carry an `id` (string, unique in the file; a repeat is skipped). Its
+  `box_index` is then `card_box_index(id)` (a 31-bit hash of the id), not its
+  position, so the list can be reordered, filtered or regenerated without a
+  verdict landing on another card; the verdict record also stores `card_id`.
+  Cards without an `id` keep the position as `box_index`, as before. Crop, meta,
+  clip and step endpoints resolve a card by `(clip, frame_index, box_index)`.
   List verdicts go to the normal log and are excluded from `/ball_check/stats`
   and the confidence-band estimate (hand-picked cards are not a sample).
   Used by the Claude-verify re-check (`docs/design/claude_autolabel_loop.md`
-  section 8); a minimal piece of T-47, not the `claude` candidate pool.
+  section 8) and by the labelling loop's review queue (section 12).
   - Tests: `test_ball_check.py::test_list_queue_file_order_skips_judged`,
-    `test_list_crop_and_meta`, `test_blind_list_cards_draw_no_other_box`
-- **LAB-1014** (PLANNED, MUST) `/ball_check` can serve cards from the `claude`
-  candidate pool, uncertain first (Claude and the detector disagree, low
-  confidence, cell corrections). A "yes" on such a proposal writes the box to
-  the GT sidecar as `[label, claude, human_checked]` (tier 2). This is the one
-  case where Ball Check writes a box for a yes; a plain `ball` verdict on a
-  detector box still writes only to the verdict log (LAB-1004). A "no" is a
-  `not_ball` verdict as today. Nothing is written until the person acts.
-  - Tests: none yet
-- **LAB-1015** (PLANNED, MUST) Tap-to-place: on a card where the ball is visible
+    `test_list_crop_and_meta`, `test_blind_list_cards_draw_no_other_box`,
+    `test_id_keyed_cards_keep_their_verdict_when_the_list_is_reordered`,
+    `test_positional_cards_unchanged_and_duplicate_ids_skipped`
+- **LAB-1014** (MUST, implemented as the review-list flow, not as a separate
+  `/ball_check` pool) The `claude` proposals of a round are served by
+  `source=list` (LAB-1013b), uncertain objects first by shuffle, one card per
+  object. The yes is applied by `autolabel_loop ingest` (`footy_track.autolabel`),
+  not by the Ball Check verdict endpoint: it reads the verdict log by card id and
+  writes `[label, claude, human_checked]` for the object's frames into the
+  loop's own label directory (backing up what it replaces); a `corrected`
+  verdict writes the dragged box as `[label, labeller]` for the card's frame.
+  The verdict endpoint itself still never writes to a sidecar (LAB-1004).
+  Nothing is written until the person acts, except the tier 3 `claude_auto`
+  labels, which are machine output and are tagged as such.
+  - Tests: `tests/test_autolabel_loop.py::test_decide_then_ingest_roundtrip_and_breaker_next_round`
+- **LAB-1015** (PLANNED, MUST; not built) Tap-to-place: on a card where the ball is visible
   but no box is on it (a Claude "cell" answer, or a miss), tapping the ball
   writes a new box as `[label, labeller]` (tier 1), the same result as a drag.
   The Claude cell is a hint shown on the card, never a box.

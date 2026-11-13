@@ -96,6 +96,17 @@ _NOT_REJECTED = """
           )"""
 
 
+#: Tier-3 boxes written by the Claude auto-labelling loop (Claude said ball on the
+#: tracker's candidate with high confidence and no person looked). Left out of the
+#: export unless ``include_auto`` / ``--include-auto``; a person-confirmed box of the
+#: loop (source ``claude``, ``reviewed``) is not affected.
+AUTO_SOURCE = "claude_auto"
+
+
+def _auto_clause(include_auto: bool) -> str:
+    return "" if include_auto else f"\n          AND source <> '{AUTO_SOURCE}'"
+
+
 def _eval_clip_stems(eval_dir: Path) -> set[str]:
     """Clips the ball_eval harness scores on = those with a GT .jsonl sidecar."""
     return {p.stem for p in eval_dir.glob("*.jsonl")}
@@ -114,6 +125,7 @@ def _query_ball_detections(
     *,
     sources: list[str] | None = None,
     include_rejected: bool = False,
+    include_auto: bool = False,
 ):
     placeholders = ", ".join("?" for _ in BALL_LABELS)
     params: list[object] = list(BALL_LABELS)
@@ -122,7 +134,9 @@ def _query_ball_detections(
         source_placeholders = ", ".join("?" for _ in sources)
         source_clause = f" AND source IN ({source_placeholders})"
         params += sources
-    rejected_clause = "" if include_rejected else _NOT_REJECTED
+    rejected_clause = ("" if include_rejected else _NOT_REJECTED) + _auto_clause(
+        include_auto
+    )
     sql = f"""
         SELECT game_id, frame_index, detection_id, source, run_id, label,
                bbox_x, bbox_y, bbox_w, bbox_h, frame_uri, dataset_tag
@@ -140,6 +154,7 @@ def _query_multiclass_detections(
     *,
     sources: list[str] | None = None,
     include_rejected: bool = False,
+    include_auto: bool = False,
 ):
     placeholders = ", ".join("?" for _ in labels)
     params: list[object] = list(labels)
@@ -148,7 +163,9 @@ def _query_multiclass_detections(
         source_placeholders = ", ".join("?" for _ in sources)
         source_clause = f" AND source IN ({source_placeholders})"
         params += sources
-    rejected_clause = "" if include_rejected else _NOT_REJECTED
+    rejected_clause = ("" if include_rejected else _NOT_REJECTED) + _auto_clause(
+        include_auto
+    )
     sql = f"""
         SELECT game_id, frame_index, detection_id, source, run_id, label,
                bbox_x, bbox_y, bbox_w, bbox_h, frame_uri, dataset_tag
@@ -478,6 +495,7 @@ def export(
     sources: list[str] | None = None,
     test_fraction: float = 0.0,
     include_rejected: bool = False,
+    include_auto: bool = False,
 ) -> dict:
     """Export a leakage-free YOLO dataset.
 
@@ -497,19 +515,34 @@ def export(
     Boxes the user marked ``not_ball`` in Ball Check are dropped from the
     positives (the export has no negatives/background notion, so they are
     simply excluded); ``include_rejected=True`` keeps them.
+
+    Tier-3 ``claude_auto`` boxes (the auto-labelling loop's unreviewed output) are
+    excluded unless ``include_auto=True``; naming ``claude_auto`` in ``sources``
+    without it is an error.
     """
+    if not include_auto and AUTO_SOURCE in (sources or []):
+        raise ValueError(
+            f"source {AUTO_SOURCE!r} needs include_auto=True (--include-auto)"
+        )
     multiclass = classes is not None
     if multiclass:
         class_names = sorted(set(classes))
         class_id_for_label = {name: i for i, name in enumerate(class_names)}
         df = _query_multiclass_detections(
-            store, class_names, sources=sources, include_rejected=include_rejected
+            store,
+            class_names,
+            sources=sources,
+            include_rejected=include_rejected,
+            include_auto=include_auto,
         )
     else:
         class_names = ["ball"]
         class_id_for_label = defaultdict(lambda: BALL_CLASS_ID)
         df = _query_ball_detections(
-            store, sources=sources, include_rejected=include_rejected
+            store,
+            sources=sources,
+            include_rejected=include_rejected,
+            include_auto=include_auto,
         )
     eval_clips = _eval_clip_stems(eval_dir)
     # Compare canonical ids, so an eval clip stored under another alias is
@@ -639,6 +672,12 @@ def main(argv: list[str] | None = None) -> None:
         action="store_true",
         help="Keep boxes the user marked not_ball in Ball Check (default: drop).",
     )
+    parser.add_argument(
+        "--include-auto",
+        action="store_true",
+        help="Also export tier-3 'claude_auto' boxes (Claude + tracker, no person "
+        "looked). Default: excluded.",
+    )
     args = parser.parse_args(argv)
 
     store = FeatureStore.open(args.db)
@@ -667,6 +706,7 @@ def main(argv: list[str] | None = None) -> None:
         classes=classes,
         sources=sources,
         include_rejected=args.include_rejected,
+        include_auto=args.include_auto,
     )
 
     print("=== export_training_dataset manifest ===")
