@@ -261,7 +261,10 @@ def _build_ball_queue(
     *,
     clip: str | None = None,
     include_gt: bool = False,
-) -> list[dict]:
+    spot: bool = False,
+    dense: bool = False,
+) -> list[dict] | tuple[list[dict], str | int, int]:
+    """Unjudged sidecar boxes. ``spot`` returns ``(todo, phase, n_tracks)``."""
     out = []
     playable: dict[str, bool] = {}
     for r in records:
@@ -271,7 +274,9 @@ def _build_ball_queue(
             continue
         if clip is not None and r["clip"] != clip:
             continue
-        if ("sidecar", r["clip"], r["frame_index"], r["box_index"]) in judged:
+        if not spot and (
+            ("sidecar", r["clip"], r["frame_index"], r["box_index"]) in judged
+        ):
             continue
         # A sidecar stem with no video on disk cannot be cropped (the clip
         # naming schemes diverge), and a card that 404s is worse than no card.
@@ -280,8 +285,170 @@ def _build_ball_queue(
         if not playable[r["clip"]]:
             continue
         out.append(r)
+    if spot:
+        return _spot_check_queue(out, judged, dense=dense)
     out.sort(key=_shuffle_key)
     return out
+
+
+# ---------------------------------------------------------------------------
+# Sidecar spot-check ordering
+# ---------------------------------------------------------------------------
+#
+# The sidecar pool is mostly vittrack boxes propagated frame to frame from a
+# few hand marks. Neither the sidecars nor the verdict log carry a track id,
+# so tracks are re-derived: per clip, same label, a box continues a track when
+# it sits within ``_TRACK_MAX_GAP`` frames of the track's last box and its
+# centre is within ``_TRACK_BASE_DIST * gap`` of it (normalized frame units,
+# y scaled by 9/16 so the distance is roughly isotropic in pixels; 0.047 is
+# ~60 px at 1280 wide). Phase 1 spot-checks each track (first, last, biggest
+# jump, middle if long); phase 2 densifies only tracks with a non-``ball``
+# verdict. Ordering never changes a verdict key.
+
+_TRACK_MAX_GAP = 5
+_TRACK_BASE_DIST = 0.047
+_TRACK_MAX_DIST = 0.12
+_TRACK_LONG = 50
+_DENSE_STEP = 5
+
+
+def _centre(r: dict) -> tuple[float, float]:
+    b = r["bbox"]
+    return b["x"] + b["w"] / 2, (b["y"] + b["h"] / 2) * 9 / 16
+
+
+def _group_tracks(pool: list[dict]) -> list[list[dict]]:
+    """Group boxes into per-clip tracks (heuristic; no track id exists).
+
+    Returns tracks, each sorted by (frame, box_index), ordered by clip then
+    first frame so the result is deterministic.
+    """
+    by_clip: dict[str, list[dict]] = {}
+    for r in pool:
+        by_clip.setdefault(r["clip"], []).append(r)
+    tracks: list[list[dict]] = []
+    for clip in sorted(by_clip):
+        recs = sorted(by_clip[clip], key=lambda r: (r["frame_index"], r["box_index"]))
+        open_tracks: list[list[dict]] = []
+        for r in recs:
+            cx, cy = _centre(r)
+            best, best_d = None, None
+            for t in open_tracks:
+                last = t[-1]
+                gap = r["frame_index"] - last["frame_index"]
+                if gap < 1 or gap > _TRACK_MAX_GAP or last["label"] != r["label"]:
+                    continue
+                lx, ly = _centre(last)
+                d = ((cx - lx) ** 2 + (cy - ly) ** 2) ** 0.5
+                if d <= min(_TRACK_BASE_DIST * gap, _TRACK_MAX_DIST) and (
+                    best_d is None or d < best_d
+                ):
+                    best, best_d = t, d
+            if best is None:
+                best = []
+                open_tracks.append(best)
+                tracks.append(best)
+            best.append(r)
+            # retire tracks that can no longer be continued
+            open_tracks = [
+                t
+                for t in open_tracks
+                if r["frame_index"] - t[-1]["frame_index"] < _TRACK_MAX_GAP
+            ]
+    return tracks
+
+
+def _phase1_cards(track: list[dict]) -> list[dict]:
+    """First, last, frame of the largest step, and the middle if long."""
+    n = len(track)
+    idx = [0, n - 1]
+    if n > 2:
+        steps = []
+        for i in range(1, n):
+            (ax, ay), (bx, by) = _centre(track[i - 1]), _centre(track[i])
+            steps.append(((bx - ax) ** 2 + (by - ay) ** 2, i))
+        big, i_big = max(steps, key=lambda s: (s[0], -s[1]))
+        if big > 0:
+            idx.append(i_big)
+    if n > _TRACK_LONG:
+        idx.append(n // 2)
+    out, seen = [], set()
+    for i in sorted(set(idx)):
+        if i not in seen:
+            seen.add(i)
+            out.append(track[i])
+    return out
+
+
+def _interleave(groups: list[tuple[str, list[list[dict]]]]) -> list[dict]:
+    """Round-robin across clips, then across tracks inside a clip.
+
+    ``groups`` is ``[(clip, [card-list per track])]``. Cards of one track keep
+    their order; two consecutive cards share a track only when nothing else is
+    left to draw from.
+    """
+    clips = sorted(groups, key=lambda g: hashlib.sha1(g[0].encode()).hexdigest())
+    queues = [[collections.deque(c) for c in tr if c] for _, tr in clips]
+    ptr = [0] * len(queues)
+    out: list[dict] = []
+    while any(queues):
+        for i, tq in enumerate(queues):
+            if not tq:
+                continue
+            ptr[i] %= len(tq)
+            out.append(tq[ptr[i]].popleft())
+            if tq[ptr[i]]:
+                ptr[i] += 1
+            else:
+                tq.pop(ptr[i])
+    return out
+
+
+def _spot_check_queue(
+    pool: list[dict], judged: dict[tuple, dict], *, dense: bool = False
+) -> tuple[list[dict], str | int, int]:
+    """Return ``(todo, phase, n_tracks)`` for the sidecar spot-check.
+
+    ``pool`` is every eligible box, judged or not, so the tracks and the
+    order are stable as verdicts arrive. ``phase`` is ``1``, ``2`` or
+    ``"done"``.
+    """
+
+    def key(r: dict) -> tuple:
+        return ("sidecar", r["clip"], r["frame_index"], r["box_index"])
+
+    tracks = _group_tracks(pool)
+
+    def order(per_track: list[list[dict]]) -> list[dict]:
+        by_clip: dict[str, list[list[dict]]] = {}
+        for t, cards in zip(tracks, per_track, strict=True):
+            by_clip.setdefault(t[0]["clip"], []).append(cards)
+        return _interleave(list(by_clip.items()))
+
+    p1 = order([_phase1_cards(t) for t in tracks])
+    todo = [r for r in p1 if key(r) not in judged]
+    if todo:
+        return todo, 1, len(tracks)
+
+    p1_keys = {key(r) for r in p1}
+    per_track: list[list[dict]] = []
+    for t in tracks:
+        bad = any(
+            key(r) in judged and judged[key(r)].get("verdict") != "ball" for r in t
+        )
+        if dense:
+            cards = [r for r in t if key(r) not in p1_keys]
+        elif bad:
+            cards = [
+                r
+                for i, r in enumerate(t)
+                if i % _DENSE_STEP == 0 and key(r) not in p1_keys
+            ]
+        else:
+            cards = []
+        per_track.append([r for r in cards if key(r) not in judged])
+    todo = order(per_track)
+    return todo, (2 if todo else "done"), len(tracks)
 
 
 def _build_candidate_queue(
@@ -316,12 +483,15 @@ async def ball_check_queue(
     sigma: float = cand.DEFAULT_SIGMA,
     focus: float = cand.DEFAULT_FOCUS,
     blind: bool = True,
+    dense: bool = False,
 ) -> dict:
     """Unjudged ball boxes to review.
 
     ``source=candidates`` draws from the detector's own output, which carries
     real confidences, and orders them by confidence-stratified sampling.
-    ``source=sidecar`` reviews the boxes already in the GT sidecars.
+    ``source=sidecar`` spot-checks the boxes already in the GT sidecars track
+    by track (phase 1: first/last/biggest-jump/middle; phase 2: denser on
+    tracks with a non-ball verdict; ``dense=1`` shows every remaining frame).
     ``source=list`` serves the explicit cards of the review list
     (``FOOTY_BALL_CHECK_LIST``) in file order, skipping judged ones.
     ``auto`` (default) prefers candidates when any have been pulled down.
@@ -433,7 +603,9 @@ async def ball_check_queue(
         }
 
     records = await asyncio.to_thread(_read_all_boxes)
-    queue = _build_ball_queue(records, judged, clip=clip, include_gt=include_gt)
+    queue, phase, n_tracks = _build_ball_queue(
+        records, judged, clip=clip, include_gt=include_gt, spot=True, dense=dense
+    )
     items = [
         {
             "clip": r["clip"],
@@ -454,6 +626,8 @@ async def ball_check_queue(
         "source": "sidecar",
         "remaining": len(queue),
         "judged": len(judged),
+        "phase": phase,
+        "tracks": n_tracks,
         "items": items,
     }
 

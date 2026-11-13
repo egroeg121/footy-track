@@ -735,6 +735,26 @@ reads `<gt dir>/ball_checks/` (`--ball-checks-dir`) into the feature store's
   also surfaces `labeller` boxes.
   - Tests: `test_ball_check.py::test_queue_order_is_stable_and_respects_limit`,
     `test_ball_check.py::test_queue_include_gt_and_clip_filters`
+- **LAB-1003a** (SHOULD) `source=sidecar` is a *track spot-check*, not a
+  flat hash order. Neither sidecars nor verdicts carry a track id, so tracks
+  are re-derived per clip: same label, next box within 5 frames, centre within
+  0.047 x gap (normalized, y scaled 9/16; about 60 px at 1280, capped 0.12).
+  **Phase 1**: per track its first frame, last frame, the frame of the largest
+  frame-to-frame step (skipped if the track is static) and, if longer than 50
+  boxes, the middle; cards round-robin across clips then across tracks, so two
+  consecutive cards are never the same track unless nothing else is left.
+  **Phase 2** (only once every phase-1 card is judged): tracks with any
+  non-`ball` verdict get every 5th box; all-`ball` tracks are not expanded;
+  `?dense=1` (`dense=true` on the API) instead lists every remaining box of
+  every track. Response adds `phase` (`1`, `2` or `"done"`) and `tracks`;
+  `remaining` counts the current phase. Tracks and order are computed from
+  the whole pool, judged or not, so verdicts never reshuffle the queue, and
+  verdict keys `(source, clip, frame_index, box_index)` are unchanged.
+  `source=list` and `candidates` are unaffected.
+  - Tests: `test_ball_check.py::test_group_tracks_splits_on_distance_label_and_gap`,
+    `test_phase1_*`, `test_phase2_expands_only_tracks_with_a_non_ball_verdict`,
+    `test_judging_does_not_change_keys_or_order`,
+    `test_dense_flag_lists_every_remaining_frame_after_phase1`
 - **LAB-1004** (MUST) `POST /ball_check/verdict` appends one record to the
   clip's verdict log and leaves the GT sidecar byte-identical. `verdict` must
   be `ball` | `not_ball` | `unsure`; anything else, or a missing identity

@@ -128,7 +128,7 @@ const PREFETCH = 4;            // crops to warm ahead of the current card
 const HANDLE = 22;             // corner hit radius in CSS px (fingers are fat)
 
 let queue = [];                // items not yet judged, current one at [0]
-let remaining = 0, judged = 0, padIdx = 0;
+let remaining = 0, judged = 0, padIdx = 0, phase = null;
 let history = [];
 let busy = false;
 let tau = null;                // boundary the queue is currently sampling around
@@ -145,6 +145,7 @@ const queueUrl = () => {
   const p = new URLSearchParams({ limit: '60' });
   for (const k of ['source', 'clip']) if (QS.get(k)) p.set(k, QS.get(k));
   if (QS.get('blind') === '0') p.set('blind', 'false');
+  if (QS.get('dense') === '1') p.set('dense', 'true');
   return `/ball_check/queue?${p}`;
 };
 const srcOf = (item) => item.source || 'sidecar';
@@ -314,7 +315,7 @@ function render() {
   if (!item) {
     $('card').style.display = 'none';
     $('empty').style.display = 'block';
-    $('progress').textContent = `${judged} checked`;
+    $('progress').textContent = `${judged} checked` + (phase === 'done' ? ' · done' : '');
     return;
   }
   $('card').style.display = 'flex';
@@ -326,7 +327,7 @@ function render() {
       ? `${item.label} · ${item.provenance}`
       : `${item.label} · conf ${item.confidence.toFixed(2)}`;
   $('note').textContent = isBlind(item) ? BLIND_PROMPT : (item.note || '');
-  $('progress').textContent = `${judged} checked · ${remaining} left`;
+  $('progress').textContent = `${judged} checked · ${remaining} left` + (phase ? ` (phase ${phase})` : '');
   loadMeta(item);
   playClip(item);
   prefetch();
@@ -341,6 +342,7 @@ async function loadQueue(reset) {
   const data = await (await fetch(queueUrl())).json();
   remaining = data.remaining;
   judged = data.judged;
+  phase = data.phase === undefined ? null : data.phase;
   if (data.tau !== undefined) {
     tau = data.tau;
     $('tau').textContent = `boundary ~${tau.toFixed(2)}`;
