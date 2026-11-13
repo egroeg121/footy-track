@@ -1,6 +1,6 @@
 # Claude-assisted ball labelling loop
 
-Status: **PROPOSAL. Nothing in this page is built.** · Date: 2026-11-10 · Code reviewed: the ball-tracker branch (PR #36), which stacks on `main` @ `26d2506` plus the merged T-01 to T-04 fixes
+Status: **PROPOSAL.** Only the calibration pilot of [section 8](#calibration-results-pilot-2026-11) is built; nothing else in this page is · Date: 2026-11-10 · Code reviewed: the ball-tracker branch (PR #36), which stacks on `main` @ `26d2506` plus the merged T-01 to T-04 fixes
 
 This page is for anyone deciding how to get many more ball labels, from many more matches, without a person drawing every box. It proposes **route J, "Claude-assisted ball labels"**: a loop in which the detector and tracker propose, a Claude model checks, and a person confirms only what is uncertain. It builds on two June notes, the [autolabelling architecture review](autolabelling_architecture_review.md) and the [bidirectional tracking research](bidirectional_tracking_research.md), and on the scored measurement in [Ball tracking evaluation](../ball-tracking-eval.md).
 
@@ -211,6 +211,69 @@ Extra negatives: the 37 no-ball frames are few. Add the `not_ball` Ball Check ve
 | Cost and time per clip | Backend cost and wall time per clip, split by step | set after the first run, against a budget stated before it; compare per resolved frame with the human 3.3 s per card ([Best pipeline](../pipeline-and-labels.md), route D) | No cost number exists yet (**unverified**) |
 
 **Gate.** The loop is not run on new matches until agreement, false "not ball" and false "ball" meet their thresholds on the seen clips **and** the single held-out scoring does not contradict them. If the thresholds are missed, the fallback is a smaller role (for example the overview pass and crop-and-re-detect only, with a person doing every verify), not lower thresholds.
+
+### Calibration results (pilot, 2026-11)
+
+A first calibration pilot has been run. It is **small, uses the subscription backend, and does not clear the gate**: on every proposed threshold the first prompt version misses. Treat the numbers as a baseline for iterating the prompt and the crop step, not as a verdict on the idea.
+
+**Method.** Code: `src/footy_track/autolabel/` and `scripts/claude_verify_pilot.py` (`prepare`, `ask`, `score`; tests in `tests/test_autolabel_verify_pilot.py`, synthetic data only). Steps, in order:
+
+1. *Frames.* All human-marked frames of the 6 held-out clips (119 ball, 7 no-ball) plus a seeded sample of the seen clips: 50 ball frames where a cached detector candidate lies within 25 px of the human mark, 50 where none does, and 20 no-ball frames. 246 questions in a fixed shuffled order. Only `labeller` (human-placed) marks count as GT. The GT is used only to stratify the sample and to score; it never places a crop or a candidate.
+2. *Crop centre.* The bidirectional tracker's output replayed over the cached detections (172 frames), else the nearest tracker position within 12 frames (59), else the frame centre (15). The crop is 320 x 320 native pixels, clamped to the frame.
+3. *Crop and re-detect.* The crop is upscaled 3x (960 x 960) and the same RT-DETR weights run on it at conf 0.05 and `imgsz` 960 (the 3x scale with no further resampling; other scales are unmeasured). Candidates are the cached boxes inside the crop plus the re-detect boxes, de-duplicated within 6 px (the original wins), top 6 by confidence; each remembers where it came from.
+4. *Question image.* The crop shown at 960 x 960 with thin coloured boxes, a large number beside each box, a faint 8 x 8 grid labelled A1 to H8 at the edges (**one cell is 40 px at native resolution**), and a 480 x 270 whole-frame thumbnail with the crop outlined. The list of numbers with detector confidences is drawn beside it.
+5. *Ask.* `claude -p` (Claude Code headless, subscription login), one call per 6 images, each image read with the Read tool, reply a JSON array. Answer schema: `{"verdict": "candidate" | "cell" | "none" | "unsure", "candidate": int | null, "cell": "C5" | null, "confidence": 0 to 1, "reason": short}`. This differs from the sketch in [section 4](#4-prompt-and-answer-format) (8 x 8 grid instead of 6 x 6, `candidate`/`none`/`unsure` as verdict names). The exact prompt text is versioned in `claude_cli.py` as `verify-v1`. A malformed batch is retried once. Sonnet on all 246 questions; Opus on the first 60 (a random subset, by the shuffle).
+6. *Score.* Per question against the human marks within R = 25 px (and 10 px) at native resolution. Ball present: correct if the chosen candidate's centre, or the chosen cell's centre, is within R of the mark; `none` is a false "not ball"; `unsure` is counted separately. No-ball: correct only for `none`; any candidate or cell is a false "ball". A wrong pick on a ball frame also counts as a false "ball".
+
+**Prompt tuning.** None. `verify-v1` was run once, unchanged, on seen and held-out frames together, so the held-out numbers are not contaminated by tuning, and there is no tuned-on-seen result either.
+
+**Results, Sonnet, R = 25 px** (at 10 px every rate moves by at most 0.03 and the headline conclusions do not change):
+
+| set | questions | agreement | agreement where a candidate is within R | false "not ball" (all ball frames) | false "not ball" (candidate within R) | false "ball" (all questions) | unsure |
+|---|---|---|---|---|---|---|---|
+| all | 246 | 0.512 | 0.771 (101 of 131) | 0.397 | 0.153 | 0.102 | 0.033 |
+| held-out | 126 | 0.516 | 0.833 (60 of 72) | 0.395 | 0.125 | 0.095 | 0.016 |
+| seen | 120 | 0.508 | 0.695 (41 of 59) | 0.400 | 0.186 | 0.108 | 0.050 |
+
+Other rows: false "ball" on the 27 no-ball frames alone is 0.185 (5 of 27; held-out 2 of 7, seen 3 of 20). Wrong picks on ball frames are 0.091 of ball frames. No malformed answers, no retries for Sonnet.
+
+**The crop often misses the ball.** In 57 of the 219 ball questions (26%; 28 of 119 held-out) the human mark is **outside** the 320 px crop, because the tracker's expected position was wrong or absent. There the only right answer for the crop is `none`, which the strict scoring above counts as a false "not ball". Two extra views: counting `none` as correct when the mark is outside the crop, agreement is **0.699** (held-out 0.698); and on the 162 ball questions whose mark is inside the crop, agreement is 0.642 and the false "not ball" rate is 0.253. The crop step, not only Claude, limits the pilot.
+
+**Cell answers.** 12 questions got a cell answer from Sonnet; 3 were within 25 px (a 40 px cell centre is up to about 28 px from a ball in the same cell, so 25 px is a lenient test for a cell). On the 88 ball frames with no candidate within R in the crop, agreement was 0.034, so the cell hint is not a usable way to recover a ball the detector misses.
+
+**Crop-and-re-detect gain.** Of the 219 ball questions, 14 (6.4%; 5 of 119 held-out, 9 of 100 seen) had a candidate within 25 px **only** because of the re-detect pass (the cached run had none inside the crop). Of the 102 ball frames with no cached candidate within 25 px in the crop, that is 14%. Sonnet picked the right box on 4 of those 14 (2 of 5 held-out); Opus picked it on 1 of the 3 that fall in its 60-question subset. So the step does add balls, but few, and Claude does not yet pick most of them.
+
+**Sonnet versus Opus**, on the same 60 questions (53 ball frames, 7 no-ball; 30 held-out, 30 seen), R = 25 px:
+
+| model | agreement | agreement where a candidate is within R | false "not ball" (candidate within R) | false "not ball" (mark in crop) | false "ball" | unsure |
+|---|---|---|---|---|---|---|
+| Sonnet | 0.567 | 0.778 (28 of 36) | 0.139 | 0.233 | 0.100 | 0.033 |
+| Opus | 0.600 | 0.861 (31 of 36) | 0.028 (1 of 36) | 0.093 | 0.117 | 0.117 |
+
+Opus is far less likely to throw away a real ball, and says `unsure` more often (0.117 against 0.033); it is no better on false "ball". With 60 questions, one or two answers move any of these by 0.02 to 0.03, so the difference is indicative only.
+
+**Confidence calibration** (R = 25 px, share of answers in each band that were correct): Sonnet 0.23 (7 of 31) below 0.5, 0.32 (26 of 81) from 0.5 to 0.8, 0.69 (93 of 134) from 0.8; Opus 0 of 11, 8 of 18, 28 of 31 (0.90). Both are monotone, so the confidence can order a review queue, but even the top band is below the 0.95 target for Sonnet. The comparison with the detector's confidence bands (precision at most 0.42) was **not** run.
+
+**Against the proposed thresholds** (all on Sonnet and all frames unless stated; none met):
+
+| measure | proposed | pilot | met |
+|---|---|---|---|
+| agreement | at least 0.95 | 0.512 strict, 0.699 mark-in-crop adjusted, 0.771 where a candidate exists (held-out 0.833) | no |
+| false "not ball" | at most 0.03 | 0.153 where a candidate exists (Opus 0.028 on 36 frames); 0.397 on all ball frames | Sonnet no; Opus only in that narrow slice |
+| false "ball" | at most 0.02 | 0.102 (Sonnet), 0.117 (Opus, 60 questions) | no |
+
+**Time and cost.** Sonnet: 41 calls (6 images each), mean 23.6 s, reported cost USD 0.091 per call (3.73 in total). Opus: 11 calls (one malformed batch was retried once and then parsed), mean 32.0 s, USD 0.171 per call (1.88 in total). The reported cost is the list-price equivalent printed by the CLI; on the subscription it is a usage figure, not a charge. Each call also carries about 7,000 tokens of the CLI's own context. Projection for a 30 s clip at 2 frames per second (60 questions, 10 calls): Sonnet about 4 minutes of calls run one after another (about 80 s at 3 in parallel) and about USD 0.91; Opus about 5.3 minutes (about 110 s at 3 in parallel) and about USD 1.71. That is roughly 4 s (Sonnet) or 5 s (Opus) per question, against 3.3 s per card for a person, before any human review of what Claude flags. The GPU steps (reading frames, re-detect on 246 crops, drawing) took under a minute on a single consumer GPU and are not split out.
+
+**Caveats.**
+
+- 6 held-out clips and 126 held-out questions: every rate has a wide interval (for example 28 of 36 has a 95% interval of roughly 0.60 to 0.90). The Opus comparison is 60 questions.
+- The subscription backend shares usage limits with interactive work and was not tuned (no temperature or settings control); results may differ on the API.
+- The seen sample is stratified by whether a detector candidate exists, so the overall rates are not the rates on a typical clip. The human marks are mostly frames a person looked at because the detector proposed something ([section 8](#8-calibration-plan-and-acceptance-thresholds)); the eval's caveats carry over.
+- Some of the human marks are themselves hard to confirm at this scale (a ball in a crowd, a ball behind an advert board). Claude's "none" on those frames is not clearly an error. The pilot has no second human pass to check the marks.
+- A contact sheet of wrong answers and re-detect wins was inspected only to sanity check the rendering; the prompt was not changed in response.
+- Crop scale (3x), `imgsz` 960 for re-detect, 8 x 8 grid and 6 boxes per question are untuned choices.
+
+**What it suggests, not proves.** Fixing the crop first (the mark is outside it in a quarter of the frames) and re-running before touching the prompt; trying Opus or a second look on `none` answers where a candidate exists; and not relying on cell answers. The gate in this section stays: no new matches until the thresholds are met.
 
 ## 9. What the code does with verdicts today
 
