@@ -21,7 +21,7 @@
 Other commands: ``static-eval`` (measure the static filter on a calibration run) and
 ``legacy-import`` (a person's earlier re-check verdicts on the held-out disagreement
 cards, kept as evaluation corrections only). See ``docs/design/claude_autolabel_loop.md``,
-section 9.
+section 12.
 """
 
 from __future__ import annotations
@@ -29,6 +29,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import shutil
 import sys
 import time
@@ -151,6 +152,96 @@ def apply_budget(
         else:
             out.append(i)
     return out
+
+
+GAP_NEAR_PX = 25.0
+GAP_BOX_PX = 12.0
+
+
+def gap_items(
+    clip: str,
+    frames: list[int],
+    cands: dict[int, list[tuple[float, float]]],
+    path: dict[int, tuple[float, float]],
+    det: dict,
+    near_px: float = GAP_NEAR_PX,
+) -> list[dict]:
+    """Missed-ball candidates: sampled frames where the tracker's path has a position
+    (interpolated, no detection chosen) but no cached detector candidate lies within
+    ``near_px`` of it. Not asked to Claude (nothing to ask about): they become review
+    cards that show the predicted position, so a person can drag the ball onto it or
+    say no ball is visible. Detector recall is the ceiling of the whole loop."""
+    out = []
+    for f in frames:
+        if f not in path or f in det:
+            continue
+        x, y = path[f]
+        if any(math.hypot(x - u, y - v) <= near_px for u, v in cands.get(f, [])):
+            continue
+        out.append(
+            {
+                "id": f"{clip}_{f:06d}_g",
+                "clip": clip,
+                "frame": f,
+                "cx": x,
+                "cy": y,
+                "w": GAP_BOX_PX,
+                "h": GAP_BOX_PX,
+                "det_conf": 0.0,
+                "source": "gap",
+                "track_id": None,
+                "status": "gap",
+            }
+        )
+    return out
+
+
+def _tracker_paths(cache):
+    from footy_track.ball_eval.detection_replay import replay  # noqa: PLC0415
+    from footy_track.ball_trackers.detection_tracker import (  # noqa: PLC0415
+        DETECTED,
+        INTERPOLATED,
+    )
+    from footy_track.ball_trackers.factory import make_ball_tracker  # noqa: PLC0415
+
+    size = cache.frame_size
+    det, path = {}, {}
+    for p in replay(make_ball_tracker("bidirectional", size), cache):
+        if p.x is None or p.source not in (DETECTED, INTERPOLATED):
+            continue
+        c = ((p.x + p.w / 2) * size[0], (p.y + p.h / 2) * size[1])
+        path[p.frame_index] = c
+        if p.source == DETECTED:
+            det[p.frame_index] = (c, p.track_id)
+    return path, det
+
+
+def cmd_add_gaps(args) -> int:
+    """(Re)compute the missed-ball items of a prepared run (idempotent)."""
+    from footy_track.ball_eval.detection_replay import read_cache  # noqa: PLC0415
+
+    run = args.run
+    spec = json.loads((run / "clips.json").read_text())
+    loop.assert_not_eval(spec["clips"], _eval_ids(args))
+    items = [
+        i for i in json.loads((run / "items.json").read_text()) if i["status"] != "gap"
+    ]
+    n = 0
+    for clip in spec["clips"]:
+        cache = read_cache(args.cache / f"{clip}.jsonl")
+        path, det = _tracker_paths(cache)
+        w, h = cache.frame_size
+        cands = {
+            f: [((c.x + c.w / 2) * w, (c.y + c.h / 2) * h) for c in cs]
+            for f, cs in cache.frames
+        }
+        frames = sorted(f for f in cands if f % args.stride == 0)
+        g = gap_items(clip, frames, cands, path, det)
+        items += g
+        n += len(g)
+    _atomic(run / "items.json", items)
+    print(f"{n} missed-ball (gap) frames")
+    return 0
 
 
 def cmd_prepare(args) -> int:  # noqa: PLR0912, PLR0915
@@ -291,6 +382,15 @@ def cmd_prepare(args) -> int:  # noqa: PLR0912, PLR0915
                     )
             wanted[f] = rows
             items.extend(rows)
+        items.extend(
+            gap_items(
+                clip,
+                frames,
+                {f: [(c.cx, c.cy) for c in px(cached[f])] for f in frames},
+                path,
+                det,
+            )
+        )
         per_clip[clip] = {"frames": len(frames), "cached_candidates": n_cached}
         print(
             f"{clip}: {len(frames)} frames, {sum(len(v) for v in wanted.values())} candidates",
@@ -897,6 +997,12 @@ def main(  # noqa: PLR0915
     p.add_argument("--static-cam", type=float, default=d.min_cam_px)
     p.add_argument("--force", action="store_true")
     p.set_defaults(fn=cmd_prepare)
+
+    p = sub.add_parser("add-gaps")
+    _common(p)
+    p.add_argument("--cache", type=Path, required=True)
+    p.add_argument("--stride", type=int, default=5)
+    p.set_defaults(fn=cmd_add_gaps)
 
     p = sub.add_parser("decide")
     p.add_argument("--run", type=Path, required=True)

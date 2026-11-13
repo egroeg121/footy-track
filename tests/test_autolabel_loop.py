@@ -541,3 +541,130 @@ def test_apply_budget_caps_asked_and_prefers_tracker_share():
     assert sum(i["source"] == "tracker" for i in asked) == 50  # all 50: 60% of 100 > 50
     assert out[-1]["status"] == "filtered"
     assert cli.apply_budget(items, 0) == items
+
+
+# ------------------------------------------------------- queue priority, missed balls
+
+
+def test_gap_items_only_where_the_tracker_has_a_path_but_no_candidate_near():
+    path = {
+        0: (100.0, 100.0),
+        5: (200.0, 100.0),
+        10: (300.0, 100.0),
+        15: (400.0, 100.0),
+    }
+    det = {0: ((100.0, 100.0), 1)}
+    cands = {5: [(210.0, 100.0)], 10: [(600.0, 600.0)], 15: []}
+    got = cli.gap_items("c", [0, 5, 10, 15, 20], cands, path, det)
+    # 0 was detected, 5 has a candidate within 25 px, 20 has no path
+    assert [g["frame"] for g in got] == [10, 15]
+    assert got[0]["status"] == "gap" and got[0]["cx"] == 300.0
+
+
+def _gap_item(frame, x):
+    return _c(
+        f"g{frame}",
+        frame,
+        x,
+        500,
+        "gap",
+        status="gap",
+        verdict=None,
+        claude_conf=None,
+        det_conf=0.0,
+    )
+
+
+def _items_with_gaps():
+    items = _round_items()
+    items += [_gap_item(f, 700 + 10 * f) for f in (100, 105, 110)]  # one gap run
+    items += [_gap_item(f, 100) for f in (300, 305)]  # a second, far in time
+    return items
+
+
+def test_missed_ball_cards_come_first_one_per_gap_and_never_consecutive_frames():
+    b = loop.build_round(
+        _items_with_gaps(),
+        round_id="r1",
+        sizes={"clipA": SIZE},
+        stems={"clipA": "s"},
+        thr=Thresholds(control_rate=0.0),
+    )
+    assert b["counts"]["gap_frames"] == 5 and b["counts"]["gap_objects"] == 2
+    prios = [b["meta"][c["id"]]["priority"] for c in b["cards"]]
+    assert prios == sorted(prios)  # missed balls, spare balls, tracker, audit, spot
+    first = [c for c in b["cards"] if b["meta"][c["id"]]["role"] == "gap"]
+    assert len(first) == 2 and prios[:2] == [1, 1]
+    # the middle frame of the run of three, not an edge
+    assert 105 in [c["frame_index"] for c in first]
+    # a spare ball (non-tracker object) outranks a tracker-only one
+    roles = {
+        b["meta"][c["id"]]["role"]: b["meta"][c["id"]]["priority"] for c in b["cards"]
+    }
+    assert roles["review"] == 2 and roles["audit"] == 4 and roles["spot"] == 5
+    capped = loop.build_round(
+        _items_with_gaps(),
+        round_id="r1",
+        sizes={"clipA": SIZE},
+        stems={"clipA": "s"},
+        thr=Thresholds(control_rate=0.0, max_gap_cards=1),
+    )
+    assert capped["counts"]["cards_by_role"]["gap"] == 1
+
+
+def test_card_frame_is_the_fastest_motion_frame_and_spots_are_the_ends():
+    ms = [_c(f"m{k}", 5 * k, 100 + (200 if k == 3 else 5) * k, 100) for k in range(6)]
+    # displacements: k=3 jumps ahead the most -> the frame after the jump is shown
+    assert loop._rep(ms)["id"] in {"m3", "m4"}
+    assert loop._rep(ms[:2])["id"] == "m0"
+    assert loop._rep(ms, "gap")["id"] == "m3"
+
+
+def test_cards_interleave_clips_inside_a_priority():
+    items = []
+    for clip in ("clipA", "clipB"):
+        for o in range(3):
+            items.append(
+                _c(
+                    f"{clip}{o}",
+                    5 * o,
+                    100 + 600 * o,
+                    300,
+                    "top",
+                    clip=clip,
+                    claude_conf=0.9,
+                )
+            )
+    b = loop.build_round(
+        items,
+        round_id="r",
+        sizes={"clipA": SIZE, "clipB": SIZE},
+        stems={"clipA": "a", "clipB": "b"},
+        thr=Thresholds(control_rate=0.0),
+    )
+    order = [
+        c["run_clip"] for c in b["cards"] if b["meta"][c["id"]]["role"] == "review"
+    ]
+    assert len(order) == 6 and all(order[i] != order[i + 1] for i in range(5))
+
+
+def test_ingest_missed_ball_cards_become_hard_positives_or_no_ball():
+    items = _items_with_gaps()
+    b = loop.build_round(
+        items,
+        round_id="r1",
+        sizes={"clipA": SIZE},
+        stems={"clipA": "s"},
+        thr=Thresholds(control_rate=0.0),
+    )
+    gap_cards = [cid for cid, m in b["meta"].items() if m["role"] == "gap"]
+    drag = {"x": 0.3, "y": 0.4, "w": 0.01, "h": 0.01}
+    v = {
+        gap_cards[0]: {"verdict": "corrected", "corrected_bbox": drag},
+        gap_cards[1]: {"verdict": "not_ball"},
+    }
+    p = loop.plan_ingest(items, b, v, sizes={"clipA": SIZE}, eval_ids=set())
+    lines = [ln for ln in p.labels["clipA"] if "labeller" in ln["tags"]]
+    assert len(lines) == 1 and lines[0]["bbox"] == drag
+    assert [n["reason"] for n in p.negatives] == ["gap_no_ball"]
+    assert p.counts["gap_hard_positives_tier1"] == 1

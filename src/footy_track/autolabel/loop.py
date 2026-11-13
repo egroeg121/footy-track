@@ -1,6 +1,6 @@
 """The Claude + detector auto-labelling loop, labelling mode: pure logic.
 
-No GPU, no network, no OpenCV (see ``docs/design/claude_autolabel_loop.md``, section 9).
+No GPU, no network, no OpenCV (see ``docs/design/claude_autolabel_loop.md``, section 12).
 Everything here works on plain dicts and lists so each step is testable on synthetic
 data and every output is JSON. The pieces, in order of a round:
 
@@ -223,6 +223,7 @@ class Thresholds:
     min_audit_objects: int = 5  # fewer audited objects: the breaker keeps its state
     spot_min_members: int = 5  # objects this big get spot-check cards
     spot_cards: int = 2
+    max_gap_cards: int = 40  # missed-ball cards per round (one per gap)
 
 
 def classify(
@@ -342,17 +343,52 @@ def _box(c: dict, size: Sequence[int]) -> dict:
     }
 
 
-def _rep(members: Sequence[dict]) -> dict:
-    """The member a card shows: the one Claude was most sure of, else the detector's."""
+def _rep(members: Sequence[dict], cls: str = "review") -> dict:
+    """The member a card shows. Never a run of consecutive frames of one object: a
+    gap shows its middle frame (furthest from any detection); an object of 3 or more
+    members shows the frame of fastest motion (the most informative one); a shorter one
+    its first member."""
+    if cls == "gap":
+        return members[len(members) // 2]
+    if len(members) < 3:
+        return members[0]
+    best, best_v = members[1], -1.0
+    for a, b in zip(members, members[1:], strict=False):
+        v = math.hypot(b["cx"] - a["cx"], b["cy"] - a["cy"]) / max(
+            b["frame"] - a["frame"], 1
+        )
+        if v > best_v:
+            best, best_v = b, v
+    return best
 
-    def key(m: dict):
-        ball = 1 if m.get("verdict") == "ball" else 0
-        return (ball, m.get("claude_conf") or 0.0, m["det_conf"], -m["frame"])
 
-    return max(members, key=key)
+#: queue priority of a card, highest first (lower number): missed balls, then spare balls
+#: and false starts, then Claude-uncertain tracker candidates, then the blind audit
+#: and controls, then the spot checks.
+PRIORITY = {"gap": 1, "other": 2, "tracker": 3, "audit": 4, "control": 4, "spot": 5}
 
 
-def build_round(
+def order_cards(cards: list[dict], meta: dict[str, dict], round_id: str) -> list[dict]:
+    """By priority, and inside a priority round-robin over the clips (a hash order inside
+    each clip), so no clip floods the front of the queue."""
+    rank: dict[tuple, int] = {}
+    seq: dict[tuple, int] = defaultdict(int)
+    for c in sorted(cards, key=lambda c: _h(f"{round_id}|shuffle|{c['id']}")):
+        k = (meta[c["id"]]["priority"], c["run_clip"])
+        rank[c["id"]] = seq[k]
+        seq[k] += 1
+    return sorted(
+        cards,
+        key=lambda c: (
+            meta[c["id"]]["priority"],
+            rank[c["id"]],
+            _h(f"{round_id}|{c['run_clip']}"),
+            c["id"],
+        ),
+    )
+
+
+def build_round(  # noqa: PLR0912, PLR0915
     items: Sequence[dict],
     *,
     round_id: str,
@@ -378,6 +414,9 @@ def build_round(
         if it["status"] == "filtered":
             cls, would = "drop", False
             reason = "static"
+        elif it["status"] == "gap":
+            cls, would = "gap", False
+            reason = "tracker_gap"
         elif it.get("verdict") is None:
             continue  # not answered yet (budget stop): not decided this round
         else:
@@ -401,9 +440,15 @@ def build_round(
 
     objects: dict[str, dict] = {}
     for (clip, cls), members in sorted(groups.items()):
-        for ms in link_objects(members):
+        gap = cls == "gap"
+        linked = (
+            link_objects(members, max_gap=15, base_px=80.0, per_frame_px=30.0)
+            if gap
+            else link_objects(members)
+        )
+        for ms in linked:
             oid = object_id(clip, ms)
-            rep = _rep(ms)
+            rep = _rep(ms, cls)
             objects[oid] = {
                 "id": oid,
                 "clip": clip,
@@ -420,7 +465,10 @@ def build_round(
     cards: list[dict] = []
     meta: dict[str, dict] = {}
 
-    def add_card(role: str, obj: dict, member_id: str, tag: str) -> None:
+    def add_card(
+        role: str, obj: dict, member_id: str, tag: str, prio: str | None = None
+    ) -> None:
+        prio = prio or role
         m = byq[member_id]
         cid = _h(f"{round_id}|{role}|{obj['id']}|{tag}")[:16]
         clip = obj["clip"]
@@ -443,14 +491,15 @@ def build_round(
             "member": member_id,
             "n_members": len(obj["members"]),
             "would_auto": obj["would_auto"],
+            "priority": PRIORITY[prio],
         }
 
     def spots(obj: dict) -> list[str]:
         if len(obj["members"]) < thr.spot_min_members:
             return []
-        rest = [m for m in obj["members"] if m != obj["rep"]]
-        k = min(thr.spot_cards, len(rest))
-        return [rest[round((i + 0.5) * len(rest) / k - 0.5)] for i in range(k)]
+        # the first and the last member (never next to the shown frame by construction)
+        ends = [obj["members"][0], obj["members"][-1]]
+        return [m for m in dict.fromkeys(ends) if m != obj["rep"]][: thr.spot_cards]
 
     auto_objs = sorted(
         (o for o in objects.values() if o["class"] == "auto"), key=lambda o: _h(o["id"])
@@ -458,8 +507,11 @@ def build_round(
     n_audit = min(len(auto_objs), max(1, round(thr.audit_rate * len(auto_objs))))
     audit_ids = {o["id"] for o in auto_objs[:n_audit]} if auto_objs else set()
     for o in objects.values():
+        if o["class"] == "gap":
+            continue  # chosen below, capped
         if o["class"] == "review":
-            add_card("review", o, o["rep"], "rep")
+            prio = "other" if set(o["sources"]) - {"tracker"} else "tracker"
+            add_card("review", o, o["rep"], "rep", prio)
             for m in spots(o):
                 add_card("spot", o, m, f"s{m}")
         elif o["class"] == "auto" and o["id"] in audit_ids:
@@ -473,7 +525,14 @@ def build_round(
         ):
             o["control"] = True
             add_card("control", o, o["rep"], "rep")
-    cards.sort(key=lambda c: _h(f"{round_id}|shuffle|{c['id']}"))
+    gaps = sorted(
+        (o for o in objects.values() if o["class"] == "gap"), key=lambda o: _h(o["id"])
+    )
+    for o in gaps[: thr.max_gap_cards]:
+        add_card("gap", o, o["rep"], "rep")
+    for o in gaps[thr.max_gap_cards :]:
+        o["capped"] = True
+    cards = order_cards(cards, meta, round_id)
     counts = round_counts(items, decisions, objects, meta)
     return {
         "decisions": decisions,
@@ -492,7 +551,13 @@ def round_counts(items, decisions, objects, meta) -> dict:
     for m in meta.values():
         roles[m["role"]] += 1
     return {
-        "candidates": len(items),
+        "candidates": sum(1 for i in items if i["status"] != "gap"),
+        "gap_frames": sum(1 for i in items if i["status"] == "gap"),
+        "gap_objects": sum(1 for o in objects.values() if o["class"] == "gap"),
+        "cards_by_priority": {
+            str(p): sum(1 for m in meta.values() if m["priority"] == p)
+            for p in sorted(set(PRIORITY.values()))
+        },
         "filtered_static": sum(1 for i in items if i["status"] == "filtered"),
         "asked": sum(1 for i in items if i["status"] == "asked"),
         "answered": sum(1 for i in items if i.get("verdict") is not None),
@@ -502,7 +567,7 @@ def round_counts(items, decisions, objects, meta) -> dict:
         "objects": len(objects),
         "objects_by_class": {
             c: sum(1 for o in objects.values() if o["class"] == c)
-            for c in ("auto", "review", "drop")
+            for c in ("auto", "review", "drop", "gap")
         },
         "cards": len(meta),
         "cards_by_role": dict(roles),
@@ -564,6 +629,9 @@ def plan_ingest(  # noqa: PLR0912, PLR0915
       human_checked]``; ``corrected``: only the card's frame, as ``labeller`` with the
       dragged box; ``box_off``: nothing is written (the box is wrong); ``not_ball``:
       hard negatives; ``unsure`` / none: nothing;
+    * a missed-ball (gap) object: ``corrected`` writes the dragged box as ``labeller`` (a
+      hard positive the detector missed), ``ball`` the predicted box as ``claude`` +
+      ``human_checked``, ``not_ball`` (no ball visible) a negative;
     * spot-check cards that contradict the object card (``ball`` against ``not_ball``)
       mark the object inconsistent: nothing is written for it, and it is reported.
 
@@ -637,6 +705,28 @@ def plan_ingest(  # noqa: PLR0912, PLR0915
                 for m in members:
                     emit(clip, m, [BALL_LABEL, TAG_AUTO])
                 c["labels_auto"] += len(members)
+            continue
+        if o["class"] == "gap":
+            # a missed ball: the card shows the tracker's predicted position
+            if role != "gap" or v is None:
+                continue
+            m = byq[meta[cid]["member"]]
+            c["gap_cards_decided"] += 1
+            cb = verdicts[cid].get("corrected_bbox")
+            if v == "corrected" and isinstance(cb, dict):
+                emit(
+                    clip,
+                    m,
+                    [BALL_LABEL, TAG_LABELLER],
+                    {k: float(cb[k]) for k in "xywh"},
+                )
+                c["gap_hard_positives_tier1"] += 1
+            elif v == "ball":  # the predicted position was right
+                emit(clip, m, [BALL_LABEL, TAG_CLAUDE, TAG_CHECKED])
+                c["gap_confirmed_tier2"] += 1
+            elif v == "not_ball":  # no ball visible: a no-ball frame
+                plan.negatives.append(_neg(m, clip, sizes, "gap_no_ball"))
+                c["gap_no_ball"] += 1
             continue
         if role not in ("review", "control") or v is None:
             continue
