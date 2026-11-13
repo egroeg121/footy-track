@@ -275,6 +275,62 @@ Opus is far less likely to throw away a real ball, and says `unsure` more often 
 
 **What it suggests, not proves.** Fixing the crop first (the mark is outside it in a quarter of the frames) and re-running before touching the prompt; trying Opus or a second look on `none` answers where a candidate exists; and not relying on cell answers. The gate in this section stays: no new matches until the thresholds are met.
 
+### Method v2 results (2026-11)
+
+The reviewer's fixes to the pilot were built and scored. **The gate is still not met.** v2 is much better than v1 on the held-out clips, but agreement, false "not ball" and false "ball" all miss their thresholds, and 35% of the human-marked ball frames cannot be answered at all because the detector and the re-detect pass produce no candidate near the mark.
+
+**What changed from v1.** Code: `autolabel/verify_v2.py`, `render_v2.py`, `prompts_v2.py`, `scripts/claude_verify_v2.py` (`prepare`, `ask`, `score`; tests in `tests/test_autolabel_verify_v2.py`, synthetic data only).
+
+1. *Crops are centred on each candidate*, not on the tracker's expected position, so the mark can no longer fall outside the crop for lack of a tracker guess.
+2. *One question per candidate*: "is the box on the match ball?", strict JSON `{"verdict": "ball" | "not_ball" | "unsure", "confidence": 0 to 1, "reason": short}`. The image is a 128 px native patch enlarged 4x to 512 px with a single thin yellow box, plus a 384 px context panel at 1x with the patch outlined. No grid cells. This is the question `/ball_check` asks a person.
+3. *Candidates per frame*: the detection the bidirectional tracker chose (if any; source `tracker`), the top 2 other cached candidates by confidence (`top`), and up to 2 crop-and-re-detect candidates (`redetect`: a 320 px crop around the tracker path, 3x upscale, same weights, conf 0.05) that have no cached candidate within 25 px. Every question records its source.
+4. *Models*: Opus by default; optional "Sonnet first, Opus second look on `not_ball` and `unsure`" (`ask --only-from`). The `claude -p` backend strips API-key variables from the environment and stops with a distinct exit code on an auth or usage-limit error; there is no fallback backend (the API backend is not wired).
+5. *Scoring*: per candidate, a candidate within R = 25 px of a human mark is "near", any other is "far". A ball frame is correct when exactly the near candidates are answered `ball` and no far one is; a no-ball frame when none is. Reported: precision and recall of `ball` verdicts, frame agreement, false "not ball" (near candidates answered `not_ball`), false "ball" (far candidates, including those on no-ball frames, answered `ball`), `unsure` rate, the split by source and by Claude confidence, and held-out against seen. **Ball frames with no candidate within R are reported apart and are not counted against Claude**; their far candidates still count toward false "ball".
+6. *Protocol*: the prompt was iterated on seen clips only, three versions, then the held-out clips were scored once with the last one. Sample as v1 (same seed): all 126 held-out frames, and for tuning the first 80 frames of the seeded seen sample (279 questions; 39 ball frames answerable, 27 with no candidate within R, 13 no-ball frames).
+
+**Prompt versions** (exact text in `prompts_v2.py`; a logged `prompt_version` always maps to its text):
+
+| version | change |
+|---|---|
+| `verify-v2` | plain question, list of look-alikes, `unsure` allowed |
+| `verify-v2.1` | after reading v2's errors: the ball may be yellow, yellow-green or lilac (hi-vis balls were called boots and socks); say `ball` when the ball is in, touching, or within about one box height of the box (many "false not ball" were a box 10 to 25 px off a clearly visible ball) |
+| `verify-v2.2` | v2.1 plus a strict look-alike rule (a ball is a separate round object, not part of a boot, sock, board or crowd; a faint smear is `unsure`) after v2.1 raised false "ball" |
+
+**Seen clips (tuning set), Opus, R = 25 px** (46 near and 233 far candidates):
+
+| prompt | frame agreement (39 frames) | no-ball frames (13) | ball precision | ball recall | false "not ball" | false "ball" (far) | unsure |
+|---|---|---|---|---|---|---|---|
+| v2 | 0.590 | 0.846 | 0.689 | 0.674 | 0.239 | 0.060 | 0.097 |
+| v2.1 | 0.564 | 0.692 | 0.578 | 0.804 | 0.174 | 0.116 | 0.047 |
+| v2.2 | 0.538 | 0.769 | 0.642 | 0.739 | 0.174 | 0.082 | 0.104 |
+| v2.2, Sonnet | 0.538 | 0.769 | 0.732 | 0.652 | 0.196 | 0.047 | 0.140 |
+
+The three prompts are within noise of each other on 39 frames (one frame is 0.026). v2.2 was chosen as final before the held-out run because it had the lowest sum of false "not ball" and false "ball". Sonnet with the final prompt is close to Opus, says `unsure` more, and costs half as much per question; a Sonnet-first design saves little here because 85% of its answers (not_ball or unsure) would need an Opus second look.
+
+**Held-out clips, scored once, `verify-v2.2`, Opus, R = 25 px** (126 frames: 119 ball, 7 no-ball; 355 questions: 83 `tracker`, 167 `top`, 105 `redetect`; 76 near and 279 far candidates):
+
+| measure | result | threshold | met |
+|---|---|---|---|
+| frame agreement, ball frames with a candidate within R | **0.813** (61 of 75) | at least 0.95 | no |
+| false "not ball" (near candidates not answered `ball`) | **0.079** (6 of 76; 1 of them `unsure`) | at most 0.03 | no |
+| false "ball" (far candidates answered `ball`) | **0.108** (30 of 279; no-ball frames alone 0.087, 2 of 23; 17 are on ball frames with no near candidate) | at most 0.02 | no |
+| ball precision / recall | 0.697 (69 of 99) / 0.908 (69 of 76) | | |
+| no-ball frame agreement | 0.714 (5 of 7) | | |
+| `unsure` rate | 0.070 | | |
+| ball frames with no candidate within R (not answerable) | 44 of 119 (0.370); only 2 of them had a cached candidate within R that was not selected | | |
+
+At R = 10 px the rates move by 0.01 to 0.02. Where the answers are good: the candidate the tracker chose is confirmed with precision 0.952 (59 of 62), the other top candidates only 0.242 (8 of 33), re-detect 0.5 (2 of 4). Claude's confidence orders the answers well: `ball` verdicts with confidence at least 0.95 were all near a mark (33 of 33), 0.8 to 0.95 gave 28 of 43, 0.5 to 0.8 gave 8 of 23. The detector's own confidence bands on the same candidates were 16 of 223 near below 0.3, 7 of 65 from 0.3 to 0.6 and 53 of 67 from 0.6 to 0.9, so Claude is clearly above the detector's low-confidence precision (at most 0.42), mainly by rejecting the many far candidates.
+
+**Crop-and-re-detect.** Three held-out ball frames had a near candidate only from the re-detect pass (the cached run had none within 25 px); Claude confirmed 2 of them. Against 44 unanswerable frames this is a small gain; the frames that remain unanswerable are real misses of both the detector and the re-detect pass, so the method cannot raise recall on them.
+
+**Cost and time.** Opus, held-out run: 46 calls (45 batches of 8 images and one retry), mean 44 s per call, 5.6 s per question one after another (about 11 minutes with 3 in parallel), list-price-equivalent USD 0.0127 per question (4.61 in total). Sonnet on the seen set: USD 0.0058 per question, 2.8 s per question. A frame has about 2.8 questions, so about 16 s and USD 0.036 per frame with Opus, against 3.3 s per card for a person. On a subscription the cost is a usage figure, not a charge.
+
+**Reading the result.**
+
+- Most remaining errors are of three kinds. (a) False "ball" on far candidates: a second ball-like blob in the same frame (a spare ball, a bright patch near an advert board) that Claude cannot distinguish from the match ball in isolation; a per-candidate question has no way to know that only one is the match ball. (b) False "not ball" on near candidates where the human mark is a blurred or partly hidden ball, or a ball inside the crowd, where Claude's `not_ball` is arguably right; the marks have no second human pass. (c) The 10 to 25 px offsets, which v2.1 and v2.2 only partly fixed.
+- The 0.95 agreement target looks out of reach for per-candidate verdicts alone. A frame-level step (accept a `ball` only when it agrees with the tracker's chosen detection, take the highest-confidence `ball` when several are returned, and send everything else to a person) would use the observed structure: `ball` verdicts at confidence at least 0.95 were all correct. That combination was not scored here and is not tuned on seen clips; treat it as the next experiment, not as a result.
+- Caveats: held-out is 6 clips and 126 frames, so every rate has a wide interval (61 of 75 has a 95% interval of roughly 0.71 to 0.89); the seen tuning set is a stratified sample with half of its ball frames unanswerable, so its rates are not comparable with held-out rates; prompt versions differ by one or two frames; the marks are mostly frames a person looked at because the detector proposed something.
+
 ## 9. What the code does with verdicts today
 
 This corrects a claim older pages still make. T-02 is merged: Ball Check verdicts reach the feature store.
