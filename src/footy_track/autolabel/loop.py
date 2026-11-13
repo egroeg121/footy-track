@@ -660,7 +660,14 @@ def plan_ingest(  # noqa: PLR0912, PLR0915
         )
 
     c = defaultdict(int)
-    audit_n = {"ball": 0, "not_ball": 0, "unsure": 0, "frames_ball": 0, "frames_not": 0}
+    audit_n = {
+        "ball": 0,
+        "not_ball": 0,
+        "unsure": 0,
+        "pending": 0,
+        "frames_ball": 0,
+        "frames_not": 0,
+    }
     ctl = {"ball": 0, "not_ball": 0, "unsure": 0}
     for oid in sorted(objects):
         o = objects[oid]
@@ -697,7 +704,7 @@ def plan_ingest(  # noqa: PLR0912, PLR0915
                         plan.negatives.append(_neg(m, clip, sizes, "audit_not_ball"))
                     c["auto_rejected_frames"] += len(members)
                 else:
-                    audit_n["unsure"] += 1
+                    audit_n["unsure" if v == "unsure" else "pending"] += 1
                     for m in members:
                         emit(clip, m, [BALL_LABEL, TAG_AUTO])
                     c["labels_auto"] += len(members)
