@@ -88,6 +88,26 @@ def test_ball_gap_is_interpolated_and_stray_ignored(video, tmp_path):
     assert stray["source"] == "detected" and stray["center"]["x"] < 0.8
 
 
+@pytest.mark.parametrize("kind", ["bidirectional", "viterbi"])
+def test_offline_ball_trackers_write_the_same_format(video, tmp_path, kind):
+    out = tmp_path / "out"
+    summary = run_inference(
+        video, out, FakeDetector(), InferenceConfig(ball_tracker=kind)
+    )
+    assert summary["config"]["ball_tracker"] == kind
+    ball = _read(out / "ball_track.jsonl")
+    assert len(ball) == summary["frames_processed"]
+    assert set(ball[0]) == {
+        "frame_index", "track_id", "source", "bbox", "center", "confidence"
+    }  # fmt: skip
+    assert sum(b["source"] != "none" for b in ball) > len(ball) // 2
+
+
+def test_cli_ball_tracker_choice_is_validated():
+    with pytest.raises(SystemExit):
+        run_inference_cli(["--video", "x.mp4", "--out", "o", "--ball-tracker", "nope"])
+
+
 def test_player_ids_are_stable(video, tmp_path):
     out = tmp_path / "out"
     summary = run_inference(video, out, FakeDetector())

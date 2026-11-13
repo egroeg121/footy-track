@@ -70,14 +70,29 @@ global, precision. The ball tracker uses that as follows
   Gaps bridged before that are interpolated and marked as such.
 
 These numbers are starting points chosen from the bands above, not tuned against
-ground truth.
+ground truth. [Ball tracking evaluation](ball-tracking-eval.md) now scores this
+tracker against human ball marks.
+
+Two offline ball trackers are available as options with `--ball-tracker`
+(`online` is the default and what the web app uses):
+
+- `bidirectional`: runs the online tracker forwards and backwards in time and
+  keeps the better supported answer per frame. It fixes tracks that start on a
+  confident false positive.
+- `viterbi`: picks the best single path through all of the clip's candidates.
+  It is the most precise and gives up the most recall.
+
+Both need the whole clip, so they work for files but not for live output, they
+use their own tuned defaults (the `--ball-*` flags above configure only
+`online`), and they write the same `ball_track.jsonl`.
 
 ## Known limits
 
 - Broadcast cuts break tracks: players get new ids and the ball track restarts.
   Run per shot clip (see `split_broadcast_segments.py`) for best results.
 - Ball recall is about 0.6 on held-out clips; the tracker recovers some of the
-  rest, but nothing here has been scored against ball ground truth.
+  rest. See [Ball tracking evaluation](ball-tracking-eval.md) for scored numbers
+  against human ball marks.
 - A persistent false positive can capture the ball track. In the 60-frame demo the
   track sat on a player's head at confidence 0.7-0.8 for 50 frames while the
   camera panned; nothing here checks whether the "ball" moves with a player.
