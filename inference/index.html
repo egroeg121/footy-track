@@ -16,7 +16,7 @@
         <link rel="prev" href="../training/notable_runs/">
       
       
-        <link rel="next" href="../design/feature_store/">
+        <link rel="next" href="../inference-web/">
       
       
       <link rel="icon" href="../assets/images/favicon.png">
@@ -483,6 +483,28 @@
   
   
     <li class="md-nav__item">
+      <a href="../inference-web/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Inference web app
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../design/feature_store/" class="md-nav__link">
         
   
@@ -513,10 +535,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_8" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_9" >
         
           
-          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_9" id="__nav_9_label" tabindex="0">
             
   
   
@@ -529,8 +551,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_8">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_9_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_9">
             <span class="md-nav__icon md-icon"></span>
             Design
           </label>
@@ -742,10 +764,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_9" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_10" >
         
           
-          <label class="md-nav__link" for="__nav_9" id="__nav_9_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_10" id="__nav_10_label" tabindex="0">
             
   
   
@@ -758,8 +780,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_9_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_9">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_10_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_10">
             <span class="md-nav__icon md-icon"></span>
             Development
           </label>
@@ -967,6 +989,9 @@ GPU job.</p>
     D --&gt; B["DetectionBallTracker&lt;br/&gt;ball"]
     P --&gt; T[tracklets.jsonl]
     B --&gt; BT[ball_track.jsonl]</code></pre>
+<p>To use the pipeline from a browser (upload a whole match, get it cut into shots
+and tracked per clip, plus one stitched full video with boxes only on the
+broadcast shots), see <a href="../inference-web/">Inference web app</a>.</p>
 <h2 id="outputs">Outputs<a class="headerlink" href="#outputs" title="Permanent link">&para;</a></h2>
 <p>All files are in <code>--out</code>. <code>frame_index</code> is the index in the source video.</p>
 <table>
