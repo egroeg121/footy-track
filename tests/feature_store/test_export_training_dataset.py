@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 
+import pytest
 import yaml
 from PIL import Image
 
@@ -626,3 +627,63 @@ def test_cli_classes_all_and_sources(tmp_path) -> None:
     manifest = yaml.safe_load((out / "manifest.yaml").read_text())
     assert manifest["sources"] == ["hand_label", "vittrack"]
     assert manifest["train"]["boxes"] + manifest["val"]["boxes"] == 3
+
+
+# ---------------------------------------------------------------------------
+# Auto-labelling loop provenance: claude_auto is tier 3 and stays out of the export
+# ---------------------------------------------------------------------------
+
+
+def _seed_loop_clip(store, tmp_path, stem, images_dir, rows):
+    """rows: (frame, tags). Same idea as _seed_clip, with explicit tags."""
+    records = [
+        {
+            "frame_index": fi,
+            "bbox": {"x": 0.5, "y": 0.5, "w": 0.02, "h": 0.03},
+            "tags": tags,
+        }
+        for fi, tags in rows
+    ]
+    path = tmp_path / f"{stem}.jsonl"
+    path.write_text("\n".join(json.dumps(r) for r in records) + "\n")
+    ingest_gt_jsonl(store, path, video_dir=tmp_path)
+    for fi, _ in rows:
+        img = images_dir / f"{stem}_{fi:06d}.jpg"
+        Image.new("RGB", (64, 48)).save(img)
+        store.query(
+            "UPDATE frame SET frame_uri = ? WHERE game_id = ? AND frame_index = ?",
+            [str(img), stem, fi],
+        )
+
+
+def test_ingest_maps_loop_tags_to_tiers_and_export_excludes_auto_by_default(tmp_path):
+    store = FeatureStore.open(tmp_path / "fs.duckdb")
+    images = tmp_path / "imgs"
+    images.mkdir()
+    rows = [
+        (0, ["in_play_ball", "claude_auto"]),
+        (1, ["in_play_ball", "claude", "human_checked"]),
+        (2, ["in_play_ball", "claude_auto"]),
+    ]
+    _seed_loop_clip(store, tmp_path, "newclip_seg001", images, rows)
+    got = store.query(
+        "SELECT frame_index, source, reviewed FROM detection ORDER BY frame_index"
+    )
+    assert [tuple(r) for r in got.itertuples(index=False)] == [
+        (0, "claude_auto", False),
+        (1, "claude", True),
+        (2, "claude_auto", False),
+    ]
+    kw = {
+        "video_dir": tmp_path,
+        "eval_dir": tmp_path / "no_eval",
+        "extra_exclude": set(),
+        "val_fraction": 0.0,
+        "tag": "t",
+    }
+    m = export(store, out_dir=tmp_path / "out_default", **kw)
+    assert m["train"]["boxes"] == 1  # the person-confirmed box only
+    m = export(store, out_dir=tmp_path / "out_auto", include_auto=True, **kw)
+    assert m["train"]["boxes"] == 3
+    with pytest.raises(ValueError, match="include_auto"):
+        export(store, out_dir=tmp_path / "o3", sources=["claude_auto"], **kw)

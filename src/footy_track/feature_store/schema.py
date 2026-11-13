@@ -104,6 +104,8 @@ class Source(StrEnum):
     YOLO = "yolo"
     SAM3 = "sam3"
     VITTRACK = "vittrack"
+    CLAUDE = "claude"  # auto-labelling loop, person-confirmed (with human_checked)
+    CLAUDE_AUTO = "claude_auto"  # auto-labelling loop, unreviewed (tier 3)
     BYTETRACK = "bytetrack"
     BOTSORT = "botsort"
 
