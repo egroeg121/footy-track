@@ -41,7 +41,8 @@ from footy_track.calibration.pitch_model import (
 )
 from footy_track.calibration.video import read_frame
 from footy_track.clip_id import canonical_clip_id
-from footy_track.labeller.review import _clips_dir, _find_video, _gt_marks_dir
+from footy_track.labeller.review import _clips_dir, _gt_marks_dir
+from footy_track.labeller.review import _find_video as _find_video_exact
 
 router = APIRouter()
 
@@ -265,6 +266,23 @@ async def pitch_model(length: float = DEFAULT_LENGTH, width: float = DEFAULT_WID
     d = model.to_dict()
     d["warp"] = {"px_per_m": WARP_PX_PER_M, "margin_m": WARP_MARGIN_M}
     return d
+
+
+def _find_video(clip: str):
+    """Video for ``clip``: exact stem first, else any file whose canonical clip id
+    matches (proposal sidecars store canonical ids, e.g. ``arsenal_astonvilla_seg110``
+    for ``astonvilla_seg110.mp4``)."""
+    video = _find_video_exact(clip)
+    if video is not None:
+        return video
+    from footy_track.calibration.prelabel.pipeline import find_video
+
+    video = find_video(_clips_dir(), clip)
+    # extra clip dirs the pre-labeller may have read from (os.pathsep-separated)
+    for d in filter(None, os.environ.get("FOOTY_CALIB_EXTRA_CLIPS_DIRS", "").split(os.pathsep)):
+        if video is None and Path(d).is_dir():
+            video = find_video(Path(d), clip)
+    return video
 
 
 @router.get("/calibration/api/clips")
