@@ -125,10 +125,10 @@
     <div class="row">
       <button class="small" id="btnSkip">Skip</button>
       <button class="small" id="btnOverlay">Overlay</button>
-      <button class="small" id="btnWarp">Warp</button>
+      <button class="small on" id="btnWarp">Warp</button>
       <a class="small" id="editLink" href="/calibration">Open in editor</a>
     </div>
-    <div id="status">Swipe right = accept, left = reject. Hold the image for the bird&rsquo;s-eye warp.</div>
+    <div id="status">Swipe right = accept, left = reject. Opens in the bird&rsquo;s-eye warp; hold the image for the camera view.</div>
   </footer>
 
 <script>
@@ -136,7 +136,7 @@
 const $ = (id) => document.getElementById(id);
 const API = "/calibration/api";
 let items = [], idx = 0, reviewed = 0, cur = null, busy = false;
-let showOverlay = true, showWarp = false, warpUrl = null, shotIsWarp = false;
+let showOverlay = true, showWarp = true, warpMode = true, warpUrl = null, shotIsWarp = false;
 const CACHE = new Map();   // key -> proposal record
 
 const keyOf = (i) => `${i.clip}|${i.run_id}|${i.frame_index}`;
@@ -254,7 +254,7 @@ async function show() {
   $("btnAccept").disabled = it.status === "failed";  // no H: fix the points in the editor first
   $("note").textContent = ""; $("conf").textContent = "";
   $("editLink").href = `/calibration?clip=${encodeURIComponent(it.clip)}&frame=${it.frame_index}&proposal=${encodeURIComponent(it.run_id)}`;
-  warpUrl = null; shotIsWarp = false; showWarp = false; $("btnWarp").classList.remove("on");
+  warpUrl = null; shotIsWarp = false; warpMode = true; showWarp = true; syncToggles();  // every item opens in warp view
   $("shot").src = `${API}/frame/${encodeURIComponent(it.clip)}/${it.frame_index}.jpg`;
   let rec = CACHE.get(k);
   if (!rec) {
@@ -272,6 +272,8 @@ async function show() {
     $("note").textContent = bits.join(" · ");
     $("conf").textContent = confSummary(rec) + (it.status !== "proposed" ? ` · ${it.status}` : "");
     drawOverlay(rec);
+    if (rec.H) setWarp(true);   // warp is the default view; items with no H stay in camera view
+    else { showWarp = false; syncToggles(); }
     for (const nx of items.slice(idx + 1, idx + 3)) {  // warm the next frames
       new Image().src = `${API}/frame/${encodeURIComponent(nx.clip)}/${nx.frame_index}.jpg`;
     }
@@ -301,7 +303,7 @@ async function setWarp(on) {
   } catch (e) { showError("Warp failed: " + e.message); showWarp = false; syncToggles(); }
 }
 $("btnOverlay").onclick = () => { showOverlay = !showOverlay; syncToggles(); };
-$("btnWarp").onclick = () => setWarp(!showWarp);
+$("btnWarp").onclick = () => { warpMode = !warpMode; setWarp(warpMode); };
 $("filterBtn").onclick = () => $("filters").classList.toggle("open");
 for (const id of ["runSel", "statusSel", "sortSel"]) $(id).onchange = loadQueue;
 
@@ -341,13 +343,13 @@ function skip() { if (items.length > 1) { idx = (idx + 1) % items.length; show()
 function back() { if (items.length > 1) { idx = (idx - 1 + items.length) % items.length; show(); } }
 $("btnAccept").onclick = () => act("accept"); $("btnReject").onclick = () => act("reject"); $("btnSkip").onclick = skip;
 
-// swipe: right = accept, left = reject; long-press on the image = warp while held
+// swipe: right = accept, left = reject; long-press on the image = flip to the other view while held
 (() => {
   const card = $("card"); let sx = 0, sy = 0, dx = 0, drag = false, held = null, longPressed = false;
   card.addEventListener("pointerdown", (e) => {
     if (e.target.closest("button, a")) return;
     sx = e.clientX; sy = e.clientY; dx = 0; drag = true; longPressed = false;
-    held = setTimeout(() => { if (Math.abs(dx) < 8) { longPressed = true; setWarp(true); } }, 450);
+    held = setTimeout(() => { if (Math.abs(dx) < 8) { longPressed = true; setWarp(!warpMode); } }, 450);
   });
   card.addEventListener("pointermove", (e) => {
     if (!drag) return;
@@ -360,7 +362,7 @@ $("btnAccept").onclick = () => act("accept"); $("btnReject").onclick = () => act
   });
   const end = () => {
     if (!drag) return; drag = false; clearTimeout(held);
-    if (longPressed) { setWarp(false); }
+    if (longPressed) { setWarp(warpMode); }
     const go = Math.abs(dx) > Math.min(110, card.clientWidth * 0.3) && !longPressed;
     card.style.transform = ""; card.style.borderColor = "";
     if (go) act(dx > 0 ? "accept" : "reject");
@@ -375,7 +377,7 @@ document.addEventListener("keydown", (e) => {
   if (e.key === "a") act("accept"); else if (e.key === "r") act("reject");
   else if (e.key === "j") skip(); else if (e.key === "k") back();
   else if (e.key === "e" && cur) location.href = $("editLink").href;
-  else if (e.key === "o") { showOverlay = !showOverlay; syncToggles(); } else if (e.key === "w") setWarp(!showWarp);
+  else if (e.key === "o") { showOverlay = !showOverlay; syncToggles(); } else if (e.key === "w") { warpMode = !warpMode; setWarp(warpMode); }
 });
 
 (async () => {

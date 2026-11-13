@@ -189,6 +189,14 @@ def test_review_page_has_an_explicit_replace_flow(client):
     assert "already has hand GT" in html and 'id="btnReplace"' in html and "existing_gt" in html
 
 
+def test_review_page_defaults_to_warp_view(client):
+    html = client.get("/calibration/review").text
+    assert "showWarp = true, warpMode = true" in html            # warp on at load
+    assert "warpMode = true; showWarp = true" in html            # and reset to warp on every item
+    assert "setWarp(!warpMode)" in html and "setWarp(warpMode)" in html   # hold flips, release restores
+    assert 'class="small on" id="btnWarp"' in html
+
+
 # Real pilot1 frame 575 of arsenal_mancity_seg010: three of the four stored points
 # (centre-circle top/bottom, halfway top) are collinear on the halfway line, so a plain
 # refit is refused as degenerate although the proposal's refined H is fine.
