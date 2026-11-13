@@ -505,6 +505,28 @@
   
   
     <li class="md-nav__item">
+      <a href="../ball-tracking-eval/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Ball tracking evaluation
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../design/feature_store/" class="md-nav__link">
         
   
@@ -535,10 +557,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_9" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_10" >
         
           
-          <label class="md-nav__link" for="__nav_9" id="__nav_9_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_10" id="__nav_10_label" tabindex="0">
             
   
   
@@ -551,8 +573,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_9_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_9">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_10_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_10">
             <span class="md-nav__icon md-icon"></span>
             Design
           </label>
@@ -617,6 +639,29 @@
   
   <span class="md-ellipsis">
     Tracking Pipeline Design
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../design/claude_autolabel_loop/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Claude-assisted Ball Labelling
     
   </span>
   
@@ -764,10 +809,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_10" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_11" >
         
           
-          <label class="md-nav__link" for="__nav_10" id="__nav_10_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_11" id="__nav_11_label" tabindex="0">
             
   
   
@@ -780,8 +825,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_10_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_10">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_11_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_11">
             <span class="md-nav__icon md-icon"></span>
             Development
           </label>
@@ -1072,13 +1117,27 @@ global, precision. The ball tracker uses that as follows
   Gaps bridged before that are interpolated and marked as such.</li>
 </ul>
 <p>These numbers are starting points chosen from the bands above, not tuned against
-ground truth.</p>
+ground truth. <a href="../ball-tracking-eval/">Ball tracking evaluation</a> now scores this
+tracker against human ball marks.</p>
+<p>Two offline ball trackers are available as options with <code>--ball-tracker</code>
+(<code>online</code> is the default and what the web app uses):</p>
+<ul>
+<li><code>bidirectional</code>: runs the online tracker forwards and backwards in time and
+  keeps the better supported answer per frame. It fixes tracks that start on a
+  confident false positive.</li>
+<li><code>viterbi</code>: picks the best single path through all of the clip's candidates.
+  It is the most precise and gives up the most recall.</li>
+</ul>
+<p>Both need the whole clip, so they work for files but not for live output, they
+use their own tuned defaults (the <code>--ball-*</code> flags above configure only
+<code>online</code>), and they write the same <code>ball_track.jsonl</code>.</p>
 <h2 id="known-limits">Known limits<a class="headerlink" href="#known-limits" title="Permanent link">&para;</a></h2>
 <ul>
 <li>Broadcast cuts break tracks: players get new ids and the ball track restarts.
   Run per shot clip (see <code>split_broadcast_segments.py</code>) for best results.</li>
 <li>Ball recall is about 0.6 on held-out clips; the tracker recovers some of the
-  rest, but nothing here has been scored against ball ground truth.</li>
+  rest. See <a href="../ball-tracking-eval/">Ball tracking evaluation</a> for scored numbers
+  against human ball marks.</li>
 <li>A persistent false positive can capture the ball track. In the 60-frame demo the
   track sat on a player's head at confidence 0.7-0.8 for 50 frames while the
   camera panned; nothing here checks whether the "ball" moves with a player.</li>

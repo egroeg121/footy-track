@@ -417,6 +417,28 @@
   
   
     <li class="md-nav__item">
+      <a href="../../ball-tracking-eval/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Ball tracking evaluation
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../feature_store/" class="md-nav__link">
         
   
@@ -447,10 +469,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_9" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_10" >
         
           
-          <label class="md-nav__link" for="__nav_9" id="__nav_9_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_10" id="__nav_10_label" tabindex="0">
             
   
   
@@ -463,8 +485,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_9_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_9">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_10_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_10">
             <span class="md-nav__icon md-icon"></span>
             Design
           </label>
@@ -529,6 +551,29 @@
   
   <span class="md-ellipsis">
     Tracking Pipeline Design
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../claude_autolabel_loop/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Claude-assisted Ball Labelling
     
   </span>
   
@@ -676,10 +721,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_10" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_11" >
         
           
-          <label class="md-nav__link" for="__nav_10" id="__nav_10_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_11" id="__nav_11_label" tabindex="0">
             
   
   
@@ -692,8 +737,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_10_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_10">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_11_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_11">
             <span class="md-nav__icon md-icon"></span>
             Development
           </label>
@@ -960,6 +1005,9 @@
 
 
 <h1 id="research-bidirectional-trajectory-aware-ball-tracking-for-offline-autolabelling">Research: Bidirectional + Trajectory-Aware Ball Tracking for Offline Autolabelling<a class="headerlink" href="#research-bidirectional-trajectory-aware-ball-tracking-for-offline-autolabelling" title="Permanent link">&para;</a></h1>
+<blockquote>
+<p><strong>Update (2026-11).</strong> The detection-based bidirectional tracker from this note now exists and is scored in <a href="../../ball-tracking-eval/">Ball tracking evaluation</a>; it works on detector candidates rather than pixel trackers seeded from human marks, so it answers a different question. The anchor-plus-fusion idea below is reused by the proposed <a href="../claude_autolabel_loop/">Claude-assisted ball labelling loop</a>, where Claude-confirmed detections are the anchors. The text below is unchanged and historical.</p>
+</blockquote>
 <p><strong>Bead:</strong> ft-dva · <strong>Date:</strong> 2026-06-21 · <strong>Researcher:</strong> polecat flint
 <strong>Question:</strong> In offline video autolabelling for ball tracking, can we exploit
 <em>bidirectional</em> temporal information — track forward <strong>and</strong> backward from sparse

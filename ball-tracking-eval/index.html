@@ -1,0 +1,1518 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Tracking players, actions, and events in football matches.">
+      
+      
+      
+        <link rel="canonical" href="https://egroeg121.github.io/footy-track/ball-tracking-eval/">
+      
+      
+        <link rel="prev" href="../inference-web/">
+      
+      
+        <link rel="next" href="../design/feature_store/">
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.6.20">
+    
+    
+      
+        <title>Ball tracking evaluation - Footy Scan</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.e53b48f4.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+    
+  </head>
+  
+  
+    <body dir="ltr">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#ball-tracking-evaluation" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="Footy Scan" class="md-header__button md-logo" aria-label="Footy Scan" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Footy Scan
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Ball tracking evaluation
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="Footy Scan" class="md-nav__button md-logo" aria-label="Footy Scan" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Footy Scan
+  </label>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Overview
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Architecture
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../pipeline-and-labels/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Pipeline and labels
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../data/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Data
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    Training
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            Training
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../training/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Training
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../training/notable_runs/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Notable Training Runs
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../inference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Inference
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../inference-web/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Inference web app
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    Ball tracking evaluation
+    
+  </span>
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    Ball tracking evaluation
+    
+  </span>
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#what-is-measured" class="md-nav__link">
+    <span class="md-ellipsis">
+      What is measured
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#ground-truth-rules" class="md-nav__link">
+    <span class="md-ellipsis">
+      Ground truth rules
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#metrics" class="md-nav__link">
+    <span class="md-ellipsis">
+      Metrics
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#leakage-seen-and-held-out-clips" class="md-nav__link">
+    <span class="md-ellipsis">
+      Leakage: seen and held-out clips
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#results" class="md-nav__link">
+    <span class="md-ellipsis">
+      Results
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-two-new-trackers" class="md-nav__link">
+    <span class="md-ellipsis">
+      The two new trackers
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The two new trackers">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#bidirectional-ball_trackersbidirectionalpy" class="md-nav__link">
+    <span class="md-ellipsis">
+      Bidirectional (ball_trackers/bidirectional.py)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#viterbi-ball_trackersviterbipy" class="md-nav__link">
+    <span class="md-ellipsis">
+      Viterbi (ball_trackers/viterbi.py)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#tuning" class="md-nav__link">
+    <span class="md-ellipsis">
+      Tuning
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#limits" class="md-nav__link">
+    <span class="md-ellipsis">
+      Limits
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../design/feature_store/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Feature store
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_10" >
+        
+          
+          <label class="md-nav__link" for="__nav_10" id="__nav_10_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    Design
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_10_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_10">
+            <span class="md-nav__icon md-icon"></span>
+            Design
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../design/pipeline_overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Pipeline Overview
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../design/player_reid/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Player Re-ID
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../design/tracking-pipeline/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Tracking Pipeline Design
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../design/claude_autolabel_loop/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Claude-assisted Ball Labelling
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../system_design/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    System Design
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../system_overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    System Overview
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../pipeline_architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Pipeline Architecture
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../timings/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Time Formats
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../data_formats/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Data Formats
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_11" >
+        
+          
+          <label class="md-nav__link" for="__nav_11" id="__nav_11_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    Development
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_11_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_11">
+            <span class="md-nav__icon md-icon"></span>
+            Development
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../development/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Getting Started
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../agent_guidelines/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Agent Guidelines
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../contributing-docs/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    How to contribute to the docs
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../todo/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    TODO
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#what-is-measured" class="md-nav__link">
+    <span class="md-ellipsis">
+      What is measured
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#ground-truth-rules" class="md-nav__link">
+    <span class="md-ellipsis">
+      Ground truth rules
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#metrics" class="md-nav__link">
+    <span class="md-ellipsis">
+      Metrics
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#leakage-seen-and-held-out-clips" class="md-nav__link">
+    <span class="md-ellipsis">
+      Leakage: seen and held-out clips
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#results" class="md-nav__link">
+    <span class="md-ellipsis">
+      Results
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-two-new-trackers" class="md-nav__link">
+    <span class="md-ellipsis">
+      The two new trackers
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The two new trackers">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#bidirectional-ball_trackersbidirectionalpy" class="md-nav__link">
+    <span class="md-ellipsis">
+      Bidirectional (ball_trackers/bidirectional.py)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#viterbi-ball_trackersviterbipy" class="md-nav__link">
+    <span class="md-ellipsis">
+      Viterbi (ball_trackers/viterbi.py)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#tuning" class="md-nav__link">
+    <span class="md-ellipsis">
+      Tuning
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#limits" class="md-nav__link">
+    <span class="md-ellipsis">
+      Limits
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+
+<h1 id="ball-tracking-evaluation">Ball tracking evaluation<a class="headerlink" href="#ball-tracking-evaluation" title="Permanent link">&para;</a></h1>
+<p>How well does the ball tracker follow the real ball? This page describes the
+measurement (<code>footy_track.ball_eval.detection_replay</code> and
+<code>scripts/ball_tracking_eval.py</code>), the ground truth it uses, and the first
+results for the three detection-based trackers. It is the first scored ball
+measurement of the tracker; it does <strong>not</strong> replace the detector evaluation in
+T-10 (see <a href="../todo/">TODO</a>), which scores the detector itself on the v11 test
+split.</p>
+<h2 id="what-is-measured">What is measured<a class="headerlink" href="#what-is-measured" title="Permanent link">&para;</a></h2>
+<p>The tracker never sees pixels, only the ball candidates the detector produced
+(confidence 0.1 or more, nothing filtered). So the measurement splits in two:</p>
+<ol>
+<li><strong><code>cache</code></strong> runs the detector once per clip, on a GPU, and writes every ball
+   candidate per frame to <code>&lt;clip&gt;.jsonl</code> (one header line with the clip, frame
+   size, weights, image size and confidence floor, then <code>{"f": frame, "c": [[x, y,
+   w, h, conf], ...]}</code> per frame). Same weights and settings as the inference
+   pipeline (the <code>rtdetr_1920_v11</code> checkpoint at image size 1280, confidence 0.1).</li>
+<li><strong><code>score</code></strong> replays any tracker over the cache on a CPU (about 7 seconds for
+   26 clips and three trackers) and compares its output with the human ball
+   marks. Change a tracker, rerun <code>score</code>; the detector is never rerun.</li>
+</ol>
+<p><code>review</code> is a third, proxy-only command for runs without ground truth: it counts
+how many frames each tracker changes relative to the first one and how many of
+its ball positions are in the stands (normalised y under 0.12).</p>
+<div class="highlight"><pre><span></span><code>python<span class="w"> </span>-m<span class="w"> </span>footy_track.scripts.ball_tracking_eval<span class="w"> </span>cache<span class="w">  </span>--videos<span class="w"> </span>&lt;clips&gt;<span class="w"> </span>--gt<span class="w"> </span>&lt;gt&gt;<span class="w"> </span>--out<span class="w"> </span>&lt;cache&gt;<span class="w"> </span>--weights<span class="w"> </span>&lt;best.pt&gt;
+python<span class="w"> </span>-m<span class="w"> </span>footy_track.scripts.ball_tracking_eval<span class="w"> </span>score<span class="w">  </span>--cache<span class="w"> </span>&lt;cache&gt;<span class="w"> </span>--gt<span class="w"> </span>&lt;gt&gt;<span class="w"> </span>--split<span class="w"> </span>split.json<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--trackers<span class="w"> </span>online,bidirectional,viterbi<span class="w"> </span>--radii<span class="w"> </span><span class="m">10</span>,25<span class="w"> </span><span class="o">[</span>--per-clip<span class="o">]</span><span class="w"> </span><span class="o">[</span>--param<span class="w"> </span>viterbi.enter_cost<span class="o">=</span><span class="m">6</span><span class="o">]</span>
+python<span class="w"> </span>-m<span class="w"> </span>footy_track.scripts.ball_tracking_eval<span class="w"> </span>review<span class="w"> </span>--runs<span class="w"> </span>&lt;dir<span class="w"> </span>of<span class="w"> </span>run<span class="w"> </span>folders&gt;
+</code></pre></div>
+<p><code>split.json</code> maps each canonical clip id to <code>"seen"</code> or <code>"held_out"</code>.</p>
+<h2 id="ground-truth-rules">Ground truth rules<a class="headerlink" href="#ground-truth-rules" title="Permanent link">&para;</a></h2>
+<p>Marks come from the labeller sidecars (<code>ball_gt_marks/&lt;clip&gt;.jsonl</code>).</p>
+<ul>
+<li>A <strong>ball mark</strong> is a row whose first tag is <code>in_play_ball</code> or <code>out_of_play_ball</code>.</li>
+<li>Only marks tagged <code>labeller</code> (placed or confirmed by a person in the labeller)
+  count as ground truth. This is the headline tier, <code>human</code>.</li>
+<li>Marks a machine propagated and a person later checked (<code>vittrack</code> plus
+  <code>human_checked</code>) are scored in a separate <code>human+propagated</code> tier. They are not
+  independent of the tracking family, so do not headline them.</li>
+<li><code>yolo</code> and <code>sam3</code> marks, and rows without a provenance tag, are never ground
+  truth.</li>
+<li>A <code>no_ball</code> row means the ball is not visible in that frame. <code>not_broadcast</code>
+  frames and frames with no row at all are not scored.</li>
+<li>Sidecars are merged by canonical clip id (<code>footy_track.clip_id</code>), because one
+  clip has several names (for example <code>mancity_seg010</code> and
+  <code>arsenal_mancity_seg010</code>). If a frame has several marks, the nearest counts.</li>
+</ul>
+<p>The ground truth is small: 646 human ball frames and 37 human no-ball frames over
+26 clips. Most clips have between 1 and 60 marks; the huge sidecars (thousands of
+rows) are almost entirely player boxes and propagated ball boxes, so only a few
+dozen of their rows are human ball marks. Marks are sparse (isolated frames), so
+a clip scores only on its marked frames; the tracker still runs over the whole
+clip. The marks were mostly made while reviewing detector output, so frames where
+the detector found nothing at all are probably under-represented. Treat the
+recall figures as optimistic.</p>
+<h2 id="metrics">Metrics<a class="headerlink" href="#metrics" title="Permanent link">&para;</a></h2>
+<p>On every frame with a ball mark, at pixel radius R (native resolution; R = 10
+and 25):</p>
+<ul>
+<li><strong>HIT</strong>: the prediction centre is within R of a mark.</li>
+<li><strong>WRONG</strong>: there is a prediction but it is farther than R. This is the
+  "following the wrong object" failure and the number to watch.</li>
+<li><strong>MISS</strong>: no prediction.</li>
+</ul>
+<p>On every <code>no_ball</code> frame, <strong>FALSE</strong> means a prediction exists.</p>
+<ul>
+<li>precision = HIT / (HIT + WRONG + FALSE)</li>
+<li>recall = HIT / ball-marked frames</li>
+<li>wrong / pred = WRONG / (HIT + WRONG): how often a made prediction is the wrong object</li>
+<li>HIT and WRONG are split into detected (<code>d</code>) and interpolated (<code>i</code>) predictions.</li>
+<li><strong>detector any-cand</strong> is the detector upper bound: the ball-marked frames where
+  any candidate of confidence 0.1 or more is within R. The gap between this and
+  recall is tracker loss (and interpolation can push recall above it).</li>
+</ul>
+<h2 id="leakage-seen-and-held-out-clips">Leakage: seen and held-out clips<a class="headerlink" href="#leakage-seen-and-held-out-clips" title="Permanent link">&para;</a></h2>
+<p>A clip is <strong>seen</strong> if any frame of it, or of its source footage, is in the
+detector training data (Roboflow dataset v11, any split), <strong>held-out</strong> otherwise.
+Checked from the dataset image names, plus a check that the whole-match frames in
+v11 (named by match frame number, sampled every 5th frame) fall in the clip's
+time span; <code>arsenal_mancity_part093</code> is seen for that reason.</p>
+<ul>
+<li><strong>Held-out</strong> (6 clips, 119 human ball frames, 7 no-ball frames):
+  <code>arsenal_mancity_seg031</code> (53), <code>arsenal_bournemouth_1st_seg035</code> (40),
+  <code>arsenal_bournemouth_1st_seg031</code> (11), <code>_seg015</code> (9), <code>_seg021</code> (5), <code>_seg060</code> (1).</li>
+<li><strong>Seen</strong> (20 clips, 527 human ball frames, 30 no-ball frames): the rest, among
+  them <code>arsenal_example</code>, which has 157 images in the v11 validation split, and
+  the two large single-clip sources of v11, <code>astonvilla_seg080</code> and
+  <code>bournemouth_1st_seg070</code>.</li>
+</ul>
+<p>Seen numbers measure how well the tracker uses detections the model has
+effectively memorised, so they overstate real performance. The tracker
+parameters below were tuned on the seen clips only. The held-out set is small
+(119 ball frames, 78% of them from two clips), so differences of a few
+frames are noise.</p>
+<h2 id="results">Results<a class="headerlink" href="#results" title="Permanent link">&para;</a></h2>
+<p>Detector: <code>rtdetr_1920_v11</code>, image size 1280, confidence floor 0.1. Human tier.
+Counts are frames; <code>d</code>/<code>i</code> are detected/interpolated.</p>
+<p>Held-out (headline):</p>
+<table>
+<thead>
+<tr>
+<th>tracker</th>
+<th>R px</th>
+<th>HIT</th>
+<th>WRONG</th>
+<th>MISS</th>
+<th>FALSE (of 7 no-ball)</th>
+<th>precision</th>
+<th>recall</th>
+<th>detector any-cand</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>online</td>
+<td>10</td>
+<td>70 (61d/9i)</td>
+<td>33 (18d/15i)</td>
+<td>16</td>
+<td>5</td>
+<td>0.648</td>
+<td>0.588</td>
+<td>74 of 119</td>
+</tr>
+<tr>
+<td>bidirectional</td>
+<td>10</td>
+<td>70 (63d/7i)</td>
+<td>20 (18d/2i)</td>
+<td>29</td>
+<td>3</td>
+<td>0.753</td>
+<td>0.588</td>
+<td></td>
+</tr>
+<tr>
+<td>viterbi</td>
+<td>10</td>
+<td>59 (56d/3i)</td>
+<td>18 (12d/6i)</td>
+<td>42</td>
+<td>3</td>
+<td>0.738</td>
+<td>0.496</td>
+<td></td>
+</tr>
+<tr>
+<td>online</td>
+<td>25</td>
+<td>73 (61d/12i)</td>
+<td>30 (18d/12i)</td>
+<td>16</td>
+<td>5</td>
+<td>0.676</td>
+<td>0.613</td>
+<td>74 of 119</td>
+</tr>
+<tr>
+<td>bidirectional</td>
+<td>25</td>
+<td>70 (63d/7i)</td>
+<td>20 (18d/2i)</td>
+<td>29</td>
+<td>3</td>
+<td>0.753</td>
+<td>0.588</td>
+<td></td>
+</tr>
+<tr>
+<td>viterbi</td>
+<td>25</td>
+<td>59 (56d/3i)</td>
+<td>18 (12d/6i)</td>
+<td>42</td>
+<td>3</td>
+<td>0.738</td>
+<td>0.496</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<p>Seen (tuned on; 527 ball frames, 30 no-ball frames, detector any-cand 458 at R=10, 460 at R=25):</p>
+<table>
+<thead>
+<tr>
+<th>tracker</th>
+<th>R px</th>
+<th>HIT</th>
+<th>WRONG</th>
+<th>MISS</th>
+<th>FALSE</th>
+<th>precision</th>
+<th>recall</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>online</td>
+<td>10</td>
+<td>431 (424d/7i)</td>
+<td>48 (30d/18i)</td>
+<td>48</td>
+<td>16</td>
+<td>0.871</td>
+<td>0.818</td>
+</tr>
+<tr>
+<td>bidirectional</td>
+<td>10</td>
+<td>455 (447d/8i)</td>
+<td>28 (23d/5i)</td>
+<td>44</td>
+<td>10</td>
+<td>0.923</td>
+<td>0.863</td>
+</tr>
+<tr>
+<td>viterbi</td>
+<td>10</td>
+<td>438 (419d/19i)</td>
+<td>13 (6d/7i)</td>
+<td>76</td>
+<td>7</td>
+<td>0.956</td>
+<td>0.831</td>
+</tr>
+<tr>
+<td>online</td>
+<td>25</td>
+<td>435 (426d/9i)</td>
+<td>44 (28d/16i)</td>
+<td>48</td>
+<td>16</td>
+<td>0.879</td>
+<td>0.825</td>
+</tr>
+<tr>
+<td>bidirectional</td>
+<td>25</td>
+<td>462 (451d/11i)</td>
+<td>21 (19d/2i)</td>
+<td>44</td>
+<td>10</td>
+<td>0.937</td>
+<td>0.877</td>
+</tr>
+<tr>
+<td>viterbi</td>
+<td>25</td>
+<td>444 (420d/24i)</td>
+<td>7 (5d/2i)</td>
+<td>76</td>
+<td>7</td>
+<td>0.969</td>
+<td>0.843</td>
+</tr>
+</tbody>
+</table>
+<p>What the numbers say:</p>
+<ul>
+<li>Most of the held-out loss is the detector, not the tracker: only 74 of 119
+  ball frames have any candidate within 25 px (62%). No tracker can fix that.</li>
+<li>Held-out WRONG falls from 30 to 20 (bidirectional) or 18 (viterbi) and
+  precision rises from 0.68 to 0.74-0.75. Bidirectional keeps online's recall
+  within 3 frames; viterbi gives up recall (0.50) for precision.</li>
+<li>On the seen clips both new trackers cut WRONG by half or more (44 to 21 and 7).</li>
+<li>The held-out gain comes mostly from two clips (arsenal_mancity_seg031 and
+  arsenal_bournemouth_1st_seg031) and is within what 119 frames can
+  distinguish; treat it as encouraging, not proven. The default stays <code>online</code>.</li>
+<li><code>arsenal_bournemouth_1st_seg035</code> is bad for every tracker (about 17 of 40
+  frames wrong): its ball is often high in the air near the stands, where no
+  tracker trusts it and where the detector often finds nothing. This is also why
+  a "no ball in the stands" penalty is not safe: real balls go there.</li>
+</ul>
+<p>Per-clip and pooled results (including the <code>human+propagated</code> tier, where
+bidirectional reaches precision 0.97 and recall 0.93 on seen clips) come from
+<code>score --per-clip</code>.</p>
+<h2 id="the-two-new-trackers">The two new trackers<a class="headerlink" href="#the-two-new-trackers" title="Permanent link">&para;</a></h2>
+<p>Both are offline (they need the whole clip's candidates), write the same
+<code>ball_track.jsonl</code> rows, and are selected with <code>--ball-tracker</code>
+(<code>InferenceConfig.ball_tracker</code>, default <code>online</code>). The <code>--ball-*</code> threshold
+flags configure only the online tracker; the offline ones use the defaults
+below. The web app is unchanged and keeps <code>online</code>.</p>
+<h3 id="bidirectional-ball_trackersbidirectionalpy">Bidirectional (<code>ball_trackers/bidirectional.py</code>)<a class="headerlink" href="#bidirectional-ball_trackersbidirectionalpy" title="Permanent link">&para;</a></h3>
+<p>Runs <code>DetectionBallTracker</code> forward and on the time-reversed candidates, then
+merges per frame:</p>
+<ul>
+<li>neither pass has a ball: no ball;</li>
+<li>only one pass has a detected ball: take it; a bridge (interpolated frames) that
+  only one pass makes is dropped (<code>fill="agree"</code>; <code>fill="any"</code> keeps it);</li>
+<li>both have a ball within 60 px: agree; keep the detected one (forward if both are);</li>
+<li>they disagree: keep the pass whose track (the run of frames with one track id
+  in that pass) has more support. Support is the sum of its detected
+  confidences (<code>support="conf_sum"</code>; <code>"strong_count"</code>, the number of detections at
+  or above the start confidence, scored identically here).</li>
+</ul>
+<p>Parameters: online defaults except <code>max_missed</code> 6 and <code>growth_px</code> 15
+(<code>agree_px</code> 60, <code>fill</code> agree, <code>support</code> conf_sum).</p>
+<h3 id="viterbi-ball_trackersviterbipy">Viterbi (<code>ball_trackers/viterbi.py</code>)<a class="headerlink" href="#viterbi-ball_trackersviterbipy" title="Permanent link">&para;</a></h3>
+<p>Picks the single best path through the whole clip. Each frame offers its top 8
+candidates (confidence 0.1 or more) or no ball. A path scores:</p>
+<ul>
+<li>per chosen candidate: the log-odds that a candidate of that confidence is the
+  ball, interpolated from the Ball Check precision bands (0.04 at 0.1-0.2, 0.42
+  at 0.5-0.6, 0.79 at 0.6-0.7, 0.96 at 0.7-0.8, near 1 above), plus a bias of 1.0;</li>
+<li>minus a move cost between consecutive chosen candidates g frames and d px apart:
+  3 * (d / (30 + 40 g))^2, capped at 8 (so a camera cut is allowed, never free),
+  plus 0.3 per skipped frame;</li>
+<li>minus 4 to start a track and 0.5 to end one.</li>
+</ul>
+<p>Candidates more than 12 frames apart are never linked, and gaps inside a track
+are filled by linear interpolation only up to that limit. There is an optional
+<code>top_penalty</code> for candidates in the stands (normalised y under <code>top_y</code>, 0.12);
+it is off because the grid search gave no consistent gain and the seg035 clip
+shows real balls up there. No pitch mask is used. It runs in a fraction of a
+second per clip.</p>
+<h3 id="tuning">Tuning<a class="headerlink" href="#tuning" title="Permanent link">&para;</a></h3>
+<p>Light grid searches on the seen clips only, objective HIT minus twice
+(WRONG + FALSE) at 25 px: viterbi <code>emission_bias</code> 0.5-3.5, <code>enter_cost</code> 2-6,
+<code>jump_cost</code> 4-8, <code>gap_cost</code> 0.1-0.3, <code>move_weight</code> 1-3, <code>max_gap</code> 8-20,
+<code>speed_px</code> 25-70, <code>base_px</code> 20-50 (the surface is flat; the chosen values are
+inside a plateau, not at its best corner); bidirectional <code>fill</code>, <code>agree_px</code>,
+<code>support</code>, <code>start_conf</code>, <code>jump_conf</code>, <code>max_missed</code> 3-25, <code>base_radius_px</code>,
+<code>growth_px</code>. Interpolating gaps both passes did not make was the main source of
+bidirectional's early WRONG predictions.</p>
+<h2 id="limits">Limits<a class="headerlink" href="#limits" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Small, hand-selected ground truth; the held-out set is 119 ball frames.</li>
+<li>GT frames are mostly ones a person looked at because the detector proposed
+  something; recall is optimistic.</li>
+<li>Pixel distance only; no check of the ball size or the pitch position.</li>
+<li>Clips are scored at native resolution (one 1280x720 source, the rest 1920x1080).</li>
+<li>Whole-match frames in v11 were attributed to clips from the segment time table;
+  a clip could still share footage with training in ways this does not detect.</li>
+</ul>
+<p>Related: <a href="../inference/">Inference</a>, the research note on
+<a href="../design/bidirectional_tracking_research/">bidirectional tracking for autolabelling</a>
+(a different problem: pixel trackers seeded from human marks), <a href="../todo/">TODO</a> T-10, T-20, T-34.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      <script id="__config" type="application/json">{"base": "..", "features": [], "search": "../assets/javascripts/workers/search.973d3a69.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.f55a23d4.min.js"></script>
+      
+    
+  </body>
+</html>

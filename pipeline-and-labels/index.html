@@ -568,6 +568,28 @@
   
   
     <li class="md-nav__item">
+      <a href="../ball-tracking-eval/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Ball tracking evaluation
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../design/feature_store/" class="md-nav__link">
         
   
@@ -598,10 +620,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_9" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_10" >
         
           
-          <label class="md-nav__link" for="__nav_9" id="__nav_9_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_10" id="__nav_10_label" tabindex="0">
             
   
   
@@ -614,8 +636,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_9_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_9">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_10_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_10">
             <span class="md-nav__icon md-icon"></span>
             Design
           </label>
@@ -680,6 +702,29 @@
   
   <span class="md-ellipsis">
     Tracking Pipeline Design
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../design/claude_autolabel_loop/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Claude-assisted Ball Labelling
     
   </span>
   
@@ -827,10 +872,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_10" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_11" >
         
           
-          <label class="md-nav__link" for="__nav_10" id="__nav_10_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_11" id="__nav_11_label" tabindex="0">
             
   
   
@@ -843,8 +888,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_10_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_10">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_11_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_11">
             <span class="md-nav__icon md-icon"></span>
             Development
           </label>
@@ -1346,7 +1391,7 @@
 <tr>
 <td>Hard negatives (<code>not_ball</code> verdicts, <code>no_ball</code> frames)</td>
 <td>144 <code>not_ball</code> verdicts; 68 <code>no_ball</code>, 138 <code>not_broadcast</code> markers</td>
-<td>Moderate. Unused today; below 0.6 confidence precision is 0.42 or less.</td>
+<td>Moderate. <code>not_ball</code> verdicts are now stored in <code>detection_review</code> and dropped from exported positives (<code>feature_store/ball_checks.py</code>, <code>scripts/export_training_dataset.py:85-97</code>), but nothing trains on them as negatives yet (<a href="../todo/">T-26</a>). Below 0.6 confidence precision is 0.42 or less.</td>
 </tr>
 <tr>
 <td>Single-frame eval, 2 or more matches</td>
@@ -1370,9 +1415,10 @@
 </tr>
 </tbody>
 </table>
+<p><strong>How route J would address these gaps (planned, nothing built).</strong> The <a href="../design/claude_autolabel_loop/">Claude-assisted ball labelling loop</a> targets the first and third rows. For ball training boxes it aims at <strong>diversity</strong>: it runs on new matches first, so a person confirms doubtful frames instead of drawing every box. For hard negatives, every Claude "none" or Ball Check "no" on a candidate is a stored negative. It does <strong>not</strong> touch the single-frame eval or the dense ball-tracker eval: held-out clips stay human-only and the loop never enters them. Whether it works is unmeasured; it is gated on a calibration run over the 26 human-marked clips.</p>
 <p>Do not bother: importing external single-frame ball sets at volume, more Man City or Aston Villa seg080-style frames, player boxes, identity labels for the ball pipeline.</p>
 <h2 id="4-how-labels-are-created-today">4. How labels are created today<a class="headerlink" href="#4-how-labels-are-created-today" title="Permanent link">&para;</a></h2>
-<p>Who this is for: anyone deciding where to spend labelling time, or tracing why a label did not reach a model. There are nine routes. Only two of them (A and E) have fed a model that anyone has measured.</p>
+<p>Who this is for: anyone deciding where to spend labelling time, or tracing why a label did not reach a model. There are nine routes today, plus a tenth that is only proposed (J). Only two of them (A and E) have fed a model that anyone has measured.</p>
 <pre class="mermaid"><code>flowchart LR
   classDef code fill:#dbeafe,stroke:#2563eb,color:#111
   classDef data fill:#e5e7eb,stroke:#6b7280,color:#111
@@ -1386,9 +1432,11 @@
   M1["VitTrack Run&lt;br/&gt;(route B)"]:::code
   M2["RT-DETR batch inference&lt;br/&gt;not in git (route F)"]:::missing
   M3["SAM3 prompts&lt;br/&gt;(route G)"]:::code
+  M4["Claude verify&lt;br/&gt;(route J, planned)"]:::missing
 
   SC[("Sidecars&lt;br/&gt;ball_gt_marks/")]:::data
-  VLOG[("Verdict log&lt;br/&gt;ball_checks/")]:::dead
+  VLOG[("Verdict log&lt;br/&gt;ball_checks/")]:::data
+  CPOOL[("claude candidate pool&lt;br/&gt;tier 3, planned")]:::missing
   ML[("machine_labels/&lt;br/&gt;tier 3")]:::data
   RFD[("Roboflow dataset v11")]:::data
   STORE[("Feature store")]:::data
@@ -1399,12 +1447,16 @@
   M1 --&gt; SC
   H3 -- "dragged box" --&gt; SC
   H3 -- "yes or no" --&gt; VLOG
+  VLOG -- "ingest_gt" --&gt; STORE
   M2 --&gt; ML --&gt; H3
+  ML --&gt; M4 --&gt; CPOOL
+  CPOOL -.-&gt; H3
+  H3 -. "yes writes human_checked, planned" .-&gt; SC
   ML -. "not ingested" .-&gt; STORE
   M3 --&gt; STORE
   SC --&gt; STORE --&gt; EXP --&gt; TRAIN
   H4 --&gt; RFD --&gt; TRAIN</code></pre>
-<p>Legend: blue is code in git, orange dashed is not in git, purple is <code>/ball_check</code>, grey is data, red is data nothing reads. The diagram shows that two paths reach the trainer (the store export and a direct Roboflow download), that Ball Check yes and no answers stop at a log, and that the machine labels reach people only through Ball Check. Routes H (sparse centre GT) and I (identity review) are not drawn: neither reaches training.</p>
+<p>Legend: blue is code in git, orange dashed is not in git or planned, purple is <code>/ball_check</code>, grey is data. The diagram shows that two paths reach the trainer (the store export and a direct Roboflow download), that Ball Check yes and no answers go to a log that <code>ingest_gt</code> carries into the store, and that the machine labels reach people only through Ball Check. The orange dashed route J is the proposal: Claude checks machine candidates and its proposals reach people through the same Ball Check page. Routes H (sparse centre GT) and I (identity review) are not drawn: neither reaches training.</p>
 <table>
 <thead>
 <tr>
@@ -1449,10 +1501,10 @@
 <td><strong>D. Ball Check</strong></td>
 <td>Human, on machine candidates</td>
 <td><code>/ball_check</code> on a phone</td>
-<td>Verdicts in <code>ball_checks/</code>; a dragged box in the sidecar</td>
-<td><code>corrected</code> is 1; <code>ball</code> and <code>not_ball</code> give nothing</td>
-<td>Dragged boxes only, as A. Verdicts reach nothing.</td>
-<td>S2, S3, S5, S7</td>
+<td>Verdicts in <code>ball_checks/</code>, then <code>detection_review</code> in the store; a dragged box in the sidecar</td>
+<td><code>corrected</code> is 1; <code>ball</code> marks a detection reviewed; <code>not_ball</code> is a rejected negative; none creates a tier 2 box</td>
+<td>Dragged boxes as A. <code>not_ball</code> verdicts drop the box from exported positives; <code>ball</code> verdicts add no box.</td>
+<td>S5, S7</td>
 </tr>
 <tr>
 <td><strong>E. Roboflow hand labels</strong></td>
@@ -1499,16 +1551,26 @@
 <td>None. No consumer; <code>track_meta</code> has 0 rows.</td>
 <td></td>
 </tr>
+<tr>
+<td><strong>J. Claude-assisted ball labels (planned)</strong></td>
+<td>Machine proposes, Claude checks, a person confirms</td>
+<td>Detector and tracker candidates, crop-and-re-detect, Claude verify (multiple choice on zoomed crops), then <code>/ball_check</code></td>
+<td>Candidate pool <code>claude</code>, then sidecar</td>
+<td>3 in the pool; <strong>2</strong> after a yes (<code>human_checked</code>); <strong>1</strong> after a drag or tap-to-place</td>
+<td>Only after a person acts; never straight into a sidecar (LAB-002). Held-out clips are excluded.</td>
+<td>S5, S7</td>
+</tr>
 </tbody>
 </table>
 <p>Seam ids (S1 and so on) are the rows of <a href="../architecture/#7-known-seams-and-risks">Architecture, section 7</a>. Notes that do not fit in a table cell:</p>
 <ul>
 <li><strong>A.</strong> Unknown tags default to <code>in_play_ball</code> on load. The data-loss bug in the older write path was fixed in <code>6bcd153</code>.</li>
-<li><strong>B.</strong> For the ball it is useless: it stays on the ball for 5% of frames (9 of 176) and Run halts at frame 1. Players propagate fine. <strong>No code in the repo writes <code>human_checked</code></strong> (searched 2026-11-08), so new VitTrack output can never become tier 2. The v11 snapshot was exported on 2026-08-04, before the backfill, so its <code>vittrack</code> boxes went in unreviewed.</li>
+<li><strong>B.</strong> For the ball it is useless: it stays on the ball for 5% of frames (9 of 176) and Run halts at frame 1. Players propagate fine. <strong>No code in the repo creates <code>human_checked</code></strong> (searched again on the ball-tracker branch; the labeller session only preserves an existing marker since T-01, <code>labeller/session.py:173-180</code>), so new VitTrack output can never become tier 2. The v11 snapshot was exported on 2026-08-04, before the backfill, so its <code>vittrack</code> boxes went in unreviewed.</li>
 <li><strong>D.</strong> Labelling speed, <strong>measured</strong> from the verdict timestamps of 2026-09-24 and 09-25: 360 decided verdicts in 19.9 active minutes (gaps over 60 s excluded), about <strong>3.3 s per card</strong>, 18 per minute. With a 30 s gap cap it is 2.6 s per card, so the figure is an estimate with about 25% slack, from one person on two days. How the page works is in <a href="../architecture/#ball-check-verdicts-corrections-and-undo">Architecture, Ball Check</a>.</li>
 <li><strong>E.</strong> v11 was built on 2026-08-04 from a store export. The uploader that does that exists only on unmerged branches (<code>feat/roboflow-dataset-export</code>, <code>feat/roboflow-upload-script</code>). Class <code>ball</code> is dead (one instance).</li>
-<li><strong>F.</strong> The run was <code>rtdetr-l_1920_v11</code> on a rented 3060, 82 minutes for 97,625 frames. A <code>ball</code> verdict, the cheapest human signal, is thrown away.</li>
+<li><strong>F.</strong> The run was <code>rtdetr-l_1920_v11</code> on a rented 3060, 82 minutes for 97,625 frames. A <code>ball</code> verdict, the cheapest human signal, is still thrown away as a label: it is stored in <code>detection_review</code> and marks the detection <code>reviewed</code>, but no code turns it into a tier 2 box (<code>feature_store/ball_checks.py:24</code>).</li>
 <li><strong>H.</strong> <code>mancity_seg104</code>, the designated eval clip, is centre-only and has no MP4 next to it.</li>
+<li><strong>J.</strong> Design and open questions: <a href="../design/claude_autolabel_loop/">Claude-assisted ball labelling loop</a>. Nothing is built. It reuses route F candidates and the bidirectional ball tracker (<a href="../ball-tracking-eval/">Ball tracking evaluation</a>).</li>
 </ul>
 <p>The newest feature store (2026-08-04) predates the <code>human_checked</code> ingest fix, the Ball Check corrections and six new sidecars, so store, export and Roboflow is stale end to end (<a href="../todo/">T-07</a>).</p>
 <h2 id="5-recommendation-in-order">5. Recommendation, in order<a class="headerlink" href="#5-recommendation-in-order" title="Permanent link">&para;</a></h2>
@@ -1516,7 +1578,7 @@
 <li><strong>Fix the record.</strong> Done on this branch: the code comment and docs now cite .665 / .591 and the 74% caveat. The KB findings page still needs updating, with the maintainer's approval (<a href="../todo/">T-15</a>).</li>
 <li><strong>One committed ball eval</strong> over the v11 test split plus held-out dense clips (<code>arsenal_example</code> after checking it is not a sub-span of a training clip, and <code>mancity_seg031</code>), at 1280 and 1920, reporting instance counts and a per-match breakdown (<a href="../todo/">T-10</a>). The 1280 half needs no GPU for the sidecar clips.</li>
 <li><strong>ByteTrack/Kalman ball association over existing machine labels</strong>, with thresholds from the precision bands (0.7 or more near-certain; 0.6-0.7 about 0.79; below 0.6 at most 0.42). Run <code>analyse_ball_tracker.py</code> first to split detector misses from tracker misses (<a href="../todo/">T-20</a>).</li>
-<li><strong>Diversity labelling on new matches</strong> (Aston Villa, Bournemouth 2nd half, Norwich) with <code>/ball_check</code>, holding one full match out for eval; at about 3.3 s per card, 1,000 cards is about an hour (<a href="../todo/">T-13</a>, <a href="../todo/">T-21</a>). Look at the 51-frame <code>arsenal_example</code> gap first.</li>
+<li><strong>Diversity labelling on new matches</strong> (Aston Villa, Bournemouth 2nd half, Norwich) with <code>/ball_check</code>, holding one full match out for eval; at about 3.3 s per card, 1,000 cards is about an hour (<a href="../todo/">T-13</a>, <a href="../todo/">T-21</a>). Look at the 51-frame <code>arsenal_example</code> gap first. <strong>Once the calibration run passes its proposed thresholds, new-match ball labelling goes through the <a href="../design/claude_autolabel_loop/#8-calibration-plan-and-acceptance-thresholds">Claude-assisted loop</a> (route J, planned): Claude pre-checks candidates and a person confirms the doubtful ones in <code>/ball_check</code>.</strong> Until then, and for every held-out clip, a person does every card.</li>
 <li><strong>Before any retrain through the store</strong>, fix S1 to S4 (<a href="../todo/">T-01 to T-04</a>) and make the export default to tier 1/2 (<a href="../todo/">T-22</a>).</li>
 <li>Commit the missing producers and recover the ft-1zq code from the desktop machine (<a href="../todo/">T-09</a>, <a href="../todo/">T-23</a>); retrain RT-DETR-L at 1280 on v11 plus new-match labels and compare on the step 2 eval.</li>
 <li>Only then: finish ft-1zq on a rented GPU, or a heatmap/YOLOFT detector if the tracker and diversity plateau.</li>

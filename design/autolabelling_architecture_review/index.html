@@ -417,6 +417,28 @@
   
   
     <li class="md-nav__item">
+      <a href="../../ball-tracking-eval/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Ball tracking evaluation
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../feature_store/" class="md-nav__link">
         
   
@@ -447,10 +469,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_9" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_10" >
         
           
-          <label class="md-nav__link" for="__nav_9" id="__nav_9_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_10" id="__nav_10_label" tabindex="0">
             
   
   
@@ -463,8 +485,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_9_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_9">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_10_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_10">
             <span class="md-nav__icon md-icon"></span>
             Design
           </label>
@@ -529,6 +551,29 @@
   
   <span class="md-ellipsis">
     Tracking Pipeline Design
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../claude_autolabel_loop/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Claude-assisted Ball Labelling
     
   </span>
   
@@ -676,10 +721,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_10" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_11" >
         
           
-          <label class="md-nav__link" for="__nav_10" id="__nav_10_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_11" id="__nav_11_label" tabindex="0">
             
   
   
@@ -692,8 +737,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_10_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_10">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_11_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_11">
             <span class="md-nav__icon md-icon"></span>
             Development
           </label>
@@ -1041,6 +1086,9 @@
 
 
 <h1 id="architecture-review-gt-marking-bake-off-for-ball-autolabelling">Architecture Review: GT Marking + Bake-off for Ball Autolabelling<a class="headerlink" href="#architecture-review-gt-marking-bake-off-for-ball-autolabelling" title="Permanent link">&para;</a></h1>
+<blockquote>
+<p><strong>Update (2026-11).</strong> This June review pre-dates the scored ball-tracker evaluation (<a href="../../ball-tracking-eval/">Ball tracking evaluation</a>) and the merged label-pipeline fixes (T-01 to T-04). Its conclusion that detection, not tracking, is the main loss still holds in the 2026-11 numbers (only 74 of 119 held-out ball frames have a detector candidate within 25 px). A new proposal, the <a href="../claude_autolabel_loop/">Claude-assisted ball labelling loop</a>, picks up its "get GT first" advice with Claude supplying first-pass labels and a person confirming. The text below is unchanged and historical.</p>
+</blockquote>
 <p><strong>Bead:</strong> ft-q3y · <strong>Date:</strong> 2026-06-21 · <strong>Reviewer:</strong> polecat jade
 <strong>Scope:</strong> the proposed architecture for autolabelling ball positions in broadcast
 football video — sparse human GT marking, tracker seeding, the 4-method bake-off,

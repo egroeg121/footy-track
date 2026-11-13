@@ -419,6 +419,28 @@
   
   
     <li class="md-nav__item">
+      <a href="../ball-tracking-eval/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Ball tracking evaluation
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../design/feature_store/" class="md-nav__link">
         
   
@@ -449,10 +471,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_9" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_10" >
         
           
-          <label class="md-nav__link" for="__nav_9" id="__nav_9_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_10" id="__nav_10_label" tabindex="0">
             
   
   
@@ -465,8 +487,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_9_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_9">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_10_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_10">
             <span class="md-nav__icon md-icon"></span>
             Design
           </label>
@@ -531,6 +553,29 @@
   
   <span class="md-ellipsis">
     Tracking Pipeline Design
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../design/claude_autolabel_loop/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Claude-assisted Ball Labelling
     
   </span>
   
@@ -678,10 +723,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_10" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_11" >
         
           
-          <label class="md-nav__link" for="__nav_10" id="__nav_10_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_11" id="__nav_11_label" tabindex="0">
             
   
   
@@ -694,8 +739,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_10_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_10">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_11_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_11">
             <span class="md-nav__icon md-icon"></span>
             Development
           </label>
@@ -1009,7 +1054,7 @@
 <li>[ ] <strong>T-07</strong> (P1, M) Refresh the feature store. The newest copy is stale (4 Aug) and local-only, and lacks the Sep corrections, new label files, machine labels and Roboflow v11. <code>game.source_video_uri</code> and <code>match_date</code> are NULL. Ref: <a href="../data/">Datasets and labels</a>. Status: open. Do after T-02 to T-04.</li>
 <li>[x] <strong>T-08</strong> (P1, M) Test speed and CI. Done on branch <code>chore/faster-tests</code> (commit 9acf147, pushed, <strong>not merged</strong>): weight- and key-dependent tests are skipped, slow ones are marked, <code>make test-fast</code> added. Remaining: merge it. The CI part (a workflow that runs the tests; none does today, <code>.github/workflows/docs.yml</code> only deploys docs) is now covered by T-28. Status: done. <code>chore/faster-tests</code> came in with PR #24 (<code>make test-fast</code>, and CI runs it).</li>
 <li>[ ] <strong>T-09</strong> (P1, M) Commit the missing producers: RT-DETR batch inference, the machine_labels to ball_candidates filter, the RT-DETR training command, and the clip alias symlinks (<code>ballcheck_clips/</code>, 199 links). Ref: <a href="../architecture/#2-end-to-end-data-flow">Architecture, section 2</a>. Status: open.</li>
-<li>[ ] <strong>T-10</strong> (P1, M) One committed ball eval. The evidence dispute is settled: .221/.209 was yolo11n, and <code>rtdetr_1920_v11</code> scores mAP50 0.665 / recall 0.591 on v11-val at 1920 (211 balls, 74% from one clip). Remaining: commit one eval script that scores the checkpoint at <strong>both 1280 and 1920</strong> on the v11 test split (243 balls, never evaluated) plus held-out dense clips (<code>arsenal_example</code> after checking it is not a sub-span of a training clip, <code>mancity_seg031</code>), reporting instance counts and a per-match breakdown; record the results in <a href="../pipeline-and-labels/">Best pipeline</a>. Docs and the code comment at <code>detectors/ultralytics.py:37</code> are corrected on this branch. Ref: <a href="../pipeline-and-labels/">Best pipeline</a>. Status: docs fixed, eval open.</li>
+<li>[ ] <strong>T-10</strong> (P1, M) One committed ball eval. The evidence dispute is settled: .221/.209 was yolo11n, and <code>rtdetr_1920_v11</code> scores mAP50 0.665 / recall 0.591 on v11-val at 1920 (211 balls, 74% from one clip). Remaining: commit one eval script that scores the checkpoint at <strong>both 1280 and 1920</strong> on the v11 test split (243 balls, never evaluated) plus held-out dense clips (<code>arsenal_example</code> after checking it is not a sub-span of a training clip, <code>mancity_seg031</code>), reporting instance counts and a per-match breakdown; record the results in <a href="../pipeline-and-labels/">Best pipeline</a>. Docs and the code comment at <code>detectors/ultralytics.py:37</code> are corrected on this branch. Ref: <a href="../pipeline-and-labels/">Best pipeline</a>. Status: docs fixed, eval open. A first scored measurement of the ball tracker (not the detector) exists: see <a href="../ball-tracking-eval/">Ball tracking evaluation</a>.</li>
 <li>[ ] <strong>T-25</strong> (P1, M, Data-correctness) Match Ball Check verdicts to detections at export time, by box overlap, not by the stored <code>detection_id</code>. Why: <code>detection_id</code> is positional, so after a re-ingest that shifts ids the stored <code>matched_detection_id</code> can point at the wrong box and the export can drop the wrong one. Ref: <code>feature_store/ball_checks.py</code> and the <code>_NOT_REJECTED</code> clause in <code>scripts/export_training_dataset.py</code>. Executable example: a strict-xfail test on branch <code>feat/ball-check-verdicts-to-store</code>, <code>tests/feature_store/test_ball_checks.py</code>. It puts three boxes A, B, C in one frame, records <code>not_ball</code> on B, then removes A and re-ingests without re-running the importer. The correct result is B excluded and C kept. Done when the xfail marker is removed and the test passes. Depends on T-02 and T-04 (replace on re-ingest). Status: open.</li>
 <li>[ ] <strong>T-26</strong> (P1, M, Training data) Use rejected candidates as hard negatives. 144 <code>not_ball</code> verdicts on detector candidates are stored in <code>detection_review</code>, and nothing consumes them. The research lists hard negatives as one of the label gaps that matters (<a href="../pipeline-and-labels/">Best pipeline</a>, section 3). Needs a design decision first: export them as background or negative boxes, or as crops; how they are weighted; and how to keep eval clips out. Ref: <code>feature_store/ball_checks.py</code>, <code>scripts/export_training_dataset.py</code>. Status: open, needs design.</li>
 <li>[ ] <strong>T-33</strong> (P1, M, Data-correctness) Define the eval set explicitly (from T-03). <code>export_training_dataset</code> decides eval clips from the <code>*.jsonl</code> files in <code>eval_data/clips</code>, but only <code>mancity_seg104.jsonl</code> is checked in, so a fresh checkout excludes almost nothing unless <code>build_eval_sidecars</code> has been run. Make the eval clip list explicit and checked in (or generated deterministically), and fail the export if it is empty. Also check the Roboflow match-level id (about 4,915 detections from the whole match): it may overlap eval clips in time, which names cannot catch, so exclude by time range or frame. Ref: <code>scripts/export_training_dataset.py</code>, <code>scripts/build_eval_sidecars.py</code>, <code>eval_data/clips/</code>. Status: open.</li>
@@ -1017,6 +1062,12 @@
 <li>[ ] <strong>T-20</strong> (P1, M) Ball tracker: ByteTrack/Kalman association over the existing machine labels (conf 0.1 or more already stored), with high/low thresholds from the Ball Check precision bands (0.04 at conf 0.1-0.2, 0.42 at 0.5-0.6, 0.79 at 0.6-0.7, 0.96 at 0.7-0.8). Run <code>scripts/analyse_ball_tracker.py</code> first to split detector misses from tracker misses. Inference only; expect precision gains more than recall. Score it with the T-10 eval. Ref: <a href="../pipeline-and-labels/">Best pipeline</a>, section 5; the phased design is in <a href="../design/tracking-pipeline/">Tracking pipeline design</a> (that page is now on <code>main</code>, #21 merged as a82ec07). Status: open.</li>
 <li>[ ] <strong>T-21</strong> (P1, L) Label new matches with <code>/ball_check</code> (Aston Villa, Bournemouth 2nd half, Norwich; run the detector on them first, since only Man City has machine labels), holding one full match out for eval. About 3.3 s per card. Do after T-01 to T-04. Ref: <a href="../pipeline-and-labels/">Best pipeline</a>, section 3. Status: open.</li>
 <li>[ ] <strong>T-22</strong> (P1, S) Make <code>export_training_dataset</code> export only tier 1/2 by default, with explicit opt-in for tier 3. Part of the T-02 fix; listed separately so it is not missed. Ref: <code>export_training_dataset.py:32-34, 91-128</code>. Status: open.</li>
+<li>[ ] <strong>T-44</strong> (P1, M, Route J) Calibration script for the Claude-assisted ball labelling loop. Run candidates, crop-and-re-detect and Claude verify over the 26 human-marked clips (646 ball frames, 37 no-ball frames) <strong>read-only</strong>, tune on the 20 seen clips and score the 6 held-out clips once; report agreement with human marks, false "not ball" and false "ball" rates, extra balls found by crop-and-re-detect, Claude-confidence calibration, and cost and time per clip. The loop is gated on the proposed thresholds. Ref: <a href="../design/claude_autolabel_loop/">Claude-assisted ball labelling loop</a>, section 8; <a href="../ball-tracking-eval/">Ball tracking evaluation</a>; depends on T-45 and T-46. Status: pilot and method v2 done 2026-11, gate not met. A first run (<code>scripts/claude_verify_pilot.py</code>, prompt <code>verify-v1</code>, subscription backend, 246 questions: all 126 held-out frames plus 120 seen) gave agreement 0.51 (0.77 where a candidate is within 25 px), false "not ball" 0.40 (0.15 where a candidate exists), false "ball" 0.10, all short of the thresholds; the crop missed the human mark in 26% of ball frames. Results and caveats in the design page, section 8. Method v2 (<code>scripts/claude_verify_v2.py</code>: crop centred on each candidate, one <code>ball</code>/<code>not_ball</code>/<code>unsure</code> question per candidate, tracker choice plus top 2 plus re-detect candidates; prompts <code>verify-v2</code>, <code>v2.1</code>, <code>v2.2</code> tuned on seen clips only, held-out scored once with v2.2 on Opus) gave, on the 6 held-out clips: frame agreement 0.81 where a candidate is within 25 px (61 of 75), false "not ball" 0.079, false "ball" 0.108, and 44 of 119 ball frames with no candidate within 25 px (not answerable). Gate still not met. Open: score a frame-level rule (tracker agreement, highest-confidence <code>ball</code>, the rest to a person), run all 26 clips, repeat on the API.</li>
+<li>[ ] <strong>T-45</strong> (P1, M, Route J) Crop-and-re-detect. Where no detector candidate lies near the tracker's expected path, crop around the predicted or interpolated position (or an overview region), upscale (target about 3x to 4x, unmeasured) and run the detector again. Report how many human-marked frames with no candidate within 25 px it recovers (112 frames of 646 today). Ref: <a href="../design/claude_autolabel_loop/">Claude-assisted ball labelling loop</a>, section 2; <code>src/footy_track/ball_trackers/bidirectional.py</code>; <code>src/footy_track/ball_eval/detection_replay.py</code>. Status: open, proposed.</li>
+<li>[ ] <strong>T-46</strong> (P1, M, Route J) Claude verify client with a pluggable backend: the Anthropic API (API key) and Claude Code headless (<code>claude -p</code>, subscription login). Multiple-choice prompt on padded zoomed crops with numbered boxes and a fine grid, strict JSON answer, every answer logged with model, prompt version and backend. Recommend the API for an unattended loop. No keys in the repo or the logs. Ref: <a href="../design/claude_autolabel_loop/">Claude-assisted ball labelling loop</a>, sections 4 and 5. Status: open, proposed.</li>
+<li>[ ] <strong>T-47</strong> (P1, M, Route J) <code>/ball_check</code> proposal pool and <code>human_checked</code> write. A separate <code>claude</code> candidate pool (tier 3) that <code>/ball_check</code> serves uncertain-first; a yes writes <code>[label, claude, human_checked]</code>; a drag or tap-to-place writes <code>labeller</code>; add <code>claude</code> to the provenance tag sets; never write proposals straight into a sidecar. Planned requirements LAB-008, LAB-009, LAB-1014, LAB-1015. Also closes the gap that no code creates <code>human_checked</code>. Ref: <code>src/footy_track/labeller/ball_check.py</code>, <code>labeller/session.py:173-180</code>, <code>feature_store/ingest_gt.py:81</code>, T-05 (one atomic sidecar writer first). Status: open, proposed.</li>
+<li>[ ] <strong>T-48</strong> (P1, M, Route J) Prefect jobs for the loop, under the external job runner (server on a small always-on machine, GPU work pool on the GPU machine; it is not in this repo). Jobs: pick clips (new matches first), detector and tracker, crop and re-detect, Claude verify, queue for review, ingest verdicts, re-score with the ball tracking eval, propose a retrain. Every step must also run as a plain script. Depends on T-44 passing its gate, T-09 (batch inference in git). Ref: <a href="../design/claude_autolabel_loop/">Claude-assisted ball labelling loop</a>, section 5. Status: open, proposed.</li>
+<li>[ ] <strong>T-49</strong> (P1, S, Route J) Held-out registry. A checked-in list of held-out clip ids (canonical, <code>footy_track.clip_id</code>) and footage time spans that the loop refuses to touch; new held-out clips are added from new matches over time, human-marked first. Relates to T-33 (explicit eval clip list). Ref: <a href="../ball-tracking-eval/">Ball tracking evaluation</a> (the 6 held-out clips), <a href="../design/claude_autolabel_loop/">Claude-assisted ball labelling loop</a>, section 7. Status: open, proposed.</li>
 </ul>
 <h2 id="p2">P2<a class="headerlink" href="#p2" title="Permanent link">&para;</a></h2>
 <ul>

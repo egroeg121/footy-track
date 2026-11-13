@@ -16,7 +16,7 @@
         <link rel="prev" href="../player_reid/">
       
       
-        <link rel="next" href="../../system_design/">
+        <link rel="next" href="../claude_autolabel_loop/">
       
       
       <link rel="icon" href="../../assets/images/favicon.png">
@@ -421,6 +421,28 @@
   
   
     <li class="md-nav__item">
+      <a href="../../ball-tracking-eval/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Ball tracking evaluation
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../feature_store/" class="md-nav__link">
         
   
@@ -453,10 +475,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_9" checked>
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_10" checked>
         
           
-          <label class="md-nav__link" for="__nav_9" id="__nav_9_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_10" id="__nav_10_label" tabindex="0">
             
   
   
@@ -469,8 +491,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_9_label" aria-expanded="true">
-          <label class="md-nav__title" for="__nav_9">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_10_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_10">
             <span class="md-nav__icon md-icon"></span>
             Design
           </label>
@@ -711,6 +733,29 @@
   
   
     <li class="md-nav__item">
+      <a href="../claude_autolabel_loop/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Claude-assisted Ball Labelling
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../system_design/" class="md-nav__link">
         
   
@@ -841,10 +886,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_10" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_11" >
         
           
-          <label class="md-nav__link" for="__nav_10" id="__nav_10_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_11" id="__nav_11_label" tabindex="0">
             
   
   
@@ -857,8 +902,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_10_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_10">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_11_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_11">
             <span class="md-nav__icon md-icon"></span>
             Development
           </label>
@@ -1614,6 +1659,7 @@ and every later phase needs its evals. Phase 2 can start in parallel once Phase 
 lands, because calibration does not depend on tracking. Phase 3 waits on the
 <code>player_reid.md</code> R7 question: is per-player identity needed at all, or are team
 and pitch position enough? Phase 4 comes last.</p>
+<p><strong>Where the label loop fits (proposal, not built).</strong> Phase 1 needs more diverse ball labels and a held-out eval. The <a href="../claude_autolabel_loop/">Claude-assisted ball labelling loop</a> is the proposed way to get the labels: Claude checks zoomed detector and tracker candidates on new matches, and a person confirms the doubtful ones in <code>/ball_check</code>. It sits beside Phase 1, not inside it: it consumes the Phase 1 ball tracker and the <a href="../../ball-tracking-eval/">ball tracking eval</a> as its fill step and its score, and it feeds the labels a later retrain needs. Held-out eval clips stay human-only. It adds no box to the Part 1 diagram, which is already at the diagram size limit.</p>
 <h3 id="measured-versus-assumed">Measured versus assumed<a class="headerlink" href="#measured-versus-assumed" title="Permanent link">&para;</a></h3>
 <table>
 <thead>
