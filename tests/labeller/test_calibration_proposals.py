@@ -187,3 +187,60 @@ def test_accept_conflict_with_machine_gt_is_labelled_as_such(client, prop_env):
 def test_review_page_has_an_explicit_replace_flow(client):
     html = client.get("/calibration/review").text
     assert "already has hand GT" in html and 'id="btnReplace"' in html and "existing_gt" in html
+
+
+# Real pilot1 frame 575 of arsenal_mancity_seg010: three of the four stored points
+# (centre-circle top/bottom, halfway top) are collinear on the halfway line, so a plain
+# refit is refused as degenerate although the proposal's refined H is fine.
+_H575 = [[0.30689886890777746, -0.0032974663368638937, -0.04531593329474465],
+         [-0.06717557418107739, -0.7736163471902385, 0.5482814194446377],
+         [-0.00042308278220137564, 0.011401708985898248, 0.003342736441704121]]
+_P575 = [("CENTRE_CIRCLE_TOP", (0.0, 9.15), (0.15387401734159936, 0.5785740889480612)),
+         ("CENTRE_CIRCLE_BOTTOM", (0.0, -9.15), (0.1567715987628685, 0.8482552228581172)),
+         ("CENTRE_CIRCLE_RIGHT", (9.15, 0.0), (0.475382351302383, 0.6674462592675481)),
+         ("HALFWAY_TOP", (0.0, 34.0), (0.1516048116935509, 0.3673765889403585))]
+
+
+def _degenerate_record():
+    rec = _record(0.57)
+    rec["correspondences"] = [{"image": list(uv), "pitch_id": k, "pitch_xy": list(xy), "confidence": 0.8,
+                               "candidate_id": None} for k, xy, uv in _P575]
+    rec.update(H=_H575, inliers=[True] * 4, err_px=[0.0] * 4)
+    return rec
+
+
+def test_accept_pads_collinear_points_and_reproduces_the_stored_h(client, prop_env):
+    run = "claude-x-p1-20260101T000000"
+    doc = read_proposals(prop_env, CLIP)
+    doc["runs"][run]["frames"]["575"] = _degenerate_record()
+    write_proposals(prop_env, CLIP, doc)
+    r = client.post(f"/calibration/api/proposals/{CLIP}/{run}/575/accept")
+    assert r.status_code == 200, r.text
+    rec = r.json()["record"]
+    assert len(rec["correspondences"]) > 4 and rec["origin"]["padded_synthetic"]
+    grid = np.array([(u, v) for u in np.linspace(0.05, 0.95, 5) for v in np.linspace(0.05, 0.95, 5)])
+    a, _ = geo.apply_homography(np.array(_H575), grid)
+    b, _ = geo.apply_homography(np.array(rec["H"]), grid)
+    assert np.abs(a - b).max() < 1e-2  # metres
+    assert read_proposals(prop_env, CLIP)["runs"][run]["frames"]["575"]["status"] == "accepted"
+
+
+def test_edited_points_are_still_refused_when_degenerate(client, prop_env):
+    run = "claude-x-p1-20260101T000000"
+    pts = [{"image": list(uv), "pitch_id": k} for k, _xy, uv in _P575[:2] + _P575[3:]] + [
+        {"image": [0.3, 0.5], "pitch_id": "HALFWAY_BOTTOM"}]
+    r = client.post(f"/calibration/api/proposals/{CLIP}/{run}/0/accept", json={"correspondences": pts})
+    assert r.status_code == 400 and "degenerate configuration" in r.json()["error"]
+
+
+def test_pad_points_breaks_collinearity_in_the_pipeline():
+    from footy_track.calibration.prelabel.fit import pad_points, refit_gap_m  # noqa: PLC0415
+
+    pitch = PitchModel()
+    uv = np.array([p[2] for p in _P575])
+    xy = np.array([p[1] for p in _P575])
+    assert refit_gap_m(np.array(_H575), uv, xy) == float("inf")
+    add = pad_points(np.array(_H575), [tuple(u) for u in uv], [p[0] for p in _P575], [tuple(x) for x in xy], pitch)
+    assert add and all(0.03 < u < 0.97 and 0.03 < v < 0.97 for _k, (u, v), _xy in add)
+    assert refit_gap_m(np.array(_H575), np.vstack([uv, [a[1] for a in add]]),
+                       np.vstack([xy, [a[2] for a in add]])) < 0.25

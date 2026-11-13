@@ -65,6 +65,13 @@
   #conflict.show { display:block; }
   #conflict .row { margin-top:8px; }
   #status { text-align:center; color:var(--muted); font-size:12px; min-height:16px; }
+  #errBanner { display:none; flex:none; margin:6px 12px 0; padding:12px 14px; border-radius:12px;
+               background:#5c1a1a; border:2px solid var(--red); color:#fff; font-size:16px; font-weight:600;
+               line-height:1.35; align-items:flex-start; gap:10px; word-break:break-word; }
+  #errBanner.show { display:flex; }
+  #errBanner span { flex:1; }
+  #errBanner button { flex:none; width:auto; min-height:32px; padding:4px 12px; font-size:14px;
+                      background:#ffffff22; color:#fff; border:1px solid #fff6; border-radius:8px; }
   #empty { display:none; text-align:center; color:var(--muted); padding:40px 20px; }
   .hidden { display:none !important; }
 </style>
@@ -84,6 +91,8 @@
     <label>Order <select id="sortSel"><option value="score_asc">worst first</option>
       <option value="score_desc">best first</option></select></label>
   </div>
+
+  <div id="errBanner" role="alert"><span id="errMsg"></span><button id="errClose" aria-label="Dismiss">OK</button></div>
 
   <main>
     <div id="card">
@@ -127,12 +136,16 @@
 const $ = (id) => document.getElementById(id);
 const API = "/calibration/api";
 let items = [], idx = 0, reviewed = 0, cur = null, busy = false;
-let showOverlay = true, showWarp = false, warpUrl = null;
+let showOverlay = true, showWarp = false, warpUrl = null, shotIsWarp = false;
 const CACHE = new Map();   // key -> proposal record
 
 const keyOf = (i) => `${i.clip}|${i.run_id}|${i.frame_index}`;
 const shortClip = (c) => c.replace(/_20\d{6}/, "");
 function setStatus(t) { $("status").textContent = t || ""; }
+// Visible, persistent error (phone-legible). Stays until dismissed or the next action succeeds.
+function showError(t) { $("errMsg").textContent = t; $("errBanner").classList.add("show"); setStatus(""); }
+function clearError() { $("errBanner").classList.remove("show"); }
+$("errClose").onclick = clearError;
 
 async function getJSON(url, opts) {
   const r = await fetch(url, opts);
@@ -176,10 +189,40 @@ function confSummary(rec) {
   if (rec.verify) s += ` · verifier: ${rec.verify.match === null ? "n/a" : rec.verify.match ? "match" : "NO match"}`;
   return s;
 }
+let pitchModel = null, pitchKey = "";
+async function ensurePitch(rec) {   // pitch-space geometry + the warp's px/m and margin
+  const [L, Wd] = rec.pitch_dims || [105, 68], k = `${L}x${Wd}`;
+  if (pitchModel && pitchKey === k) return pitchModel;
+  pitchModel = await getJSON(`${API}/pitch_model?length=${L}&width=${Wd}`); pitchKey = k;
+  return pitchModel;
+}
+// Warp mode: the pitch markings drawn in pitch coordinates over the bird's-eye raster (same
+// extents as the server's warp: (L+2m) x (W+2m) metres at px_per_m, +x right, +y up). A correct H
+// puts the real white lines exactly under the drawn ones.
+function drawWarpOverlay(rec) {
+  const svg = $("overlay"), pm = pitchModel;
+  if (!pm || !showOverlay) { svg.innerHTML = ""; return; }
+  const s = pm.warp.px_per_m, m = pm.warp.margin_m, hl = pm.length / 2, hw = pm.width / 2;
+  const W = (pm.length + 2 * m) * s, H = (pm.width + 2 * m) * s;
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`); svg.setAttribute("preserveAspectRatio", "none");
+  const X = (x) => (x + hl + m) * s, Y = (y) => (hw + m - y) * s;
+  let out = "";
+  for (const [name, pts] of Object.entries(pm.polylines)) {
+    const col = name.includes("CIRCLE") || name.includes("ARC") ? "#ffd33d" : "#ff2bd6";
+    out += `<polyline fill="none" stroke="${col}" stroke-width="2" opacity="0.9" points="${pts.map(([x, y]) => `${X(x)},${Y(y)}`).join(" ")}"/>`;
+  }
+  (rec.correspondences || []).forEach((c, i) => {
+    const ok = (rec.inliers || [])[i] !== false, col = ok ? "#3fb950" : "#f85149", x = X(c.pitch_xy[0]), y = Y(c.pitch_xy[1]);
+    out += `<circle cx="${x}" cy="${y}" r="7" fill="#0006" stroke="${col}" stroke-width="2"/>` +
+           `<text x="${x + 10}" y="${y - 8}" font-size="26" font-weight="700" fill="${col}" stroke="#000" stroke-width="3" paint-order="stroke">${i + 1}</text>`;
+  });
+  svg.innerHTML = out;
+}
 function drawOverlay(rec) {
+  if (showWarp) { if (shotIsWarp) drawWarpOverlay(rec); else $("overlay").innerHTML = ""; return; }
   const svg = $("overlay"); const [W, H] = rec.image_size || [1920, 1080];
   svg.setAttribute("viewBox", `0 0 ${W} ${H}`); svg.setAttribute("preserveAspectRatio", "none");
-  if (!showOverlay || showWarp) { svg.innerHTML = ""; return; }
+  if (!showOverlay) { svg.innerHTML = ""; return; }
   let out = "";
   const sw = Math.max(2, W / 450);
   for (const [name, runs] of Object.entries(rec.overlay || {})) {
@@ -211,12 +254,12 @@ async function show() {
   $("btnAccept").disabled = it.status === "failed";  // no H: fix the points in the editor first
   $("note").textContent = ""; $("conf").textContent = "";
   $("editLink").href = `/calibration?clip=${encodeURIComponent(it.clip)}&frame=${it.frame_index}&proposal=${encodeURIComponent(it.run_id)}`;
-  warpUrl = null;
+  warpUrl = null; shotIsWarp = false; showWarp = false; $("btnWarp").classList.remove("on");
   $("shot").src = `${API}/frame/${encodeURIComponent(it.clip)}/${it.frame_index}.jpg`;
   let rec = CACHE.get(k);
   if (!rec) {
     try { rec = await getJSON(`${API}/proposals/${encodeURIComponent(it.clip)}/${encodeURIComponent(it.run_id)}/${it.frame_index}`); CACHE.set(k, rec); }
-    catch (e) { setStatus("load failed: " + e.message); return; }
+    catch (e) { showError("Load failed: " + e.message); return; }
   }
   done(() => {
     const v = rec.view || {};
@@ -244,8 +287,8 @@ function syncToggles() {
 async function setWarp(on) {
   showWarp = on; syncToggles();
   const it = cur, rec = it && CACHE.get(keyOf(it));
-  if (!on) { if (it) $("shot").src = `${API}/frame/${encodeURIComponent(it.clip)}/${it.frame_index}.jpg`; return; }
-  if (!rec || !rec.H) { setStatus("no H to warp"); showWarp = false; syncToggles(); return; }
+  if (!on) { if (it && shotIsWarp) { shotIsWarp = false; $("shot").src = `${API}/frame/${encodeURIComponent(it.clip)}/${it.frame_index}.jpg`; } return; }
+  if (!rec || !rec.H) { showError("This proposal has no H to warp."); showWarp = false; syncToggles(); return; }
   try {
     if (!warpUrl) {
       const r = await fetch(`${API}/warp`, { method: "POST", headers: { "Content-Type": "application/json" },
@@ -253,8 +296,9 @@ async function setWarp(on) {
       if (!r.ok) throw new Error((await r.json()).error || r.statusText);
       warpUrl = URL.createObjectURL(await r.blob());
     }
-    if (showWarp && cur === it) $("shot").src = warpUrl;
-  } catch (e) { setStatus("warp failed: " + e.message); showWarp = false; syncToggles(); }
+    await ensurePitch(rec);
+    if (showWarp && cur === it) { shotIsWarp = true; $("shot").src = warpUrl; drawOverlay(rec); }  // overlay is redrawn on load
+  } catch (e) { showError("Warp failed: " + e.message); showWarp = false; syncToggles(); }
 }
 $("btnOverlay").onclick = () => { showOverlay = !showOverlay; syncToggles(); };
 $("btnWarp").onclick = () => setWarp(!showWarp);
@@ -265,7 +309,7 @@ for (const id of ["runSel", "statusSel", "sortSel"]) $(id).onchange = loadQueue;
 function flash(ch, col) { const f = $("flash"); f.textContent = ch; f.style.color = col; f.style.opacity = "1"; setTimeout(() => (f.style.opacity = "0"), 160); }
 async function act(kind, overwrite) {
   if (!cur || busy) return;
-  busy = true; const it = cur;
+  busy = true; const it = cur; clearError();
   try {
     const base = `${API}/proposals/${encodeURIComponent(it.clip)}/${encodeURIComponent(it.run_id)}/${it.frame_index}`;
     if (kind === "accept") await post(`${base}/accept`, overwrite ? { overwrite: true } : {});
@@ -280,7 +324,8 @@ async function act(kind, overwrite) {
       showConflict(it, e.body && e.body.existing_gt === "human");
       return;
     }
-    setStatus(`${kind} failed: ${e.message}`);
+    // item stays in place; say what the server said
+    showError(`${kind === "accept" ? "Accept" : "Reject"} failed${e.status ? ` (${e.status})` : ""}: ${e.message}`);
   }
   busy = false;
 }
@@ -334,7 +379,7 @@ document.addEventListener("keydown", (e) => {
 });
 
 (async () => {
-  try { await loadRuns(); syncToggles(); await loadQueue(); } catch (e) { setStatus(e.message); }
+  try { await loadRuns(); syncToggles(); await loadQueue(); } catch (e) { showError("Could not load the queue: " + e.message); }
 })();
 </script>
 </body>

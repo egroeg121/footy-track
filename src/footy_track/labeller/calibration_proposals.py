@@ -12,11 +12,14 @@ from __future__ import annotations
 
 import asyncio
 
+import numpy as np
+
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 
 from footy_track.calibration import geometry as geo
 from footy_track.calibration.pitch_model import PitchModel
+from footy_track.calibration.prelabel.fit import REFIT_TOL_M, pad_points, refit_gap_m
 from footy_track.calibration.prelabel.proposals import (
     STATUSES,
     list_clips_with_proposals,
@@ -103,8 +106,6 @@ async def get_proposal(clip: str, run_id: str, idx: int):
     out.update(clip=clip, run_id=run_id, source=run.get("source"))
     if rec.get("H") is not None:
         pitch = PitchModel(*rec["pitch_dims"])
-        import numpy as np  # noqa: PLC0415
-
         out["overlay"] = {
             n: [r.tolist() for r in runs]
             for n, runs in geo.project_pitch_model(np.array(rec["H"]), pitch).items()
@@ -130,6 +131,25 @@ def _same_points(a: list[dict], b: list[dict]) -> bool:
         if abs(x["image"][0] - y["image"][0]) > _SAME_UV or abs(x["image"][1] - y["image"][1]) > _SAME_UV:
             return False
     return True
+
+
+def _pad_to_reproduce(rec: dict, pts: list[dict], pitch_dims) -> tuple[list[dict], list[str]]:
+    """``pts`` plus synthetic keypoints off any collinear line so a refit reproduces the
+    proposal's stored ``H``; ``(pts, [])`` when they already do."""
+    pitch = PitchModel(*pitch_dims)
+    kps = pitch.keypoints()
+    Hs = np.array(rec["H"], dtype=np.float64)
+    uv = [tuple(c["image"]) for c in pts]
+    kids = [c.get("pitch_id") for c in pts]
+    xy = [tuple(kps[c["pitch_id"]]) if c.get("pitch_id") else tuple(c["pitch_xy"]) for c in pts]
+    if len(pts) >= 4 and refit_gap_m(Hs, np.array(uv), np.array(xy)) <= REFIT_TOL_M:
+        return pts, []
+    add = pad_points(Hs, uv, kids, xy, pitch)
+    out = list(pts) + [
+        {"image": [u, v], "pitch_id": k, "pitch_xy": list(xy_), "confidence": 0.3, "synthetic": True}
+        for k, (u, v), xy_ in add
+    ]
+    return out, [k or f"free({xy_[0]:g},{xy_[1]:g})" for k, _, xy_ in add]
 
 
 @router.post("/calibration/api/proposals/{clip}/{run_id}/{idx}/accept")
@@ -172,6 +192,16 @@ async def accept_proposal(clip: str, run_id: str, idx: int, body: dict | None = 
         "correspondences": pts, "pitch_dims": body.get("pitch_dims") or rec["pitch_dims"],
         "method": body.get("method", "dlt"), "image_size": body.get("image_size") or rec["image_size"],
     }
+    padded: list[str] = []
+    if "correspondences" not in body and rec.get("H") is not None:
+        # Accept-as-proposed must reproduce the H the reviewer saw. If the stored points cannot
+        # re-derive it (collinear, too few, drifting), add synthetic visible keypoints projected
+        # through the stored H. Operator-edited points are never padded (the editor relies on
+        # the degenerate-configuration check).
+        try:
+            fit_body["correspondences"], padded = _pad_to_reproduce(rec, pts, fit_body["pitch_dims"])
+        except (KeyError, TypeError, ValueError, np.linalg.LinAlgError):
+            pass
     try:
         res = cal._fit(fit_body)
     except cal._BadRequest as exc:
@@ -180,6 +210,8 @@ async def accept_proposal(clip: str, run_id: str, idx: int, body: dict | None = 
         # compare the operator's cleaned points with what was proposed
         status = "accepted" if _same_points(res["correspondences"], proposed_pts) else "edited"
     origin = {"source": run.get("source") or "claude", "run_id": run_id, "proposal_status": status}
+    if padded:
+        origin["padded_synthetic"] = padded
     gt_rec = cal._gt_record(idx, res, fit_body, origin)
 
     def _store() -> None:

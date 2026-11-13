@@ -14,7 +14,7 @@ import numpy as np
 from footy_track.calibration import geometry as geo
 from footy_track.calibration.pitch_model import DEFAULT_LENGTH, DEFAULT_WIDTH, PitchModel
 from footy_track.calibration.prelabel.candidates import find_candidates
-from footy_track.calibration.prelabel.fit import fit_and_score
+from footy_track.calibration.prelabel.fit import fit_and_score, label_xy
 from footy_track.calibration.prelabel.identifier import (
     IdentifyInput,
     Identifier,
@@ -115,7 +115,7 @@ def _base_record(idx: int, image_size: tuple[int, int], pitch: PitchModel) -> di
 
 def _corr_record(lb, pitch) -> dict:
     c = {"image": [float(lb.uv[0]), float(lb.uv[1])], "pitch_id": lb.keypoint_id,
-         "pitch_xy": list(pitch.keypoints()[lb.keypoint_id]), "confidence": lb.confidence,
+         "pitch_xy": list(label_xy(lb, pitch)), "confidence": lb.confidence,
          "candidate_id": lb.candidate_id}
     if lb.uv_label is not None:  # moved by refinement: keep where it was labelled
         c["image_label"] = [float(lb.uv_label[0]), float(lb.uv_label[1])]
