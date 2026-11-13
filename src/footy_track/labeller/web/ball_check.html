@@ -42,6 +42,11 @@
   #meta { flex:none; padding:8px 12px; font-size:12px; color:var(--muted);
           display:flex; gap:8px; justify-content:space-between;
           white-space:nowrap; overflow:hidden; }
+  /* Prompt/note: wraps and never shrinks, so a long line grows the card
+     instead of being clipped under the image. */
+  #note { flex:none; padding:0 12px 10px; font-size:13px; line-height:1.35;
+          color:var(--muted); white-space:normal; overflow-wrap:anywhere; }
+  #note:empty { display:none; }
   #meta span { overflow:hidden; text-overflow:ellipsis; }
   #verdictFlash { position:absolute; inset:0; display:flex; align-items:center;
                   justify-content:center; font-size:64px; opacity:0;
@@ -82,7 +87,7 @@
         <svg id="overlay" xmlns="http://www.w3.org/2000/svg"></svg>
       </div>
       <div id="meta"><span id="clipName"></span><span id="provName"></span></div>
-      <div id="note" style="padding:0 12px 8px;font-size:12px;color:var(--muted)"></div>
+      <div id="note"></div>
       <div id="verdictFlash"></div>
     </div>
     <div id="empty">
@@ -139,9 +144,16 @@ const QS = new URLSearchParams(location.search);
 const queueUrl = () => {
   const p = new URLSearchParams({ limit: '60' });
   for (const k of ['source', 'clip']) if (QS.get(k)) p.set(k, QS.get(k));
+  if (QS.get('blind') === '0') p.set('blind', 'false');
   return `/ball_check/queue?${p}`;
 };
 const srcOf = (item) => item.source || 'sidecar';
+// Blind review of list cards (default): no source hints anywhere on screen.
+const isBlind = (item) => srcOf(item) === 'list' && item.blind !== false;
+const BLIND_PROMPT = 'Is the yellow box the in-play match ball? ' +
+  '(spare / crowd ball = Not a ball)';
+const blindQs = (item) =>
+  (srcOf(item) === 'list' && item.blind === false ? '&blind=false' : '');
 // Clip stems carry a date that eats the width the confidence needs.
 const shortClip = (c) => c.replace(/_20\d{6}/, '');
 const cropUrl = (item, pad) => {
@@ -156,7 +168,7 @@ const metaUrl = (item, pad) =>
 
 const clipUrl = (item, pad) =>
   `/ball_check/clip/${item.clip}/${item.frame_index}/${item.box_index}.mp4` +
-  `?pad=${pad}&src=${srcOf(item)}`;
+  `?pad=${pad}&src=${srcOf(item)}${blindQs(item)}`;
 const CLIP_PREFETCH = 2;       // clips are ~0.2 MB and ~1 s to render: stay shallow
 const clipCache = new Map();   // url -> Promise<Blob|null>
 let clipTimer = null, clipObjUrl = null, clipToken = 0;
@@ -309,10 +321,11 @@ function render() {
   $('empty').style.display = 'none';
   $('shot').src = cropUrl(item, PADS[padIdx]);
   $('clipName').textContent = `${shortClip(item.clip)} · f${item.frame_index}`;
-  $('provName').textContent = item.confidence === null || item.confidence === undefined
-    ? `${item.label} · ${item.provenance}`
-    : `${item.label} · conf ${item.confidence.toFixed(2)}`;
-  $('note').textContent = item.note || '';
+  $('provName').textContent = isBlind(item) ? ''
+    : item.confidence === null || item.confidence === undefined
+      ? `${item.label} · ${item.provenance}`
+      : `${item.label} · conf ${item.confidence.toFixed(2)}`;
+  $('note').textContent = isBlind(item) ? BLIND_PROMPT : (item.note || '');
   $('progress').textContent = `${judged} checked · ${remaining} left`;
   loadMeta(item);
   playClip(item);
