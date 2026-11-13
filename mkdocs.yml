@@ -21,6 +21,7 @@ nav:
       - Pipeline Overview: design/pipeline_overview.md
       - Player Re-ID: design/player_reid.md
       - Tracking Pipeline Design: design/tracking-pipeline.md
+      - Claude-assisted Ball Labelling: design/claude_autolabel_loop.md
       - System Design: system_design.md
       - System Overview: system_overview.md
       - Pipeline Architecture: pipeline_architecture.md
