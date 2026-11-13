@@ -34,6 +34,11 @@
   #shot { width:100%; height:100%; display:block; background:#000;
           object-fit:contain; }
   #overlay { position:absolute; inset:0; touch-action:none; }
+  /* Context clip: same box as the still, shown over it while it plays. */
+  #clip { position:absolute; inset:0; width:100%; height:100%; display:none;
+          object-fit:contain; background:#000; pointer-events:none; }
+  #stage.playing #clip { display:block; }
+  #stage.playing #overlay { visibility:hidden; pointer-events:none; }
   #meta { flex:none; padding:8px 12px; font-size:12px; color:var(--muted);
           display:flex; gap:8px; justify-content:space-between;
           white-space:nowrap; overflow:hidden; }
@@ -73,9 +78,11 @@
     <div id="card">
       <div id="stage">
         <img id="shot" alt="candidate ball crop" />
+        <video id="clip" muted playsinline preload="auto" disablepictureinpicture></video>
         <svg id="overlay" xmlns="http://www.w3.org/2000/svg"></svg>
       </div>
       <div id="meta"><span id="clipName"></span><span id="provName"></span></div>
+      <div id="note" style="padding:0 12px 8px;font-size:12px;color:var(--muted)"></div>
       <div id="verdictFlash"></div>
     </div>
     <div id="empty">
@@ -98,6 +105,7 @@
     </div>
     <div class="row">
       <button class="small" id="btnBoxOff">Box off</button>
+      <button class="small" id="btnReplay">Replay</button>
       <button class="small" id="btnUnsure">Unsure</button>
       <button class="small" id="btnZoom">Zoom</button>
       <button class="small" id="btnReset">Reset</button>
@@ -126,6 +134,13 @@ let box = null;                // live box in frame pixels {x1,y1,x2,y2}
 let edited = false;
 
 const $ = (id) => document.getElementById(id);
+// ?source=list|candidates|sidecar and ?clip=... steer the queue (default: auto).
+const QS = new URLSearchParams(location.search);
+const queueUrl = () => {
+  const p = new URLSearchParams({ limit: '60' });
+  for (const k of ['source', 'clip']) if (QS.get(k)) p.set(k, QS.get(k));
+  return `/ball_check/queue?${p}`;
+};
 const srcOf = (item) => item.source || 'sidecar';
 // Clip stems carry a date that eats the width the confidence needs.
 const shortClip = (c) => c.replace(/_20\d{6}/, '');
@@ -137,11 +152,69 @@ const metaUrl = (item, pad) =>
   `/ball_check/crop_meta/${item.clip}/${item.frame_index}/${item.box_index}` +
   `?pad=${pad}&src=${srcOf(item)}`;
 
+// ---- context clip: ~3 s MP4 centred on the card's frame, then the still ----
+
+const clipUrl = (item, pad) =>
+  `/ball_check/clip/${item.clip}/${item.frame_index}/${item.box_index}.mp4` +
+  `?pad=${pad}&src=${srcOf(item)}`;
+const CLIP_PREFETCH = 2;       // clips are ~0.2 MB and ~1 s to render: stay shallow
+const clipCache = new Map();   // url -> Promise<Blob|null>
+let clipTimer = null, clipObjUrl = null, clipToken = 0;
+
+// Fetch the whole clip as a blob (so prefetch really warms it and playback
+// starts instantly); the video element then plays a local object URL.
+function fetchClip(url) {
+  if (!clipCache.has(url)) {
+    clipCache.set(url, fetch(url).then(async (r) => (r.ok ? await r.blob() : null))
+      .catch(() => null));
+    while (clipCache.size > 8) clipCache.delete(clipCache.keys().next().value);
+  }
+  return clipCache.get(url);
+}
+
+function stopClip() {
+  clipToken += 1;
+  clearTimeout(clipTimer);
+  const v = $('clip');
+  $('stage').classList.remove('playing');
+  v.onended = v.onerror = v.onloadeddata = null;
+  try { v.pause(); } catch (e) {}
+  v.removeAttribute('src');
+  v.load();
+  if (clipObjUrl) { URL.revokeObjectURL(clipObjUrl); clipObjUrl = null; }
+}
+
+// The `ended` event returns us to the still + draggable box; a timer is only
+// a safety net (autoplay blocked, decode error) so the card is never stuck.
+async function playClip(item) {
+  stopClip();
+  const token = clipToken;
+  const blob = await fetchClip(clipUrl(item, PADS[padIdx]));
+  if (!blob || token !== clipToken || queue[0] !== item || offset !== 0) return;
+  clipObjUrl = URL.createObjectURL(blob);
+  const v = $('clip');
+  const done = () => { if (token === clipToken) stopClip(); };
+  v.onended = done;
+  v.onerror = done;
+  v.onloadeddata = () => {
+    if (token !== clipToken) return;
+    const p = v.play();
+    if (p && p.then) p.then(() => {
+      if (token !== clipToken) return;
+      $('stage').classList.add('playing');
+      clearTimeout(clipTimer);
+      clipTimer = setTimeout(done, ((v.duration || 3.5) + 1) * 1000);
+    }, done);
+  };
+  v.src = clipObjUrl;
+}
+
 function prefetch() {
   for (const item of queue.slice(1, 1 + PREFETCH)) {
     const img = new Image();
     img.src = cropUrl(item, PADS[padIdx]);
   }
+  for (const item of queue.slice(1, 1 + CLIP_PREFETCH)) fetchClip(clipUrl(item, PADS[padIdx]));
 }
 
 // ---- geometry: frame pixels <-> displayed image pixels ---------------------
@@ -239,8 +312,10 @@ function render() {
   $('provName').textContent = item.confidence === null || item.confidence === undefined
     ? `${item.label} · ${item.provenance}`
     : `${item.label} · conf ${item.confidence.toFixed(2)}`;
+  $('note').textContent = item.note || '';
   $('progress').textContent = `${judged} checked · ${remaining} left`;
   loadMeta(item);
+  playClip(item);
   prefetch();
 }
 
@@ -250,7 +325,7 @@ window.addEventListener('resize', drawBox);
 // ---- queue ----------------------------------------------------------------
 
 async function loadQueue(reset) {
-  const data = await (await fetch('/ball_check/queue?limit=60')).json();
+  const data = await (await fetch(queueUrl())).json();
   remaining = data.remaining;
   judged = data.judged;
   if (data.tau !== undefined) {
@@ -493,6 +568,7 @@ $('btnSmaller').onclick = () => scaleBox(0.8);
 async function step(delta) {
   const item = queue[0];
   if (!item || !meta) return;
+  stopClip();
   const target = delta === 0 ? 0 : offset + delta;
   const res = await (await fetch(
     `/ball_check/step/${item.clip}/${item.frame_index}/${item.box_index}` +
@@ -524,6 +600,7 @@ $('btnNo').onclick = () => judge('not_ball');
 $('btnBoxOff').onclick = () => judge('box_off');
 $('btnUnsure').onclick = () => judge('unsure');
 $('btnUndo').onclick = undo;
+$('btnReplay').onclick = () => { if (queue[0]) { if (offset) $('btnHome').onclick(); else playClip(queue[0]); } };
 $('btnReset').onclick = () => { if (queue[0]) loadMeta(queue[0]); $('status').textContent = ''; };
 $('btnZoom').onclick = () => {
   padIdx = (padIdx + 1) % PADS.length;
@@ -565,6 +642,7 @@ window.addEventListener('keydown', (e) => {
   else if (e.key === '[' || e.key === '-') scaleBox(0.8);
   else if (e.key === ']' || e.key === '=') scaleBox(1.25);
   else if (e.key === 'z') undo();
+  else if (e.key === 'p') $('btnReplay').onclick();
 });
 
 loadQueue(true);

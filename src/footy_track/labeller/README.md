@@ -771,13 +771,36 @@ reads `<gt dir>/ball_checks/` (`--ball-checks-dir`) into the feature store's
   (clip, frame, box, pad) — a different pad is a separate entry, never a stale
   hit.
   - Tests: `test_ball_check.py::test_crop_returns_jpeg_and_caches`
+- **LAB-1009a** (SHOULD) `GET /ball_check/clip/{clip}/{frame}/{box}.mp4`
+  (same `src`/`pad` params as the crop) returns a ~3 s H.264 MP4 (frame -1.5 s
+  .. +1.5 s, clamped to the clip, every source frame up to 30 fps, subsampled
+  above that) so a spare/crowd ball can be told from the match ball by how it
+  moves. It uses the still's crop window, fixed for every frame, upscaled
+  server-side (Lanczos) to 560 px wide, full colour, CRF 20, yuv420p, main
+  profile, even dimensions, moov atom first (iOS Safari). The box (and for
+  `src=list` the magenta other box) is drawn on the centre frame only, which is
+  repeated for 500 ms so the box is visible and exact. The response honours
+  HTTP `Range` (206 / 416; iOS requires it). Raw frames are piped from one seek
+  + sequential OpenCV reads into ffmpeg; results sit in a 40-entry LRU keyed by
+  (src, clip, frame, box, pad). Headers `X-Clip-Frames` / `X-Clip-Duration-Ms`.
+  If ffmpeg is not installed the same URL serves the old small GIF
+  (`image/gif`, 240 px, 40 colours, ~10 fps).
+  - Tests: `test_ball_check.py::test_clip_endpoint_serves_mp4_with_range_and_clamps`,
+    `test_clip_frame_indices_clamp_to_the_video`, `test_parse_range`,
+    `test_parse_range_unsatisfiable`, `test_mp4_writer_output_is_ios_playable`,
+    `test_clip_endpoint_falls_back_to_gif_without_ffmpeg`,
+    `test_gif_bytes_is_a_play_once_animation`,
+    `test_clip_endpoint_list_source_and_404s`
 - **LAB-1010** (MUST) `GET /ball_check` serves the page and the hub links to
   it; the page carries a mobile viewport meta.
   - Tests: `test_ball_check.py::test_ball_check_page_served_and_linked_from_hub`
 - **LAB-1011** (SHOULD) Frontend: swipe right = ball, left = not a ball (the
   card follows the finger; vertical drags are ignored); buttons for
   unsure/zoom/undo; arrow keys and y/n/u/z on a desktop. The next crops are
-  prefetched and the queue refills below 5 cards. A failed verdict POST puts
+  prefetched (stills and the next two clips) and the queue refills below 5
+  cards. When a card appears the page first plays its context clip (LAB-1009a,
+  a muted inline `<video>`), then on its `ended` event shows the still with the draggable box; the answer buttons work while it
+  plays, and Replay / `p` plays it again (stepping or Zoom also stop/restart it). A failed verdict POST puts
   the card back rather than reporting a saved verdict.
   - Tests: UNTESTED-FRONTEND (`web/ball_check.html`; the server contract is
     LAB-1004..1009)
@@ -790,6 +813,20 @@ reads `<gt dir>/ball_checks/` (`--ball-checks-dir`) into the feature store's
   Identity rules: `footy_track.clip_id` and
   [feature store §3.1a](../../../docs/design/feature_store.md#31a-clip-identity-canonical-clip-id).
   - Tests: `test_ball_check.py::test_save_box_on_a_raw_named_candidate_writes_into_the_existing_gt_stem`
+- **LAB-1013b** (MAY) `GET /ball_check/queue?source=list` serves the explicit
+  cards of the review list named by `FOOTY_BALL_CHECK_LIST` (`{"items": [{clip,
+  frame_index, bbox, other_bbox?, label?, note?, ...}]}`, normalised boxes), in
+  file order, skipping cards that have a verdict. A card's `box_index` is its
+  position in the file and its source is `list`; `/ball_check/crop` and
+  `crop_meta` with `src=list` resolve the box from the file and draw
+  `other_bbox` in magenta. The page forwards `?source=` and `?clip=` to the
+  queue (`/ball_check?source=list`). No file configured means an empty pool.
+  List verdicts go to the normal log and are excluded from `/ball_check/stats`
+  and the confidence-band estimate (hand-picked cards are not a sample).
+  Used by the Claude-verify re-check (`docs/design/claude_autolabel_loop.md`
+  section 8); a minimal piece of T-47, not the `claude` candidate pool.
+  - Tests: `test_ball_check.py::test_list_queue_file_order_skips_judged`,
+    `test_list_crop_and_meta`
 - **LAB-1014** (PLANNED, MUST) `/ball_check` can serve cards from the `claude`
   candidate pool, uncertain first (Claude and the detector disagree, low
   confidence, cell corrections). A "yes" on such a proposal writes the box to

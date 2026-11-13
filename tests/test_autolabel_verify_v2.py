@@ -10,6 +10,9 @@ from footy_track.autolabel import claude_cli
 from footy_track.autolabel.prompts_v2 import PROMPTS_V2, build_prompt_v2
 from footy_track.autolabel.verify_pilot import Cand
 from footy_track.autolabel.verify_v2 import (
+    apply_decisions,
+    build_review_items,
+    find_disagreements,
     normalise_answer,
     patch_origin,
     question_id,
@@ -267,3 +270,113 @@ def test_ask_resumes_and_stops_on_limit(tmp_path, monkeypatch):
 
 def test_api_backend_not_wired(tmp_path):
     assert cv.main(["ask", "--run", str(tmp_path), "--backend", "api"]) == 2
+
+
+# ------------------------------------------------------------------ recheck (disagreements)
+
+
+def _recheck_fixture():
+    questions = [
+        {
+            "id": "c_000010_0",
+            "fkey": "c|10",
+            "clip": "c",
+            "frame": 10,
+            "split": "held_out",
+            "cand": {
+                "cx": 100,
+                "cy": 100,
+                "w": 10,
+                "h": 10,
+                "conf": 0.9,
+                "source": "tracker",
+            },
+        },
+        {
+            "id": "c_000010_1",
+            "fkey": "c|10",
+            "clip": "c",
+            "frame": 10,
+            "split": "held_out",
+            "cand": {
+                "cx": 800,
+                "cy": 400,
+                "w": 10,
+                "h": 10,
+                "conf": 0.6,
+                "source": "top",
+            },
+        },
+        {
+            "id": "c_000020_0",
+            "fkey": "c|20",
+            "clip": "c",
+            "frame": 20,
+            "split": "held_out",
+            "cand": {
+                "cx": 50,
+                "cy": 50,
+                "w": 10,
+                "h": 10,
+                "conf": 0.7,
+                "source": "top",
+            },
+        },
+    ]
+    truth = {
+        "c|10": {"kind": "ball", "gt": [[102, 101]]},
+        "c|20": {"kind": "no_ball", "gt": []},
+    }
+    ans = {
+        "c_000010_0": {"verdict": "not_ball", "confidence": 0.8, "reason": ""},
+        "c_000010_1": {"verdict": "ball", "confidence": 0.9, "reason": ""},
+        "c_000020_0": {"verdict": "ball", "confidence": 0.6, "reason": ""},
+    }
+    return questions, truth, ans
+
+
+def test_find_disagreements_types():
+    q, t, a = _recheck_fixture()
+    d = find_disagreements(q, t, a)
+    assert {x["qid"]: x["type"] for x in d} == {
+        "c_000010_0": "false_not_ball",
+        "c_000010_1": "false_ball",
+        "c_000020_0": "false_ball_no_ball_frame",
+    }
+
+
+def test_review_items_and_decisions():
+    q, t, a = _recheck_fixture()
+    items = build_review_items(
+        find_disagreements(q, t, a), {"c": (1000, 500)}, {"c": "c_vid"}
+    )
+    # frame 10: GT card first, then its two Claude cards; frame 20: one Claude card
+    assert [i["role"] for i in items] == ["gt", "claude", "claude", "claude"]
+    assert all(i["clip"] == "c_vid" and i["confidence"] is None for i in items)
+    assert items[0]["bbox"]["x"] == pytest.approx((102 - 6) / 1000)
+    ids = [i["id"] for i in items]
+
+    # George: the GT mark is not the ball, Claude's far box is; frame 20's box is a spare
+    dec = {
+        ids[0]: {"verdict": "not_ball"},
+        ids[2]: {"verdict": "ball"},
+        ids[3]: {"verdict": "not_ball"},
+    }
+    new, stats = apply_decisions(t, q, items, dec)
+    assert new["c|10"] == {"kind": "ball", "gt": [[800, 400]]}
+    assert new["c|20"]["kind"] == "no_ball"
+    assert stats["frames_changed"] == 1 and stats["gt_not_ball"] == 1
+    rows = {r["id"]: r for r in score_candidates(q, new, a)}
+    assert rows["c_000010_1"]["near"] and not rows["c_000010_0"]["near"]
+
+    # GT right, Claude wrong; and a dragged correction of the mark
+    new, _ = apply_decisions(t, q, items, {ids[0]: {"verdict": "ball"}})
+    assert new == t
+    corr = {
+        "verdict": "corrected",
+        "corrected_bbox": {"x": 0.3, "y": 0.2, "w": 0.01, "h": 0.02},
+    }
+    new, _ = apply_decisions(t, q, items, {ids[0]: corr})
+    assert new["c|10"]["gt"] == [pytest.approx([305, 105])]
+    # no decisions -> untouched
+    assert apply_decisions(t, q, items, {})[0] == t
