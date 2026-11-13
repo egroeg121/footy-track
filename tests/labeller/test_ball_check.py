@@ -104,7 +104,11 @@ def test_queue_include_gt_and_clip_filters(client, clips_dir, gt_marks_dir):
 def test_queue_order_is_stable_and_respects_limit(client, clips_dir, gt_marks_dir):
     (clips_dir / "clip.mp4").touch()
     _write_sidecar(
-        gt_marks_dir, "clip", [_line(i, ["in_play_ball", "yolo"]) for i in range(8)]
+        gt_marks_dir,
+        "clip",
+        [
+            _line(i, ["in_play_ball", "yolo"], x=0.1 * i) for i in range(8)
+        ],  # 8 far-apart tracks
     )
     first = client.get("/ball_check/queue").json()["items"]
     second = client.get("/ball_check/queue").json()["items"]
@@ -954,3 +958,167 @@ def test_clip_endpoint_list_source_and_404s(
     assert client.get("/ball_check/clip/clip/9/0.mp4?src=list").status_code == 200
     assert client.get("/ball_check/clip/nosuch/0/0.mp4").status_code == 404
     assert client.get("/ball_check/clip/clip/8/0.mp4?src=list").status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Sidecar spot-check ordering: tracks, phase 1, phase 2
+# ---------------------------------------------------------------------------
+
+
+def _track_lines(frames, x0=0.1, dx=0.002, y=0.3, tag="in_play_ball"):
+    return [
+        _line(f, [tag, "vittrack"], x=x0 + dx * i, y=y) for i, f in enumerate(frames)
+    ]
+
+
+def _spot_setup(clips_dir, gt_marks_dir):
+    """clip a: 12-frame track + a far-away 3-frame track; clip b: 8 frames."""
+    for c in ("a", "b"):
+        (clips_dir / f"{c}.mp4").touch()
+    _write_sidecar(
+        gt_marks_dir,
+        "a",
+        _track_lines(range(0, 12)) + _track_lines(range(0, 3), x0=0.7, y=0.7),
+    )
+    _write_sidecar(gt_marks_dir, "b", _track_lines(range(100, 108), x0=0.4))
+
+
+def _q(client, qs="", limit=500):
+    return client.get(f"/ball_check/queue?limit={limit}&source=sidecar{qs}").json()
+
+
+def test_group_tracks_splits_on_distance_label_and_gap():
+    def rec(f, x, label="in_play_ball", clip="c"):
+        return {
+            "clip": clip,
+            "frame_index": f,
+            "box_index": 0,
+            "label": label,
+            "bbox": {"x": x, "y": 0.5, "w": 0.01, "h": 0.01},
+        }
+
+    pool = [rec(0, 0.1), rec(1, 0.11), rec(3, 0.12)]  # gap of 2 is allowed
+    assert len(ball_check._group_tracks(pool)) == 1
+    assert len(ball_check._group_tracks([rec(0, 0.1), rec(1, 0.5)])) == 2  # jump
+    assert len(ball_check._group_tracks([rec(0, 0.1), rec(9, 0.1)])) == 2  # gap > 5
+    assert (
+        len(
+            ball_check._group_tracks(
+                [rec(0, 0.1), rec(1, 0.1, label="out_of_play_ball")]
+            )
+        )
+        == 2
+    )  # label
+    assert (
+        len(ball_check._group_tracks([rec(0, 0.1), rec(1, 0.1, clip="d")])) == 2
+    )  # clip
+
+
+def test_phase1_is_first_last_and_biggest_jump(client, clips_dir, gt_marks_dir):
+    (clips_dir / "a.mp4").touch()
+    lines = _track_lines(range(10))
+    lines[6] = _line(
+        6, ["in_play_ball", "vittrack"], x=0.1 + 0.03, y=0.3
+    )  # jump into f6
+    lines[7] = _line(7, ["in_play_ball", "vittrack"], x=0.1 + 0.032, y=0.3)
+    _write_sidecar(gt_marks_dir, "a", lines)
+    d = _q(client)
+    assert d["phase"] == 1 and d["tracks"] == 1
+    assert sorted(i["frame_index"] for i in d["items"]) == [0, 6, 9]
+
+
+def test_phase1_adds_middle_for_long_tracks(client, clips_dir, gt_marks_dir):
+    (clips_dir / "a.mp4").touch()
+    _write_sidecar(gt_marks_dir, "a", _track_lines(range(60), dx=0.0005))
+    frames = {i["frame_index"] for i in _q(client)["items"]}
+    assert {0, 59, 30} <= frames
+
+
+def test_phase1_interleaves_clips_and_tracks(client, clips_dir, gt_marks_dir):
+    _spot_setup(clips_dir, gt_marks_dir)
+    d = _q(client)
+    assert d["tracks"] == 3
+    items = d["items"]
+    # first, last and the largest step per track (3 + 3 + 3)
+    assert d["remaining"] == len(items) == 9
+    tid = []
+    for i in items:
+        tid.append((i["clip"], round(i["bbox"]["y"], 1)))
+    assert all(
+        x != y for x, y in zip(tid, tid[1:], strict=False)
+    )  # never same track twice in a row
+    assert {c for c, _ in tid[:2]} == {"a", "b"}  # round-robin across clips
+
+
+def test_judging_does_not_change_keys_or_order(client, clips_dir, gt_marks_dir):
+    _spot_setup(clips_dir, gt_marks_dir)
+    first = _q(client)["items"]
+    k = lambda i: (i["clip"], i["frame_index"], i["box_index"])  # noqa: E731
+    r = _verdict(client, *k(first[0]), "ball")
+    assert r["ok"]
+    second = _q(client)["items"]
+    assert [k(i) for i in second] == [k(i) for i in first[1:]]
+    path = gt_marks_dir / "ball_checks" / f"{first[0]['clip']}.jsonl"
+    rec = json.loads(path.read_text().splitlines()[0])
+    assert (rec["source"], rec["clip"], rec["frame_index"], rec["box_index"]) == (
+        "sidecar",
+        *k(first[0]),
+    )
+
+
+def test_all_ball_verdicts_finish_without_phase2(client, clips_dir, gt_marks_dir):
+    _spot_setup(clips_dir, gt_marks_dir)
+    for i in _q(client)["items"]:
+        _verdict(client, i["clip"], i["frame_index"], i["box_index"], "ball")
+    d = _q(client)
+    assert d["phase"] == "done" and d["remaining"] == 0 and d["items"] == []
+    assert d["judged"] == 9
+
+
+def test_phase2_expands_only_tracks_with_a_non_ball_verdict(
+    client, clips_dir, gt_marks_dir
+):
+    _spot_setup(clips_dir, gt_marks_dir)
+    p1 = _q(client)["items"]
+    for i in p1:
+        bad = (
+            i["clip"] == "a"
+            and round(i["bbox"]["y"], 1) == 0.3
+            and i["frame_index"] == 11
+        )
+        _verdict(
+            client,
+            i["clip"],
+            i["frame_index"],
+            i["box_index"],
+            "not_ball" if bad else "ball",
+        )
+    d = _q(client)
+    assert d["phase"] == 2
+    got = sorted((i["clip"], i["frame_index"]) for i in d["items"])
+    # long track of clip a: every 5th member (0, 5, 10) minus judged first/last
+    assert {c for c, _ in got} == {"a"}
+    assert all(round(i["bbox"]["y"], 1) == 0.3 for i in d["items"])
+    assert [f for _, f in got] == [5, 10] or [f for _, f in got] == [5]
+    assert d["remaining"] == len(got)
+
+
+def test_dense_flag_lists_every_remaining_frame_after_phase1(
+    client, clips_dir, gt_marks_dir
+):
+    _spot_setup(clips_dir, gt_marks_dir)
+    for i in _q(client)["items"]:
+        _verdict(client, i["clip"], i["frame_index"], i["box_index"], "ball")
+    assert _q(client)["phase"] == "done"
+    d = _q(client, "&dense=1")
+    assert d["phase"] == 2 and d["remaining"] == 23 - 9  # 12+3+8 boxes, 9 judged
+
+
+def test_existing_verdicts_are_respected(client, clips_dir, gt_marks_dir):
+    """A box judged before this change stays judged and is not re-served."""
+    _spot_setup(clips_dir, gt_marks_dir)
+    _verdict(client, "a", 5, 0, "ball")  # mid-track, not a phase-1 card
+    d = _q(client)
+    assert d["judged"] == 1
+    assert ("a", 5) not in {(i["clip"], i["frame_index"]) for i in d["items"]}
+    assert d["remaining"] == 9
