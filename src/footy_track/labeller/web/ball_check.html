@@ -36,8 +36,7 @@
   #overlay { position:absolute; inset:0; touch-action:none; }
   /* Context clip: same box as the still, shown over it while it plays. */
   #clip { position:absolute; inset:0; width:100%; height:100%; display:none;
-          object-fit:contain; background:#000; image-rendering:pixelated;
-          pointer-events:none; }
+          object-fit:contain; background:#000; pointer-events:none; }
   #stage.playing #clip { display:block; }
   #stage.playing #overlay { visibility:hidden; pointer-events:none; }
   #meta { flex:none; padding:8px 12px; font-size:12px; color:var(--muted);
@@ -79,7 +78,7 @@
     <div id="card">
       <div id="stage">
         <img id="shot" alt="candidate ball crop" />
-        <img id="clip" alt="3 second context clip" />
+        <video id="clip" muted playsinline preload="auto" disablepictureinpicture></video>
         <svg id="overlay" xmlns="http://www.w3.org/2000/svg"></svg>
       </div>
       <div id="meta"><span id="clipName"></span><span id="provName"></span></div>
@@ -153,22 +152,21 @@ const metaUrl = (item, pad) =>
   `/ball_check/crop_meta/${item.clip}/${item.frame_index}/${item.box_index}` +
   `?pad=${pad}&src=${srcOf(item)}`;
 
-// ---- context clip: ~3 s GIF centred on the card's frame, then the still ----
+// ---- context clip: ~3 s MP4 centred on the card's frame, then the still ----
 
 const clipUrl = (item, pad) =>
-  `/ball_check/clip/${item.clip}/${item.frame_index}/${item.box_index}.gif` +
+  `/ball_check/clip/${item.clip}/${item.frame_index}/${item.box_index}.mp4` +
   `?pad=${pad}&src=${srcOf(item)}`;
-const clipCache = new Map();   // url -> Promise<{blob, ms}|null>
-const CLIP_PREFETCH = 2;       // clips are ~0.3 MB and ~1 s to render: stay shallow
+const CLIP_PREFETCH = 2;       // clips are ~0.2 MB and ~1 s to render: stay shallow
+const clipCache = new Map();   // url -> Promise<Blob|null>
 let clipTimer = null, clipObjUrl = null, clipToken = 0;
 
+// Fetch the whole clip as a blob (so prefetch really warms it and playback
+// starts instantly); the video element then plays a local object URL.
 function fetchClip(url) {
   if (!clipCache.has(url)) {
-    clipCache.set(url, fetch(url).then(async (r) => {
-      if (!r.ok) return null;
-      const ms = parseInt(r.headers.get('X-Clip-Duration-Ms') || '3000', 10);
-      return { blob: await r.blob(), ms };
-    }).catch(() => null));
+    clipCache.set(url, fetch(url).then(async (r) => (r.ok ? await r.blob() : null))
+      .catch(() => null));
     while (clipCache.size > 8) clipCache.delete(clipCache.keys().next().value);
   }
   return clipCache.get(url);
@@ -177,26 +175,38 @@ function fetchClip(url) {
 function stopClip() {
   clipToken += 1;
   clearTimeout(clipTimer);
+  const v = $('clip');
   $('stage').classList.remove('playing');
-  $('clip').removeAttribute('src');
+  v.onended = v.onerror = v.onloadeddata = null;
+  try { v.pause(); } catch (e) {}
+  v.removeAttribute('src');
+  v.load();
   if (clipObjUrl) { URL.revokeObjectURL(clipObjUrl); clipObjUrl = null; }
 }
 
-// A fresh object URL each time restarts the GIF from frame 0 (re-assigning the
-// same src would not), so Replay and the first play share one path.
+// The `ended` event returns us to the still + draggable box; a timer is only
+// a safety net (autoplay blocked, decode error) so the card is never stuck.
 async function playClip(item) {
   stopClip();
   const token = clipToken;
-  const got = await fetchClip(clipUrl(item, PADS[padIdx]));
-  if (!got || token !== clipToken || queue[0] !== item || offset !== 0) return;
-  clipObjUrl = URL.createObjectURL(got.blob);
-  const img = $('clip');
-  img.onload = () => {
+  const blob = await fetchClip(clipUrl(item, PADS[padIdx]));
+  if (!blob || token !== clipToken || queue[0] !== item || offset !== 0) return;
+  clipObjUrl = URL.createObjectURL(blob);
+  const v = $('clip');
+  const done = () => { if (token === clipToken) stopClip(); };
+  v.onended = done;
+  v.onerror = done;
+  v.onloadeddata = () => {
     if (token !== clipToken) return;
-    $('stage').classList.add('playing');
-    clipTimer = setTimeout(() => { if (token === clipToken) stopClip(); }, got.ms + 150);
+    const p = v.play();
+    if (p && p.then) p.then(() => {
+      if (token !== clipToken) return;
+      $('stage').classList.add('playing');
+      clearTimeout(clipTimer);
+      clipTimer = setTimeout(done, ((v.duration || 3.5) + 1) * 1000);
+    }, done);
   };
-  img.src = clipObjUrl;
+  v.src = clipObjUrl;
 }
 
 function prefetch() {

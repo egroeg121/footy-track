@@ -771,18 +771,24 @@ reads `<gt dir>/ball_checks/` (`--ball-checks-dir`) into the feature store's
   (clip, frame, box, pad) — a different pad is a separate entry, never a stale
   hit.
   - Tests: `test_ball_check.py::test_crop_returns_jpeg_and_caches`
-- **LAB-1009a** (SHOULD) `GET /ball_check/clip/{clip}/{frame}/{box}.gif`
-  (same `src`/`pad` params as the crop) returns a ~3 s play-once GIF
-  (frame -1.5 s .. +1.5 s, clamped to the clip, subsampled to ~10 fps, at most
-  240 px wide, 40 colours) so a spare/crowd ball can be told from the match
-  ball by how it moves. It uses the still's crop window, fixed for every frame;
-  the box (and for `src=list` the magenta other box) is drawn on the centre
-  frame only, which is held 400 ms. Works for every source. Frames are decoded
-  with one seek then sequential reads; results sit in a 40-entry LRU keyed by
+- **LAB-1009a** (SHOULD) `GET /ball_check/clip/{clip}/{frame}/{box}.mp4`
+  (same `src`/`pad` params as the crop) returns a ~3 s H.264 MP4 (frame -1.5 s
+  .. +1.5 s, clamped to the clip, every source frame up to 30 fps, subsampled
+  above that) so a spare/crowd ball can be told from the match ball by how it
+  moves. It uses the still's crop window, fixed for every frame, upscaled
+  server-side (Lanczos) to 560 px wide, full colour, CRF 20, yuv420p, main
+  profile, even dimensions, moov atom first (iOS Safari). The box (and for
+  `src=list` the magenta other box) is drawn on the centre frame only, which is
+  repeated for 500 ms so the box is visible and exact. The response honours
+  HTTP `Range` (206 / 416; iOS requires it). Raw frames are piped from one seek
+  + sequential OpenCV reads into ffmpeg; results sit in a 40-entry LRU keyed by
   (src, clip, frame, box, pad). Headers `X-Clip-Frames` / `X-Clip-Duration-Ms`.
-  Typical cost: 0.3-1.3 s to render, 0.3-0.5 MB.
-  - Tests: `test_ball_check.py::test_clip_endpoint_serves_gif_and_clamps_range`,
-    `test_clip_frame_indices_clamp_to_the_video`,
+  If ffmpeg is not installed the same URL serves the old small GIF
+  (`image/gif`, 240 px, 40 colours, ~10 fps).
+  - Tests: `test_ball_check.py::test_clip_endpoint_serves_mp4_with_range_and_clamps`,
+    `test_clip_frame_indices_clamp_to_the_video`, `test_parse_range`,
+    `test_parse_range_unsatisfiable`, `test_mp4_writer_output_is_ios_playable`,
+    `test_clip_endpoint_falls_back_to_gif_without_ffmpeg`,
     `test_gif_bytes_is_a_play_once_animation`,
     `test_clip_endpoint_list_source_and_404s`
 - **LAB-1010** (MUST) `GET /ball_check` serves the page and the hub links to
@@ -792,8 +798,8 @@ reads `<gt dir>/ball_checks/` (`--ball-checks-dir`) into the feature store's
   card follows the finger; vertical drags are ignored); buttons for
   unsure/zoom/undo; arrow keys and y/n/u/z on a desktop. The next crops are
   prefetched (stills and the next two clips) and the queue refills below 5
-  cards. When a card appears the page first plays its context clip (LAB-1009a),
-  then shows the still with the draggable box; the answer buttons work while it
+  cards. When a card appears the page first plays its context clip (LAB-1009a,
+  a muted inline `<video>`), then on its `ended` event shows the still with the draggable box; the answer buttons work while it
   plays, and Replay / `p` plays it again (stepping or Zoom also stop/restart it). A failed verdict POST puts
   the card back rather than reporting a saved verdict.
   - Tests: UNTESTED-FRONTEND (`web/ball_check.html`; the server contract is

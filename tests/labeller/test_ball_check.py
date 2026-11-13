@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import io
 import json
+import subprocess
 
 import numpy as np
 import pytest
@@ -787,7 +788,7 @@ def test_list_crop_and_meta(client, clips_dir, tmp_path, monkeypatch, fake_cv2):
 
 
 # ---------------------------------------------------------------------------
-# /ball_check/clip  (context GIF)
+# /ball_check/clip  (context clip)
 # ---------------------------------------------------------------------------
 
 
@@ -797,13 +798,13 @@ def clip_cache(monkeypatch):
 
 
 def test_clip_frame_indices_clamp_to_the_video():
-    # 25 fps: +-1.5 s = +-38 frames, subsampled by 2 (to ~12 fps).
-    assert ball_check._clip_frame_indices(100, 25.0, 1000) == (62, 138, 2)
+    # 25 fps: +-1.5 s = +-38 frames, every frame kept (<= 30 fps cap).
+    assert ball_check._clip_frame_indices(100, 25.0, 1000) == (62, 138, 1)
     assert ball_check._clip_frame_indices(5, 25.0, 1000)[0] == 0
     first, last, _ = ball_check._clip_frame_indices(990, 25.0, 1000)
     assert (first, last) == (952, 999)
-    # 50 fps source -> every 5th frame (10 fps)
-    assert ball_check._clip_frame_indices(200, 50.0, 0) == (125, 275, 5)
+    # 50 fps source -> every 2nd frame (25 fps out)
+    assert ball_check._clip_frame_indices(200, 50.0, 0) == (125, 275, 2)
 
 
 def test_gif_bytes_is_a_play_once_animation():
@@ -813,8 +814,70 @@ def test_gif_bytes_is_a_play_once_animation():
     assert "loop" not in im.info  # no NETSCAPE loop extension = plays once
 
 
+@pytest.mark.parametrize(
+    ("hdr", "size", "want"),
+    [
+        (None, 100, None),
+        ("bytes=0-1", 100, (0, 1)),
+        ("bytes=10-", 100, (10, 99)),
+        ("bytes=90-500", 100, (90, 99)),
+        ("bytes=-5", 100, (95, 99)),
+    ],
+)
+def test_parse_range(hdr, size, want):
+    assert ball_check._parse_range(hdr, size) == want
+
+
+@pytest.mark.parametrize("hdr", ["bytes=100-", "bytes=5-2", "bytes=x-y"])
+def test_parse_range_unsatisfiable(hdr):
+    with pytest.raises(ValueError):
+        ball_check._parse_range(hdr, 100)
+
+
 @pytest.mark.usefixtures("bc_cache", "clip_cache")
-def test_clip_endpoint_serves_gif_and_clamps_range(
+def test_clip_endpoint_serves_mp4_with_range_and_clamps(
+    client, clips_dir, gt_marks_dir, fake_cv2, monkeypatch
+):
+    (clips_dir / "clip.mp4").touch()
+    _write_sidecar(gt_marks_dir, "clip", [_line(2, ["in_play_ball", "yolo"])])
+    written = []
+
+    class FakeWriter:
+        def __init__(self, w, h, fps):
+            written.append(("init", w, h, fps))
+
+        def write(self, frame):
+            written.append("f")
+
+        def finish(self):
+            return b"0123456789"
+
+    monkeypatch.setattr(ball_check, "_have_ffmpeg", lambda: True)
+    monkeypatch.setattr(ball_check, "_Mp4Writer", FakeWriter)
+    # fake video: 25 fps, 10 frames -> frames 0..9 all kept, centre on 2
+    res = client.get("/ball_check/clip/clip/2/0.mp4")
+    assert res.status_code == 200
+    assert res.headers["content-type"] == "video/mp4"
+    assert res.headers["accept-ranges"] == "bytes"
+    assert res.content == b"0123456789"
+    _, w, h, fps = written[0]
+    assert w % 2 == 0 and h % 2 == 0 and fps == 25.0
+    hold = round(ball_check._CLIP_HOLD_MS / 1000 * 25.0)
+    assert written.count("f") == 10 - 1 + hold  # centre frame repeated
+    assert res.headers["x-clip-frames"] == str(10 - 1 + hold)
+    # Range (what iOS Safari sends) -> 206 from the cache, no re-render
+    monkeypatch.setattr(ball_check, "_Mp4Writer", lambda *a: 1 / 0)
+    r2 = client.get("/ball_check/clip/clip/2/0.mp4", headers={"Range": "bytes=0-1"})
+    assert r2.status_code == 206 and r2.content == b"01"
+    assert r2.headers["content-range"] == "bytes 0-1/10"
+    r3 = client.get("/ball_check/clip/clip/2/0.mp4", headers={"Range": "bytes=4-"})
+    assert r3.status_code == 206 and r3.content == b"456789"
+    r4 = client.get("/ball_check/clip/clip/2/0.mp4", headers={"Range": "bytes=50-"})
+    assert r4.status_code == 416
+
+
+@pytest.mark.usefixtures("bc_cache", "clip_cache")
+def test_clip_endpoint_falls_back_to_gif_without_ffmpeg(
     client, clips_dir, gt_marks_dir, fake_cv2, monkeypatch
 ):
     (clips_dir / "clip.mp4").touch()
@@ -825,18 +888,30 @@ def test_clip_endpoint_serves_gif_and_clamps_range(
         seen["n"], seen["d"] = len(frames), durations
         return b"GIF89a-fake"
 
+    monkeypatch.setattr(ball_check, "_have_ffmpeg", lambda: False)
     monkeypatch.setattr(ball_check, "_gif_bytes", fake_gif)
-    # fake video: 25 fps, 10 frames -> frames 0..9, step 2, centre on 2
-    res = client.get("/ball_check/clip/clip/2/0.gif")
-    assert res.status_code == 200
-    assert res.headers["content-type"] == "image/gif"
-    assert res.content == b"GIF89a-fake"
-    assert seen["n"] == 5  # frames 0,2,4,6,8 - clamped at both ends
-    assert ball_check._CLIP_HOLD_MS in seen["d"]  # centre frame held
-    assert res.headers["x-clip-frames"] == "5"
-    # second request is a cache hit, not a re-render
-    monkeypatch.setattr(ball_check, "_gif_bytes", lambda *a: 1 / 0)
-    assert client.get("/ball_check/clip/clip/2/0.gif").status_code == 200
+    res = client.get("/ball_check/clip/clip/2/0.mp4")
+    assert res.status_code == 200 and res.headers["content-type"] == "image/gif"
+    assert seen["n"] == 5  # frames 0,2,4,6,8 at ~10 fps
+    assert ball_check._CLIP_HOLD_MS in seen["d"]
+
+
+@pytest.mark.skipif(not ball_check._have_ffmpeg(), reason="ffmpeg not installed")
+def test_mp4_writer_output_is_ios_playable(tmp_path):
+    w = ball_check._Mp4Writer(64, 48, 25.0)
+    for v in range(10):
+        w.write(np.full((48, 64, 3), v * 20, np.uint8))
+    data = w.finish()
+    assert data and data[4:8] == b"ftyp"
+    assert data.index(b"moov") < data.index(b"mdat")  # faststart
+    f = tmp_path / "c.mp4"
+    f.write_bytes(data)
+    out = subprocess.run(
+        ["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries",
+         "stream=codec_name,pix_fmt,width,height,nb_frames", "-of", "csv=p=0", str(f)],
+        capture_output=True, text=True, check=True,
+    ).stdout.strip()  # fmt: skip
+    assert out == "h264,64,48,yuv420p,10"
 
 
 @pytest.mark.usefixtures("bc_cache", "clip_cache")
@@ -844,8 +919,9 @@ def test_clip_endpoint_list_source_and_404s(
     client, clips_dir, tmp_path, monkeypatch, fake_cv2
 ):
     (clips_dir / "clip.mp4").touch()
+    monkeypatch.setattr(ball_check, "_have_ffmpeg", lambda: False)
     monkeypatch.setattr(ball_check, "_gif_bytes", lambda f, d: b"GIF89a")
     _write_list(tmp_path, monkeypatch, [_card("clip", 9)])
-    assert client.get("/ball_check/clip/clip/9/0.gif?src=list").status_code == 200
-    assert client.get("/ball_check/clip/nosuch/0/0.gif").status_code == 404
-    assert client.get("/ball_check/clip/clip/8/0.gif?src=list").status_code == 404
+    assert client.get("/ball_check/clip/clip/9/0.mp4?src=list").status_code == 200
+    assert client.get("/ball_check/clip/nosuch/0/0.mp4").status_code == 404
+    assert client.get("/ball_check/clip/clip/8/0.mp4?src=list").status_code == 404

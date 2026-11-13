@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import asyncio
 import collections
+import contextlib
 import hashlib
 import json
 import logging
@@ -32,7 +33,7 @@ import time
 from pathlib import Path
 
 import cv2
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from fastapi.responses import Response
 
 from footy_track.clip_id import canonical_clip_id
@@ -90,18 +91,24 @@ _MAX_PAD_FACTOR = 40.0
 _BC_CROP_CACHE: collections.OrderedDict[tuple, bytes] = collections.OrderedDict()
 _BC_CROP_CACHE_MAX = 200
 
-# Context clip (animated GIF) -------------------------------------------------
+# Context clip (H.264 MP4, GIF fallback) --------------------------------------
 #: Seconds of footage either side of the card's frame.
 _CLIP_HALF_S = 1.5
-#: Playback rate of the clip; the source is subsampled to this.
-_CLIP_FPS = 10.0
-#: Max rendered width in px. Windows narrower than this are NOT upscaled (the
-#: page scales them, pixelated): GIF size is dominated by broadcast grain, and
-#: encoding at the native crop size is ~4x smaller than at 360 px.
-_CLIP_W = 240
-#: The centre frame (the one the box belongs to) is held this long, ms.
-_CLIP_HOLD_MS = 400
-_BC_CLIP_CACHE: collections.OrderedDict[tuple, tuple[bytes, int, int]] = (
+#: Output frame rate cap; sources above it are subsampled by whole frames.
+_CLIP_MAX_FPS = 30.0
+#: Rendered width in px: the crop is upscaled server-side (Lanczos) to this, so
+#: the phone shows a smooth, sharp picture rather than pixelated CSS scaling.
+_CLIP_W = 560
+#: H.264 quality (lower = better); the clip is ~3 s so size stays small.
+_CLIP_CRF = 20
+#: The centre frame (the one the box belongs to) is repeated this long, ms, so
+#: the box is on screen long enough to see and is exactly right (it is the
+#: frame the box was drawn on; neighbouring frames would carry a wrong box).
+_CLIP_HOLD_MS = 500
+#: GIF fallback (ffmpeg missing): native crop width, ~10 fps, 40 colours.
+_GIF_W = 240
+_GIF_FPS = 10.0
+_BC_CLIP_CACHE: collections.OrderedDict[tuple, tuple[bytes, str, int, int]] = (
     collections.OrderedDict()
 )
 _BC_CLIP_CACHE_MAX = 40
@@ -694,12 +701,13 @@ def _draw_box(frame, bx, by, bw, bh, w_px, h_px, colour, thickness=1, bracket=Tr
 def _clip_frame_indices(frame_idx: int, fps: float, total: int) -> tuple[int, int, int]:
     """(first, last, step) source frames for the clip, clamped to the video.
 
-    ``step`` subsamples to ~``_CLIP_FPS``; the centre frame is always on the
-    sampling grid because the grid is anchored at ``frame_idx``.
+    ``step`` is 1 up to ``_CLIP_MAX_FPS`` and subsamples above it; the centre
+    frame is always on the sampling grid because the grid is anchored at
+    ``frame_idx``.
     """
     fps = fps if fps and fps > 1 else 25.0
     half = int(round(_CLIP_HALF_S * fps))
-    step = max(1, int(round(fps / _CLIP_FPS)))
+    step = max(1, int(round(fps / _CLIP_MAX_FPS)))
     first = max(0, frame_idx - half)
     last = frame_idx + half
     if total > 0:
@@ -730,31 +738,111 @@ def _gif_bytes(frames: list, durations: list[int]) -> bytes:
     return buf.getvalue()
 
 
-def _render_clip(
-    video_path: Path,
-    src: str,
-    clip_stem: str,
-    frame_idx: int,
-    box_idx: int,
-    bbox: tuple[float, float, float, float],
-    pad: float,
-) -> tuple[bytes, int, int] | None:
-    """Decode once (seek, then sequential reads) and encode the GIF."""
-    bx, by, bw, bh = bbox
-    cap = cv2.VideoCapture(str(video_path))
+def _have_ffmpeg() -> bool:
+    import shutil  # noqa: PLC0415
+
+    return shutil.which("ffmpeg") is not None
+
+
+class _Mp4Writer:
+    """Pipes raw BGR frames into ffmpeg (libx264) and returns the MP4 bytes.
+
+    Output goes to a temp file, not a pipe: ``+faststart`` moves the moov atom
+    to the front, which needs a seekable output. iOS Safari needs that plus
+    yuv420p / even dimensions / a main-or-baseline profile.
+    """
+
+    def __init__(self, width: int, height: int, fps: float) -> None:
+        import subprocess  # noqa: PLC0415
+        import tempfile  # noqa: PLC0415
+
+        self._tmp = tempfile.TemporaryDirectory(prefix="bc_clip_")
+        self._out = Path(self._tmp.name) / "clip.mp4"
+        self._err = (Path(self._tmp.name) / "err.txt").open("wb")
+        self.proc = subprocess.Popen(  # noqa: S603
+            [
+                "ffmpeg", "-v", "error", "-y",
+                "-f", "rawvideo", "-pix_fmt", "bgr24",
+                "-s", f"{width}x{height}", "-framerate", f"{fps:.3f}",
+                "-i", "-",
+                "-vf", "scale=out_color_matrix=bt709:out_range=tv",
+                "-c:v", "libx264", "-profile:v", "main", "-level", "4.0",
+                "-preset", "medium", "-crf", str(_CLIP_CRF),
+                "-pix_fmt", "yuv420p",
+                "-colorspace", "bt709", "-color_primaries", "bt709",
+                "-color_trc", "bt709",
+                "-movflags", "+faststart", "-an",
+                str(self._out),
+            ],  # fmt: skip
+            stdin=subprocess.PIPE,
+            stdout=subprocess.DEVNULL,
+            stderr=self._err,
+        )  # fmt: skip
+
+    def write(self, frame) -> None:
+        self.proc.stdin.write(frame.tobytes())
+
+    def finish(self) -> bytes | None:
+        try:
+            with contextlib.suppress(OSError):
+                self.proc.stdin.close()
+            rc = self.proc.wait(timeout=60)
+            self._err.close()
+            if rc != 0 or not self._out.exists():
+                LOGGER.warning("ffmpeg clip encode failed (rc=%s)", rc)
+                return None
+            return self._out.read_bytes()
+        finally:
+            self._tmp.cleanup()
+
+    def abort(self) -> None:
+        self.proc.kill()
+        self.proc.wait()
+        self._err.close()
+        self._tmp.cleanup()
+
+
+def _box_in_crop(b, w_px, h_px, win, out_wh):
+    """Normalised frame box -> normalised box in the upscaled crop."""
+    x1, y1, x2, y2 = win
+    sx, sy = out_wh[0] / (x2 - x1), out_wh[1] / (y2 - y1)
+    return (
+        (b[0] * w_px - x1) * sx / out_wh[0],
+        (b[1] * h_px - y1) * sy / out_wh[1],
+        b[2] * w_px * sx / out_wh[0],
+        b[3] * h_px * sy / out_wh[1],
+    )
+
+
+def _draw_centre_boxes(crop, bbox, ob, frame_wh, win, out_wh) -> None:
+    """Box (and magenta other box) on the upscaled centre frame."""
+    if ob is not None:
+        box = _box_in_crop(ob, *frame_wh, win, out_wh)
+        _draw_box(crop, *box, *out_wh, (255, 0, 255), 2, bracket=False)
+    box = _box_in_crop(bbox, *frame_wh, win, out_wh)
+    _draw_box(crop, *box, *out_wh, (0, 255, 255), 2)
+
+
+def _other_box(src: str, clip_stem: str, frame_idx: int, box_idx: int):
+    if src != "list":
+        return None
+    it = _list_item(clip_stem, frame_idx, box_idx)
+    return _list_box(it, "other_bbox") if it else None
+
+
+def _render_mp4(cap, clip_stem, src, frame_idx, box_idx, bbox, pad):
+    """Frames -> ffmpeg. Returns (bytes, 'video/mp4', n_frames, ms) or None."""
+    fps = float(cap.get(cv2.CAP_PROP_FPS) or 0.0)
+    total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
+    first, last, step = _clip_frame_indices(frame_idx, fps, total)
+    out_fps = (fps if fps and fps > 1 else 25.0) / step
+    cap.set(cv2.CAP_PROP_POS_FRAMES, first)
+    ob = _other_box(src, clip_stem, frame_idx, box_idx)
+    writer: _Mp4Writer | None = None
+    win = None
+    out_wh = (0, 0)
+    n_out = 0
     try:
-        fps = float(cap.get(cv2.CAP_PROP_FPS) or 0.0)
-        total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
-        first, last, step = _clip_frame_indices(frame_idx, fps, total)
-        cap.set(cv2.CAP_PROP_POS_FRAMES, first)
-        frames: list = []
-        durations: list[int] = []
-        win = None
-        ob = None
-        if src == "list":
-            it = _list_item(clip_stem, frame_idx, box_idx)
-            ob = _list_box(it, "other_bbox") if it else None
-        base_ms = int(round(1000 / _CLIP_FPS))
         for idx in range(first, last + 1):
             ok, frame = cap.read()
             if not ok:
@@ -763,57 +851,139 @@ def _render_clip(
                 continue
             h_px, w_px = frame.shape[:2]
             if win is None:
-                win = _crop_window(bx, by, bw, bh, w_px, h_px, pad)
+                win = _crop_window(*bbox, w_px, h_px, pad)
             x1, y1, x2, y2 = win
-            centre = idx == frame_idx
-            if centre:
-                if ob is not None:
-                    _draw_box(frame, *ob, w_px, h_px, (255, 0, 255), 2, bracket=False)
-                _draw_box(frame, bx, by, bw, bh, w_px, h_px, (0, 255, 255))
             crop = frame[y1:y2, x1:x2]
             if crop.size == 0:
                 continue
-            scale = _CLIP_W / max(1, x2 - x1)
-            if scale < 1:
-                crop = cv2.resize(
-                    crop,
-                    None,
-                    fx=scale,
-                    fy=scale,
-                    interpolation=getattr(cv2, "INTER_AREA", cv2.INTER_NEAREST),
-                )
-            frames.append(crop)
-            durations.append(_CLIP_HOLD_MS if centre else base_ms)
-    finally:
-        cap.release()
+            cw, ch = x2 - x1, y2 - y1
+            if writer is None:
+                # even dimensions, same aspect as the window
+                ow = max(2, (_CLIP_W // 2) * 2)
+                oh = max(2, int(round(ow * ch / max(1, cw) / 2)) * 2)
+                out_wh = (ow, oh)
+                writer = _Mp4Writer(ow, oh, out_fps)
+            interp = (
+                getattr(cv2, "INTER_LANCZOS4", 4)
+                if out_wh[0] > cw
+                else getattr(cv2, "INTER_AREA", 3)
+            )
+            crop = cv2.resize(crop, out_wh, interpolation=interp)
+            reps = 1
+            if idx == frame_idx:
+                # draw on the upscaled crop so the lines stay crisp
+                _draw_centre_boxes(crop, bbox, ob, (w_px, h_px), win, out_wh)
+                reps = max(1, int(round(_CLIP_HOLD_MS / 1000 * out_fps)))
+            for _ in range(reps):
+                writer.write(crop)
+            n_out += reps
+    except BaseException:
+        if writer is not None:
+            writer.abort()
+        raise
+    data = writer.finish() if writer is not None and n_out else None
+    if data is None:
+        if writer is not None and not n_out:
+            writer.abort()
+        return None
+    return data, "video/mp4", n_out, int(round(n_out * 1000 / out_fps))
+
+
+def _render_gif(cap, clip_stem, src, frame_idx, box_idx, bbox, pad):
+    """ffmpeg-less fallback: small play-once GIF (native crop, ~10 fps)."""
+    bx, by, bw, bh = bbox
+    fps = float(cap.get(cv2.CAP_PROP_FPS) or 0.0)
+    total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
+    first, last, _ = _clip_frame_indices(frame_idx, fps, total)
+    step = max(1, int(round((fps if fps and fps > 1 else 25.0) / _GIF_FPS)))
+    cap.set(cv2.CAP_PROP_POS_FRAMES, first)
+    ob = _other_box(src, clip_stem, frame_idx, box_idx)
+    base_ms = int(round(1000 / _GIF_FPS))
+    frames: list = []
+    durations: list[int] = []
+    win = None
+    for idx in range(first, last + 1):
+        ok, frame = cap.read()
+        if not ok:
+            break
+        if (idx - frame_idx) % step:
+            continue
+        h_px, w_px = frame.shape[:2]
+        if win is None:
+            win = _crop_window(bx, by, bw, bh, w_px, h_px, pad)
+        x1, y1, x2, y2 = win
+        centre = idx == frame_idx
+        if centre:
+            if ob is not None:
+                _draw_box(frame, *ob, w_px, h_px, (255, 0, 255), 2, bracket=False)
+            _draw_box(frame, bx, by, bw, bh, w_px, h_px, (0, 255, 255))
+        crop = frame[y1:y2, x1:x2]
+        if crop.size == 0:
+            continue
+        scale = _GIF_W / max(1, x2 - x1)
+        if scale < 1:
+            crop = cv2.resize(
+                crop,
+                None,
+                fx=scale,
+                fy=scale,
+                interpolation=getattr(cv2, "INTER_AREA", cv2.INTER_NEAREST),
+            )
+        frames.append(crop)
+        durations.append(_CLIP_HOLD_MS if centre else base_ms)
     if not frames:
         return None
-    return _gif_bytes(frames, durations), len(frames), sum(durations)
+    return _gif_bytes(frames, durations), "image/gif", len(frames), sum(durations)
 
 
-@router.get("/ball_check/clip/{clip_stem}/{frame_idx}/{box_idx}.gif")
+def _render_clip(
+    video_path: Path,
+    src: str,
+    clip_stem: str,
+    frame_idx: int,
+    box_idx: int,
+    bbox: tuple[float, float, float, float],
+    pad: float,
+) -> tuple[bytes, str, int, int] | None:
+    """Decode once (seek, then sequential reads) and encode.
+
+    Returns ``(bytes, media_type, n_frames, duration_ms)``: MP4 via ffmpeg when
+    available (full frame rate, crop upscaled with Lanczos, box on the held
+    centre frame only), otherwise the old small GIF.
+    """
+    render = _render_mp4 if _have_ffmpeg() else _render_gif
+    cap = cv2.VideoCapture(str(video_path))
+    try:
+        return render(cap, clip_stem, src, frame_idx, box_idx, bbox, pad)
+    finally:
+        cap.release()
+
+
+@router.get("/ball_check/clip/{clip_stem}/{frame_idx}/{box_idx}.mp4")
 async def ball_check_clip(
     clip_stem: str,
     frame_idx: int,
     box_idx: int,
+    request: Request,
     pad: float = _PAD_FACTOR,
     src: str = "sidecar",
 ) -> Response:
-    """~3 s animated context clip centred on the card's frame.
+    """~3 s context clip (H.264 MP4) centred on the card's frame.
 
     Shows whether the marked object is moving like the in-play ball or is a
     spare/crowd ball, which a single still cannot. The crop window is the
     still's window, fixed for every frame, so the view never jumps. The box
-    (and, for ``src=list``, the magenta other box) is drawn on the centre
-    frame only: the ball moves, so a box carried onto other frames would lie.
-    Plays once; the page then shows the still.
+    (and, for ``src=list``, the magenta other box) is drawn only on the centre
+    frame, which is held ~0.5 s: the ball moves, so a box carried onto other
+    frames would lie. Supports HTTP Range (iOS Safari needs 206 for <video>).
+    Falls back to a small GIF (same URL, ``image/gif``) if ffmpeg is missing.
     """
     pad = max(0.0, min(float(pad), _MAX_PAD_FACTOR))
     cache_key = (src, clip_stem, frame_idx, box_idx, round(pad, 2))
     hit = _BC_CLIP_CACHE.get(cache_key)
     if hit is not None:
         _BC_CLIP_CACHE.move_to_end(cache_key)
-        return _clip_response(*hit)
+        return _clip_response(request, *hit)
 
     video_path = _find_video(clip_stem)
     if video_path is None:
@@ -830,19 +1000,58 @@ async def ball_check_clip(
     _BC_CLIP_CACHE.move_to_end(cache_key)
     if len(_BC_CLIP_CACHE) > _BC_CLIP_CACHE_MAX:
         _BC_CLIP_CACHE.popitem(last=False)
-    return _clip_response(*out)
+    return _clip_response(request, *out)
 
 
-def _clip_response(data: bytes, n_frames: int, duration_ms: int) -> Response:
+def _parse_range(header: str | None, size: int) -> tuple[int, int] | None:
+    """Inclusive (start, end) for a single ``bytes=`` range, else None.
+
+    Raises ValueError for an unsatisfiable range (caller answers 416).
+    """
+    if not header or not header.startswith("bytes=") or "," in header:
+        return None
+    a, _, b = header[6:].strip().partition("-")
+    try:
+        if a == "":
+            n = int(b)
+            if n <= 0:
+                raise ValueError
+            start, end = max(0, size - n), size - 1
+        else:
+            start = int(a)
+            end = min(int(b), size - 1) if b else size - 1
+    except ValueError:
+        raise ValueError("bad range") from None
+    if start > end or start >= size:
+        raise ValueError("unsatisfiable")
+    return start, end
+
+
+def _clip_response(
+    request: Request, data: bytes, media_type: str, n_frames: int, duration_ms: int
+) -> Response:
+    headers = {
+        "X-Clip-Frames": str(n_frames),
+        "X-Clip-Duration-Ms": str(duration_ms),
+        "Access-Control-Expose-Headers": "X-Clip-Frames, X-Clip-Duration-Ms",
+        "Cache-Control": "private, max-age=600",
+        "Accept-Ranges": "bytes",
+    }
+    size = len(data)
+    try:
+        rng = _parse_range(request.headers.get("range"), size)
+    except ValueError:
+        headers["Content-Range"] = f"bytes */{size}"
+        return Response(status_code=416, headers=headers)
+    if rng is None:
+        return Response(content=data, media_type=media_type, headers=headers)
+    start, end = rng
+    headers["Content-Range"] = f"bytes {start}-{end}/{size}"
     return Response(
-        content=data,
-        media_type="image/gif",
-        headers={
-            "X-Clip-Frames": str(n_frames),
-            "X-Clip-Duration-Ms": str(duration_ms),
-            "Access-Control-Expose-Headers": "X-Clip-Frames, X-Clip-Duration-Ms",
-            "Cache-Control": "private, max-age=600",
-        },
+        content=data[start : end + 1],
+        status_code=206,
+        media_type=media_type,
+        headers=headers,
     )
 
 
