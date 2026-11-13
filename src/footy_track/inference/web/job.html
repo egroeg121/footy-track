@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#0f1419" />
+<title>Inference results</title>
+<link rel="stylesheet" href="/infer/static/infer.css" />
+</head>
+<body>
+<header></header>
+<main>
+  <h2 id="title" style="margin-top:0"></h2>
+  <div class="panel" id="statusBox">
+    <div class="stages" id="stages"></div>
+    <p id="line" class="muted"></p>
+    <p id="error" class="err"></p>
+    <div class="row">
+      <button id="cancel" class="secondary hidden">Cancel job</button>
+      <button id="delete" class="danger hidden">Delete job</button>
+    </div>
+  </div>
+
+  <div id="results" class="hidden">
+    <div class="caveat">
+      <strong>Read this before trusting the output.</strong>
+      <ul>
+        <li>The ball is found in only about 6 of every 10 frames where it is
+          visible (recall about 0.6). The ball track can also lock onto a false
+          positive, for example a player's head, and follow it for a long time.</li>
+        <li>Players and referees are tracked frame to frame only: no team
+          colours and no re-identification, so the same person gets a new id
+          after being lost.</li>
+        <li>Tracks restart at every broadcast cut, so ids are only meaningful
+          inside one clip.</li>
+      </ul>
+    </div>
+    <p id="overlayNote" class="caveat hidden"></p>
+    <div class="clips" id="clips"></div>
+    <div class="panel">
+      <div class="vwrap">
+        <video id="player" controls playsinline preload="metadata"></video>
+        <div id="cutaway" class="cutaway hidden">cutaway &ndash; not tracked</div>
+      </div>
+      <div id="timeline" class="timeline hidden" title="Click to jump"></div>
+      <p id="timelineKey" class="muted hidden"><span class="key tracked"></span> tracked
+        <span class="key skipped"></span> cutaway, not tracked (plain footage)</p>
+      <p id="clipMeta" class="muted"></p>
+      <p id="clipError" class="err"></p>
+      <div id="stats" class="grid"></div>
+    </div>
+    <h2>Downloads</h2>
+    <div class="row" id="downloads"></div>
+  </div>
+</main>
+<script src="/infer/static/infer.js"></script>
+<script>
+renderHeader("Results");
+const $ = (id) => document.getElementById(id);
+const jobId = location.pathname.split("/").filter(Boolean).pop();
+let job = null, selected = null, shownKey = "", timer = null, picked = false;
+const FULL = "full";
+function fullUrl() { return API + "/jobs/" + jobId + "/full.mp4"; }
+function spanAt(t) {
+  return (job.timeline || []).find((s) => t >= s.start_s && t < s.end_s);
+}
+function updateCutaway() {
+  const s = selected === FULL ? spanAt($("player").currentTime) : null;
+  $("cutaway").classList.toggle("hidden", !(s && s.kind === "skipped"));
+  const total = timelineEnd();
+  $("playhead") && ($("playhead").style.left = total ? ($("player").currentTime / total * 100) + "%" : "0");
+}
+function timelineEnd() {
+  const t = job.timeline || [];
+  return t.length ? t[t.length - 1].end_s : 0;
+}
+function buildTimeline() {
+  const box = $("timeline"), total = timelineEnd();
+  box.replaceChildren();
+  for (const s of job.timeline || []) {
+    const seg = el("div", { class: "seg " + s.kind });
+    seg.style.left = (s.start_s / total * 100) + "%";
+    seg.style.width = ((s.end_s - s.start_s) / total * 100) + "%";
+    seg.title = (s.kind === "tracked" ? "Tracked " + s.clip : "Cutaway, not tracked") +
+      ": " + s.start_s + "s to " + s.end_s + "s";
+    box.append(seg);
+  }
+  box.append(el("div", { id: "playhead", class: "playhead" }));
+}
+$("timeline").addEventListener("click", (e) => {
+  const r = $("timeline").getBoundingClientRect(), total = timelineEnd();
+  if (!total) return;
+  $("player").currentTime = Math.min(Math.max((e.clientX - r.left) / r.width, 0), 1) * total;
+  updateCutaway();
+});
+["timeupdate", "seeking", "seeked"].forEach((ev) => $("player").addEventListener(ev, updateCutaway));
+
+function showFull() {
+  selected = FULL;
+  document.querySelectorAll("#clips button").forEach((b) => b.classList.toggle("sel", b.dataset.id === FULL));
+  const v = $("player");
+  if (v.getAttribute("src") !== fullUrl()) v.setAttribute("src", fullUrl());
+  const spans = job.timeline || [];
+  const nt = spans.filter((s) => s.kind === "tracked").length;
+  $("clipMeta").textContent = "Whole video in order: " + nt + " tracked clip" + (nt === 1 ? "" : "s") +
+    " with boxes, the rest plain footage. No sound.";
+  $("clipError").textContent = "";
+  $("stats").replaceChildren();
+  $("timeline").classList.remove("hidden");
+  $("timelineKey").classList.remove("hidden");
+  buildTimeline();
+  updateCutaway();
+  const dl = $("downloads");
+  dl.replaceChildren(el("a", { class: "btn secondary", href: fullUrl(), download: "full.mp4" }, "full.mp4"));
+}
+
+
+function stat(label, value) {
+  return el("div", { class: "stat" }, el("b", {}, String(value)), el("span", { class: "muted" }, label));
+}
+function clipUrl(c, name) { return API + "/jobs/" + jobId + "/clips/" + c.id + "/" + name; }
+
+function showClip(c) {
+  selected = c.id;
+  $("timeline").classList.add("hidden");
+  $("timelineKey").classList.add("hidden");
+  $("cutaway").classList.add("hidden");
+  document.querySelectorAll("#clips button").forEach((b) => b.classList.toggle("sel", b.dataset.id === c.id));
+  const v = $("player");
+  const src = c.status === "done" ? clipUrl(c, "overlay.mp4") : "";
+  if (v.getAttribute("src") !== src) { src ? v.setAttribute("src", src) : v.removeAttribute("src"); }
+  $("clipMeta").textContent = "Clip " + c.id + ": " + c.start_s + "s to " + c.end_s +
+    "s of the source (" + c.frame_count + " frames)" +
+    (c.seconds != null ? ", tracked in " + fmtSecs(c.seconds) : "");
+  $("clipError").textContent = c.error || "";
+  const s = c.summary, st = $("stats");
+  st.replaceChildren();
+  if (s) {
+    const b = s.ball, p = s.players;
+    st.append(
+      stat("frames processed", s.frames_processed),
+      stat("source fps", Math.round(s.video_fps * 100) / 100),
+      stat("detector fps", s.detect_fps),
+      stat("player/ref tracklets", p.tracklets ?? p.tracks ?? "-"),
+      stat("ball detected frames", b.detected),
+      stat("ball interpolated", b.interpolated),
+      stat("ball none", b.none),
+      stat("ball coverage", Math.round(b.coverage * 100) + "%"));
+  }
+  const dl = $("downloads");
+  dl.replaceChildren();
+  if (c.status === "done") {
+    for (const n of ["overlay.mp4", "clip.mp4", "detections.jsonl", "tracklets.jsonl", "ball_track.jsonl", "summary.json"]) {
+      dl.append(el("a", { class: "btn secondary", href: clipUrl(c, n), download: c.id + "_" + n }, n));
+    }
+  }
+}
+
+function render() {
+  $("title").textContent = job.name;
+  renderStages($("stages"), job, 100);
+  $("line").textContent = stageLine(job);
+  $("error").textContent = job.error || "";
+  const live = ["queued", "running"].includes(job.status);
+  $("cancel").classList.toggle("hidden", !live);
+  $("delete").classList.toggle("hidden", live);
+  const have = job.clips.filter((c) => c.status === "done");
+  $("results").classList.toggle("hidden", have.length === 0);
+  const hasFull = !!job.full_video && (job.timeline || []).length > 0;
+  if (job.overlay_note) { $("overlayNote").textContent = job.overlay_note; $("overlayNote").classList.remove("hidden"); }
+  const key = job.clips.map((c) => c.id + c.status).join() + hasFull;
+  if (key !== shownKey) {
+    shownKey = key;
+    const box = $("clips");
+    box.replaceChildren();
+    if (hasFull) box.append(el("button", { "data-id": FULL, onclick: () => { picked = true; showFull(); } }, "Full video"));
+    for (const c of job.clips) {
+      const b = el("button", { "data-id": c.id, onclick: () => { picked = true; showClip(c); } },
+        c.id + (c.status === "done" ? "" : " (" + c.status + ")"));
+      box.append(b);
+    }
+  }
+  if (hasFull && (selected === FULL || !picked)) {
+    showFull();
+    return;
+  }
+  const cur = job.clips.find((c) => c.id === selected) || have[0];
+  if (cur && have.length) showClip(cur);
+}
+
+async function poll() {
+  try {
+    job = await api("/jobs/" + jobId);
+    render();
+    if (!["queued", "running"].includes(job.status)) return;
+  } catch (e) {
+    $("error").textContent = e.status === 404 ? "This job does not exist (deleted?)." : e.message;
+    return;
+  }
+  timer = setTimeout(poll, 2000);
+}
+$("cancel").addEventListener("click", async () => {
+  await api("/jobs/" + jobId + "/cancel", { method: "POST" });
+  clearTimeout(timer); poll();
+});
+$("delete").addEventListener("click", async () => {
+  if (!confirm("Delete this job and its files?")) return;
+  await api("/jobs/" + jobId, { method: "DELETE" });
+  location.href = "/infer/jobs";
+});
+poll();
+</script>
+</body>
+</html>
