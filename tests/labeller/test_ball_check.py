@@ -289,11 +289,12 @@ def test_crop_returns_jpeg_and_caches(
         round(ball_check._PAD_FACTOR, 2),
         True,
         0,
+        True,
     ) in ball_check._BC_CROP_CACHE
 
     # A different pad is a different cache entry, not a stale hit.
     client.get("/ball_check/crop/clip/0/0.jpg?pad=20")
-    assert ("sidecar", "clip", 0, 0, 20.0, True, 0) in ball_check._BC_CROP_CACHE
+    assert ("sidecar", "clip", 0, 0, 20.0, True, 0, True) in ball_check._BC_CROP_CACHE
 
     # reticle=false is its own entry: the page draws its own draggable box.
     client.get("/ball_check/crop/clip/0/0.jpg?reticle=false")
@@ -305,6 +306,7 @@ def test_crop_returns_jpeg_and_caches(
         round(ball_check._PAD_FACTOR, 2),
         False,
         0,
+        True,
     ) in ball_check._BC_CROP_CACHE
 
 
@@ -338,6 +340,7 @@ def test_pad_is_clamped_to_max(client, clips_dir, gt_marks_dir, fake_cv2, bc_cac
         ball_check._MAX_PAD_FACTOR,
         True,
         0,
+        True,
     ) in ball_check._BC_CROP_CACHE
 
 
@@ -750,7 +753,11 @@ def test_list_queue_file_order_skips_judged(
     assert [i["box_index"] for i in data["items"]] == [0, 1, 2]
     assert data["items"][0]["source"] == "list"
     assert data["items"][0]["image_url"].endswith("/clip/9/0.jpg?src=list")
-    assert data["items"][0]["note"] == "n"
+    # blind by default: no source-revealing fields reach the page
+    assert not {"note", "type", "other_bbox"} & set(data["items"][0])
+    assert data["items"][0]["blind"] is True
+    open_ = client.get("/ball_check/queue?source=list&blind=false").json()["items"][0]
+    assert open_["note"] == "n" and open_["image_url"].endswith("&blind=false")
     assert data["remaining"] == 3
     assert (
         client.post(
@@ -785,6 +792,28 @@ def test_list_crop_and_meta(client, clips_dir, tmp_path, monkeypatch, fake_cv2):
     assert r.status_code == 200 and r.content == FAKE_JPEG
     # a card that does not match the list entry is a 404, not someone else's box
     assert client.get("/ball_check/crop/clip/8/0.jpg?src=list").status_code == 404
+
+
+def test_blind_list_cards_draw_no_other_box(
+    client, clips_dir, tmp_path, monkeypatch, fake_cv2
+):
+    (clips_dir / "clip.mp4").touch()
+    _write_list(tmp_path, monkeypatch, [_card("clip", 9, type="gt_vs_claude")])
+    assert ball_check._other_box("list", "clip", 9, 0) is None
+    assert ball_check._other_box("list", "clip", 9, 0, blind=False) is not None
+    seen = []
+    monkeypatch.setattr(
+        ball_check,
+        "_render_clip",
+        lambda *a: seen.append(a[-1]) or (b"x", "video/mp4", 1, 1),
+    )
+    monkeypatch.setattr(ball_check, "_BC_CLIP_CACHE", type(ball_check._BC_CLIP_CACHE)())
+    for qs in ("", "&blind=false"):
+        assert (
+            client.get(f"/ball_check/clip/clip/9/0.mp4?src=list{qs}").status_code == 200
+        )
+    # default blind, opt-out not; each variant has its own cache entry
+    assert seen == [True, False]
 
 
 # ---------------------------------------------------------------------------

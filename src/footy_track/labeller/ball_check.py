@@ -302,6 +302,10 @@ def _build_candidate_queue(
     return cand.stratified_order(pool, tau=tau, sigma=sigma, focus=focus)
 
 
+#: List-card fields that reveal where a box came from; withheld when blind.
+_BLIND_HIDDEN_KEYS = frozenset({"note", "type", "other_bbox"})
+
+
 @router.get("/ball_check/queue")
 async def ball_check_queue(
     limit: int = 50,
@@ -311,6 +315,7 @@ async def ball_check_queue(
     tau: float = -1.0,
     sigma: float = cand.DEFAULT_SIGMA,
     focus: float = cand.DEFAULT_FOCUS,
+    blind: bool = True,
 ) -> dict:
     """Unjudged ball boxes to review.
 
@@ -320,6 +325,9 @@ async def ball_check_queue(
     ``source=list`` serves the explicit cards of the review list
     (``FOOTY_BALL_CHECK_LIST``) in file order, skipping judged ones.
     ``auto`` (default) prefers candidates when any have been pulled down.
+    List cards are *blind* by default (``blind=false`` opts out): the
+    source-revealing ``note``, ``type`` and ``other_bbox`` are dropped, the
+    image URLs ask for a one-box render, and the page shows a neutral prompt.
     """
     judged = await asyncio.to_thread(_read_verdicts)
     limit = max(1, min(int(limit), 500))
@@ -348,7 +356,12 @@ async def ball_check_queue(
             "judged": len(all_items) - len(todo),
             "items": [
                 {
-                    **it,
+                    **{
+                        k: v
+                        for k, v in it.items()
+                        if not (blind and k in _BLIND_HIDDEN_KEYS)
+                    },
+                    "blind": blind,
                     "source": "list",
                     "label": it.get("label") or "in_play_ball",
                     "provenance": it.get("provenance") or it.get("role") or "list",
@@ -356,6 +369,7 @@ async def ball_check_queue(
                     "image_url": (
                         f"/ball_check/crop/{it['clip']}/{it['frame_index']}"
                         f"/{it['box_index']}.jpg?src=list"
+                        + ("" if blind else "&blind=false")
                     ),
                 }
                 for it in todo[:limit]
@@ -586,6 +600,7 @@ async def ball_check_crop(
     reticle: bool = True,
     src: str = "sidecar",
     at: int = -1,
+    blind: bool = True,
 ) -> Response:
     """Zoomed JPEG crop, with an optional reticle drawn on the claimed ball.
 
@@ -604,6 +619,7 @@ async def ball_check_crop(
         round(pad, 2),
         bool(reticle),
         at_frame,
+        bool(blind),
     )
     cached = _BC_CROP_CACHE.get(cache_key)
     if cached is not None:
@@ -630,7 +646,7 @@ async def ball_check_crop(
             return None
         h_px, w_px = frame.shape[:2]
         x1, y1, x2, y2 = _crop_window(bx, by, bw, bh, w_px, h_px, pad)
-        if src == "list" and at_frame == frame_idx:
+        if src == "list" and at_frame == frame_idx and not blind:
             # The other box of the pair (GT mark vs Claude's box), magenta,
             # so one card shows both.
             it = _list_item(clip_stem, frame_idx, box_idx)
@@ -823,21 +839,23 @@ def _draw_centre_boxes(crop, bbox, ob, frame_wh, win, out_wh) -> None:
     _draw_box(crop, *box, *out_wh, (0, 255, 255), 2)
 
 
-def _other_box(src: str, clip_stem: str, frame_idx: int, box_idx: int):
-    if src != "list":
+def _other_box(
+    src: str, clip_stem: str, frame_idx: int, box_idx: int, blind: bool = True
+):
+    if src != "list" or blind:
         return None
     it = _list_item(clip_stem, frame_idx, box_idx)
     return _list_box(it, "other_bbox") if it else None
 
 
-def _render_mp4(cap, clip_stem, src, frame_idx, box_idx, bbox, pad):
+def _render_mp4(cap, clip_stem, src, frame_idx, box_idx, bbox, pad, blind=True):
     """Frames -> ffmpeg. Returns (bytes, 'video/mp4', n_frames, ms) or None."""
     fps = float(cap.get(cv2.CAP_PROP_FPS) or 0.0)
     total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
     first, last, step = _clip_frame_indices(frame_idx, fps, total)
     out_fps = (fps if fps and fps > 1 else 25.0) / step
     cap.set(cv2.CAP_PROP_POS_FRAMES, first)
-    ob = _other_box(src, clip_stem, frame_idx, box_idx)
+    ob = _other_box(src, clip_stem, frame_idx, box_idx, blind)
     writer: _Mp4Writer | None = None
     win = None
     out_wh = (0, 0)
@@ -889,7 +907,7 @@ def _render_mp4(cap, clip_stem, src, frame_idx, box_idx, bbox, pad):
     return data, "video/mp4", n_out, int(round(n_out * 1000 / out_fps))
 
 
-def _render_gif(cap, clip_stem, src, frame_idx, box_idx, bbox, pad):
+def _render_gif(cap, clip_stem, src, frame_idx, box_idx, bbox, pad, blind=True):
     """ffmpeg-less fallback: small play-once GIF (native crop, ~10 fps)."""
     bx, by, bw, bh = bbox
     fps = float(cap.get(cv2.CAP_PROP_FPS) or 0.0)
@@ -897,7 +915,7 @@ def _render_gif(cap, clip_stem, src, frame_idx, box_idx, bbox, pad):
     first, last, _ = _clip_frame_indices(frame_idx, fps, total)
     step = max(1, int(round((fps if fps and fps > 1 else 25.0) / _GIF_FPS)))
     cap.set(cv2.CAP_PROP_POS_FRAMES, first)
-    ob = _other_box(src, clip_stem, frame_idx, box_idx)
+    ob = _other_box(src, clip_stem, frame_idx, box_idx, blind)
     base_ms = int(round(1000 / _GIF_FPS))
     frames: list = []
     durations: list[int] = []
@@ -944,6 +962,7 @@ def _render_clip(
     box_idx: int,
     bbox: tuple[float, float, float, float],
     pad: float,
+    blind: bool = True,
 ) -> tuple[bytes, str, int, int] | None:
     """Decode once (seek, then sequential reads) and encode.
 
@@ -954,7 +973,7 @@ def _render_clip(
     render = _render_mp4 if _have_ffmpeg() else _render_gif
     cap = cv2.VideoCapture(str(video_path))
     try:
-        return render(cap, clip_stem, src, frame_idx, box_idx, bbox, pad)
+        return render(cap, clip_stem, src, frame_idx, box_idx, bbox, pad, blind)
     finally:
         cap.release()
 
@@ -967,19 +986,20 @@ async def ball_check_clip(
     request: Request,
     pad: float = _PAD_FACTOR,
     src: str = "sidecar",
+    blind: bool = True,
 ) -> Response:
     """~3 s context clip (H.264 MP4) centred on the card's frame.
 
     Shows whether the marked object is moving like the in-play ball or is a
     spare/crowd ball, which a single still cannot. The crop window is the
     still's window, fixed for every frame, so the view never jumps. The box
-    (and, for ``src=list``, the magenta other box) is drawn only on the centre
+    (and, for ``src=list`` with ``blind=false``, the magenta other box) is drawn only on the centre
     frame, which is held ~0.5 s: the ball moves, so a box carried onto other
     frames would lie. Supports HTTP Range (iOS Safari needs 206 for <video>).
     Falls back to a small GIF (same URL, ``image/gif``) if ffmpeg is missing.
     """
     pad = max(0.0, min(float(pad), _MAX_PAD_FACTOR))
-    cache_key = (src, clip_stem, frame_idx, box_idx, round(pad, 2))
+    cache_key = (src, clip_stem, frame_idx, box_idx, round(pad, 2), bool(blind))
     hit = _BC_CLIP_CACHE.get(cache_key)
     if hit is not None:
         _BC_CLIP_CACHE.move_to_end(cache_key)
@@ -992,7 +1012,15 @@ async def ball_check_clip(
     if bbox_raw is None:
         return Response(status_code=404)
     out = await asyncio.to_thread(
-        _render_clip, video_path, src, clip_stem, frame_idx, box_idx, bbox_raw, pad
+        _render_clip,
+        video_path,
+        src,
+        clip_stem,
+        frame_idx,
+        box_idx,
+        bbox_raw,
+        pad,
+        blind,
     )
     if out is None:
         return Response(status_code=404)

@@ -821,12 +821,18 @@ reads `<gt dir>/ball_checks/` (`--ball-checks-dir`) into the feature store's
   `crop_meta` with `src=list` resolve the box from the file and draw
   `other_bbox` in magenta. The page forwards `?source=` and `?clip=` to the
   queue (`/ball_check?source=list`). No file configured means an empty pool.
+  List cards are **blind** by default: the queue drops `note`/`type`/
+  `other_bbox`, the still and MP4 clip draw only the card's own (yellow) box
+  (no magenta other box), and the page shows a neutral prompt instead of the
+  note and provenance, so a reviewer cannot tell human from Claude boxes.
+  `?blind=0` on the page (`blind=false` on queue/crop/clip) restores the old
+  two-box view; the clip and crop cache keys include the flag.
   List verdicts go to the normal log and are excluded from `/ball_check/stats`
   and the confidence-band estimate (hand-picked cards are not a sample).
   Used by the Claude-verify re-check (`docs/design/claude_autolabel_loop.md`
   section 8); a minimal piece of T-47, not the `claude` candidate pool.
   - Tests: `test_ball_check.py::test_list_queue_file_order_skips_judged`,
-    `test_list_crop_and_meta`
+    `test_list_crop_and_meta`, `test_blind_list_cards_draw_no_other_box`
 - **LAB-1014** (PLANNED, MUST) `/ball_check` can serve cards from the `claude`
   candidate pool, uncertain first (Claude and the detector disagree, low
   confidence, cell corrections). A "yes" on such a proposal writes the box to
