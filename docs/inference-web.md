@@ -87,6 +87,44 @@ Details that matter:
   end a few frames away from where a human would cut. The stitch only follows
   what the cutter recorded.
 
+## Preview quality (for slow networks)
+
+The full-quality videos are large: a 1080p overlay is about 5.7 Mbit/s, so a 20
+second clip is roughly 15 MB. On a slow or flaky connection (weak Wi-Fi, a phone
+on a bad link) the browser can receive that slower than it plays. Safari in
+particular then shows the first frame and sits there with the duration shown as
+"--:--".
+
+So the app can also make a small **preview** copy of every overlay and of the
+full video:
+
+- about 720p (the same shape as the original, never enlarged), H.264, about
+  1 to 1.5 Mbit/s, no sound, the same number of frames and the same frame rate;
+- written with the index at the front of the file, so playback starts before the
+  download has finished;
+- made right after each clip's overlay and after the full video is stitched, as
+  `overlay_preview.mp4` (per clip) and `full_preview.mp4` (whole job), next to the
+  full-quality files, which are never replaced.
+
+On the results page a **Quality: Preview (fast) / Full** switch sits under the
+player. It defaults to Preview whenever one exists, remembers your choice in the
+browser, and keeps your place in the video when you switch. It applies to both
+the "Full video" view and each clip. The download buttons always include the
+full-quality files; the preview files are offered as extra downloads.
+
+It is a server option, on by default. Turn it off with
+`FOOTY_INFERENCE_PREVIEW=0` or `--no-preview` if you only use fast networks and
+want to save the (small) extra encode time and disk space. `GET
+/infer/api/config` reports `preview: true` or `false`, and each job lists the
+state of its previews (`preview` on a clip, `full_preview` on the job: `done`,
+`failed` or `off`).
+
+A preview is a convenience, so it can never break a job: if making one fails
+(no `ffmpeg`, disk full) the clip and the job still finish, the failure is logged
+and recorded in the job, and the page simply shows no quality switch for that
+video. Cancelling a job also stops a preview in progress. Jobs made before this
+option existed have no previews and work as before (the switch is hidden).
+
 ## Run it on the GPU machine
 
 The app is meant to run on the machine that has the GPU and the detector
@@ -183,13 +221,14 @@ Environment variables, with command-line flags that win over them.
 | `FOOTY_INFERENCE_MAX_UPLOAD_MB` | `--max-upload-mb` | 8192 | Upload size limit |
 | `FOOTY_INFERENCE_TOKEN` | none | unset | Optional shared token, see below |
 | `FOOTY_INFERENCE_DEMO_CLIP` | `--demo-clip` | unset | Sample video for the demo button |
+| `FOOTY_INFERENCE_PREVIEW` | `--preview` / `--no-preview` | on | Also make small preview videos for slow networks |
 | `FOOTY_INFERENCE_FAKE` | `--fake` | off | Dev-only fake detector and cutter |
 
 ## What is stored
 
 Each job is a folder under the jobs directory with a `job.json` (status of each
 stage and clip, the timeline, counts, timings, errors), the upload, the cut clips,
-one output folder per clip and `full.mp4`. Folder and file names are generated; the uploaded file
+one output folder per clip, `full.mp4` and the optional `full_preview.mp4` (each clip folder also has `overlay_preview.mp4`). Folder and file names are generated; the uploaded file
 name is only shown on the page. The state file is rewritten safely, so finished
 jobs are still there after a restart. A job that was running during a restart is
 marked failed ("the server restarted"), and half-finished uploads are removed.

@@ -71,3 +71,5 @@ input[type=number] { width:100px; padding:8px; border-radius:8px; border:1px sol
 .key.skipped { background:#4a3f1c; }
 .hidden { display:none !important; }
 @media (max-width:600px) { main { padding:10px; } td.hide-m, th.hide-m { display:none; } }
+
+#quality button.sel { background:var(--accent); color:#fff; }
