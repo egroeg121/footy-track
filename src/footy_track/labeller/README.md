@@ -35,6 +35,8 @@ uv run uvicorn footy_track.labeller.server:app --reload
 | `/labeller` | Frame labeller (mark + propagate) |
 | `/object_review` | Tinder-style crop review/correction |
 | `/ball_check` | Mobile ball verification (swipe yes/no) |
+| `/calibration` | Manual pitch calibration (frame <-> pitch point pairs, §16) |
+| `/calibration/review` | Mobile accept/reject of machine pitch-calibration proposals (§16, LAB-1210..1219) |
 | `/ingest` | Clip ingestion (page currently broken — OPEN-1) |
 
 Test suite: `tests/labeller/` (run `uv run pytest tests/labeller/`). Test
@@ -943,6 +945,205 @@ updating/adding the corresponding LAB requirement + tests.
   machine "fixes" them; needs per-machine config + regeneration script.
 - GPU propagation loop (`ft-8vx` epic): paused by request.
 
+## 16. Pitch calibration — manual camera -> pitch (LAB-12xx)
+
+Milestone M0 of `docs/design/calibration.md`: an operator pairs points on a
+video frame with named pitch keypoints (or free pitch metres), the server fits a
+homography and renders the full pitch model over the frame and as a bird's-eye
+warp so the fit can be judged by eye. Saved pairs are *calibration GT*, the
+yardstick for the automatic calibrator (M1+).
+
+Backend `calibration.py`, page `web/calibration.html` (route `/calibration`,
+Konva; overlays are siblings of the stage containers, never children), maths in
+`footy_track/calibration/` (see its README for the coordinate conventions).
+`H` maps **normalised image coords to pitch metres** (origin centre spot, `+x`
+long axis, `+y` far touchline), the form `PitchProjector` consumes.
+Calibration GT lives in `<gt dir>/calibration_gt/<canonical clip id>.json`
+(`{clip, frames: {"<frame_index>": record}}`, record = `{frame_index,
+correspondences: [{image, pitch_id, pitch_xy}], H, H_convention, pitch_dims,
+image_size, method, inliers, mean_err_m, err_px, ts}`). It is a separate file
+tree: the ball GT sidecars and the feature store are not touched.
+
+- **LAB-1201** (MUST) `GET /calibration` serves the page with `Cache-Control:
+  no-store`, and the hub (`/main`) links to it.
+  - Tests: `test_calibration.py::test_pages_served`
+- **LAB-1202** (MUST) `GET /calibration/api/clips` lists the clips under
+  `_CLIPS_DIR` as `{name, n_gt}` (`n_gt` = frames with calibration GT);
+  `GET /calibration/api/clips/{clip}/meta` returns `{frames, fps, width,
+  height, gt_frames}`; `GET /calibration/api/frame/{clip}/{idx}.jpg` returns the
+  frame JPEG. Unknown clip or unreadable frame -> HTTP 404.
+  - Tests: `test_calibration.py::test_clips_meta_and_frame`
+- **LAB-1203** (MUST) `GET /calibration/api/pitch_model?length=&width=` returns
+  the pitch model for those dims (default 105 x 68): sampled polylines for every
+  regulation line, circle and penalty arc, the named keypoints (stable ids,
+  e.g. `L_PEN_BOX_TOP_OUTER`), spots, and the warp scale/margin.
+  - Tests: `test_calibration.py::test_pitch_model_route`,
+    `tests/calibration/test_pitch_model.py`
+- **LAB-1204** (MUST) `POST /calibration/api/fit` takes `{correspondences:
+  [{image: [u, v], pitch_id | pitch_xy}], pitch_dims, method: dlt|ransac,
+  image_size?}` and returns `{H, H_flat, inliers, err_m, err_px, mean_err_m,
+  overlay, correspondences}`. A `pitch_id` is resolved to metres from the given
+  dims. `overlay` is every pitch line projected through `H^-1` into normalised
+  image coords as runs of points; points behind the camera are dropped so lines
+  never wrap. Fewer than 4 points, an unknown id, bad dims or a configuration that
+  cannot determine `H` -> HTTP 400 `{ok: false, error}`. The latter means no 4
+  points in general position (no 3 collinear, tested in pitch metres and in
+  image space; brute force up to 12 points, rank check above); `error` names the
+  collinear points by 1-based index, e.g. "points 1, 2, 4 lie on one pitch line".
+  A successful response also carries `warnings: [str]` (only one 4-subset in
+  general position although > 4 points were given, or `H` poorly conditioned).
+  - Tests: `test_calibration.py::test_fit_returns_h_errors_and_overlay`,
+    `::test_fit_accepts_free_points_and_ransac`,
+    `::test_fit_rejects_bad_input_with_4xx`,
+    `::test_fit_route_400_names_collinear_points`,
+    `tests/calibration/test_geometry.py` (`test_fit_rejects_three_collinear_*`,
+    `test_fit_accepts_three_collinear_plus_two_others`, ...)
+- **LAB-1205** (MUST) `POST /calibration/api/warp` takes `{clip, frame_index,
+  H, pitch_dims?, px_per_m?}` and returns a JPEG of the frame warped to a
+  top-down raster covering `(L + 2m) x (W + 2m)` metres (`m` =
+  `WARP_MARGIN_M`), `+x` right, `+y` up. Bad `H` -> 400; unknown clip/frame -> 404.
+  - Tests: `test_calibration.py::test_warp_returns_raster_of_expected_size`,
+    `test_geometry.py::test_warp_puts_pitch_features_where_the_model_says`
+- **LAB-1206** (MUST) `PUT /calibration/api/gt/{clip}/{idx}` re-fits `H` from
+  the posted correspondences (so stored `H` and points cannot disagree) and
+  replaces that frame's record in `calibration_gt/<canonical id>.json`, written
+  atomically. The file keeps its existing mode, or 0664 when new (not
+  mkstemp's 0600). A rejected fit leaves the stored record untouched.
+  `GET .../gt/{clip}/{idx}` returns it (404 if absent), `GET .../gt/{clip}`
+  summarises all frames, `DELETE .../gt/{clip}/{idx}` removes one.
+  - Tests: `test_calibration.py::test_gt_save_load_round_trip`,
+    `::test_gt_save_rejects_too_few_points_and_keeps_existing`,
+    `::test_gt_file_mode_new_is_664_and_existing_is_preserved`
+- **LAB-1207** (MUST) The GT file is keyed by `canonical_clip_id`, so every
+  alias of a clip reads and writes the same file; nothing else under the GT dir
+  is created or modified.
+  - Tests: `test_calibration.py::test_gt_file_location_is_canonical_and_alias_shared`
+- **LAB-1208** (MUST) UI: clip picker, frame slider/number input, chips for
+  frames of this clip that have GT; frame on the left (click adds an image point,
+  points draggable), pitch diagram on the right (click snaps to the nearest named
+  keypoint and shows its name; shift+click places a free point); points pair up
+  in order with numbered markers on both sides and a list with per-pair error
+  and a delete button; editable pitch dims; Save/Load/Delete GT.
+  - Tests: UNTESTED-FRONTEND (`web/calibration.html`; server contract LAB-1202..1207)
+- **LAB-1209** (MUST) UI: with >= 4 complete pairs the page auto-fits, overlays
+  the reprojected pitch lines on the frame (toggle), colours each point by
+  reprojection error (green < 3 px, amber < 8 px, red above), and can blend the
+  bird's-eye warp over the pitch diagram (toggle, opacity). Points with no error value
+  (no fit yet) are neutral blue, never red. `state.fit` is cleared as soon as the
+  pair set changes, so a stale fit is never drawn. A failed fit clears the
+  overlay and shows the server's error prominently above the pairs list;
+  `warnings` from a successful fit are shown in an amber box.
+  - Tests: UNTESTED-FRONTEND
+
+### Machine proposals and their review (LAB-1210..1219)
+
+Claude-assisted pre-labelling (`footy_track/calibration/prelabel/`, CLI
+`python -m footy_track.scripts.prelabel_calibration`) writes *proposals* to
+`<gt dir>/calibration_proposals/<canonical clip id>.json`:
+`{clip, runs: {run_id: {source: claude|classical, created, params, frames:
+{"<idx>": GT-shaped record + status proposed|accepted|edited|rejected|failed,
+score in [0,1], failure, view}}}}`. The review page `web/calibration_review.html`
+(`/calibration/review`, mobile-first, mirrors Ball Check) and the routes in
+`calibration_proposals.py` turn them into calibration GT. A proposal never
+becomes GT without a human accepting it; accepted GT carries
+`origin: {source, run_id, proposal_status: accepted|edited}`.
+
+- **LAB-1210** (MUST) `GET /calibration/api/proposals?run=&status=&clip=&sort=&limit=`
+  lists proposals across all clips: `status` is comma separated (default
+  `proposed`; `all` = every status), `sort` is `score_asc` (worst first, the
+  default) or `score_desc`; unknown status or sort -> HTTP 400. Response
+  `{items: [{clip, run_id, frame_index, status, score, failure, source,
+  n_points, n_inliers, view, verify}], total, runs: [{run_id, source, created,
+  params, counts}]}`.
+  - Tests: `test_calibration_proposals.py::test_list_filters_and_sorts_by_score`
+- **LAB-1211** (MUST) `GET /calibration/api/proposals/{clip}/{run_id}/{idx}` returns
+  the full record plus `overlay` (the pitch model projected through `H`, as in
+  LAB-1204); unknown run/frame -> 404; clip aliases resolve to one file.
+  - Tests: `test_calibration_proposals.py::test_get_one_has_overlay_and_404`
+- **LAB-1212** (MUST) `POST .../accept` re-fits `H` from the proposal's inlier points
+  (outliers dropped) and writes the record into `calibration_gt` with `origin`
+  (`proposal_status` `accepted`), then sets the proposal `accepted`. A body
+  `{correspondences, method?, overwrite?}` accepts the operator's points instead and
+  yields `edited` when they differ from the proposal's. A frame that already has GT
+  -> 409 unless `overwrite` (see LAB-1220); a `failed` proposal can only be accepted with points.
+  - Tests: `test_calibration_proposals.py::test_accept_copies_to_gt_with_origin_and_flips_status`,
+    `::test_accept_drops_outliers_and_does_not_touch_real_gt_of_other_frames`,
+    `::test_accept_with_changed_points_is_edited`, `::test_accept_failed_needs_points_and_bad_points_400`
+- **LAB-1213** (MUST) `POST .../reject` sets status `rejected` (optional `reason`),
+  writes no GT; unknown proposal -> 404.
+  - Tests: `test_calibration_proposals.py::test_reject_flips_status_and_writes_no_gt`
+- **LAB-1214** (MUST) `GET /calibration/review` serves the page with `Cache-Control:
+  no-store` and a mobile viewport (`width=device-width`); the hub links to it.
+  - Tests: `test_calibration_proposals.py::test_pages_served`
+- **LAB-1215** (MUST) Review UI: one proposal per screen: the frame at full width
+  with the projected pitch overlay (toggle) and numbered points (green inlier, red
+  outlier), the score, the Claude view note, a confidence summary (inliers, min/mean
+  confidence, fit error, verifier verdict) and the failure reason when failed.
+  Queue ordered worst-first by default, filterable by run and status, with a
+  progress counter.
+  - Tests: UNTESTED-FRONTEND (server contract LAB-1210/1211)
+- **LAB-1216** (MUST) Review UI actions are reachable by touch without hover or keys:
+  big Accept / Reject / Skip buttons, swipe right = accept, swipe left = reject,
+  a Warp toggle (and press-and-hold on the image) for the bird's-eye warp, and an
+  "Open in editor" link to `/calibration?clip=..&frame=..&proposal=<run_id>`. Keys
+  a/r/j/k/e/o/w are extras. A 409 on accept shows an in-page notice ("already has hand
+  GT" / earlier machine GT) with an explicit Replace action or Keep-and-skip (LAB-1220).
+  - Tests: UNTESTED-FRONTEND
+- **LAB-1217** (MUST) `/calibration?clip=&frame=&proposal=` opens that frame with the
+  proposal's inlier points loaded in the editor; Save then accepts it through
+  LAB-1212 (`edited` if the points changed) instead of a plain GT save.
+  - Tests: UNTESTED-FRONTEND (server contract LAB-1212)
+- **LAB-1218** (MUST) The pre-labelling pipeline writes proposals in the contract
+  format atomically (file mode 0664), run id `claude-<model>-<prompt_version>-<ts>`
+  or `mock-...`, logs token usage per call in the run's `params`, never writes
+  `calibration_gt`, and marks frames with no usable fit `failed` with a reason. It skips
+  frames that already have human GT unless told not to (`--no-skip-gt`).
+  - Tests: `tests/calibration/test_prelabel.py::test_pipeline_with_mock_writes_contract_proposals`,
+    `::test_pipeline_logs_usage_and_handles_claude_errors`
+- **LAB-1220** (MUST) Accepting a proposal never silently replaces existing calibration GT.
+  For a frame whose GT has no `origin` (hand-labelled) the accept route answers 409
+  `{ok: false, existing_gt: "human", error: "this frame already has hand-labelled
+  calibration GT ..."}` and writes nothing (the proposal stays `proposed`), also when the
+  body carries operator points; GT written by an earlier machine proposal answers 409 with
+  `existing_gt: "machine"`. Only `overwrite: true` replaces it (the new record carries
+  `origin`). The review page shows "this frame already has hand GT" with explicit
+  Replace / Keep-and-skip buttons instead of a bare confirm.
+  - Tests: `test_calibration_proposals.py::test_accept_never_silently_overwrites_hand_gt`,
+    `::test_accept_conflict_with_machine_gt_is_labelled_as_such`, `::test_accept_copies_to_gt_with_origin_and_flips_status`,
+    `::test_review_page_has_an_explicit_replace_flow` (page markers only; the flow itself is UNTESTED-FRONTEND)
+- **LAB-1221** (MUST) Proposals are fitted in two stages: a coarse homography from the
+  identifier's point (and named-line) labels, then line refinement
+  (`calibration/refine.py`: all 8 DOF, robust distance-transform cost of the white-line
+  mask, coarse-to-fine, labels as a weak prior, rejected when the cost does not improve or
+  `H` degenerates). The proposal stores the final `H`, `score`, `dt_residual`, the coarse
+  fit under `pre_refine` and the outcome under `refine`; the eval reports both. The
+  `sweep` command measures the success rate (mean GT reprojection error <= 5 / <= 10 px)
+  before and after refinement per label-noise level with the noisy `MockIdentifier`.
+  - Tests: `tests/calibration/test_refine.py` (all), `tests/calibration/test_prelabel.py::test_fit_*`
+- **LAB-1222** (MUST) A frame that is not a main-camera pitch view can be marked
+  `not_broadcast` with one tap, separately from `rejected`. `POST
+  /calibration/api/proposals/{clip}/{run_id}/{idx}/not_broadcast` (proposed or failed items)
+  sets the proposal status `not_broadcast` (`prev_status`, `reviewed_at`) and writes the
+  frame-level flag `<gt dir>/frame_type/<canonical clip>.json` (atomic, mode kept; also
+  `PUT/DELETE /calibration/api/frame_type/{clip}/{idx}`, list in `GET .../gt/{clip}` and
+  `.../clips/{clip}/meta`). A frame with calibration GT answers 409 and writes nothing unless
+  `overwrite: true` (which deletes that GT); accept and GT-save on a flagged frame are 409 until
+  the flag is cleared (DELETE restores the proposals' status). The pre-label run skips flagged
+  frames (`--skip-gt`), the feature store drops them from `frame_calibration_best` /
+  `detections_on_pitch`. The review page has a "Not broadcast" button (key `n`, also "Clear" in the
+  not-broadcast filter), a "to review + failed" and a "not broadcast" filter, errors in the red
+  banner, and a "Claude: not main camera" badge when `view.main_camera_wide` is false (never
+  auto-marks); the editor has a Not broadcast button, a marked banner and Undo.
+  - Tests: `test_calibration_proposals.py::test_not_broadcast_*`,
+    `::test_review_page_has_not_broadcast_button_hint_and_filter` (markers; flow UNTESTED-FRONTEND),
+    `tests/calibration/test_prelabel.py::test_pipeline_skips_not_broadcast_frames`,
+    `tests/feature_store/test_calibration_store.py::test_not_broadcast_frame_has_no_calibration_and_no_projection`,
+    `tests/feature_store/test_ingest_calibration.py::test_frame_type_flags_and_not_broadcast_proposals_are_ingested`
+- **LAB-1219** (SHOULD) Frames are read through `footy_track.calibration.video.read_frame`
+  (cv2, falling back to the ffmpeg CLI when cv2 fails or returns an all-black frame,
+  frame-accurate, reader cached per video); `/calibration/api/frame` and `/warp` use it.
+  - Tests: `tests/calibration/test_video.py`
+
 ## 15. Traceability summary
 
 | Section | Requirements | Tested | UNTESTED | UNTESTED-FRONTEND |
@@ -959,7 +1160,8 @@ updating/adding the corresponding LAB requirement + tests.
 | 10. Review UI (LAB-9xx) | 7 | 0 | 0 | 7 |
 | 11. Ball Check (LAB-10xx) | 12 | 11 | 0 | 1 |
 | 12. Confidence sampling (LAB-11xx) | 5 | 5 | 0 | 0 |
-| **Total** | **101** | **71** | **8** | **22** |
+| 16. Pitch calibration (LAB-12xx) | 22 | 17 | 0 | 5 |
+| **Total** | **123** | **88** | **8** | **27** |
 
 Open items: 4 (OPEN-1..4) + 1 fixed on main (undo provenance, `95b60cc`).
 Test suite: 138 tests in `tests/labeller/` (all green), plus the

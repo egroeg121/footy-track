@@ -43,6 +43,10 @@ dependencies = [
 
 scripts.footy-track = "footy_track:main"
 
+[project.optional-dependencies]
+# Claude pre-labelling of pitch calibration (footy_track.calibration.prelabel); imported lazily.
+llm = ["anthropic>=1.0"]
+
 [dependency-groups]
 dev = [
   "dvc[s3]>=3",

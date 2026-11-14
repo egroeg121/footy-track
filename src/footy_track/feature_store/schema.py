@@ -10,6 +10,8 @@ Grains:
                      broadcast flag, pitch segmentation, calibration
   - ``detection``  — one row per (game, frame, source, run, object)
   - ``track_meta`` — one row per track (post-hoc identity / span)
+  - ``calibration``    — one row per (game, source, run, frame): camera->pitch H
+  - ``pitch_keypoint`` — one row per calibration correspondence
   - ``run``        — provenance for every produced artifact
 
 All timestamps are ContinuousTime (seconds from kickoff); all boxes are
@@ -75,7 +77,10 @@ from __future__ import annotations
 from datetime import date, datetime
 from enum import StrEnum
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+from footy_track.constants import BALL_TAG, IN_PLAY_BALL_TAG, OUT_OF_PLAY_BALL_TAG
+from footy_track.projection.projector import H_QUALITY_THRESHOLD
 
 SCHEMA_VERSION = "1.0.0"
 
@@ -106,6 +111,10 @@ class Source(StrEnum):
     VITTRACK = "vittrack"
     BYTETRACK = "bytetrack"
     BOTSORT = "botsort"
+    # calibration sources (``calibration.source``)
+    CALIB_CLAUDE = "claude"
+    CALIB_CLASSICAL = "classical"
+    CALIB_MODEL = "model"
 
 
 class Point(BaseModel):
@@ -154,7 +163,8 @@ class FrameRow(_Row):
     pitch_seg_threshold: float | None = None
     pitch_seg_confidence: float | None = Field(None, ge=0.0, le=1.0)
     pitch_seg_model_version: str | None = None
-    # calibration (image -> pitch homography, flattened 3x3)
+    # DEPRECATED: inline calibration. Superseded by the ``calibration`` table
+    # and the ``frame_calibration_best`` view; nothing writes these any more.
     homography: list[float] | None = None
     calibration_quality: float | None = None
     calibration_model_version: str | None = None
@@ -201,6 +211,93 @@ class TrackMetaRow(_Row):
     reid_parent_track_id: int | None = None
 
 
+#: ``calibration.source`` values. ``hand_label`` is human ground truth
+#: (including accepted/edited proposals copied into GT); the rest are machine.
+CALIBRATION_SOURCES = ("hand_label", "claude", "classical", "model")
+#: ``calibration.review_status`` values.
+#: ``not_broadcast``: the frame is not a main-camera pitch view (replay, close-up...);
+#: one such row for a (game, frame) removes the frame from ``frame_calibration_best``.
+CALIBRATION_STATUSES = ("hand", "proposed", "accepted", "rejected", "failed", "not_broadcast")
+#: The only H convention the SQL views understand.
+H_CONVENTION = "normalised_image_to_pitch_m"
+
+
+class CalibrationRow(_Row):
+    """Camera->pitch homography for one frame from one (source, run).
+
+    ``H`` is row-major, normalised image coords -> pitch metres (origin centre
+    spot), exactly what ``PitchProjector`` applies. ``H`` is NULL only for
+    ``failed`` rows. ``quality`` in [0, 1] is the projector's gate: machine rows
+    carry the proposal score, human rows 1.0.
+    """
+
+    game_id: str
+    source: str
+    run_id: str
+    frame_index: int = Field(..., ge=0)
+    H: list[float] | None = None
+    h_convention: str = H_CONVENTION
+    quality: float | None = Field(None, ge=0.0, le=1.0)
+    mean_err_px: float | None = None
+    mean_err_m: float | None = None
+    #: Division-model lens distortion k1 (centre (0.5, 0.5), see
+    #: ``footy_track.calibration.geometry``): ``H`` applies to the *undistorted* image point
+    #: ``c + (p - c) / (1 + k1 r^2)``. NULL or 0 = plain homography.
+    distortion_k1: float | None = None
+    n_points: int | None = None
+    n_inliers: int | None = None
+    pitch_length: float | None = None
+    pitch_width: float | None = None
+    image_width: int | None = None
+    image_height: int | None = None
+    method: str | None = None
+    review_status: str = "proposed"
+    reviewed: bool = False
+    origin_source: str | None = None
+    origin_run_id: str | None = None
+    origin_status: str | None = None
+    failure: str | None = None
+    view_end: str | None = None
+    camera_side: str | None = None
+    created_at: datetime | None = None
+    dataset_tag: str | None = None
+
+    @field_validator("H")
+    @classmethod
+    def _h_is_3x3(cls, v: list[float] | None) -> list[float] | None:
+        if v is not None and len(v) != 9:
+            raise ValueError("H must be a flat row-major 3x3 (9 values)")
+        return v
+
+    @field_validator("review_status")
+    @classmethod
+    def _known_status(cls, v: str) -> str:
+        if v not in CALIBRATION_STATUSES:
+            raise ValueError(f"review_status must be one of {CALIBRATION_STATUSES}")
+        return v
+
+
+class PitchKeypointRow(_Row):
+    """One image<->pitch correspondence behind a ``calibration`` row.
+
+    ``u``/``v`` are normalised image coords, ``pitch_x``/``pitch_y`` metres.
+    """
+
+    game_id: str
+    source: str
+    run_id: str
+    frame_index: int = Field(..., ge=0)
+    point_idx: int = Field(..., ge=0)
+    keypoint_id: str | None = None
+    u: float
+    v: float
+    pitch_x: float
+    pitch_y: float
+    is_inlier: bool | None = None
+    err_px: float | None = None
+    dataset_tag: str | None = None
+
+
 class RunRow(_Row):
     """Provenance for every produced artifact. Referenced by *_model_version /
     run_id columns elsewhere."""
@@ -223,6 +320,13 @@ class RunRow(_Row):
 # Note: DuckDB enforces PRIMARY KEY uniqueness, which we rely on for the
 # ON CONFLICT upsert path (see store.py). Polygon stored as a native
 # LIST<STRUCT(x,y)>; homography as a flat DOUBLE[9].
+
+#: Labels anchored at their centroid in ``detections_on_pitch``. PitchProjector
+#: itself only special-cases ``BALL_TAG``; the GT sidecars label the ball
+#: ``in_play_ball`` / ``out_of_play_ball``, which must not fall through to the
+#: player bottom-centre anchor.
+_BALL_LABELS = (BALL_TAG, IN_PLAY_BALL_TAG, OUT_OF_PLAY_BALL_TAG)
+_BALL_LABELS_SQL = "(" + ", ".join(f"'{t}'" for t in _BALL_LABELS) + ")"
 
 DDL: tuple[str, ...] = (
     """
@@ -317,6 +421,62 @@ DDL: tuple[str, ...] = (
         player_id                 VARCHAR,
         reid_parent_track_id      INTEGER,
         PRIMARY KEY (game_id, source, run_id, track_id)
+    );
+    """,
+    # Camera calibration (docs/design/feature_store.md §3.5). One row per
+    # (game, source, run, frame); H is a row-major DOUBLE[9] mapping normalised
+    # image -> pitch metres. ``frame.homography`` & co. are deprecated in favour
+    # of the ``frame_calibration_best`` view over this table.
+    """
+    CREATE TABLE IF NOT EXISTS calibration (
+        game_id        VARCHAR,
+        source         VARCHAR,
+        run_id         VARCHAR,
+        frame_index    INTEGER,
+        H              DOUBLE[9],
+        h_convention   VARCHAR,
+        quality        DOUBLE,
+        mean_err_px    DOUBLE,
+        mean_err_m     DOUBLE,
+        distortion_k1  DOUBLE,
+        n_points       INTEGER,
+        n_inliers      INTEGER,
+        pitch_length   DOUBLE,
+        pitch_width    DOUBLE,
+        image_width    INTEGER,
+        image_height   INTEGER,
+        method         VARCHAR,
+        review_status  VARCHAR,
+        reviewed       BOOLEAN DEFAULT FALSE,
+        origin_source  VARCHAR,
+        origin_run_id  VARCHAR,
+        origin_status  VARCHAR,
+        failure        VARCHAR,
+        view_end       VARCHAR,
+        camera_side    VARCHAR,
+        created_at     TIMESTAMP,
+        dataset_tag    VARCHAR,
+        PRIMARY KEY (game_id, source, run_id, frame_index)
+    );
+    """,
+    # Stores created before lens distortion existed: add the column (no-op on new ones).
+    "ALTER TABLE calibration ADD COLUMN IF NOT EXISTS distortion_k1 DOUBLE;",
+    """
+    CREATE TABLE IF NOT EXISTS pitch_keypoint (
+        game_id      VARCHAR,
+        source       VARCHAR,
+        run_id       VARCHAR,
+        frame_index  INTEGER,
+        point_idx    INTEGER,
+        keypoint_id  VARCHAR,
+        u            DOUBLE,
+        v            DOUBLE,
+        pitch_x      DOUBLE,
+        pitch_y      DOUBLE,
+        is_inlier    BOOLEAN,
+        err_px       DOUBLE,
+        dataset_tag  VARCHAR,
+        PRIMARY KEY (game_id, source, run_id, frame_index, point_idx)
     );
     """,
     # Human Ball Check verdicts (see feature_store/ball_checks.py). Additive:
@@ -426,6 +586,129 @@ VIEWS: tuple[str, ...] = (
         JOIN track_meta t USING (game_id, source, run_id, track_id)
         WHERE d.track_id IS NOT NULL;
     """,
+    """
+    CREATE OR REPLACE VIEW frame_calibration_best AS
+        WITH usable AS (
+            SELECT c.*,
+                   CASE
+                       WHEN c.source = 'hand_label' THEN 1
+                       WHEN c.review_status = 'accepted' THEN 2
+                       ELSE 3
+                   END AS tier_rank
+            FROM calibration c
+            -- failed/rejected rows (and anything without an H) never win; a frame
+            -- flagged not_broadcast (by any row) has no calibration at all.
+            WHERE c.H IS NOT NULL
+              AND c.review_status NOT IN ('failed', 'rejected', 'not_broadcast')
+              AND NOT EXISTS (
+                  SELECT 1 FROM calibration nb
+                  WHERE nb.game_id = c.game_id AND nb.frame_index = c.frame_index
+                    AND nb.review_status = 'not_broadcast')
+        ),
+        ranked AS (
+            SELECT u.*,
+                   row_number() OVER (
+                       PARTITION BY game_id, frame_index
+                       ORDER BY tier_rank,
+                                -- only unreviewed proposals compete on score
+                                CASE WHEN tier_rank = 3 THEN quality END
+                                    DESC NULLS LAST,
+                                created_at DESC NULLS LAST,
+                                run_id DESC, source
+                   ) AS rn
+            FROM usable u
+        )
+        SELECT game_id, frame_index, source, run_id,
+               CASE tier_rank WHEN 1 THEN 'hand'
+                              WHEN 2 THEN 'accepted'
+                              ELSE 'proposed' END AS tier,
+               H, h_convention, quality, mean_err_px, mean_err_m, distortion_k1,
+               n_points, n_inliers, pitch_length, pitch_width,
+               image_width, image_height, method, review_status, reviewed,
+               origin_source, origin_run_id, origin_status,
+               view_end, camera_side, created_at
+        FROM ranked
+        WHERE rn = 1;
+    """,
+    f"""
+    CREATE OR REPLACE VIEW detections_on_pitch AS
+        WITH anchored AS (
+            SELECT d.game_id, d.frame_index, d.continuous_time_s, d.detection_id,
+                   d.source, d.run_id, d.label, d.confidence, d.track_id,
+                   CAST(d.bbox_x AS DOUBLE) + CAST(d.bbox_w AS DOUBLE) / 2.0
+                       AS anchor_x,
+                   -- PitchProjector anchors: ball centroid, everything else
+                   -- bottom-centre of the box.
+                   CASE WHEN d.label IN {_BALL_LABELS_SQL}
+                        THEN CAST(d.bbox_y AS DOUBLE) + CAST(d.bbox_h AS DOUBLE) / 2.0
+                        ELSE CAST(d.bbox_y AS DOUBLE) + CAST(d.bbox_h AS DOUBLE)
+                   END AS anchor_y,
+                   c.source AS cal_source, c.run_id AS cal_run_id,
+                   c.tier AS cal_tier, c.H, c.quality,
+                   COALESCE(c.distortion_k1, 0.0) AS k1,
+                   CASE WHEN c.image_width > 0 AND c.image_height > 0
+                        THEN CAST(c.image_width AS DOUBLE) / c.image_height
+                        ELSE 16.0 / 9.0 END AS aspect,
+                   COALESCE(c.pitch_length, 105.0) AS pitch_length,
+                   COALESCE(c.pitch_width, 68.0) AS pitch_width
+            FROM detection d
+            LEFT JOIN frame_calibration_best c
+                   ON c.game_id = d.game_id AND c.frame_index = d.frame_index
+        ),
+        -- Lens distortion (division model about the image centre, see
+        -- footy_track.calibration.geometry): the stored H takes the *undistorted* point
+        -- c + (p - c) / (1 + k1 r^2), r^2 = (2(x-.5))^2 + (2(y-.5)/aspect)^2. That direction is
+        -- closed-form, so SQL can do it; k1 = 0 (or no calibration) leaves the anchor as is.
+        undist AS (
+            SELECT *,
+                   CASE WHEN k1 = 0 THEN anchor_x ELSE 0.5 + (anchor_x - 0.5) / (1.0 + k1 * (
+                       power(2.0 * (anchor_x - 0.5), 2) + power(2.0 * (anchor_y - 0.5) / aspect, 2))) END AS ux,
+                   CASE WHEN k1 = 0 THEN anchor_y ELSE 0.5 + (anchor_y - 0.5) / (1.0 + k1 * (
+                       power(2.0 * (anchor_x - 0.5), 2) + power(2.0 * (anchor_y - 0.5) / aspect, 2))) END AS uy
+            FROM anchored
+        ),
+        proj AS (
+            SELECT *,
+                   H[1] * ux + H[2] * uy + H[3] AS px,
+                   H[4] * ux + H[5] * uy + H[6] AS py,
+                   H[7] * ux + H[8] * uy + H[9] AS pw
+            FROM undist
+        ),
+        status AS (
+            SELECT *,
+                   CASE
+                       WHEN H IS NULL THEN 'no_calibration'
+                       WHEN quality IS NULL OR quality < {H_QUALITY_THRESHOLD!r}
+                           THEN 'low_quality'
+                       WHEN abs(pw) < 1e-12 THEN 'degenerate'
+                       ELSE 'ok'
+                   END AS projection_status
+            FROM proj
+        )
+        -- NULL = no calibration at all; NaN = calibrated but unusable (same
+        -- as PitchProjector.project_frame).
+        SELECT game_id, frame_index, continuous_time_s, detection_id,
+               source, run_id, label, confidence, track_id,
+               anchor_x, anchor_y,
+               CASE projection_status WHEN 'ok' THEN px / pw
+                    WHEN 'no_calibration' THEN NULL
+                    ELSE CAST('NaN' AS DOUBLE) END AS x_pitch,
+               CASE projection_status WHEN 'ok' THEN py / pw
+                    WHEN 'no_calibration' THEN NULL
+                    ELSE CAST('NaN' AS DOUBLE) END AS y_pitch,
+               CASE projection_status WHEN 'ok' THEN (px / pw + pitch_length / 2.0) / pitch_length
+                    WHEN 'no_calibration' THEN NULL
+                    ELSE CAST('NaN' AS DOUBLE) END AS x_pitch_norm,
+               CASE projection_status WHEN 'ok' THEN (py / pw + pitch_width / 2.0) / pitch_width
+                    WHEN 'no_calibration' THEN NULL
+                    ELSE CAST('NaN' AS DOUBLE) END AS y_pitch_norm,
+               projection_status,
+               quality AS calibration_quality,
+               cal_source AS calibration_source,
+               cal_run_id AS calibration_run_id,
+               cal_tier AS calibration_tier
+        FROM status;
+    """,
 )
 
 # Logical order in which tables are exported/imported as Parquet partitions.
@@ -436,4 +719,6 @@ TABLES: tuple[str, ...] = (
     "detection",
     "track_meta",
     "detection_review",
+    "calibration",
+    "pitch_keypoint",
 )

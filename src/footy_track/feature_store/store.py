@@ -36,9 +36,11 @@ from footy_track.feature_store.schema import (
     DDL,
     TABLES,
     VIEWS,
+    CalibrationRow,
     DetectionRow,
     FrameRow,
     GameRow,
+    PitchKeypointRow,
     RunRow,
     TrackMetaRow,
 )
@@ -148,6 +150,50 @@ _COLUMNS: dict[str, tuple[str, ...]] = {
         "matched_detection_id",
         "match_iou",
     ),
+    "calibration": (
+        "game_id",
+        "source",
+        "run_id",
+        "frame_index",
+        "H",
+        "h_convention",
+        "quality",
+        "mean_err_px",
+        "mean_err_m",
+        "distortion_k1",
+        "n_points",
+        "n_inliers",
+        "pitch_length",
+        "pitch_width",
+        "image_width",
+        "image_height",
+        "method",
+        "review_status",
+        "reviewed",
+        "origin_source",
+        "origin_run_id",
+        "origin_status",
+        "failure",
+        "view_end",
+        "camera_side",
+        "created_at",
+        "dataset_tag",
+    ),
+    "pitch_keypoint": (
+        "game_id",
+        "source",
+        "run_id",
+        "frame_index",
+        "point_idx",
+        "keypoint_id",
+        "u",
+        "v",
+        "pitch_x",
+        "pitch_y",
+        "is_inlier",
+        "err_px",
+        "dataset_tag",
+    ),
 }
 
 # Primary-key columns per table — the ON CONFLICT target.
@@ -158,6 +204,8 @@ _PK: dict[str, tuple[str, ...]] = {
     "detection": ("game_id", "source", "run_id", "frame_index", "detection_id"),
     "track_meta": ("game_id", "source", "run_id", "track_id"),
     "detection_review": ("game_id", "vsource", "frame_index", "box_index"),
+    "calibration": ("game_id", "source", "run_id", "frame_index"),
+    "pitch_keypoint": ("game_id", "source", "run_id", "frame_index", "point_idx"),
 }
 
 
@@ -253,6 +301,12 @@ class FeatureStore:
     def upsert_track_meta(self, rows: Sequence[TrackMetaRow]) -> int:
         return self._upsert("track_meta", rows)
 
+    def upsert_calibrations(self, rows: Sequence[CalibrationRow]) -> int:
+        return self._upsert("calibration", rows)
+
+    def upsert_pitch_keypoints(self, rows: Sequence[PitchKeypointRow]) -> int:
+        return self._upsert("pitch_keypoint", rows)
+
     # -- replace (delete) --------------------------------------------------- #
 
     @contextmanager
@@ -284,6 +338,24 @@ class FeatureStore:
             self._conn.execute(
                 f"DELETE FROM {table} WHERE game_id = ? AND starts_with(run_id, ?)",
                 [game_id, run_id_prefix],
+            )
+            deleted[table] = int(n)
+        return deleted
+
+    def delete_calibration_rows(self, game_id: str, dataset_tag: str) -> dict[str, int]:
+        """Delete ``calibration`` + ``pitch_keypoint`` rows of *game_id* written
+        by the importer identified by *dataset_tag* (``calibration_gt`` or
+        ``calibration_proposals``). Rows of other writers are never touched.
+        """
+        deleted: dict[str, int] = {}
+        for table in ("pitch_keypoint", "calibration"):
+            n = self._conn.execute(
+                f"SELECT count(*) FROM {table} WHERE game_id = ? AND dataset_tag = ?",
+                [game_id, dataset_tag],
+            ).fetchone()[0]
+            self._conn.execute(
+                f"DELETE FROM {table} WHERE game_id = ? AND dataset_tag = ?",
+                [game_id, dataset_tag],
             )
             deleted[table] = int(n)
         return deleted
@@ -347,7 +419,7 @@ class FeatureStore:
                 root = out_dir / table
                 partition = (
                     "game_id, source"
-                    if table in ("detection", "track_meta")
+                    if table in ("detection", "track_meta", "calibration", "pitch_keypoint")
                     else "game_id"
                 )
                 self._conn.execute(

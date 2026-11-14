@@ -1,0 +1,617 @@
+"""Calibration API: manual camera -> pitch calibration (M0 of
+``docs/design/calibration.md``) and the calibration ground truth it produces.
+
+An operator pairs points on a video frame with named pitch keypoints (or free
+pitch coordinates); the server fits the homography, reprojects the full pitch
+model into the image and renders a bird's-eye warp, so the fit can be judged by
+eye. Saved pairs are *calibration GT* used to score the automatic calibrator
+(M1+).
+
+Storage: ``<gt dir>/calibration_gt/<canonical clip id>.json`` - one JSON file
+per clip, ``{"clip", "frames": {"<frame_index>": record}}``, written atomically
+(tmp file + rename; the GT sidecars have a history of being truncated). The
+clip id is ``footy_track.clip_id.canonical_clip_id`` so every alias of a clip
+shares one file. Nothing is written to the GT sidecars or the feature store.
+
+H convention: normalised image coords -> pitch metres (see
+``footy_track.calibration``). ``server.py`` is the composition root: clip and
+GT directories resolve through it at call time (tests monkeypatch them there).
+See ``src/footy_track/labeller/README.md`` §16 (LAB-12xx).
+"""
+
+from __future__ import annotations
+
+import asyncio
+import json
+import os
+import tempfile
+import time
+from pathlib import Path
+
+import cv2
+import numpy as np
+from fastapi import APIRouter
+from fastapi.responses import JSONResponse, Response
+
+from footy_track.calibration import geometry as geo
+from footy_track.calibration.pitch_model import (
+    DEFAULT_LENGTH,
+    DEFAULT_WIDTH,
+    PitchModel,
+)
+from footy_track.calibration.frame_type import (
+    NOT_BROADCAST,
+    not_broadcast_frames,
+    update_frame_types,
+)
+from footy_track.calibration.prelabel.proposals import read_proposals, update_proposals
+from footy_track.calibration.video import read_frame
+from footy_track.clip_id import canonical_clip_id
+from footy_track.labeller.review import _clips_dir, _gt_marks_dir
+from footy_track.labeller.review import _find_video as _find_video_exact
+
+router = APIRouter()
+
+#: Bird's-eye raster scale and margin; the page draws its diagram with the
+#: same extents so the warp lines up with the pitch drawing.
+WARP_PX_PER_M = 10.0
+WARP_MARGIN_M = 3.0
+MAX_WARP_PX_PER_M = 20.0
+
+#: mkstemp gives 0600; other GT files are group-writable.
+_NEW_FILE_MODE = 0o664
+
+_VIDEO_SUFFIXES = {".mp4", ".mov", ".avi", ".mkv"}
+
+
+def _err(status: int, msg: str) -> JSONResponse:
+    # Real HTTP status codes: a 200 {"ok": false} makes a failing save look
+    # like a good one in the access log (see the KB labeller gotchas).
+    return JSONResponse({"ok": False, "error": msg}, status_code=status)
+
+
+# ---------------------------------------------------------------------------
+# Video access (patched in tests)
+# ---------------------------------------------------------------------------
+
+
+def _video_meta(video: Path) -> dict | None:
+    cap = cv2.VideoCapture(str(video))
+    try:
+        if not cap.isOpened():
+            return None
+        return {
+            "frames": int(cap.get(cv2.CAP_PROP_FRAME_COUNT)),
+            "fps": float(cap.get(cv2.CAP_PROP_FPS)),
+            "width": int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)),
+            "height": int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)),
+        }
+    finally:
+        cap.release()
+
+
+def _read_frame(video: Path, idx: int) -> np.ndarray | None:
+    # cv2 with an ffmpeg fallback for clips OpenCV decodes as black.
+    return read_frame(video, idx)
+
+
+# ---------------------------------------------------------------------------
+# GT store
+# ---------------------------------------------------------------------------
+
+
+def _gt_dir() -> Path:
+    return _gt_marks_dir() / "calibration_gt"
+
+
+def _gt_path(clip: str) -> Path:
+    return _gt_dir() / f"{canonical_clip_id(clip)}.json"
+
+
+def _read_gt(clip: str) -> dict:
+    path = _gt_path(clip)
+    if not path.exists():
+        return {"clip": canonical_clip_id(clip), "frames": {}}
+    return json.loads(path.read_text())
+
+
+def _write_gt(clip: str, doc: dict) -> None:
+    path = _gt_path(clip)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        mode = path.stat().st_mode & 0o777  # keep an existing file's mode
+    except FileNotFoundError:
+        mode = _NEW_FILE_MODE
+    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=path.name, suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w") as f:
+            json.dump(doc, f, indent=1)
+        os.chmod(tmp, mode)  # mkstemp creates 0600; other GT files are 0664
+        os.replace(tmp, path)
+    except BaseException:
+        Path(tmp).unlink(missing_ok=True)
+        raise
+
+
+def _gt_frames(clip: str) -> list[int]:
+    try:
+        return sorted(int(k) for k in _read_gt(clip)["frames"])
+    except (OSError, ValueError, KeyError):
+        return []
+
+
+# ---------------------------------------------------------------------------
+# Frame type flag (not a broadcast pitch view; see calibration/frame_type.py)
+# ---------------------------------------------------------------------------
+
+
+def _not_broadcast(clip: str) -> list[int]:
+    try:
+        return sorted(not_broadcast_frames(_gt_marks_dir(), clip))
+    except OSError:
+        return []
+
+
+def mark_not_broadcast(clip: str, idx: int, *, overwrite: bool = False, run_id: str | None = None) -> dict:
+    """Flag frame ``idx`` as not a broadcast pitch view.
+
+    Writes the frame-type sidecar and sets the frame's proposals to ``not_broadcast``
+    (the named ``run_id``'s whatever its status; other runs' only while still
+    ``proposed``/``failed``). A frame that already has calibration GT (hand or accepted)
+    is refused with ``{"conflict": <existing GT record>}`` and nothing is written, unless
+    ``overwrite``, which moves that GT record into the flag (``displaced_gt``) so
+    :func:`clear_not_broadcast` can put it back: GT is never destroyed by this action.
+    """
+    existing = _read_gt(clip)["frames"].get(str(idx))
+    if existing is not None and not overwrite:
+        return {"conflict": existing}
+    ts = time.strftime("%Y-%m-%dT%H:%M:%S%z")
+
+    def _flag(doc: dict) -> None:
+        rec = {"type": NOT_BROADCAST, "ts": ts}
+        if run_id:
+            rec["run_id"] = run_id
+        if existing is not None:
+            rec["displaced_gt"] = existing
+        doc["frames"][str(idx)] = rec
+
+    update_frame_types(_gt_marks_dir(), clip, _flag)
+    removed_gt = False
+    if existing is not None:
+        doc = _read_gt(clip)
+        removed_gt = doc["frames"].pop(str(idx), None) is not None
+        _write_gt(clip, doc)
+
+    def _props(doc: dict) -> None:
+        for rid, run in doc["runs"].items():
+            f = run["frames"].get(str(idx))
+            if f is None or f["status"] == NOT_BROADCAST:
+                continue
+            if rid == run_id or f["status"] in ("proposed", "failed"):
+                f["prev_status"] = f["status"]
+                f["status"] = NOT_BROADCAST
+                f["reviewed_at"] = ts
+
+    if read_proposals(_gt_marks_dir(), clip)["runs"]:
+        update_proposals(_gt_marks_dir(), clip, _props)
+    return {"ok": True, "frame_index": idx, "removed_gt": removed_gt, "gt_frames": _gt_frames(clip)}
+
+
+def clear_not_broadcast(clip: str, idx: int) -> bool:
+    """Undo ``mark_not_broadcast``; proposals go back to their previous status and any GT
+    the mark displaced is restored (unless the frame has new GT since). ``False`` when the
+    frame was not flagged."""
+    gone: list[bool] = []
+    displaced: list[dict] = []
+
+    def _unflag(doc: dict) -> None:
+        rec = doc["frames"].pop(str(idx), None)
+        gone.append(rec is not None)
+        if rec and rec.get("displaced_gt"):
+            displaced.append(rec["displaced_gt"])
+
+    update_frame_types(_gt_marks_dir(), clip, _unflag)
+    if displaced:
+        doc = _read_gt(clip)
+        if str(idx) not in doc["frames"]:
+            doc["frames"][str(idx)] = displaced[0]
+            _write_gt(clip, doc)
+
+    def _props(doc: dict) -> None:
+        for run in doc["runs"].values():
+            f = run["frames"].get(str(idx))
+            if f is not None and f["status"] == NOT_BROADCAST:
+                f["status"] = f.pop("prev_status", None) or ("proposed" if f.get("H") is not None else "failed")
+                f.pop("reviewed_at", None)
+
+    if read_proposals(_gt_marks_dir(), clip)["runs"]:
+        update_proposals(_gt_marks_dir(), clip, _props)
+    return gone[0]
+
+
+@router.get("/calibration/api/frame_type/{clip}")
+async def frame_type_list(clip: str) -> dict:
+    return {"clip": clip, "not_broadcast": await asyncio.to_thread(_not_broadcast, clip)}
+
+
+@router.put("/calibration/api/frame_type/{clip}/{idx}")
+async def frame_type_set(clip: str, idx: int, body: dict | None = None):
+    """Flag the frame ``not_broadcast`` (body ``{overwrite?, run_id?}``); 409 over existing GT."""
+    body = body or {}
+    if idx < 0:
+        return _err(400, "frame_index must be >= 0")
+    if body.get("type", NOT_BROADCAST) != NOT_BROADCAST:
+        return _err(400, f"type must be {NOT_BROADCAST!r}")
+    res = await asyncio.to_thread(
+        lambda: mark_not_broadcast(clip, idx, overwrite=bool(body.get("overwrite")), run_id=body.get("run_id"))
+    )
+    if "conflict" in res:
+        return _not_broadcast_conflict(res["conflict"])
+    return res
+
+
+@router.delete("/calibration/api/frame_type/{clip}/{idx}")
+async def frame_type_clear(clip: str, idx: int):
+    if not await asyncio.to_thread(clear_not_broadcast, clip, idx):
+        return _err(404, "this frame is not marked not_broadcast")
+    return {"ok": True, "not_broadcast": await asyncio.to_thread(_not_broadcast, clip)}
+
+
+def _not_broadcast_conflict(existing: dict) -> JSONResponse:
+    human = not existing.get("origin")
+    what = "hand-labelled" if human else "accepted machine"
+    return JSONResponse(
+        {"ok": False, "existing_gt": "human" if human else "machine",
+         "error": f"this frame already has {what} calibration GT; marking it not broadcast "
+                  "would set that GT aside (Undo restores it). Resend with overwrite=true to do so"},
+        status_code=409,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Request parsing
+# ---------------------------------------------------------------------------
+
+
+class _BadRequest(Exception):
+    pass
+
+
+def _pitch_from(body: dict) -> PitchModel:
+    dims = body.get("pitch_dims") or [DEFAULT_LENGTH, DEFAULT_WIDTH]
+    try:
+        return PitchModel(float(dims[0]), float(dims[1]))
+    except (TypeError, ValueError, IndexError) as exc:
+        raise _BadRequest(f"bad pitch_dims: {exc}") from exc
+
+
+def _parse_correspondences(
+    raw: object, pitch: PitchModel
+) -> tuple[np.ndarray, np.ndarray, list[dict]]:
+    """-> (image norm (N,2), pitch metres (N,2), cleaned records).
+
+    Each item: ``{"image": [u, v]}`` plus ``"pitch_id"`` (a keypoint id) or
+    ``"pitch_xy"`` (free metres). A ``pitch_id`` wins and its metres are
+    resolved here, from the given dims, so the stored xy is never stale.
+    """
+    if not isinstance(raw, list):
+        raise _BadRequest("correspondences must be a list")
+    kps = pitch.keypoints()
+    img, ptc, clean = [], [], []
+    for i, c in enumerate(raw):
+        try:
+            u, v = (float(t) for t in c["image"])
+            pid = c.get("pitch_id")
+            if pid:
+                if pid not in kps:
+                    raise _BadRequest(f"unknown pitch keypoint {pid!r}")
+                x, y = kps[pid]
+            else:
+                x, y = (float(t) for t in c["pitch_xy"])
+        except _BadRequest:
+            raise
+        except (KeyError, TypeError, ValueError) as exc:
+            raise _BadRequest(f"bad correspondence #{i}: {exc}") from exc
+        if not all(np.isfinite([u, v, x, y])):
+            raise _BadRequest(f"non-finite value in correspondence #{i}")
+        img.append([u, v])
+        ptc.append([x, y])
+        clean.append(
+            {"image": [u, v], "pitch_id": pid or None, "pitch_xy": [x, y]}
+        )
+    return np.array(img).reshape(-1, 2), np.array(ptc).reshape(-1, 2), clean
+
+
+#: Hartley-normalised condition number of H above which the fit is flagged.
+MAX_H_COND = 100.0
+
+
+def _fit_warnings(img: np.ndarray, ptc: np.ndarray, H: np.ndarray) -> list[str]:
+    """Non-fatal notes: H is determined but poorly."""
+    out = []
+    cfg = geo.analyse_configuration(img, ptc)
+    if len(img) > 4 and cfg["n_general_subsets"] == 1:
+        out.append(
+            "only one set of 4 points is in general position; the rest add no "
+            "constraint, so the fit is effectively exact and unchecked - add "
+            "points off the shared line"
+        )
+    cond = geo.conditioning(img, ptc, H)
+    if not np.isfinite(cond) or cond > MAX_H_COND:
+        out.append(
+            f"homography is poorly conditioned (cond {cond:.3g}); the points "
+            "are nearly degenerate - spread them out"
+        )
+    return out
+
+
+def _distortion_from(body: dict) -> dict | None:
+    """The optional lens ``distortion`` of a request (``{model, k1, centre, aspect}``); a missing
+    value or k1 == 0 is the plain homography."""
+    d = body.get("distortion")
+    if not d:
+        return None
+    try:
+        geo.distortion_params(d)
+        return geo.make_distortion(float(d["k1"]), float(d.get("aspect") or geo.DEFAULT_ASPECT),
+                                   d.get("centre") or (0.5, 0.5))
+    except (KeyError, TypeError, ValueError) as exc:
+        raise _BadRequest(f"bad distortion: {exc}") from exc
+
+
+def _fit(body: dict) -> dict:
+    """Shared by /fit and /gt save. Raises _BadRequest on bad input.
+
+    Correspondence ``image`` points are observed (distorted) coordinates; with a ``distortion``
+    in the body they are undistorted before the DLT, and the overlay is re-distorted."""
+    pitch = _pitch_from(body)
+    dist = _distortion_from(body)
+    img, ptc, clean = _parse_correspondences(body.get("correspondences", []), pitch)
+    img_obs = img
+    img = geo.undistort_points(img, dist)
+    method = body.get("method", "dlt")
+    size = body.get("image_size")
+    size_t = (float(size[0]), float(size[1])) if size else None
+    try:
+        H, inliers = geo.fit_homography(
+            img,
+            ptc,
+            method=method,
+            ransac_thresh_m=float(body.get("ransac_thresh_m", 1.0)),
+        )
+    except ValueError as exc:
+        raise _BadRequest(str(exc)) from exc
+    errs = geo.reprojection_errors(H, img_obs, ptc, size_t, dist)
+    warnings = _fit_warnings(img, ptc, H)
+    overlay = {
+        name: [r.tolist() for r in runs]
+        for name, runs in geo.project_pitch_model(H, pitch, distortion=dist).items()
+    }
+
+    def _clean(a: np.ndarray | None) -> list | None:
+        return None if a is None else [None if np.isnan(t) else float(t) for t in a]
+
+    out = {
+        "ok": True,
+        "H": H.tolist(),
+        "H_flat": H.ravel().tolist(),
+        "inliers": inliers.tolist(),
+        "err_m": _clean(errs["metres"]),
+        "err_px": _clean(errs["px"]),
+        "mean_err_m": float(np.mean(errs["metres"])),
+        "warnings": warnings,
+        "overlay": overlay,
+        "correspondences": clean,
+        "pitch_dims": [pitch.length, pitch.width],
+    }
+    if dist is not None:
+        out["distortion"] = dist
+    return out
+
+
+# ---------------------------------------------------------------------------
+# Routes
+# ---------------------------------------------------------------------------
+
+
+@router.get("/calibration/api/pitch_model")
+async def pitch_model(length: float = DEFAULT_LENGTH, width: float = DEFAULT_WIDTH):
+    try:
+        model = PitchModel(length, width)
+    except ValueError as exc:
+        return _err(400, str(exc))
+    d = model.to_dict()
+    d["warp"] = {"px_per_m": WARP_PX_PER_M, "margin_m": WARP_MARGIN_M}
+    return d
+
+
+def _find_video(clip: str):
+    """Video for ``clip``: exact stem first, else any file whose canonical clip id
+    matches (proposal sidecars store canonical ids, e.g. ``arsenal_astonvilla_seg110``
+    for ``astonvilla_seg110.mp4``)."""
+    video = _find_video_exact(clip)
+    if video is not None:
+        return video
+    from footy_track.calibration.prelabel.pipeline import find_video
+
+    video = find_video(_clips_dir(), clip)
+    # extra clip dirs the pre-labeller may have read from (os.pathsep-separated)
+    for d in filter(None, os.environ.get("FOOTY_CALIB_EXTRA_CLIPS_DIRS", "").split(os.pathsep)):
+        if video is None and Path(d).is_dir():
+            video = find_video(Path(d), clip)
+    return video
+
+
+@router.get("/calibration/api/clips")
+async def list_clips() -> dict:
+    cdir = _clips_dir()
+    if not cdir.exists():
+        return {"clips": []}
+    paths = sorted(p for p in cdir.iterdir() if p.suffix.lower() in _VIDEO_SUFFIXES)
+    return {
+        "clips": [
+            {"name": p.stem, "n_gt": len(_gt_frames(p.stem))} for p in paths
+        ]
+    }
+
+
+@router.get("/calibration/api/clips/{clip}/meta")
+async def clip_meta(clip: str):
+    video = _find_video(clip)
+    if video is None:
+        return _err(404, f"clip not found: {clip}")
+    meta = await asyncio.to_thread(_video_meta, video)
+    if meta is None:
+        return _err(404, f"cannot open video for {clip}")
+    return {**meta, "name": clip, "gt_frames": _gt_frames(clip), "not_broadcast": _not_broadcast(clip)}
+
+
+@router.get("/calibration/api/frame/{clip}/{idx}.jpg")
+async def frame_jpg(clip: str, idx: int):
+    video = _find_video(clip)
+    if video is None:
+        return _err(404, f"clip not found: {clip}")
+    frame = await asyncio.to_thread(_read_frame, video, idx)
+    if frame is None:
+        return _err(404, f"cannot read frame {idx}")
+    ok, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 90])
+    if not ok:
+        return _err(500, "jpeg encode failed")
+    return Response(buf.tobytes(), media_type="image/jpeg")
+
+
+@router.post("/calibration/api/fit")
+async def fit(body: dict):
+    try:
+        return _fit(body)
+    except _BadRequest as exc:
+        return _err(400, str(exc))
+
+
+@router.post("/calibration/api/warp")
+async def warp(body: dict):
+    """Frame warped into a top-down pitch raster (JPEG).
+
+    Extents: ``(length + 2*margin) x (width + 2*margin)`` metres at
+    ``px_per_m``, ``+x`` right, ``+y`` up; margin and scale are reported by
+    ``/pitch_model`` so the page draws its diagram over the same box.
+    """
+    try:
+        pitch = _pitch_from(body)
+        H = np.array(body["H"], dtype=np.float64)
+        if H.size == 9:
+            H = H.reshape(3, 3)
+        if H.shape != (3, 3) or not np.all(np.isfinite(H)):
+            raise _BadRequest("H must be a finite 3x3 matrix")
+        clip, idx = str(body["clip"]), int(body["frame_index"])
+        dist = _distortion_from(body)
+        scale = float(body.get("px_per_m", WARP_PX_PER_M))
+        if not 0 < scale <= MAX_WARP_PX_PER_M:
+            raise _BadRequest("px_per_m out of range")
+    except (KeyError, TypeError, ValueError) as exc:
+        return _err(400, f"bad request: {exc}")
+    except _BadRequest as exc:
+        return _err(400, str(exc))
+    video = _find_video(clip)
+    if video is None:
+        return _err(404, f"clip not found: {clip}")
+    frame = await asyncio.to_thread(_read_frame, video, idx)
+    if frame is None:
+        return _err(404, f"cannot read frame {idx}")
+    raster = await asyncio.to_thread(
+        geo.warp_to_pitch, frame, H, pitch, scale, WARP_MARGIN_M, dist
+    )
+    ok, buf = cv2.imencode(".jpg", raster, [cv2.IMWRITE_JPEG_QUALITY, 85])
+    if not ok:
+        return _err(500, "jpeg encode failed")
+    return Response(buf.tobytes(), media_type="image/jpeg")
+
+
+@router.get("/calibration/api/gt/{clip}")
+async def gt_list(clip: str) -> dict:
+    doc = await asyncio.to_thread(_read_gt, clip)
+    return {
+        "clip": doc["clip"],
+        "not_broadcast": await asyncio.to_thread(_not_broadcast, clip),
+        "frames": [
+            {
+                "frame_index": int(k),
+                "n_points": len(v.get("correspondences", [])),
+                "mean_err_m": v.get("mean_err_m"),
+                "ts": v.get("ts"),
+            }
+            for k, v in sorted(doc["frames"].items(), key=lambda kv: int(kv[0]))
+        ],
+    }
+
+
+@router.get("/calibration/api/gt/{clip}/{idx}")
+async def gt_get(clip: str, idx: int):
+    doc = await asyncio.to_thread(_read_gt, clip)
+    rec = doc["frames"].get(str(idx))
+    if rec is None:
+        return _err(404, "no calibration GT for this frame")
+    return rec
+
+
+def _gt_record(idx: int, res: dict, body: dict, origin: dict | None = None) -> dict:
+    """The GT frame record for a fit result (shared by GT save and proposal accept)."""
+    rec = {
+        "frame_index": idx,
+        "correspondences": res["correspondences"],
+        "H": res["H"],  # normalised image -> pitch metres
+        "H_convention": "normalised_image_to_pitch_m",
+        "pitch_dims": res["pitch_dims"],
+        "image_size": body.get("image_size"),
+        "method": body.get("method", "dlt"),
+        "inliers": res["inliers"],
+        "mean_err_m": res["mean_err_m"],
+        "err_px": res["err_px"],
+        "ts": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+    }
+    if res.get("distortion"):  # absent == plain homography (k1 = 0)
+        rec["distortion"] = res["distortion"]
+    if origin:
+        rec["origin"] = origin
+    return rec
+
+
+@router.put("/calibration/api/gt/{clip}/{idx}")
+async def gt_save(clip: str, idx: int, body: dict):
+    """Save (replace) the calibration GT of one frame.
+
+    Body: ``{correspondences, pitch_dims?, method?, image_size?}``. H is
+    re-fitted server-side from the correspondences, so the stored H can never
+    disagree with the stored points.
+    """
+    if idx < 0:
+        return _err(400, "frame_index must be >= 0")
+    if idx in await asyncio.to_thread(_not_broadcast, clip):
+        return _err(409, "this frame is marked not broadcast; clear the mark before saving GT")
+    try:
+        res = _fit(body)
+    except _BadRequest as exc:
+        return _err(400, str(exc))
+    rec = _gt_record(idx, res, body)
+
+    def _store() -> None:
+        doc = _read_gt(clip)
+        doc["frames"][str(idx)] = rec
+        _write_gt(clip, doc)
+
+    await asyncio.to_thread(_store)
+    return {"ok": True, "frame_index": idx, "gt_frames": _gt_frames(clip), "record": rec}
+
+
+@router.delete("/calibration/api/gt/{clip}/{idx}")
+async def gt_delete(clip: str, idx: int):
+    def _drop() -> bool:
+        doc = _read_gt(clip)
+        if doc["frames"].pop(str(idx), None) is None:
+            return False
+        _write_gt(clip, doc)
+        return True
+
+    if not await asyncio.to_thread(_drop):
+        return _err(404, "no calibration GT for this frame")
+    return {"ok": True, "gt_frames": _gt_frames(clip)}

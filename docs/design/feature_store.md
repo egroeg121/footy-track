@@ -99,7 +99,7 @@ frame_features`); the storage stays sane.
 
 ## 3. Schema overview
 
-Five tables plus three convenience views. All timestamps `ContinuousTime`
+Seven tables plus five convenience views. All timestamps `ContinuousTime`
 (seconds, `float64`) per [`../timings.md`](../timings.md). All boxes
 normalised top-left xywh in `[0,1]`.
 
@@ -107,7 +107,8 @@ normalised top-left xywh in `[0,1]`.
 game ──1:N── frame ──1:N── detection
   │             │              │
   │             │              └── source/run carried per row (see §6)
-  │             └── pitch_segmentation, calibration: inlined on frame (§5.3)
+  │             ├── pitch_segmentation: inlined on frame (§5.3)
+  │             └── calibration ──1:N── pitch_keypoint (source/run per row, §3.7)
   └── run (provenance for every produced artifact, §7)
 
 track / track_meta: derived from detection, see §8
@@ -199,21 +200,23 @@ view (non-broadcast frames are recorded, not dropped — invariant #5).
 | `pitch_seg_confidence` | `FLOAT` | nullable |
 | `pitch_seg_model_version` | `VARCHAR` | FK → `run.run_id` |
 | **calibration** (§5.4) | | |
-| `homography` | `LIST<DOUBLE>` (len 9) | flattened 3×3 image→pitch H; nullable |
-| `calibration_quality` | `FLOAT` | inlier ratio / quality metric; nullable |
-| `calibration_model_version` | `VARCHAR` | FK → `run.run_id` |
+| `homography` | `LIST<DOUBLE>` (len 9) | **DEPRECATED** — see §3.7; flattened 3×3 H; nullable |
+| `calibration_quality` | `FLOAT` | **DEPRECATED** — see §3.7; nullable |
+| `calibration_model_version` | `VARCHAR` | **DEPRECATED** — see §3.7 |
 
 PK: `(game_id, frame_index)`. The clock fields come from the OCR stage
 (`ocr_clock.parquet` is absorbed here); time-mapping fills `half` /
 `continuous_time_s` via `game.half2_start_continuous_s`.
 
-> **Design note — why pitch/calibration are inlined on `frame`, not a
-> separate table.** They are strictly per-frame (one polygon, one homography
-> per frame) and almost always read alongside the frame. Inlining avoids a
-> join for the common case. We keep only **one** "final" segmentation/
-> calibration per frame in this table; if we ever need to compare *multiple*
-> segmentation runs per frame, segmentation graduates to its own
-> source-tagged table exactly like detections (§6). Flagged in §11.
+> **Design note — pitch segmentation is inlined on `frame`; calibration is
+> not (any more).** Segmentation is strictly per-frame and read alongside the
+> frame, so it stays inlined with **one** "final" polygon per frame; if we ever
+> need to compare *multiple* segmentation runs it graduates to a source-tagged
+> table (§11). Calibration already has that need (human GT, Claude proposals,
+> classical runs over the same frames), so it graduated: see §3.7. The three
+> inline `homography` / `calibration_quality` / `calibration_model_version`
+> columns are **deprecated** (kept so old DBs and `FrameRow` stay valid; nothing
+> writes or reads them, none of the views use them). Use `frame_calibration_best`.
 
 ### 3.3 `detection` — one row per (game, frame, source, object)
 
@@ -291,9 +294,99 @@ YOLO runs with different weights coexist (§6).
   its frame's time/broadcast context and its run's model metadata.
 - `tracks_enriched` — `detection` ⨝ `track_meta`: tracked detections with
   per-track identity.
+- `frame_calibration_best` — one calibration per (game, frame) chosen from the
+  `calibration` table by the precedence in §3.7.
+- `detections_on_pitch` — `detection` ⨝ `frame_calibration_best`, projected to
+  pitch metres in SQL (§3.7).
 
 Views cost nothing on disk and can be `CREATE TABLE AS` materialised if a
 consumer wants a frozen flat export.
+
+### 3.7 `calibration`, `pitch_keypoint` and the calibration views
+
+`calibration` — one row per **(game_id, source, run_id, frame_index)**
+(source-tagged like `detection`, so human GT, Claude proposals and classical
+runs coexist):
+
+| Column | Type | Notes |
+|---|---|---|
+| `game_id`, `source`, `run_id`, `frame_index` | | PK. `source` ∈ `hand_label` \| `claude` \| `classical` \| (future) `model`; `run_id` FK → `run` (stage `calibration`, `params_json` = model / prompt_version / effort …) |
+| `H` | `DOUBLE[9]` | row-major 3×3, **normalised image → pitch metres** (origin centre spot, +x long axis), exactly what `PitchProjector` applies. NULL only for `failed` rows |
+| `h_convention` | `VARCHAR` | `normalised_image_to_pitch_m` (the only one the views understand; the importer rejects others) |
+| `quality` | `DOUBLE` | [0,1] projector gate. Machine rows: the proposal `score`. Human rows: 1.0 |
+| `mean_err_px`, `mean_err_m`, `n_points`, `n_inliers` | | fit diagnostics (`mean_err_px` = mean of per-point `err_px`) |
+| `pitch_length`, `pitch_width`, `image_width`, `image_height` | | dims the H was solved for |
+| `method` | `VARCHAR` | `dlt` \| `ransac` \| … |
+| `review_status` | `VARCHAR` | `hand` \| `proposed` \| `accepted` \| `rejected` \| `failed` |
+| `reviewed` | `BOOLEAN` | a human looked (true for GT, accepted, rejected) |
+| `origin_source`, `origin_run_id`, `origin_status` | | for GT rows that began as an accepted/edited proposal: which proposal (`origin_status` ∈ accepted/edited) |
+| `failure` | `VARCHAR` | reason when `failed` |
+| `view_end`, `camera_side` | `VARCHAR` | machine view hints (L/R end, camera side) |
+| `created_at` | `TIMESTAMP` | record time (UTC) |
+| `dataset_tag` | `VARCHAR` | importer that wrote the row (`calibration_gt` \| `calibration_proposals`); scopes replace-on-reimport |
+
+`pitch_keypoint` — one row per correspondence behind a calibration row, PK
+`(game_id, source, run_id, frame_index, point_idx)`: `keypoint_id` (nullable —
+free clicks have none), `u`, `v` (normalised image), `pitch_x`, `pitch_y`
+(metres), `is_inlier`, `err_px`, `dataset_tag`.
+
+Both are Parquet-partitioned by `game_id, source` like `detection`.
+
+**`frame_calibration_best`** — one row per `(game_id, frame_index)`, carrying
+the winner's `source`, `run_id` and `tier`. Precedence:
+
+1. `hand_label` rows (this includes accepted/edited proposals that were
+   copied into GT; their `origin_*` columns say where they came from),
+2. machine rows with `review_status='accepted'`,
+3. `proposed` machine rows, highest `quality` first,
+4. `failed` / `rejected` rows (and any row without an `H`) are never chosen.
+
+Ties break on newest `created_at`, then `run_id` DESC, so the view is
+deterministic.
+
+**`detections_on_pitch`** — every `detection` row left-joined to its frame's
+best calibration and projected in SQL: `x_pitch`/`y_pitch` (metres) and
+`x_pitch_norm`/`y_pitch_norm` ([0,1], using the calibration's pitch dims,
+default 105×68), plus `projection_status`, `calibration_source/_run_id/_tier`.
+Anchor: centroid for ball labels, bottom-centre of the box for everything
+else. Gate: `quality IS NULL OR quality < 0.3` (`H_QUALITY_THRESHOLD` in the
+projector) → `NaN` with status `low_quality`; no calibration at all → `NULL`
+with status `no_calibration`. A test pins the SQL to `PitchProjector.project_frame`.
+Note the view covers *all* detection rows; join `detections_enriched` on
+`(game_id, frame_index, source, run_id, detection_id)` and filter `canonical`
+for one batch per frame. `PitchProjector` itself only treats the exact label
+`ball` as a ball; the view also treats the GT labels `in_play_ball` /
+`out_of_play_ball` as balls (otherwise GT balls would be anchored at the
+box bottom).
+
+**Inline `frame.homography` columns — decision.** Deprecated, not removed:
+nothing in the repo wrote or read them (grep: schema/store only), but dropping
+columns would break `from_parquet` of existing exports. The views ignore them.
+Do not fall back to them: an unattributed H with no run, score or review status
+is exactly what the `calibration` table exists to avoid.
+
+**Importer** (`feature_store/ingest_calibration.py`):
+`python -m footy_track.feature_store.ingest_calibration --gt-dir <ball_gt_marks> --db <store> [--dry-run] [--clip X]`
+reads `calibration_gt/*.json` (run `calibration_gt_import`, source
+`hand_label`) and `calibration_proposals/*.json` (one run per `runs` key) per
+the sidecar contract in [`calibration.md`](calibration.md).
+
+- *Replace semantics* (as T-04): per game, the file is the truth. One
+  transaction deletes the game's `calibration`/`pitch_keypoint` rows with that
+  importer's `dataset_tag`, then inserts; other writers' rows are untouched. A
+  file whose frames are *all* malformed keeps the earlier import.
+- *game_id mapping*: `ingest_gt` keys ball GT by the **sidecar stem** (not
+  canonicalised, §3.1a) while calibration files are keyed by
+  `canonical_clip_id`. A file is written to **every** game_id whose canonical
+  id matches — each `<stem>.jsonl` in `--gt-dir` plus existing `game` rows —
+  falling back to the canonical id if none. E.g. `arsenal_mancity_seg010.json`
+  lands on `arsenal_mancity_seg010`, `arsenal_mancity_20250925_seg010` and
+  `mancity_seg010`, so `detections_on_pitch` projects the ball GT of each
+  alias at the same `frame_index` (same video, same frame numbering). The cost
+  is duplicate rows per alias; if the aliases are ever collapsed (§3.1a
+  migration) the duplicates collapse with them.
+- Malformed frames/points (bad key, non-3×3 or non-finite `H`, unknown
+  convention or status) are skipped with a warning, never a crash.
 
 ---
 
@@ -328,8 +421,9 @@ adopt DuckDB's `spatial` extension for point-in-polygon "is this player on
 the pitch" queries — recommended once we need geometric predicates. (§3.2)
 
 ### 5.4 Calibration / homography
-→ `frame.homography` (flattened 3×3), `calibration_quality`. Absorbs
-`geometry.parquet`. (§3.2)
+→ `calibration` + `pitch_keypoint` tables and the `frame_calibration_best` /
+`detections_on_pitch` views (§3.7); the inline `frame.homography` columns are
+deprecated. Absorbs `geometry.parquet`.
 
 ### 5.5 Object detections from multiple sources
 → `detection` table, one row per object, tagged by `source` + `run_id`.
@@ -382,6 +476,8 @@ store/
   detection/game_id=<id>/source=<src>/run_id=<rid>/part.parquet
   track_meta/game_id=<id>/source=<src>/run_id=<rid>/part.parquet
   detection_review/game_id=<id>/part.parquet   # Ball Check verdicts, see 6.2
+  calibration/game_id=<id>/source=<src>/part.parquet     # §3.7
+  pitch_keypoint/game_id=<id>/source=<src>/part.parquet  # §3.7
   frame_embedding/game_id=<id>/part.parquet
   masks/game_id=<id>/<frame>__<detection_id>.png   # mask_ref targets
 ```
@@ -460,6 +556,8 @@ intended behaviour.
   - `detection(game_id, source, run_id, frame_index, detection_id)`
   - `track_meta(game_id, source, run_id, track_id)`
   - `detection_review(game_id, vsource, frame_index, box_index)` (§6.2)
+  - `calibration(game_id, source, run_id, frame_index)`;
+    `pitch_keypoint(game_id, source, run_id, frame_index, point_idx)` (§3.7)
   - `run(run_id)`
 - **Upsert semantics**: ingestion is `INSERT … ON CONFLICT DO UPDATE`
   (DuckDB) / partition-replace (Parquet). Re-ingesting an identical run is a
@@ -572,7 +670,7 @@ Tracking reuses the `detection` table rather than a parallel `tracks.parquet`:
 | `frames.parquet` (pipelines.md) | → `frame` table |
 | `ocr_clock.parquet` | → `frame.game_time_s` / `half` columns |
 | `detections.parquet` | → `detection` table (now multi-source) |
-| `geometry.parquet` | → `frame.homography` / `calibration_quality` |
+| `geometry.parquet` | → `calibration` table (§3.7) |
 | `embeddings.parquet` | → `frame_embedding` table (§4) |
 | `tracks.parquet` + `tracks_meta.json` (player_tracking_format.md) | → `detection` (track_id) + `track_meta` table |
 | `GameMetadata` block in sidecar | → `game` table |
@@ -602,10 +700,10 @@ semantics** spec; this doc is the **physical storage** spec it plugs into.
 - **Streaming producers.** This is batch-on-completion. A live feed wants
   append-friendly chunk Parquet compacted at end-of-game (same open question
   as `player_tracking_format.md` §6). Pick before building a live path.
-- **Multiple segmentation/calibration runs per frame.** Currently "one final
-  per frame" inlined on `frame`. If we need to compare segmentation runs,
-  promote pitch_seg/calibration to source-tagged tables like `detection`.
-  Decide when a second segmentation model appears.
+- **Multiple segmentation runs per frame.** Segmentation is still "one final
+  per frame" inlined on `frame`; promote it to a source-tagged table like
+  `detection` when a second segmentation model appears. (Calibration already
+  graduated: §3.7.)
 - **Geometry predicates.** Adopt DuckDB `spatial` (WKB `GEOMETRY` for
   `pitch_polygon`) so "is this player inside the pitch" is a SQL
   `ST_Contains`? Recommended but pulls in the extension.
@@ -640,9 +738,10 @@ semantics** spec; this doc is the **physical storage** spec it plugs into.
 - **Multiple detection sources** (hand label / SAM 3 / YOLO / trackers)
   coexist as `source` + `run_id`-tagged rows; none overwrites another, eval
   is a self-join, re-runs are idempotent partition swaps.
-- **Pitch segmentation** (final polygon + thresholds), **broadcast** flags,
-  and **calibration** are inlined per-frame with their own model-version
-  provenance; **tracking** plugs into `detection`/`track_meta` per the
+- **Pitch segmentation** (final polygon + thresholds) and **broadcast** flags
+  are inlined per-frame with their own model-version provenance;
+  **calibration** is a source-tagged table (`calibration` + `pitch_keypoint`)
+  resolved by the `frame_calibration_best` view; **tracking** plugs into `detection`/`track_meta` per the
   existing lifecycle spec.
 - Folds together every previously-scattered Parquet artifact; honours the
   ContinuousTime / bbox / class-label / track-ID invariants; stays

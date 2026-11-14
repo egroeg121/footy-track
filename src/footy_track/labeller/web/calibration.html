@@ -1,0 +1,542 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Pitch calibration</title>
+<script src="https://unpkg.com/konva@9/konva.min.js"></script>
+<style>
+  :root { --bg:#0f1419; --panel:#1a2129; --ink:#e6edf3; --muted:#9bb0c0;
+          --accent:#1e90ff; --green:#3fb950; --red:#f85149; --amber:#d29922;
+          --border:#2d3742; }
+  * { box-sizing:border-box; }
+  html, body { height:100%; }
+  body { margin:0; background:var(--bg); color:var(--ink); overflow:hidden;
+         font:13px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+         display:flex; flex-direction:column; }
+  a { color:var(--muted); text-decoration:none; }
+  header { display:flex; flex-wrap:wrap; align-items:center; gap:8px 14px;
+           padding:8px 12px; border-bottom:1px solid var(--border); flex:none; }
+  header h1 { font-size:15px; margin:0; }
+  label { color:var(--muted); display:inline-flex; align-items:center; gap:5px; }
+  select, input, button { background:var(--panel); color:var(--ink);
+          border:1px solid var(--border); border-radius:5px; padding:4px 8px;
+          font:inherit; }
+  button { cursor:pointer; }
+  button:hover { border-color:var(--accent); }
+  button.primary { background:var(--accent); border-color:var(--accent); color:#fff; }
+  button.danger:hover { border-color:var(--red); color:var(--red); }
+  input[type=number] { width:64px; }
+  input[type=range] { padding:0; }
+  #frameRow { display:flex; align-items:center; gap:8px; padding:6px 12px;
+              border-bottom:1px solid var(--border); flex:none; }
+  #frameSlider { flex:1; }
+  #gtChips { display:flex; gap:4px; flex-wrap:wrap; }
+  .chip { padding:1px 7px; border-radius:10px; background:#1b3a2a;
+          border:1px solid var(--green); color:var(--green); cursor:pointer; }
+  .chip.cur { background:var(--green); color:#000; }
+  #body { flex:1; display:flex; min-height:0; }
+  .pane { flex:1; min-width:0; display:flex; flex-direction:column;
+          border-right:1px solid var(--border); }
+  .pane h2 { margin:0; padding:4px 10px; font-size:12px; color:var(--muted);
+             font-weight:600; display:flex; gap:12px; align-items:center; }
+  .wrap { position:relative; flex:1; min-height:0; overflow:hidden; }
+  /* Konva owns this subtree: never put children in here. Overlays are siblings. */
+  .stage { position:absolute; inset:0; }
+  .hint { position:absolute; left:8px; bottom:6px; color:var(--muted);
+          background:#0f1419cc; padding:2px 6px; border-radius:4px;
+          pointer-events:none; font-size:12px; }
+  #side { width:300px; flex:none; display:flex; flex-direction:column; min-height:0; }
+  #side section { padding:8px 10px; border-bottom:1px solid var(--border); }
+  #pairs { flex:1; overflow:auto; padding:0; }
+  .pair { display:grid; grid-template-columns:22px 1fr 58px 24px; gap:4px;
+          align-items:center; padding:3px 10px; border-bottom:1px solid #20282f; }
+  .pair .n { color:var(--muted); }
+  .pair .name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .pair .del { padding:0 6px; }
+  .pending { color:var(--amber); }
+  .ok { color:var(--green); } .warn { color:var(--amber); } .bad { color:var(--red); }
+  #status { color:var(--muted); min-height:18px; }
+  #status.error { color:var(--red); }
+  #fitError { display:none; margin:6px 10px 0; padding:6px 8px; border-radius:5px;
+              background:#3a1517; border:1px solid var(--red); color:#ffb4ae; font-weight:600; }
+  #fitWarn { margin:6px 10px 0; padding:6px 8px; border-radius:5px; display:none;
+             background:#2e2410; border:1px solid var(--amber); color:#f0cf7a; }
+  .row { display:flex; flex-wrap:wrap; gap:6px 12px; align-items:center; margin:2px 0; }
+</style>
+</head>
+<body>
+<header>
+  <a href="/main">&larr; Hub</a>
+  <h1>Pitch calibration</h1>
+  <a href="/calibration/review" title="Accept/reject machine proposals">Review proposals &rarr;</a>
+  <label>Clip <select id="clipSel"></select></label>
+  <label>Pitch <input id="pitchL" type="number" step="0.5" value="105" title="length (m)"> &times;
+    <input id="pitchW" type="number" step="0.5" value="68" title="width (m)"> m</label>
+  <label>Fit <select id="method"><option value="dlt">DLT</option><option value="ransac">RANSAC</option></select></label>
+  <button id="saveBtn" class="primary">Save GT</button>
+  <button id="loadBtn">Load GT</button>
+  <button id="delGtBtn" class="danger">Delete GT</button>
+  <button id="clearBtn">Clear points</button>
+  <button id="nbBtn" title="This frame is not the main broadcast pitch view (replay, close-up, crowd, graphic). Key: n">Not broadcast</button>
+  <span id="status"></span>
+  <span id="propBanner" style="display:none;color:var(--amber)"></span>
+  <span id="nbBanner" style="display:none;color:var(--amber);font-weight:600">not a broadcast frame
+    <button id="nbUndo">Undo</button></span>
+</header>
+<div id="frameRow">
+  <button id="prevBtn" title="previous frame (Left, Shift+Left = 10)">&lsaquo;</button>
+  <input id="frameSlider" type="range" min="0" max="0" value="0">
+  <button id="nextBtn" title="next frame (Right)">&rsaquo;</button>
+  <input id="frameNum" type="number" min="0" value="0">
+  <span id="frameTotal" style="color:var(--muted)"></span>
+  <span style="color:var(--muted)">GT frames:</span><span id="gtChips"></span>
+</div>
+<div id="body">
+  <div class="pane">
+    <h2>Frame <label><input type="checkbox" id="showOverlay" checked> pitch overlay</label></h2>
+    <div class="wrap"><div class="stage" id="leftStage"></div>
+      <div class="hint" id="leftHint">click the frame to add an image point</div></div>
+  </div>
+  <div class="pane">
+    <h2>Pitch <label><input type="checkbox" id="showWarp"> bird&rsquo;s-eye warp</label>
+      <label>opacity <input type="range" id="warpOpacity" min="0" max="1" step="0.05" value="0.6" style="width:80px"></label></h2>
+    <div class="wrap"><div class="stage" id="rightStage"></div>
+      <div class="hint" id="rightHint">click a keypoint (shift+click = free point)</div></div>
+  </div>
+  <div id="side">
+    <section>
+      <div class="row"><b>Pairs</b><span id="pairSummary" style="color:var(--muted)"></span></div>
+      <div class="row" style="color:var(--muted)">points pair up in order: 1st frame point with 1st pitch point, &hellip; Drag frame points to refine. Need &ge;4 pairs.</div>
+      <div class="row" id="fitSummary"></div>
+    </section>
+    <div id="fitError" role="alert"></div>
+    <div id="fitWarn"></div>
+    <div id="pairs"></div>
+  </div>
+</div>
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+const API = "/calibration/api";
+const state = {
+  clip: null, meta: null, frame: 0, frameImg: null,
+  pitch: null,                 // /pitch_model payload
+  imgPts: [],                  // [{u,v}] normalised
+  pitchPts: [],                // [{id|null, x, y}] metres
+  fit: null, warpImg: null, warpKey: null, dirty: false, gtFrames: [],
+  hoverKp: null, fitSeq: 0, fitError: null,
+  distortion: null,            // lens model of the loaded GT/proposal ({k1,...}); null = plain homography
+  proposal: null,              // {run_id} while editing a machine proposal: Save accepts it as edited
+};
+
+function status(msg, isErr) { const s = $("status"); s.textContent = msg || ""; s.className = isErr ? "error" : ""; }
+async function api(path, opts) {
+  const r = await fetch(API + path, opts);
+  if (!r.ok) {
+    let m = r.statusText; try { m = (await r.json()).error || m; } catch (e) {}
+    throw new Error(m);
+  }
+  return r;
+}
+const jsonOpts = (method, body) => ({ method, headers: {"Content-Type": "application/json"}, body: JSON.stringify(body) });
+const dims = () => [parseFloat($("pitchL").value) || 105, parseFloat($("pitchW").value) || 68];
+
+// ---------------------------------------------------------------- stages
+function makeStage(id) {
+  const el = $(id);
+  const stage = new Konva.Stage({ container: el, width: el.clientWidth, height: el.clientHeight });
+  return stage;
+}
+const L = { stage: makeStage("leftStage") };
+const R = { stage: makeStage("rightStage") };
+for (const S of [L, R]) {
+  S.bg = new Konva.Layer(); S.lines = new Konva.Layer(); S.pts = new Konva.Layer();
+  S.stage.add(S.bg, S.lines, S.pts);
+}
+// left geometry: normalised -> stage px
+function leftBox() {
+  const W = L.stage.width(), H = L.stage.height();
+  const fw = state.frameImg ? state.frameImg.naturalWidth : 16, fh = state.frameImg ? state.frameImg.naturalHeight : 9;
+  const s = Math.min(W / fw, H / fh);
+  return { x0: (W - fw * s) / 2, y0: (H - fh * s) / 2, w: fw * s, h: fh * s };
+}
+const lPt = (u, v) => { const b = leftBox(); return [b.x0 + u * b.w, b.y0 + v * b.h]; };
+const lInv = (x, y) => { const b = leftBox(); return [(x - b.x0) / b.w, (y - b.y0) / b.h]; };
+// right geometry: metres -> stage px (+y up); extents include the warp margin
+function rightBox() {
+  const [pl, pw] = [state.pitch.length, state.pitch.width], m = state.pitch.warp.margin_m;
+  const W = R.stage.width(), H = R.stage.height();
+  const s = Math.min(W / (pl + 2 * m), H / (pw + 2 * m));
+  const w = (pl + 2 * m) * s, h = (pw + 2 * m) * s;
+  return { s, x0: (W - w) / 2, y0: (H - h) / 2, w, h, m, pl, pw };
+}
+const rPt = (x, y) => { const b = rightBox(); return [b.x0 + (x + b.pl / 2 + b.m) * b.s, b.y0 + (b.pw / 2 + b.m - y) * b.s]; };
+const rInv = (px, py) => { const b = rightBox(); return [(px - b.x0) / b.s - b.pl / 2 - b.m, b.pw / 2 + b.m - (py - b.y0) / b.s]; };
+
+const NEUTRAL = "#58a6ff";  // no error value (yet): neither good nor bad
+function errColour(i) {
+  if (!state.fit || !state.fit.err_m || i >= state.fit.err_m.length) return NEUTRAL;
+  const e = state.fit.err_px ? state.fit.err_px[i] : null;
+  if (e == null) { const m = state.fit.err_m[i]; if (m == null) return NEUTRAL; return m < 0.5 ? "#3fb950" : m < 1.5 ? "#d29922" : "#f85149"; }
+  return e < 3 ? "#3fb950" : e < 8 ? "#d29922" : "#f85149";
+}
+const nPairs = () => Math.min(state.imgPts.length, state.pitchPts.length);
+
+// ---------------------------------------------------------------- drawing
+function marker(layer, x, y, n, colour, draggable) {
+  const g = new Konva.Group({ x, y, draggable: !!draggable });
+  g.add(new Konva.Circle({ radius: 7, stroke: colour, strokeWidth: 2, fill: "#00000055" }));
+  g.add(new Konva.Text({ text: String(n), x: 9, y: -16, fontSize: 13, fontStyle: "bold", fill: colour,
+                         stroke: "#000", strokeWidth: 0.4 }));
+  layer.add(g); return g;
+}
+
+function drawLeft() {
+  for (const l of [L.bg, L.lines, L.pts]) l.destroyChildren();
+  const b = leftBox();
+  L.lines.clip({ x: b.x0, y: b.y0, width: b.w, height: b.h });  // keep overlay inside the frame
+  if (state.frameImg) {
+    L.bgImg = new Konva.Image({ image: state.frameImg, x: b.x0, y: b.y0, width: b.w, height: b.h });
+    L.bg.add(L.bgImg);
+  }
+  if (state.fit && $("showOverlay").checked) {
+    for (const [name, runs] of Object.entries(state.fit.overlay)) {
+      for (const run of runs) {
+        L.lines.add(new Konva.Line({ points: run.flatMap(([u, v]) => lPt(u, v)),
+          stroke: name.includes("CIRCLE") || name.includes("ARC") ? "#ffd33d" : "#ff2bd6",
+          strokeWidth: 2, opacity: 0.85, listening: false, lineCap: "round" }));
+      }
+    }
+  }
+  state.imgPts.forEach((p, i) => {
+    const paired = i < state.pitchPts.length;
+    const g = marker(L.pts, ...lPt(p.u, p.v), i + 1, paired ? errColour(i) : "#d29922", true);
+    g.on("dragend", () => {
+      const [u, v] = lInv(g.x(), g.y()); p.u = u; p.v = v; state.dirty = true; refit();
+    });
+    g.on("click tap", e => { e.cancelBubble = true; });
+  });
+  L.bg.batchDraw(); L.lines.batchDraw(); L.pts.batchDraw();
+}
+
+function drawRight() {
+  if (!state.pitch) return;
+  for (const l of [R.bg, R.lines, R.pts]) l.destroyChildren();
+  const b = rightBox();
+  R.bg.add(new Konva.Rect({ x: b.x0, y: b.y0, width: b.w, height: b.h, fill: "#14301f" }));
+  if (state.warpImg && $("showWarp").checked) {
+    R.bg.add(new Konva.Image({ image: state.warpImg, x: b.x0, y: b.y0, width: b.w, height: b.h,
+                               opacity: parseFloat($("warpOpacity").value), listening: false }));
+  }
+  for (const [name, poly] of Object.entries(state.pitch.polylines)) {
+    R.lines.add(new Konva.Line({ points: poly.flatMap(([x, y]) => rPt(x, y)), stroke: "#e6edf3",
+      strokeWidth: 1.5, opacity: 0.9, listening: false }));
+  }
+  for (const [id, [x, y]] of Object.entries(state.pitch.keypoints)) {
+    const [px, py] = rPt(x, y);
+    R.lines.add(new Konva.Circle({ x: px, y: py, radius: 3, fill: "#58a6ff", listening: false }));
+  }
+  if (state.hoverKp) {
+    const [px, py] = rPt(...state.pitch.keypoints[state.hoverKp]);
+    R.pts.add(new Konva.Circle({ x: px, y: py, radius: 8, stroke: "#ffd33d", strokeWidth: 2, listening: false }));
+    R.pts.add(new Konva.Text({ x: px + 10, y: py + 6, text: state.hoverKp, fontSize: 12, fill: "#ffd33d",
+                               stroke: "#000", strokeWidth: 0.3, listening: false }));
+  }
+  state.pitchPts.forEach((p, i) => {
+    const paired = i < state.imgPts.length;
+    const g = marker(R.pts, ...rPt(p.x, p.y), i + 1, paired ? errColour(i) : "#d29922", false);
+    g.listening(false);
+  });
+  R.bg.batchDraw(); R.lines.batchDraw(); R.pts.batchDraw();
+}
+
+function drawPairs() {
+  const box = $("pairs"); box.innerHTML = "";
+  const n = Math.max(state.imgPts.length, state.pitchPts.length);
+  for (let i = 0; i < n; i++) {
+    const row = document.createElement("div"); row.className = "pair";
+    const ip = state.imgPts[i], pp = state.pitchPts[i];
+    const name = pp ? (pp.id || `free (${pp.x.toFixed(1)}, ${pp.y.toFixed(1)})`) : "(pick pitch point)";
+    let err = "", cls = "";
+    if (!ip) { err = "no frame pt"; cls = "pending"; }
+    else if (!pp) { cls = "pending"; }
+    else if (state.fit && i < state.fit.err_m.length) {
+      const e = state.fit.err_px ? state.fit.err_px[i] : null;
+      const m = state.fit.err_m[i];
+      err = e != null ? `${e.toFixed(1)}px ${m.toFixed(2)}m` : `${m.toFixed(2)}m`;
+      const c = errColour(i);
+      cls = c === "#3fb950" ? "ok" : c === "#d29922" ? "warn" : c === "#f85149" ? "bad" : "";
+    }
+    row.innerHTML = `<span class="n">${i + 1}</span><span class="name" title="${name}">${name}</span>` +
+      `<span class="${cls}" style="font-size:11px">${err}</span><button class="del danger" title="delete pair">&times;</button>`;
+    row.querySelector(".del").onclick = () => { state.imgPts.splice(i, 1); state.pitchPts.splice(i, 1); state.dirty = true; refit(); };
+    box.appendChild(row);
+  }
+  $("pairSummary").textContent = `${nPairs()} complete`;
+  const f = state.fit;
+  const fe = $("fitError");
+  fe.style.display = state.fitError ? "block" : "none";
+  fe.textContent = state.fitError ? "Fit failed: " + state.fitError : "";
+  const w = (f && f.warnings) || [];
+  const fw = $("fitWarn");
+  fw.style.display = w.length ? "block" : "none";
+  fw.textContent = w.length ? "Warning: " + w.join(" | ") : "";
+  $("fitSummary").innerHTML = f ? `mean err <b>${f.mean_err_m.toFixed(2)} m</b>` : (nPairs() >= 4 ? "" : `<span class="pending">need ${4 - nPairs()} more pair(s) to fit</span>`);
+}
+
+function redraw() { drawLeft(); drawRight(); drawPairs(); }
+
+// ---------------------------------------------------------------- fit
+function corrPayload() {
+  const out = [];
+  for (let i = 0; i < nPairs(); i++) {
+    const ip = state.imgPts[i], pp = state.pitchPts[i];
+    out.push(pp.id ? { image: [ip.u, ip.v], pitch_id: pp.id } : { image: [ip.u, ip.v], pitch_xy: [pp.x, pp.y] });
+  }
+  return out;
+}
+function fitBody() {
+  const fi = state.frameImg;
+  return { correspondences: corrPayload(), pitch_dims: dims(), method: $("method").value,
+           image_size: fi ? [fi.naturalWidth, fi.naturalHeight] : null, distortion: state.distortion };
+}
+let fitTimer = null;
+function refit() {
+  // A fit describes one exact pair set: drop it the moment the pairs change so
+  // a stale overlay/colour is never drawn while the debounced refit is in flight.
+  state.fit = null; state.warpImg = null; state.fitError = null;
+  state.fitSeq++;   // also invalidates any request already in flight
+  redraw();
+  clearTimeout(fitTimer);
+  fitTimer = setTimeout(doFit, 120);
+}
+async function doFit() {
+  const seq = ++state.fitSeq;
+  if (nPairs() < 4) { state.fit = null; state.warpImg = null; state.fitError = null; redraw(); return; }
+  try {
+    const r = await (await api("/fit", jsonOpts("POST", fitBody()))).json();
+    if (seq !== state.fitSeq) return;
+    state.fit = r; state.fitError = null; status("");
+    redraw();
+    updateWarp();
+  } catch (e) {
+    if (seq !== state.fitSeq) return;
+    state.fit = null; state.warpImg = null; state.fitError = e.message; status(""); redraw();
+  }
+}
+let warpSeq = 0;
+async function updateWarp() {
+  if (!$("showWarp").checked || !state.fit) { drawRight(); return; }
+  const seq = ++warpSeq;
+  try {
+    const blob = await (await api("/warp", jsonOpts("POST",
+      { clip: state.clip, frame_index: state.frame, H: state.fit.H, pitch_dims: dims(), distortion: state.distortion }))).blob();
+    const img = new Image();
+    img.onload = () => { if (seq === warpSeq) { state.warpImg = img; drawRight(); } };
+    img.src = URL.createObjectURL(blob);
+  } catch (e) { status("warp failed: " + e.message, true); }
+}
+
+// ---------------------------------------------------------------- interaction
+L.stage.on("click tap", () => {
+  if (!state.frameImg) return;
+  const p = L.stage.getPointerPosition(); if (!p) return;
+  const [u, v] = lInv(p.x, p.y);
+  if (u < 0 || u > 1 || v < 0 || v > 1) return;
+  state.imgPts.push({ u, v }); state.dirty = true; refit();
+});
+function nearestKp(x, y) {
+  let best = null, bd = 1e9;
+  for (const [id, [kx, ky]] of Object.entries(state.pitch.keypoints)) {
+    const [px, py] = rPt(kx, ky); const d = Math.hypot(px - x, py - y);
+    if (d < bd) { bd = d; best = id; }
+  }
+  return { id: best, d: bd };
+}
+R.stage.on("mousemove", e => {
+  const p = R.stage.getPointerPosition(); if (!p || !state.pitch) return;
+  const n = nearestKp(p.x, p.y); const id = !e.evt.shiftKey && n.d < 40 ? n.id : null;
+  if (id !== state.hoverKp) { state.hoverKp = id; drawRight(); }
+});
+R.stage.on("mouseleave", () => { state.hoverKp = null; drawRight(); });
+R.stage.on("click tap", e => {
+  const p = R.stage.getPointerPosition(); if (!p || !state.pitch) return;
+  let pt;
+  if (e.evt.shiftKey) { const [x, y] = rInv(p.x, p.y); pt = { id: null, x, y }; }
+  else {
+    const n = nearestKp(p.x, p.y);
+    if (n.d > 60) { status("no keypoint nearby (shift+click for a free point)"); return; }
+    const [x, y] = state.pitch.keypoints[n.id]; pt = { id: n.id, x, y };
+  }
+  state.pitchPts.push(pt); state.dirty = true; refit();
+});
+
+// ---------------------------------------------------------------- data
+async function loadPitch() {
+  const [l, w] = dims();
+  state.pitch = await (await api(`/pitch_model?length=${l}&width=${w}`)).json();
+  // keypoint metres in stored pairs follow the pitch dims
+  for (const p of state.pitchPts) if (p.id && state.pitch.keypoints[p.id]) [p.x, p.y] = state.pitch.keypoints[p.id];
+}
+async function loadClips() {
+  const r = await (await api("/clips")).json();
+  const sel = $("clipSel"); sel.innerHTML = "";
+  for (const c of r.clips) {
+    const o = document.createElement("option"); o.value = c.name;
+    o.textContent = c.name + (c.n_gt ? `  (${c.n_gt} GT)` : ""); sel.appendChild(o);
+  }
+  if (!r.clips.length) status("no clips found", true);
+  const want = new URLSearchParams(location.search).get("clip");
+  if (want) sel.value = want;
+  return r.clips.length;
+}
+async function selectClip() {
+  state.clip = $("clipSel").value; if (!state.clip) return;
+  state.meta = await (await api(`/clips/${encodeURIComponent(state.clip)}/meta`)).json();
+  state.gtFrames = state.meta.gt_frames; state.notBroadcast = state.meta.not_broadcast || [];
+  $("frameSlider").max = $("frameNum").max = Math.max(0, state.meta.frames - 1);
+  $("frameTotal").textContent = `/ ${state.meta.frames - 1}`;
+  const qp = new URLSearchParams(location.search);
+  const f0 = qp.get("frame") !== null ? parseInt(qp.get("frame")) : null;
+  await gotoFrame(f0 !== null && !isNaN(f0) ? f0 : (state.gtFrames.length ? state.gtFrames[0] : 0), true);
+  const run = qp.get("proposal");
+  if (run && f0 !== null) { qp.delete("proposal"); await loadProposal(run, f0); }
+}
+async function loadProposal(run, idx) {
+  // Load a machine proposal's points into the editor. Save then accepts it
+  // (status "edited" if the points differ from the proposal's).
+  try {
+    const rec = await (await api(`/proposals/${encodeURIComponent(state.clip)}/${encodeURIComponent(run)}/${idx}`)).json();
+    $("pitchL").value = rec.pitch_dims[0]; $("pitchW").value = rec.pitch_dims[1];
+    await loadPitch();
+    const keep = rec.correspondences.filter((c, i) => (rec.inliers || [])[i] !== false);
+    state.imgPts = keep.map(c => ({ u: c.image[0], v: c.image[1] }));
+    state.pitchPts = keep.map(c => ({ id: c.pitch_id, x: c.pitch_xy[0], y: c.pitch_xy[1] }));
+    state.distortion = rec.distortion || null;
+    state.proposal = { run_id: run }; state.dirty = false;
+    const b = $("propBanner"); b.style.display = ""; b.textContent = `editing proposal ${run}: Save accepts it as edited`;
+    refit();
+  } catch (e) { status("proposal: " + e.message, true); }
+}
+function drawChips() {
+  const box = $("gtChips"); box.innerHTML = "";
+  for (const f of state.gtFrames) {
+    const c = document.createElement("span"); c.className = "chip" + (f === state.frame ? " cur" : "");
+    c.textContent = f; c.onclick = () => gotoFrame(f); box.appendChild(c);
+  }
+  if (!state.gtFrames.length) box.textContent = "none yet";
+}
+async function gotoFrame(idx, force) {
+  idx = Math.max(0, Math.min(idx, (state.meta ? state.meta.frames : 1) - 1));
+  if (!force && idx === state.frame) return;
+  if (state.dirty && state.imgPts.length && !confirm("Discard unsaved points on this frame?")) {
+    $("frameSlider").value = $("frameNum").value = state.frame; return;
+  }
+  state.proposal = null; $("propBanner").style.display = "none";
+  state.frame = idx; $("frameSlider").value = $("frameNum").value = idx;
+  state.imgPts = []; state.pitchPts = []; state.fit = null; state.warpImg = null; state.fitError = null; state.dirty = false;
+  state.distortion = null;
+  status("loading frame…");
+  const img = new Image();
+  await new Promise((res, rej) => { img.onload = res; img.onerror = () => rej(new Error("frame failed to load"));
+    img.src = `${API}/frame/${encodeURIComponent(state.clip)}/${idx}.jpg`; }).catch(e => status(e.message, true));
+  state.frameImg = img.naturalWidth ? img : null; status("");
+  drawChips(); redraw(); syncNb();
+  if (state.gtFrames.includes(idx)) await loadGt(true);
+}
+async function loadGt(quiet) {
+  try {
+    const rec = await (await api(`/gt/${encodeURIComponent(state.clip)}/${state.frame}`)).json();
+    $("pitchL").value = rec.pitch_dims[0]; $("pitchW").value = rec.pitch_dims[1];
+    await loadPitch();
+    state.distortion = rec.distortion || null;
+    state.imgPts = rec.correspondences.map(c => ({ u: c.image[0], v: c.image[1] }));
+    state.pitchPts = rec.correspondences.map(c => ({ id: c.pitch_id, x: c.pitch_xy[0], y: c.pitch_xy[1] }));
+    state.dirty = false; if (!quiet) status("GT loaded");
+    refit();
+  } catch (e) { status("load: " + e.message, true); }
+}
+async function saveGt() {
+  if (nPairs() < 4) { status("need at least 4 complete pairs", true); return; }
+  if (state.proposal) {
+    try {
+      const body = { ...fitBody(), overwrite: state.gtFrames.includes(state.frame) };
+      const r = await (await api(`/proposals/${encodeURIComponent(state.clip)}/${encodeURIComponent(state.proposal.run_id)}/${state.frame}/accept`, jsonOpts("POST", body))).json();
+      state.gtFrames = r.gt_frames; state.dirty = false; state.proposal = null; $("propBanner").style.display = "none"; drawChips();
+      status(`accepted as ${r.status} (mean err ${r.record.mean_err_m.toFixed(2)} m)`);
+    } catch (e) { status("accept failed: " + e.message, true); }
+    return;
+  }
+  try {
+    const r = await (await api(`/gt/${encodeURIComponent(state.clip)}/${state.frame}`, jsonOpts("PUT", fitBody()))).json();
+    state.gtFrames = r.gt_frames; state.dirty = false; drawChips();
+    status(`saved (mean err ${r.record.mean_err_m.toFixed(2)} m)`);
+  } catch (e) { status("save failed: " + e.message, true); }
+}
+function syncNb() {
+  const on = (state.notBroadcast || []).includes(state.frame);
+  $("nbBanner").style.display = on ? "" : "none"; $("nbBtn").style.display = on ? "none" : "";
+}
+async function markNotBroadcast(overwrite) {
+  if (!state.clip) return;
+  try {
+    const r = await api(`/frame_type/${encodeURIComponent(state.clip)}/${state.frame}`, jsonOpts("PUT", overwrite ? { overwrite: true } : {}));
+    const j = await r.json();
+    state.notBroadcast = [...new Set([...(state.notBroadcast || []), state.frame])]; state.gtFrames = j.gt_frames; drawChips(); syncNb();
+    status("marked not a broadcast frame (Undo to clear)");
+  } catch (e) {
+    if (/already has/.test(e.message) && !overwrite && confirm(e.message + ". Delete the GT and mark it?")) return markNotBroadcast(true);
+    status("not broadcast failed: " + e.message, true);
+  }
+}
+async function clearNotBroadcast() {
+  try {
+    const j = await (await api(`/frame_type/${encodeURIComponent(state.clip)}/${state.frame}`, { method: "DELETE" })).json();
+    state.notBroadcast = j.not_broadcast; syncNb(); status("not-broadcast mark cleared");
+  } catch (e) { status("undo failed: " + e.message, true); }
+}
+async function deleteGt() {
+  if (!state.gtFrames.includes(state.frame)) { status("no GT on this frame"); return; }
+  if (!confirm("Delete saved GT for this frame?")) return;
+  try {
+    const r = await (await api(`/gt/${encodeURIComponent(state.clip)}/${state.frame}`, { method: "DELETE" })).json();
+    state.gtFrames = r.gt_frames; drawChips(); status("GT deleted");
+  } catch (e) { status("delete failed: " + e.message, true); }
+}
+
+// ---------------------------------------------------------------- wiring
+$("clipSel").onchange = () => { state.dirty = false; selectClip(); };
+$("frameSlider").onchange = e => gotoFrame(parseInt(e.target.value));
+$("frameNum").onchange = e => gotoFrame(parseInt(e.target.value) || 0);
+$("prevBtn").onclick = () => gotoFrame(state.frame - 1);
+$("nextBtn").onclick = () => gotoFrame(state.frame + 1);
+$("saveBtn").onclick = saveGt; $("loadBtn").onclick = () => loadGt(false); $("delGtBtn").onclick = deleteGt;
+$("nbBtn").onclick = () => markNotBroadcast(false); $("nbUndo").onclick = clearNotBroadcast;
+$("clearBtn").onclick = () => { state.imgPts = []; state.pitchPts = []; state.dirty = true; refit(); };
+$("showOverlay").onchange = redraw;
+$("showWarp").onchange = () => { if ($("showWarp").checked) updateWarp(); else drawRight(); };
+$("warpOpacity").oninput = drawRight;
+$("method").onchange = refit;
+for (const id of ["pitchL", "pitchW"]) $(id).onchange = async () => { await loadPitch(); refit(); };
+document.addEventListener("keydown", e => {
+  if (["INPUT", "SELECT", "TEXTAREA"].includes(document.activeElement.tagName)) return;
+  const step = e.shiftKey ? 10 : 1;
+  if (e.key === "ArrowLeft") gotoFrame(state.frame - step);
+  else if (e.key === "ArrowRight") gotoFrame(state.frame + step);
+  else if (e.key === "n") markNotBroadcast(false);
+});
+new ResizeObserver(() => {
+  for (const [S, id] of [[L, "leftStage"], [R, "rightStage"]]) S.stage.size({ width: $(id).clientWidth, height: $(id).clientHeight });
+  if (state.pitch) redraw();
+}).observe(document.body);
+
+(async () => {
+  try {
+    await loadPitch();
+    if (await loadClips()) await selectClip(); else redraw();
+  } catch (e) { status(e.message, true); }
+})();
+</script>
+</body>
+</html>

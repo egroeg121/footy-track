@@ -1,0 +1,49 @@
+# footy_track.calibration
+
+Camera -> pitch calibration. Plan: `docs/design/calibration.md`. This package
+currently holds milestone M0 (pitch model, geometry, manual calibration GT via
+the labeller `/calibration` page).
+
+## Conventions
+
+* **Pitch frame**: metres, origin at the centre spot, `+x` along the long axis
+  (left goal at `-L/2`, right goal at `+L/2`), `+y` toward the **far**
+  touchline (the one on the opposite side of the pitch from a main-camera
+  operator). Default 105 x 68. A top-down diagram therefore draws `+x` right
+  and `+y` up.
+* **H maps normalised image coords `[0,1]^2` (top-left origin) to pitch
+  metres.** `PitchProjector` applies it directly to normalised anchors. The
+  sign of `H` is fixed so image points on the visible ground have `w > 0`.
+* `pitch_model.PitchModel(length, width)` exposes line segments, sampled arcs
+  and circles (`polylines()`) and named keypoints (`keypoints()`); ids such as
+  `L_PEN_BOX_TOP_OUTER` are stable API (GT files reference them).
+  `L`/`R` = `-x`/`+x` end, `TOP`/`BOTTOM` = `+y`/`-y` side.
+* `geometry.py`: `fit_homography` (DLT, optional RANSAC),
+  `reprojection_errors` (px and metres), `project_polyline_to_image` (drops
+  points behind the camera so lines never wrap), `warp_to_pitch` (top-down
+  raster; the same extents are used by the labeller page).
+
+## Lens distortion
+
+Optional one-parameter division-model distortion (`geometry.make_distortion/undistort_norm/
+distort_norm`, stored as `distortion: {model, k1, centre, aspect}` beside `H`; missing or `k1 == 0`
+is the plain homography). `H` takes undistorted normalised image coords; labels/anchors are
+observed coords. Estimated by `refine_homography(fit_k1=True)` or given (`k1=`). Design and where
+it is applied: `docs/design/calibration.md` section 8.
+
+## Line refinement and pre-labelling
+
+`refine.py`: `refine_homography(H, pitch, lines_mask, grass, prior_points=..., line_labels=...,
+starts=...)` optimises all 8 DOF of `H` so the projected pitch lines/arcs land on a boolean
+white-line mask (robust distance-transform cost, coarse-to-fine, numpy LM; returns the input `H`
+with `applied=False` and a reason when it cannot improve it safely). It only needs masks and an
+`H`, so the manual page can call it too. `prelabel/` (see `docs/design/calibration.md` section 7)
+uses it after the coarse fit.
+
+## Claude via the Claude Code CLI (no API key)
+
+`--identifier claude-cli` runs `claude -p` once per frame (stream-json in/out, `--json-schema`,
+`--tools ""`, `--setting-sources ""`, no MCP, no session persistence, scratch cwd), default model
+alias `opus`, effort `medium`. Same prompt/schema as the API identifier (`build_content`), minus our
+`cache_control` (the CLI adds its own; a second one is a 400). Answer is `structured_output` on the
+final `result` event; cost/duration land in the run's `params.usage`.
