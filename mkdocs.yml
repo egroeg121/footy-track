@@ -16,6 +16,7 @@ nav:
   - Inference: inference.md
   - Inference web app: inference-web.md
   - Ball tracking evaluation: ball-tracking-eval.md
+  - Offline ball harness: ball-offline-harness.md
   - Feature store: design/feature_store.md
   - Design:
       - Pipeline Overview: design/pipeline_overview.md
