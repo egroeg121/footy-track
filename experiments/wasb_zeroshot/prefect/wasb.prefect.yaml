@@ -1,0 +1,15 @@
+# WASB-SBDT zero-shot ball detection experiment (wasb_zeroshot.py).
+# Deploy (from the mini, auth loaded): cd ~/code/jobs && $PF cli deploy --prefect-file wasb.prefect.yaml --all
+# GPU job: run ~/.claude/skills/prefect-jobs/scripts/sync-desktop.sh first.
+name: jobs
+prefect-version: 3.6.29
+
+pull:
+  - prefect.deployments.steps.set_working_directory:
+      directory: /home/george/code/jobs
+
+deployments:
+  - name: wasb-zeroshot
+    entrypoint: wasb_zeroshot.py:wasb_zeroshot
+    parameters: {run_name: "", modes: "", clips: "", max_frames: 0}
+    work_pool: {name: gpu}

@@ -28,6 +28,8 @@ nav:
       - Getting Started: development.md
       - Agent Guidelines: agent_guidelines.md
       - How to contribute to the docs: contributing-docs.md
+  - Experiments:
+      - WASB zero-shot ball detection: experiments/wasb_zeroshot.md
   - TODO: todo.md
 markdown_extensions:
   - admonition

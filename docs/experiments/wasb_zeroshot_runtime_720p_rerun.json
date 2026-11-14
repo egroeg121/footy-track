@@ -1,0 +1,81 @@
+{
+ "params": 1481427,
+ "gpu": "NVIDIA GeForce RTX 2070",
+ "torch": "2.8.0+cu128",
+ "frames": 583,
+ "wall_s": 1067.6,
+ "vram": {
+  "full_bilinear": {
+   "tiles": 1,
+   "peak_alloc_MiB": 964.9,
+   "peak_reserved_MiB": 980.0,
+   "model_resident_MiB": 5.8
+  },
+  "full_area": {
+   "tiles": 1,
+   "peak_alloc_MiB": 964.9,
+   "peak_reserved_MiB": 980.0,
+   "model_resident_MiB": 5.8
+  },
+  "tile_2x": {
+   "tiles": 6,
+   "peak_alloc_MiB": 3777.6,
+   "peak_reserved_MiB": 3846.0,
+   "model_resident_MiB": 5.8
+  },
+  "tile_1p5x": {
+   "tiles": 12,
+   "peak_alloc_MiB": 3777.6,
+   "peak_reserved_MiB": 3846.0,
+   "model_resident_MiB": 5.8
+  },
+  "tile_native": {
+   "tiles": 24,
+   "peak_alloc_MiB": 3777.6,
+   "peak_reserved_MiB": 3846.0,
+   "model_resident_MiB": 5.8
+  }
+ },
+ "modes": {
+  "full_bilinear": {
+   "windows": 583,
+   "tiles_per_window": 1,
+   "ms_prep_cpu": 11.24,
+   "ms_gpu": 33.29,
+   "ms_post_cpu": 0.01,
+   "ms_total": 44.55
+  },
+  "full_area": {
+   "windows": 583,
+   "tiles_per_window": 1,
+   "ms_prep_cpu": 18.27,
+   "ms_gpu": 33.12,
+   "ms_post_cpu": 0.01,
+   "ms_total": 51.4
+  },
+  "tile_2x": {
+   "windows": 583,
+   "tiles_per_window": 6,
+   "ms_prep_cpu": 66.05,
+   "ms_gpu": 181.0,
+   "ms_post_cpu": 0.06,
+   "ms_total": 247.1
+  },
+  "tile_1p5x": {
+   "windows": 583,
+   "tiles_per_window": 12,
+   "ms_prep_cpu": 136.93,
+   "ms_gpu": 355.77,
+   "ms_post_cpu": 0.1,
+   "ms_total": 492.8
+  },
+  "tile_native": {
+   "windows": 583,
+   "tiles_per_window": 24,
+   "ms_prep_cpu": 277.28,
+   "ms_gpu": 707.54,
+   "ms_post_cpu": 0.15,
+   "ms_total": 984.97
+  }
+ }
+}
