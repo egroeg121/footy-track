@@ -194,7 +194,8 @@ def test_auto_keys_and_proposal_loader(tmp_path):
     (tmp_path / "calibration_proposals").mkdir()
     (tmp_path / "calibration_proposals" / "arsenal_mancity_seg010.json").write_text(
         json.dumps({"clip": "arsenal_mancity_seg010", "runs": {"r1": {"frames": fr}, "r2": {"frames": {"11": {"status": "accepted", "H": good}}}}}))
-    props = cc.load_proposal_keyframes("mancity_seg010", tmp_path)
+    props = cc.load_proposal_keyframes("mancity_seg010", tmp_path, ("accepted", "edited", "proposed"))
+    assert all(p["status"] != "proposed" for p in cc.load_proposal_keyframes("mancity_seg010", tmp_path).values())  # default: proposed is opt-in
     assert sorted(props) == [10, 11, 30, 60] and props[11]["status"] == "accepted" and props[11]["run"] == "r2"  # best status wins; bad / rejected dropped
     gt = {30: (2 * np.eye(3), None)}
     keys, rep = cc.auto_keys(_shots((0, 49, "main"), (50, 70, "closeup")), gt, props)

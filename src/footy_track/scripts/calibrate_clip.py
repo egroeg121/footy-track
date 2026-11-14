@@ -13,7 +13,7 @@ Writes under ``--out``:
 * ``<clip>.summary.json``
 
 ``--auto-keys`` (instead of ``--keys``) takes the keyframes from what already exists, with no human or model call: the calibration GT
-frames plus the ``calibration_proposals`` frames (statuses ``accepted``, ``edited``, ``proposed`` -- ``--auto-statuses``; best status wins per
+frames plus the ``calibration_proposals`` frames (statuses ``accepted``, ``edited`` by default; add ``proposed`` via ``--auto-statuses``; best status wins per
 frame, ``rejected`` / ``failed`` / ``not_broadcast`` never). The clip is split into shots and classified (``calibration.shots``); keyframes
 in shots that are not the main camera are dropped, so ``calibrate_clip`` only sweeps main-camera shots, and a ``proposed`` keyframe must pass
 the line-cost gate (``Policy.max_line_cost`` on its own frame) before it is used. Main shots left without a keyframe are listed in the
@@ -62,7 +62,7 @@ def load_gt_keyframes(clip: str, gt_dir: Path = GT_DIR) -> dict[int, tuple[np.nd
     return {int(k): (np.array(r["H"], float), r.get("distortion")) for k, r in doc["frames"].items()}
 
 
-AUTO_STATUSES = ("accepted", "edited", "proposed")
+AUTO_STATUSES = ("accepted", "edited")  # "proposed" is opt-in: line cost does not predict human verdicts (AUC ~0.5)
 MAX_PROPOSAL_COND = 1e6
 
 
