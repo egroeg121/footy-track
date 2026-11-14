@@ -211,6 +211,7 @@ def _parse_frame(
         quality=None if failed else score,
         mean_err_px=sum(errs) / len(errs) if errs else None,
         mean_err_m=_num(rec.get("mean_err_m")),
+        distortion_k1=_k1(rec.get("distortion")),
         n_points=len(kps),
         n_inliers=n_inl,
         pitch_length=_num(dims[0]) if len(dims) == 2 else None,
@@ -230,6 +231,19 @@ def _parse_frame(
         dataset_tag=dataset_tag,
     )
     return row, kps
+
+
+def _k1(dist: Any) -> float | None:
+    """k1 of a record's ``distortion`` (``None`` = none / zero). The store (and the SQL projection
+    view) only model a lens centred on the image centre."""
+    if not isinstance(dist, dict) or not _num(dist.get("k1")):
+        return None
+    if dist.get("model", "division") != "division":
+        raise ValueError(f"unknown distortion model {dist.get('model')!r}")
+    c = dist.get("centre") or (0.5, 0.5)
+    if abs(float(c[0]) - 0.5) > 1e-9 or abs(float(c[1]) - 0.5) > 1e-9:
+        raise ValueError("distortion centre must be the image centre (0.5, 0.5)")
+    return float(dist["k1"])
 
 
 def _frame_index(key: Any) -> int:

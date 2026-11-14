@@ -23,6 +23,14 @@ the labeller `/calibration` page).
   points behind the camera so lines never wrap), `warp_to_pitch` (top-down
   raster; the same extents are used by the labeller page).
 
+## Lens distortion
+
+Optional one-parameter division-model distortion (`geometry.make_distortion/undistort_norm/
+distort_norm`, stored as `distortion: {model, k1, centre, aspect}` beside `H`; missing or `k1 == 0`
+is the plain homography). `H` takes undistorted normalised image coords; labels/anchors are
+observed coords. Estimated by `refine_homography(fit_k1=True)` or given (`k1=`). Design and where
+it is applied: `docs/design/calibration.md` section 8.
+
 ## Line refinement and pre-labelling
 
 `refine.py`: `refine_homography(H, pitch, lines_mask, grass, prior_points=..., line_labels=...,

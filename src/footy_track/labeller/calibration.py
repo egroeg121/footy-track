@@ -211,10 +211,30 @@ def _fit_warnings(img: np.ndarray, ptc: np.ndarray, H: np.ndarray) -> list[str]:
     return out
 
 
+def _distortion_from(body: dict) -> dict | None:
+    """The optional lens ``distortion`` of a request (``{model, k1, centre, aspect}``); a missing
+    value or k1 == 0 is the plain homography."""
+    d = body.get("distortion")
+    if not d:
+        return None
+    try:
+        geo.distortion_params(d)
+        return geo.make_distortion(float(d["k1"]), float(d.get("aspect") or geo.DEFAULT_ASPECT),
+                                   d.get("centre") or (0.5, 0.5))
+    except (KeyError, TypeError, ValueError) as exc:
+        raise _BadRequest(f"bad distortion: {exc}") from exc
+
+
 def _fit(body: dict) -> dict:
-    """Shared by /fit and /gt save. Raises _BadRequest on bad input."""
+    """Shared by /fit and /gt save. Raises _BadRequest on bad input.
+
+    Correspondence ``image`` points are observed (distorted) coordinates; with a ``distortion``
+    in the body they are undistorted before the DLT, and the overlay is re-distorted."""
     pitch = _pitch_from(body)
+    dist = _distortion_from(body)
     img, ptc, clean = _parse_correspondences(body.get("correspondences", []), pitch)
+    img_obs = img
+    img = geo.undistort_points(img, dist)
     method = body.get("method", "dlt")
     size = body.get("image_size")
     size_t = (float(size[0]), float(size[1])) if size else None
@@ -227,17 +247,17 @@ def _fit(body: dict) -> dict:
         )
     except ValueError as exc:
         raise _BadRequest(str(exc)) from exc
-    errs = geo.reprojection_errors(H, img, ptc, size_t)
+    errs = geo.reprojection_errors(H, img_obs, ptc, size_t, dist)
     warnings = _fit_warnings(img, ptc, H)
     overlay = {
         name: [r.tolist() for r in runs]
-        for name, runs in geo.project_pitch_model(H, pitch).items()
+        for name, runs in geo.project_pitch_model(H, pitch, distortion=dist).items()
     }
 
     def _clean(a: np.ndarray | None) -> list | None:
         return None if a is None else [None if np.isnan(t) else float(t) for t in a]
 
-    return {
+    out = {
         "ok": True,
         "H": H.tolist(),
         "H_flat": H.ravel().tolist(),
@@ -250,6 +270,9 @@ def _fit(body: dict) -> dict:
         "correspondences": clean,
         "pitch_dims": [pitch.length, pitch.width],
     }
+    if dist is not None:
+        out["distortion"] = dist
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -347,6 +370,7 @@ async def warp(body: dict):
         if H.shape != (3, 3) or not np.all(np.isfinite(H)):
             raise _BadRequest("H must be a finite 3x3 matrix")
         clip, idx = str(body["clip"]), int(body["frame_index"])
+        dist = _distortion_from(body)
         scale = float(body.get("px_per_m", WARP_PX_PER_M))
         if not 0 < scale <= MAX_WARP_PX_PER_M:
             raise _BadRequest("px_per_m out of range")
@@ -361,7 +385,7 @@ async def warp(body: dict):
     if frame is None:
         return _err(404, f"cannot read frame {idx}")
     raster = await asyncio.to_thread(
-        geo.warp_to_pitch, frame, H, pitch, scale, WARP_MARGIN_M
+        geo.warp_to_pitch, frame, H, pitch, scale, WARP_MARGIN_M, dist
     )
     ok, buf = cv2.imencode(".jpg", raster, [cv2.IMWRITE_JPEG_QUALITY, 85])
     if not ok:
@@ -410,6 +434,8 @@ def _gt_record(idx: int, res: dict, body: dict, origin: dict | None = None) -> d
         "err_px": res["err_px"],
         "ts": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
     }
+    if res.get("distortion"):  # absent == plain homography (k1 = 0)
+        rec["distortion"] = res["distortion"]
     if origin:
         rec["origin"] = origin
     return rec

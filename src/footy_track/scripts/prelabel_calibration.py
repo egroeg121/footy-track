@@ -73,6 +73,7 @@ def _cmd_run(args) -> int:
         every=args.every, skip_gt=args.skip_gt, limit=args.limit,
         render_dir=Path(args.render_dir) if args.render_dir else None,
         verify=args.verify, run_id=args.run_id, refine=not args.no_refine,
+        k1=args.k1, fit_k1=args.fit_k1,
     )
     s = run_prelabel(cfg, ident)
     print(f"run_id={s.run_id} frames={s.n_frames} proposed={s.n_proposed} failed={s.n_failed}")
@@ -120,6 +121,9 @@ def main(argv: list[str] | None = None) -> int:
     r.add_argument("--skip-gt", action=argparse.BooleanOptionalAction, default=True,
                    help="skip frames that already have human GT (default on; --no-skip-gt to include them)")
     r.add_argument("--no-refine", action="store_true", help="coarse fit only (no line refinement)")
+    r.add_argument("--k1", type=float, default=0.0,
+                   help="lens distortion (division model) held fixed, e.g. a per-clip value; 0 = off (default)")
+    r.add_argument("--fit-k1", action="store_true", help="estimate k1 per frame jointly with H (off by default)")
     r.add_argument("--limit", type=int, help="max frames processed in total")
     r.add_argument("--model", help="default: claude-opus-5-5 (claude) / opus alias (claude-cli)")
     r.add_argument("--timeout", type=float, default=300.0, help="claude-cli: seconds per call")

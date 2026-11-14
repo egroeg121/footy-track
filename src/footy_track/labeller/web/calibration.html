@@ -123,6 +123,7 @@ const state = {
   pitchPts: [],                // [{id|null, x, y}] metres
   fit: null, warpImg: null, warpKey: null, dirty: false, gtFrames: [],
   hoverKp: null, fitSeq: 0, fitError: null,
+  distortion: null,            // lens model of the loaded GT/proposal ({k1,...}); null = plain homography
   proposal: null,              // {run_id} while editing a machine proposal: Save accepts it as edited
 };
 
@@ -295,7 +296,7 @@ function corrPayload() {
 function fitBody() {
   const fi = state.frameImg;
   return { correspondences: corrPayload(), pitch_dims: dims(), method: $("method").value,
-           image_size: fi ? [fi.naturalWidth, fi.naturalHeight] : null };
+           image_size: fi ? [fi.naturalWidth, fi.naturalHeight] : null, distortion: state.distortion };
 }
 let fitTimer = null;
 function refit() {
@@ -327,7 +328,7 @@ async function updateWarp() {
   const seq = ++warpSeq;
   try {
     const blob = await (await api("/warp", jsonOpts("POST",
-      { clip: state.clip, frame_index: state.frame, H: state.fit.H, pitch_dims: dims() }))).blob();
+      { clip: state.clip, frame_index: state.frame, H: state.fit.H, pitch_dims: dims(), distortion: state.distortion }))).blob();
     const img = new Image();
     img.onload = () => { if (seq === warpSeq) { state.warpImg = img; drawRight(); } };
     img.src = URL.createObjectURL(blob);
@@ -409,6 +410,7 @@ async function loadProposal(run, idx) {
     const keep = rec.correspondences.filter((c, i) => (rec.inliers || [])[i] !== false);
     state.imgPts = keep.map(c => ({ u: c.image[0], v: c.image[1] }));
     state.pitchPts = keep.map(c => ({ id: c.pitch_id, x: c.pitch_xy[0], y: c.pitch_xy[1] }));
+    state.distortion = rec.distortion || null;
     state.proposal = { run_id: run }; state.dirty = false;
     const b = $("propBanner"); b.style.display = ""; b.textContent = `editing proposal ${run}: Save accepts it as edited`;
     refit();
@@ -431,6 +433,7 @@ async function gotoFrame(idx, force) {
   state.proposal = null; $("propBanner").style.display = "none";
   state.frame = idx; $("frameSlider").value = $("frameNum").value = idx;
   state.imgPts = []; state.pitchPts = []; state.fit = null; state.warpImg = null; state.fitError = null; state.dirty = false;
+  state.distortion = null;
   status("loading frame…");
   const img = new Image();
   await new Promise((res, rej) => { img.onload = res; img.onerror = () => rej(new Error("frame failed to load"));
@@ -444,6 +447,7 @@ async function loadGt(quiet) {
     const rec = await (await api(`/gt/${encodeURIComponent(state.clip)}/${state.frame}`)).json();
     $("pitchL").value = rec.pitch_dims[0]; $("pitchW").value = rec.pitch_dims[1];
     await loadPitch();
+    state.distortion = rec.distortion || null;
     state.imgPts = rec.correspondences.map(c => ({ u: c.image[0], v: c.image[1] }));
     state.pitchPts = rec.correspondences.map(c => ({ id: c.pitch_id, x: c.pitch_xy[0], y: c.pitch_xy[1] }));
     state.dirty = false; if (!quiet) status("GT loaded");

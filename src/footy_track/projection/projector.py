@@ -101,6 +101,7 @@ class PitchProjector:
         detections: list[TrackedDetection],
         H: np.ndarray,
         H_quality: float | None,
+        distortion: dict | None = None,
     ) -> list[PitchPosition]:
         """Project all detections in a single frame onto the pitch.
 
@@ -108,6 +109,10 @@ class PitchProjector:
         with x_pitch / y_pitch = NaN and uncertainty_m = +inf, honouring
         system invariant §4.5 (non-broadcast frames are recorded, not
         silently dropped).
+
+        ``distortion`` is the optional lens model stored with ``H``
+        (``footy_track.calibration.geometry.make_distortion``): anchors are observed image
+        points and are undistorted before ``H``. ``None``/``k1 = 0`` is the plain homography.
         """
         low_quality = H_quality is None or H_quality < self.h_quality_threshold
 
@@ -126,6 +131,10 @@ class PitchProjector:
                 )
             else:
                 ax, ay = self._anchor(det)
+                if distortion:
+                    from footy_track.calibration.geometry import undistort_points  # noqa: PLC0415
+
+                    ax, ay = (float(t) for t in undistort_points([[ax, ay]], distortion)[0])
                 xp, yp = self._apply_homography(ax, ay, H)
                 xn, yn = self._normalise(xp, yp)
                 uncertainty = None if H_quality is None else 1.0 - H_quality

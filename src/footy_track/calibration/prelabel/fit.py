@@ -62,6 +62,7 @@ class FitResult:
     score_coarse: float = 0.0
     refine: RefineResult | None = None
     dt_residual: float | None = None  # mean truncated DT (px, working res) of the final model samples
+    distortion: dict | None = None  # lens model of ``H`` (geometry.make_distortion); None = plain homography
     line_labels: list[LineLabel] = field(default_factory=list)
 
 
@@ -88,19 +89,22 @@ def _dedupe(labels: list[Label], pitch: PitchModel) -> list[Label]:
     return out
 
 
-def _px_err(H: np.ndarray, uv: np.ndarray, xy: np.ndarray, size: tuple[float, float]) -> np.ndarray:
-    back, w = geo.apply_homography(np.linalg.inv(H), xy)
+def _px_err(H: np.ndarray, uv: np.ndarray, xy: np.ndarray, size: tuple[float, float],
+            distortion: dict | None = None) -> np.ndarray:
+    back, w = geo.pitch_to_image(H, xy, distortion)
     err = np.linalg.norm((back - uv) * np.array(size), axis=1)
     err[(w <= geo.W_EPS) | ~np.isfinite(err)] = np.inf
     return err
 
 
 def ransac_fit(
-    labels: list[Label], pitch: PitchModel, size: tuple[float, float], thresh_px: float, seed: int = 0
+    labels: list[Label], pitch: PitchModel, size: tuple[float, float], thresh_px: float, seed: int = 0,
+    distortion: dict | None = None,
 ) -> tuple[np.ndarray, np.ndarray] | str:
-    """-> (H, inlier mask) or a failure string."""
+    """-> (H, inlier mask) or a failure string. Label points are observed (distorted) coords."""
     kps = pitch.keypoints()
-    uv = np.array([lb.uv for lb in labels], dtype=np.float64)
+    uv_obs = np.array([lb.uv for lb in labels], dtype=np.float64)
+    uv = geo.undistort_points(uv_obs, distortion)
     xy = np.array([kps[lb.keypoint_id] for lb in labels], dtype=np.float64)
     n = len(labels)
     subsets = list(itertools.combinations(range(n), 4))
@@ -143,7 +147,7 @@ def ransac_fit(
 
 
 def line_support_score(
-    H: np.ndarray, pitch: PitchModel, det: Detection, k_px: float | None = None
+    H: np.ndarray, pitch: PitchModel, det: Detection, k_px: float | None = None, distortion: dict | None = None
 ) -> tuple[float, int]:
     """Fraction of reprojected model-line samples (in the image and on grass)
     within ``k_px`` of a white-line pixel. Returns (score, n_samples)."""
@@ -152,7 +156,7 @@ def line_support_score(
     dist = cv2.distanceTransform((~det.lines_mask).astype(np.uint8), cv2.DIST_L2, 3)
     grass = det.grass
     hits = tot = 0
-    for _, runs in geo.project_pitch_model(H, pitch, step_m=0.4).items():
+    for _, runs in geo.project_pitch_model(H, pitch, step_m=0.4, distortion=distortion).items():
         for run in runs:
             pts = run * np.array([w, h])
             # densify between projected samples so spacing is ~3 px
@@ -173,7 +177,7 @@ def line_support_score(
 
 
 def _mixed_dlt(
-    labels: list[Label], line_labels: list[LineLabel], pitch: PitchModel
+    labels: list[Label], line_labels: list[LineLabel], pitch: PitchModel, distortion: dict | None = None
 ) -> np.ndarray | None:
     """Linear fit of ``H`` from points (2 rows each) and points-on-a-named-line
     (1 row each: the pitch line equation is linear in ``H``). Needs >= 8 rows."""
@@ -183,7 +187,7 @@ def _mixed_dlt(
     sc = _PITCH_SCALE
     for lb in labels:
         X, Y = np.array(kps[lb.keypoint_id]) / sc
-        u, v = lb.uv[0] - 0.5, lb.uv[1] - 0.5
+        u, v = geo.undistort_points(lb.uv, distortion)[0] - 0.5
         p = np.array([u, v, 1.0])
         rows.append(np.concatenate([p, np.zeros(3), -X * p]))
         rows.append(np.concatenate([np.zeros(3), p, -Y * p]))
@@ -192,7 +196,7 @@ def _mixed_dlt(
             continue
         (x0, y0), (x1, y1) = segs[ll.line_id] / sc
         l = np.cross([x0, y0, 1.0], [x1, y1, 1.0])
-        for u, v in ll.points:
+        for u, v in geo.undistort_points(np.array(ll.points), distortion):
             p = np.array([u - 0.5, v - 0.5, 1.0])
             rows.append(np.concatenate([l[0] * p, l[1] * p, l[2] * p]))
     if len(rows) < 8:
@@ -209,7 +213,8 @@ def _mixed_dlt(
     return geo.orient_homography(H, np.array([[0.5, 0.5]]))
 
 
-def _subset_starts(labels: list[Label], pitch: PitchModel, seed: int, cap: int = 20) -> list[np.ndarray]:
+def _subset_starts(labels: list[Label], pitch: PitchModel, seed: int, cap: int = 20,
+                   dist: dict | None = None) -> list[np.ndarray]:
     kps = pitch.keypoints()
     subs = list(itertools.combinations(range(len(labels)), 4))
     rng = np.random.default_rng(seed)
@@ -219,7 +224,7 @@ def _subset_starts(labels: list[Label], pitch: PitchModel, seed: int, cap: int =
     for sub in subs:
         try:
             Hs, _ = geo.fit_homography(
-                np.array([labels[i].uv for i in sub]), np.array([kps[labels[i].keypoint_id] for i in sub]),
+                geo.undistort_points(np.array([labels[i].uv for i in sub]), dist), np.array([kps[labels[i].keypoint_id] for i in sub]),
                 method="dlt",
             )
         except ValueError:
@@ -233,15 +238,16 @@ def _subset_starts(labels: list[Label], pitch: PitchModel, seed: int, cap: int =
 REFIT_TOL_M = 0.25
 
 
-def refit_gap_m(H_ref: np.ndarray, uv: np.ndarray, xy: np.ndarray) -> float:
+def refit_gap_m(H_ref: np.ndarray, uv: np.ndarray, xy: np.ndarray, distortion: dict | None = None) -> float:
     """Max metres between ``H_ref`` and the DLT refit of (uv, xy), over an image grid.
-    ``inf`` when the points are degenerate (the refit is refused) or the refit is unusable."""
+    ``inf`` when the points are degenerate (the refit is refused) or the refit is unusable.
+    ``uv`` are observed (distorted) points; the refit undistorts them like accept does."""
     try:
-        H2, _ = geo.fit_homography(uv, xy, method="dlt")
+        H2, _ = geo.fit_homography(geo.undistort_points(uv, distortion), xy, method="dlt")
     except ValueError:
         return float("inf")
     g = np.array([(u, v) for u in np.linspace(0.05, 0.95, 5) for v in np.linspace(0.05, 0.95, 5)])
-    a, wa = geo.apply_homography(H_ref, g)
+    a, wa = geo.apply_homography(H_ref, g)  # the grid is in undistorted coords for both
     b, wb = geo.apply_homography(H2, g)
     ok = (wa > geo.W_EPS) & (wb > geo.W_EPS)
     if not ok.any():
@@ -259,6 +265,7 @@ def pad_points(
     det: Detection | None = None,
     need: int = 4,
     max_extra: int = 6,
+    distortion: dict | None = None,
 ) -> list[tuple[str | None, tuple[float, float], tuple[float, float]]]:
     """Synthetic (keypoint id or None, uv, pitch metres) additions, projected through ``H``, so that the point set
     has >= ``need`` points, is non-degenerate (some 4 in general position) and refits to ``H``.
@@ -269,7 +276,6 @@ def pad_points(
     4-subsets (this is what breaks a collinear set), ties broken by spread."""
     kps = pitch.keypoints()
     have = {k for k in kids if k}
-    Hinv = np.linalg.inv(H)
     cand = []
     pool = [(k, p) for k, p in kps.items() if k not in have]
     pool += [
@@ -277,7 +283,7 @@ def pad_points(
         for x in np.arange(-pitch.hl, pitch.hl + 1e-9, 5.0) for y in np.arange(-pitch.hw, pitch.hw + 1e-9, 5.0)
     ]
     for kid, p in pool:
-        pt, wv = geo.apply_homography(Hinv, np.array([p]))
+        pt, wv = geo.pitch_to_image(H, np.array([p]), distortion)
         if wv[0] <= geo.W_EPS or not np.all(np.isfinite(pt)):
             continue
         u, v = float(pt[0, 0]), float(pt[0, 1])
@@ -298,7 +304,7 @@ def pad_points(
 
     while cand and len(added) < max_extra and (
         len(cur_uv) < need or n_general(cur_uv, cur_xy) == 0
-        or refit_gap_m(H, np.array(cur_uv), np.array(cur_xy)) > REFIT_TOL_M
+        or refit_gap_m(H, np.array(cur_uv), np.array(cur_xy), distortion) > REFIT_TOL_M
     ):
         def key(c):
             spread = min((np.hypot(c[1][0] - o[0], c[1][1] - o[1]) for o in cur_uv), default=1.0)
@@ -312,13 +318,14 @@ def pad_points(
     return added
 
 
-def _pad_visible(H: np.ndarray, labels: list[Label], pitch: PitchModel, det: Detection, need: int) -> list[Label]:
+def _pad_visible(H: np.ndarray, labels: list[Label], pitch: PitchModel, det: Detection, need: int,
+                 distortion: dict | None = None) -> list[Label]:
     """Add synthetic correspondences (keypoints visible in the image under ``H``, on grass,
     spread out and chosen off any line the existing points are collinear on) until there are
     ``need`` of them, they can determine ``H`` and a refit reproduces ``H``."""
     add = pad_points(
         H, [lb.uv for lb in labels], [lb.keypoint_id for lb in labels],
-        [label_xy(lb, pitch) for lb in labels], pitch, det, need,
+        [label_xy(lb, pitch) for lb in labels], pitch, det, need, distortion=distortion,
     )
     return list(labels) + [Label(k, uv, 0.3, None, None, True, None if k else xy) for k, uv, xy in add]
 
@@ -331,23 +338,33 @@ def fit_and_score(
     seed: int = 0,
     line_labels: list[LineLabel] | None = None,
     refine: bool = True,
+    k1: float = 0.0,
+    fit_k1: bool = False,
+    k1_prior: float = 1.0,
 ) -> FitResult:
     """Coarse fit (RANSAC DLT over point labels; a points+lines DLT when there are
     too few points), then line refinement against the white-line mask
     (:mod:`footy_track.calibration.refine`). Both the pre- and post-refinement
-    homography, errors and scores are kept on the result."""
+    homography, errors and scores are kept on the result.
+
+    Lens distortion (see :mod:`footy_track.calibration.geometry`): ``k1`` is a given (e.g. per-clip)
+    division-model coefficient, held fixed; ``fit_k1`` estimates it jointly with ``H`` in the
+    refinement (``k1`` is then only the starting value, ``k1_prior`` the pull towards 0).
+    ``FitResult.distortion`` is the lens model the returned ``H`` goes with. Labels, stored points
+    and errors stay in observed (distorted) image coordinates."""
     labels = _dedupe(labels, pitch)
     lines = [ll for ll in (line_labels or []) if ll.line_id in pitch.segments() and len(ll.points) >= 2]
     w, _ = det.size
+    dist_in = geo.make_distortion(k1, det.size[0] / det.size[1])  # what the coarse fit is made with
     H = inl = None
     failure = f"only {len(labels)} usable labels (need 4)" if len(labels) < 4 else None
     if len(labels) >= 4:
-        r = ransac_fit(labels, pitch, image_size, INLIER_FRAC * image_size[0], seed)
+        r = ransac_fit(labels, pitch, image_size, INLIER_FRAC * image_size[0], seed, dist_in)
         if isinstance(r, str):
             failure = r
         else:
             H, inl = r
-    mixed = _mixed_dlt(labels, lines, pitch) if lines and labels else None
+    mixed = _mixed_dlt(labels, lines, pitch, dist_in) if lines and labels else None
     if H is None and mixed is not None:
         H, inl = mixed, np.ones(len(labels), bool)
         failure = None
@@ -356,30 +373,34 @@ def fit_and_score(
 
     kps = pitch.keypoints()
 
-    def stats(Hx, lbs):
+    def stats(Hx, lbs, dist=None):
         uv = np.array([lb.uv for lb in lbs])
         xy = np.array([label_xy(lb, pitch) for lb in lbs])
-        e = geo.reprojection_errors(Hx, uv, xy, image_size)
+        e = geo.reprojection_errors(Hx, uv, xy, image_size, dist)
         return [None if not np.isfinite(v) else float(v) for v in e["px"]], e["metres"]
 
-    err_c, m_c = stats(H, labels)
+    err_c, m_c = stats(H, labels, dist_in)
     inl_arr = np.asarray(inl, bool)
     mean_m_c = float(np.mean(m_c[inl_arr])) if inl_arr.any() else None
-    score_c, n_c = line_support_score(H, pitch, det)
+    score_c, n_c = line_support_score(H, pitch, det, distortion=dist_in)
     rr = None
     H_final, final_labels, final_inl = H, labels, inl_arr
+    dist_f = dist_in
     if refine:
-        starts = _subset_starts(labels, pitch, seed)
+        starts = _subset_starts(labels, pitch, seed, dist=dist_in)
         if mixed is not None:
             starts.append(mixed)
         rr = refine_homography(
             H, pitch, det.lines_mask, det.grass,
             prior_points=[(lb.keypoint_id, lb.uv, lb.confidence) for lb, k in zip(labels, inl_arr, strict=True) if k],
             line_labels=lines,
+            far_mask=det.far_line,
             starts=starts,
+            k1=k1, fit_k1=fit_k1, k1_prior=k1_prior,
         )
         if rr.applied:
             H_final = rr.H
+            dist_f = geo.make_distortion(rr.k1, det.size[0] / det.size[1])
             # the labels are re-expressed through the refined H so stored points and H agree
             moved, flags = [], []
             for lb, was_inlier in zip(labels, inl_arr, strict=True):
@@ -387,7 +408,7 @@ def fit_and_score(
                     moved.append(lb)
                     flags.append(False)
                     continue
-                uv, wv = geo.apply_homography(np.linalg.inv(H_final), np.array([kps[lb.keypoint_id]]))
+                uv, wv = geo.pitch_to_image(H_final, np.array([kps[lb.keypoint_id]]), dist_f)
                 ok = bool(wv[0] > geo.W_EPS and np.all(np.isfinite(uv))
                           and -0.05 < uv[0, 0] < 1.05 and -0.05 < uv[0, 1] < 1.05)
                 moved.append(Label(lb.keypoint_id, (float(uv[0, 0]), float(uv[0, 1])) if ok else lb.uv,
@@ -400,21 +421,22 @@ def fit_and_score(
     real = [m for m, k in zip(final_labels, final_inl, strict=True) if k]
     r_uv = np.array([m.uv for m in real]).reshape(-1, 2)
     r_xy = np.array([label_xy(m, pitch) for m in real]).reshape(-1, 2)
-    if len(real) < 4 or refit_gap_m(H_final, r_uv, r_xy) > REFIT_TOL_M:
-        padded = _pad_visible(H_final, real, pitch, det, 4)
+    if len(real) < 4 or refit_gap_m(H_final, r_uv, r_xy, dist_f) > REFIT_TOL_M:
+        padded = _pad_visible(H_final, real, pitch, det, 4, dist_f)
         if len(padded) > len(real):
             final_labels = list(final_labels) + padded[len(real):]
             final_inl = np.concatenate([final_inl, np.ones(len(padded) - len(real), bool)])
-    err_f, m_f = stats(H_final, final_labels)
+    err_f, m_f = stats(H_final, final_labels, dist_f)
     mean_m = float(np.mean(m_f[final_inl])) if final_inl.any() else None
-    score, n = line_support_score(H_final, pitch, det) if (rr and rr.applied) else (score_c, n_c)
+    score, n = line_support_score(H_final, pitch, det, distortion=dist_f) if (rr and rr.applied) else (score_c, n_c)
     G_px = np.linalg.inv(H_final @ np.diag([1.0 / det.size[0], 1.0 / det.size[1], 1.0]))
-    dtr, _ = dt_residual(G_px / np.linalg.norm(G_px), model_samples(pitch), det.lines_mask, det.grass)
+    dtr, _ = dt_residual(G_px / np.linalg.norm(G_px), model_samples(pitch), det.lines_mask, det.grass,
+                         k1=(dist_f or {}).get("k1", 0.0))
     if n < MIN_SCORE_SAMPLES:
         return FitResult(
             False, f"too little of the pitch model projects into the grass ({n} samples)",
             H=H_final, labels=final_labels, inliers=final_inl.tolist(), err_px=err_f, n_samples=n,
-            H_coarse=H, err_px_coarse=err_c, refine=rr, line_labels=lines,
+            H_coarse=H, err_px_coarse=err_c, refine=rr, line_labels=lines, distortion=dist_f,
         )
     if len(labels) < 4 and not (rr and rr.applied):
         # A <4-point (points+lines) DLT is barely constrained: it can match a few
@@ -423,16 +445,17 @@ def fit_and_score(
         return FitResult(
             False, f"only {len(labels)} point labels and line refinement did not confirm the fit",
             H=H_final, labels=final_labels, inliers=final_inl.tolist(), err_px=err_f, n_samples=n, score=float(score),
-            H_coarse=H, err_px_coarse=err_c, refine=rr, line_labels=lines,
+            H_coarse=H, err_px_coarse=err_c, refine=rr, line_labels=lines, distortion=dist_f,
         )
     if score < MIN_PROPOSAL_SCORE:
         return FitResult(
             False, f"the fitted pitch lines do not match the white lines (score {score:.2f} < {MIN_PROPOSAL_SCORE})",
             H=H_final, labels=final_labels, inliers=final_inl.tolist(), err_px=err_f, n_samples=n, score=float(score),
-            H_coarse=H, err_px_coarse=err_c, refine=rr, line_labels=lines,
+            H_coarse=H, err_px_coarse=err_c, refine=rr, line_labels=lines, distortion=dist_f,
         )
     return FitResult(
         True, None, H_final, final_labels, final_inl.tolist(), err_f, mean_m, float(score), n,
         H_coarse=H, err_px_coarse=err_c, mean_err_m_coarse=mean_m_c, score_coarse=float(score_c),
         refine=rr, dt_residual=None if not np.isfinite(dtr) else float(dtr), line_labels=lines,
+        distortion=dist_f,
     )

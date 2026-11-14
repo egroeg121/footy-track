@@ -194,3 +194,30 @@ def test_gt_file_mode_new_is_664_and_existing_is_preserved(client, cal_env):
     path.chmod(0o640)
     assert client.put(f"/calibration/api/gt/{clip}/2", json=_body()).status_code == 200
     assert path.stat().st_mode & 0o777 == 0o640
+
+
+def test_fit_warp_and_gt_with_distortion(client, cal_env):
+    """Points are observed (distorted) coordinates; H is fitted from the undistorted ones."""
+    pitch = PitchModel()
+    lens = geo.make_distortion(-0.03, W / H)
+    obs, _ = geo.pitch_to_image(_camera_h(), np.array([pitch.keypoints()[k] for k in KP]), lens)
+    corr = [{"image": p.tolist(), "pitch_id": k} for p, k in zip(obs, KP, strict=True)]
+    body = {"correspondences": corr, "pitch_dims": [105, 68], "image_size": [W, H]}
+    plain = client.post("/calibration/api/fit", json=body).json()
+    d = client.post("/calibration/api/fit", json={**body, "distortion": lens}).json()
+    assert "distortion" not in plain and d["distortion"]["k1"] == -0.03
+    assert np.max(d["err_px"]) < 0.05 < np.max(plain["err_px"])  # the lens model explains the points
+    assert np.allclose(d["H"], _camera_h(), atol=1e-6) or np.allclose(
+        np.array(d["H"]) / np.linalg.norm(d["H"]), _camera_h() / np.linalg.norm(_camera_h()), atol=1e-6)
+    assert d["overlay"]["TOUCHLINE_TOP"] != plain["overlay"]["TOUCHLINE_TOP"]
+    # the warp honours it, k1 = 0 leaves the bytes untouched
+    wb = {"clip": "arsenal_mancity_20250925_seg010", "frame_index": 0, "H": d["H"], "pitch_dims": [105, 68], "px_per_m": 2}
+    a = client.post("/calibration/api/warp", json=wb)
+    b = client.post("/calibration/api/warp", json={**wb, "distortion": lens})
+    z = client.post("/calibration/api/warp", json={**wb, "distortion": {"model": "division", "k1": 0.0}})
+    assert a.status_code == b.status_code == z.status_code == 200 and z.content == a.content
+    assert client.post("/calibration/api/fit", json={**body, "distortion": {"k1": "x"}}).status_code == 400
+    # GT save keeps the lens with H
+    gt = client.put("/calibration/api/gt/arsenal_mancity_seg010/3", json={**body, "distortion": lens}).json()
+    assert gt["record"]["distortion"]["k1"] == -0.03
+    assert "distortion" not in client.put("/calibration/api/gt/arsenal_mancity_seg010/4", json=body).json()["record"]

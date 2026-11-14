@@ -160,6 +160,7 @@ _COLUMNS: dict[str, tuple[str, ...]] = {
         "quality",
         "mean_err_px",
         "mean_err_m",
+        "distortion_k1",
         "n_points",
         "n_inliers",
         "pitch_length",

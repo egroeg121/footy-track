@@ -238,6 +238,10 @@ class CalibrationRow(_Row):
     quality: float | None = Field(None, ge=0.0, le=1.0)
     mean_err_px: float | None = None
     mean_err_m: float | None = None
+    #: Division-model lens distortion k1 (centre (0.5, 0.5), see
+    #: ``footy_track.calibration.geometry``): ``H`` applies to the *undistorted* image point
+    #: ``c + (p - c) / (1 + k1 r^2)``. NULL or 0 = plain homography.
+    distortion_k1: float | None = None
     n_points: int | None = None
     n_inliers: int | None = None
     pitch_length: float | None = None
@@ -432,6 +436,7 @@ DDL: tuple[str, ...] = (
         quality        DOUBLE,
         mean_err_px    DOUBLE,
         mean_err_m     DOUBLE,
+        distortion_k1  DOUBLE,
         n_points       INTEGER,
         n_inliers      INTEGER,
         pitch_length   DOUBLE,
@@ -452,6 +457,8 @@ DDL: tuple[str, ...] = (
         PRIMARY KEY (game_id, source, run_id, frame_index)
     );
     """,
+    # Stores created before lens distortion existed: add the column (no-op on new ones).
+    "ALTER TABLE calibration ADD COLUMN IF NOT EXISTS distortion_k1 DOUBLE;",
     """
     CREATE TABLE IF NOT EXISTS pitch_keypoint (
         game_id      VARCHAR,
@@ -608,7 +615,7 @@ VIEWS: tuple[str, ...] = (
                CASE tier_rank WHEN 1 THEN 'hand'
                               WHEN 2 THEN 'accepted'
                               ELSE 'proposed' END AS tier,
-               H, h_convention, quality, mean_err_px, mean_err_m,
+               H, h_convention, quality, mean_err_px, mean_err_m, distortion_k1,
                n_points, n_inliers, pitch_length, pitch_width,
                image_width, image_height, method, review_status, reviewed,
                origin_source, origin_run_id, origin_status,
@@ -631,18 +638,34 @@ VIEWS: tuple[str, ...] = (
                    END AS anchor_y,
                    c.source AS cal_source, c.run_id AS cal_run_id,
                    c.tier AS cal_tier, c.H, c.quality,
+                   COALESCE(c.distortion_k1, 0.0) AS k1,
+                   CASE WHEN c.image_width > 0 AND c.image_height > 0
+                        THEN CAST(c.image_width AS DOUBLE) / c.image_height
+                        ELSE 16.0 / 9.0 END AS aspect,
                    COALESCE(c.pitch_length, 105.0) AS pitch_length,
                    COALESCE(c.pitch_width, 68.0) AS pitch_width
             FROM detection d
             LEFT JOIN frame_calibration_best c
                    ON c.game_id = d.game_id AND c.frame_index = d.frame_index
         ),
+        -- Lens distortion (division model about the image centre, see
+        -- footy_track.calibration.geometry): the stored H takes the *undistorted* point
+        -- c + (p - c) / (1 + k1 r^2), r^2 = (2(x-.5))^2 + (2(y-.5)/aspect)^2. That direction is
+        -- closed-form, so SQL can do it; k1 = 0 (or no calibration) leaves the anchor as is.
+        undist AS (
+            SELECT *,
+                   CASE WHEN k1 = 0 THEN anchor_x ELSE 0.5 + (anchor_x - 0.5) / (1.0 + k1 * (
+                       power(2.0 * (anchor_x - 0.5), 2) + power(2.0 * (anchor_y - 0.5) / aspect, 2))) END AS ux,
+                   CASE WHEN k1 = 0 THEN anchor_y ELSE 0.5 + (anchor_y - 0.5) / (1.0 + k1 * (
+                       power(2.0 * (anchor_x - 0.5), 2) + power(2.0 * (anchor_y - 0.5) / aspect, 2))) END AS uy
+            FROM anchored
+        ),
         proj AS (
             SELECT *,
-                   H[1] * anchor_x + H[2] * anchor_y + H[3] AS px,
-                   H[4] * anchor_x + H[5] * anchor_y + H[6] AS py,
-                   H[7] * anchor_x + H[8] * anchor_y + H[9] AS pw
-            FROM anchored
+                   H[1] * ux + H[2] * uy + H[3] AS px,
+                   H[4] * ux + H[5] * uy + H[6] AS py,
+                   H[7] * ux + H[8] * uy + H[9] AS pw
+            FROM undist
         ),
         status AS (
             SELECT *,

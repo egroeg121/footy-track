@@ -244,3 +244,25 @@ def test_cli(tmp_path, capsys):
     assert not db.exists()
     main(["--gt-dir", str(tmp_path), "--db", str(db), "--clip", "mancity_seg010"])
     assert "calibration=1" in capsys.readouterr().out
+
+
+def test_distortion_k1_is_ingested_and_absent_means_none(store, tmp_path):
+    clip = "arsenal_mancity_seg010"
+    lens = {"model": "division", "k1": 0.012, "centre": [0.5, 0.5], "aspect": 1.7778}
+    _write(tmp_path / "calibration_gt" / f"{clip}.json",
+           {"clip": clip, "frames": {"0": _frame(distortion=lens), "1": _frame()}})
+    ingest_calibration_dir(store, tmp_path)
+    k = store.query("SELECT frame_index, distortion_k1 FROM calibration ORDER BY frame_index")
+    assert k["distortion_k1"][0] == pytest.approx(0.012)
+    assert k["distortion_k1"].isna()[1]
+    best = store.query("SELECT frame_index, distortion_k1 FROM frame_calibration_best ORDER BY frame_index")
+    assert best["distortion_k1"][0] == pytest.approx(0.012)
+
+
+def test_off_centre_distortion_is_refused_not_silently_misprojected(store, tmp_path, caplog):
+    clip = "arsenal_mancity_seg010"
+    lens = {"model": "division", "k1": 0.012, "centre": [0.45, 0.5]}
+    _write(tmp_path / "calibration_gt" / f"{clip}.json", {"clip": clip, "frames": {"0": _frame(distortion=lens)}})
+    with caplog.at_level(logging.WARNING):
+        r = ingest_calibration_dir(store, tmp_path)
+    assert r.gt_frames == 0

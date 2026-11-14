@@ -470,3 +470,31 @@ def test_pipeline_with_claude_cli_records_cost(run_env, det, tmp_path):
     run = read_proposals(gt, "arsenal_mancity_seg010")["runs"][s.run_id]
     assert run["params"]["backend"] == "claude-cli" and run["params"]["usage_total"]["cost_usd"] == 0.25
     assert run["params"]["usage"][0]["duration_ms"] == 4000
+
+
+def _faint_far_edge_frame(bright_base: bool = False):
+    """Wide-camera frame: dark stands + apron above y=100, saturated grass below, a 3 px PALE strip (V ~ grass,
+    low saturation) at the boundary - or, with ``bright_base``, a bright white board base there."""
+    import cv2
+
+    img = np.zeros((300, 600, 3), np.uint8)
+    img[:] = (20, 20, 20)  # stands / apron
+    grass = np.zeros((300, 600, 3), np.uint8)
+    grass[:] = (40, 150, 60)  # BGR: saturated green, V=150
+    img[100:] = grass[100:]
+    strip = (200, 230, 230) if bright_base else (95, 150, 140)  # bright white vs grass-bright, desaturated
+    img[96:101] = strip
+    return cv2.GaussianBlur(img, (3, 3), 0.8)
+
+
+def test_far_edge_line_finds_a_faint_strip_but_not_a_bright_board_base():
+    from footy_track.calibration.prelabel.candidates import far_edge_line, grass_mask
+
+    faint = _faint_far_edge_frame()
+    g = grass_mask(faint)
+    assert not g[40, 300] and g[200, 300]  # the stands/apron are not grass
+    far = far_edge_line(faint, g)
+    ys, xs = np.nonzero(far)
+    assert len(xs) > 300 and 92 <= np.median(ys) <= 104 and xs.max() - xs.min() > 400
+    bright = _faint_far_edge_frame(bright_base=True)
+    assert not far_edge_line(bright, grass_mask(bright)).any()

@@ -208,3 +208,52 @@ def test_parquet_roundtrip_preserves_calibration(store, tmp_path):
     s2 = FeatureStore.from_parquet(tmp_path)
     assert s2.count("calibration") == 1 and s2.count("pitch_keypoint") == 1
     assert list(_best(s2)["H"]) == H_CAM
+
+
+def test_detections_on_pitch_undistorts_with_k1_like_the_projector(store):
+    from footy_track.calibration import geometry as geo
+
+    H = np.array(H_CAM).reshape(3, 3)
+    k1 = 0.03
+    store.upsert_calibrations(
+        [_cal("hand_label", "r", H=H_CAM, q=0.9, status="hand", distortion_k1=k1,
+              pitch_length=105.0, pitch_width=68.0, image_width=1920, image_height=1080),
+         _cal("hand_label", "r", fi=1, H=H_CAM, q=0.9, status="hand",  # same H, no lens
+              pitch_length=105.0, pitch_width=68.0, image_width=1920, image_height=1080)]
+    )
+    store.upsert_detections([_det(0, "player", 0, 0.10, 0.20, 0.05, 0.30),
+                             _det(1, "player", 1, 0.10, 0.20, 0.05, 0.30)])
+    df = store.query("SELECT * FROM detections_on_pitch ORDER BY frame_index")
+    stored = store.query("SELECT bbox_x, bbox_y, bbox_w, bbox_h FROM detection ORDER BY frame_index")
+    r = stored.iloc[0].astype(float)  # FLOAT32 columns: do the projector's arithmetic in float64
+    want = PitchProjector().project_frame(
+        [TrackedDetection(0, 0.0, "player", r.bbox_x, r.bbox_y, r.bbox_w, r.bbox_h)], H, 0.9,
+        distortion=geo.make_distortion(k1, 1920 / 1080),
+    )[0]
+    assert df.iloc[0]["x_pitch"] == pytest.approx(want.x_pitch, abs=1e-9)
+    assert df.iloc[0]["y_pitch"] == pytest.approx(want.y_pitch, abs=1e-9)
+    plain = PitchProjector().project_frame(
+        [TrackedDetection(0, 0.0, "player", r.bbox_x, r.bbox_y, r.bbox_w, r.bbox_h)], H, 0.9)[0]
+    assert df.iloc[1]["x_pitch"] == pytest.approx(plain.x_pitch, abs=1e-9)  # NULL k1 == old behaviour
+    assert abs(df.iloc[0]["x_pitch"] - df.iloc[1]["x_pitch"]) > 1e-3  # and the lens does matter
+
+
+def test_store_created_before_distortion_gets_the_k1_column(tmp_path):
+    """Re-opening an existing store adds calibration.distortion_k1 (NULL = plain homography)."""
+    import duckdb
+
+    from footy_track.feature_store.schema import DDL, VIEWS
+
+    path = tmp_path / "old.duckdb"
+    con = duckdb.connect(str(path))
+    for stmt in DDL:
+        if stmt.lstrip().startswith("ALTER TABLE calibration"):
+            continue
+        con.execute(stmt.replace("distortion_k1  DOUBLE,", ""))  # the pre-distortion table
+    con.execute("CREATE OR REPLACE VIEW frame_calibration_best AS SELECT * FROM calibration")
+    con.execute("INSERT INTO calibration (game_id, source, run_id, frame_index, H, review_status) "
+                f"VALUES ('g', 'hand_label', 'r', 0, {H_ID}, 'hand')")
+    con.close()
+    with FeatureStore.open(path) as s:
+        row = s.query("SELECT distortion_k1 FROM frame_calibration_best").iloc[0]
+        assert row["distortion_k1"] is None or math.isnan(row["distortion_k1"])

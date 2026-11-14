@@ -89,6 +89,7 @@ class Detection:
     lines: list[Line]
     ellipses: list[Ellipse]
     candidates: list[Candidate]
+    far_line: np.ndarray | None = None  # bool mask of the pale far-touchline strip (subset of lines_mask)
 
     @property
     def size(self) -> tuple[int, int]:
@@ -109,12 +110,22 @@ def resize_to_work(frame: np.ndarray, max_edge: int = MAX_EDGE) -> tuple[np.ndar
     return frame, s
 
 
-def grass_mask(bgr: np.ndarray) -> np.ndarray:
-    """Pitch region: green pixels, closed/filled so lines and players inside it
-    belong to the pitch. Returns bool (h, w)."""
+#: Frames where the HSV grass mask leaks over dark stands / the advertising apron (their hue is
+#: green-ish too) are re-masked with a saturation gate relative to the pitch's own colour.
+GRASS_SAT_GATE = 0.58
+FAR_MAX_Y_FRAC = 0.6
+FAR_MAX_V_RATIO = 1.35  # median V of the strip / the grass's (faint touchline ~1.1-1.2, board base 1.6+)
+GRASS_MIN_V = 0.5  # of the pitch's median V: loose, so shadows on the pitch survive
+
+
+def _grass_pipeline(bgr: np.ndarray, gate: tuple[float, float] | None = None) -> np.ndarray:
     hsv = cv2.cvtColor(bgr, cv2.COLOR_BGR2HSV)
     h, s, v = cv2.split(hsv)
-    g = ((h >= 30) & (h <= 95) & (s >= 40) & (v >= 35)).astype(np.uint8)
+    g = ((h >= 30) & (h <= 95) & (s >= 40) & (v >= 35))
+    if gate is not None:
+        mv, ms = gate
+        g &= (s >= GRASS_SAT_GATE * ms) & (v >= GRASS_MIN_V * mv)
+    g = g.astype(np.uint8)
     k = max(3, bgr.shape[1] // 160)
     g = cv2.morphologyEx(g, cv2.MORPH_OPEN, np.ones((k, k), np.uint8))
     big = max(15, bgr.shape[1] // 40)
@@ -139,7 +150,38 @@ def grass_mask(bgr: np.ndarray) -> np.ndarray:
     return keep.astype(bool)
 
 
-def line_mask(bgr: np.ndarray, grass: np.ndarray) -> np.ndarray:
+def pitch_colour(bgr: np.ndarray, grass: np.ndarray) -> tuple[float, float] | None:
+    """(median V, median S) of the grass in the lower half of the frame (where it surely is)."""
+    h = bgr.shape[0]
+    low = grass.copy()
+    low[: h // 2] = False
+    ref = low if low.sum() > 0.01 * grass.size else grass
+    if ref.sum() < 500:
+        return None
+    hsv = cv2.cvtColor(bgr, cv2.COLOR_BGR2HSV)
+    return float(np.median(hsv[..., 2][ref])), float(np.median(hsv[..., 1][ref]))
+
+
+def grass_mask(bgr: np.ndarray) -> np.ndarray:
+    """Pitch region: green pixels, closed/filled so lines and players inside it
+    belong to the pitch. Returns bool (h, w).
+
+    The plain hue test also accepts the dark, green-tinted stands and the advertising apron
+    behind the far touchline (on a high wide camera that pushes the "grass" boundary up past
+    the hoardings and lets the far touchline fit onto them), so when the pitch colour is known
+    the mask is redone with a saturation / brightness gate relative to it; frames the gate
+    does not change keep the original mask."""
+    g0 = _grass_pipeline(bgr)
+    gate = pitch_colour(bgr, g0)
+    if gate is None:
+        return g0
+    g1 = _grass_pipeline(bgr, gate)
+    if g1.sum() < 0.3 * max(g0.sum(), 1) or g1.sum() > 0.995 * g0.sum():
+        return g0  # gate removed (nearly) everything, or nothing worth it
+    return g1
+
+
+def line_mask(bgr: np.ndarray, grass: np.ndarray, with_far: bool = True) -> np.ndarray:
     """White pitch markings: bright, low-saturation, locally brighter than
     their surroundings (top-hat), inside the grass region."""
     hsv = cv2.cvtColor(bgr, cv2.COLOR_BGR2HSV)
@@ -170,7 +212,65 @@ def line_mask(bgr: np.ndarray, grass: np.ndarray) -> np.ndarray:
     for i in range(1, n):
         if stats[i, cv2.CC_STAT_AREA] >= max(30, w // 40):
             out[lab == i] = 1
-    return out.astype(bool)
+    out = out.astype(bool)
+    return out | far_edge_line(bgr, grass) if with_far else out
+
+
+def far_edge_line(bgr: np.ndarray, grass: np.ndarray) -> np.ndarray:
+    """The faint far touchline: a thin pale strip hugging the pitch boundary.
+
+    From a high wide camera the far touchline is 1-3 px wide and *not brighter than the grass*
+    (it is a saturation dip, V ~ grass), so the brightness top-hat misses it and the brightest
+    thing near the boundary is the advertising board, which then attracts the fit. The cue used
+    here: pixels just outside the (colour-gated) grass that are nearly as bright as the grass
+    but pale (low saturation); the dark apron / stands behind it fail the brightness test.
+    Only long thin components survive (players' outlines are neither).
+
+    The strip is also what a hoarding's white base looks like (Emirates), but that is much
+    brighter than the grass, whereas the faint touchline is not: see ``FAR_MAX_V_RATIO``."""
+    out = np.zeros(grass.shape, bool)
+    gate = pitch_colour(bgr, grass)
+    if gate is None:
+        return out
+    mv, ms = gate
+    hsv = cv2.cvtColor(bgr, cv2.COLOR_BGR2HSV)
+    _, s, v = cv2.split(hsv)
+    w = bgr.shape[1]
+    r = max(3, w // 200)  # ~8 px @1568: reach of the strip beyond the grass edge
+    g8 = grass.astype(np.uint8)
+    near = cv2.dilate(g8, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * r + 1, 2 * r + 1))).astype(bool)
+    pale = (v >= 0.85 * mv) & (s < GRASS_SAT_GATE * ms) & (s >= 0.15 * ms) | (v >= 0.85 * mv) & (s < 0.15 * ms)
+    # only the TOP edge of the pitch (grass below the strip), not the near/side edges
+    below = np.zeros_like(grass)
+    below[:-r] = grass[r:]
+    cand = (near & pale & below).astype(np.uint8)
+    cand = cv2.morphologyEx(cand, cv2.MORPH_CLOSE, np.ones((1, 5), np.uint8))
+    # keep runs that are long and straight at any angle within +-30 deg of horizontal (the far
+    # touchline of a wide camera): an opening with a thin oriented line, which removes players'
+    # legs and hoarding posts hanging off the strip
+    L = max(15, w // 50)
+    kept = np.zeros_like(cand)
+    for ang in np.deg2rad(np.arange(-30, 31, 6)):
+        k = np.zeros((2 * L + 1, 2 * L + 1), np.uint8)
+        cv2.line(k, (int(round(L - L * np.cos(ang))), int(round(L - L * np.sin(ang)))),
+                 (int(round(L + L * np.cos(ang))), int(round(L + L * np.sin(ang)))), 1, 1)
+        kept |= cv2.morphologyEx(cand, cv2.MORPH_OPEN, k)
+    kept = cv2.dilate(kept, np.ones((3, 3), np.uint8)) & cand
+    n, lab, stats, _ = cv2.connectedComponentsWithStats(kept, connectivity=8)
+    for i in range(1, n):
+        x, y, bw, bh, area = stats[i]
+        if bw < w / 12:
+            continue
+        out[lab == i] = True
+    if out.any():
+        ys, xs = np.nonzero(out)
+        y_r, (x0, x1) = float(np.median(ys)), (int(xs.min()), int(xs.max()))
+        h = out.shape[0]
+        # a far touchline is in the upper part of the frame; and it is FAINT: a strip much brighter than
+        # the grass is the white base of an advertising board, not a line
+        if y_r > FAR_MAX_Y_FRAC * h or float(np.median(v[out])) > FAR_MAX_V_RATIO * mv:
+            return np.zeros(grass.shape, bool)
+    return out
 
 
 def _thin(mask: np.ndarray) -> np.ndarray:
@@ -439,7 +539,8 @@ def find_candidates(
     work, scale = resize_to_work(bgr)
     h, w = work.shape[:2]
     grass = grass_mask(work)
-    lm = line_mask(work, grass)
+    far = far_edge_line(work, grass)
+    lm = line_mask(work, grass, with_far=False) | far
     lines = detect_lines(lm)
     ells = detect_ellipses(lm, lines)
     lines = _drop_arc_lines(lines, ells, lm)
@@ -527,7 +628,7 @@ def find_candidates(
     # stable ids left->right, top->bottom reading order is confusing; keep support order
     for i, c in enumerate(cands, 1):
         c.id = i
-    return Detection(work, scale, grass, lm, lines, ells, cands)
+    return Detection(work, scale, grass, lm, lines, ells, cands, far_line=far)
 
 
 # --------------------------------------------------------------------------
