@@ -58,13 +58,14 @@ def sam2_decisions(clip: dict, tracks: dict, anchors: list[int], frames) -> dict
         if pf is not None and pb is not None:
             if pf[0] and pb[0] and math.hypot(pf[1] - pb[1], pf[2] - pb[2]) <= AGREE_PX:
                 rec = {"pos": ((pf[1] + pb[1]) / 2, (pf[2] + pb[2]) / 2), "rule": "agree",
-                       "anchor": ap if f - ap <= an - f else an, "dist": min(f - ap, an - f)}
+                       "anchor": ap if f - ap <= an - f else an, "dist": min(f - ap, an - f),
+                       "agree_px": math.hypot(pf[1] - pb[1], pf[2] - pb[2]), "ap": ap, "an": an}
         elif pf is not None and pb is None:
             if pf[0] and f - ap <= SINGLE_PASS_MAX:
-                rec = {"pos": (pf[1], pf[2]), "rule": "single", "anchor": ap, "dist": f - ap}
+                rec = {"pos": (pf[1], pf[2]), "rule": "single", "anchor": ap, "dist": f - ap, "agree_px": None, "ap": ap, "an": None}
         elif pb is not None and pf is None:
             if pb[0] and an - f <= SINGLE_PASS_MAX:
-                rec = {"pos": (pb[1], pb[2]), "rule": "single", "anchor": an, "dist": an - f}
+                rec = {"pos": (pb[1], pb[2]), "rule": "single", "anchor": an, "dist": an - f, "agree_px": None, "ap": None, "an": an}
         if rec is not None:
             lo, hi = sorted((rec["anchor"], f))
             rec["crosses_cut"] = any(lo < c <= hi for c in cuts)
