@@ -98,6 +98,7 @@ def _work(job):
 class RerefineSummary:
     rerefined: int = 0
     now_failed: int = 0
+    kept_previous: int = 0  # new refine not applied but the old one was: the old record is kept
     unchanged: int = 0  # not proposed, or status changed under us
     errors: list = field(default_factory=list)
     scores: list = field(default_factory=list)  # (clip, run, idx, before, after)
@@ -149,6 +150,9 @@ def rerefine(gt_dir: Path, clips_dirs, clips=None, runs=None, fit_k1=True, dry_r
                 old = sent[(clip, run_id, idx)]
                 if cur is None or cur.get("status") != "proposed" or cur.get("ts") != old.get("ts"):
                     s.unchanged += 1  # reviewed (or replaced) meanwhile: leave alone
+                    continue
+                if not (rec.get("refine") or {}).get("applied") and (cur.get("refine") or {}).get("applied"):
+                    s.kept_previous += 1  # never swap a refined H for a re-scored coarse fit
                     continue
                 doc["runs"][run_id]["frames"][idx] = finalise(cur, rec, fit_k1, code)
                 if rec["status"] == "proposed":

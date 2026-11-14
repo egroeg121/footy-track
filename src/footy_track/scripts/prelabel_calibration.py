@@ -89,7 +89,7 @@ def _cmd_rerefine(args) -> int:
     dirs = [clips] + [Path(d) for d in (args.extra_clips_dir or [])]
     s = rerefine(gt, dirs, clips=args.clips, runs=args.runs, fit_k1=args.fit_k1, dry_run=args.dry_run,
                  workers=args.workers)
-    print(f"rerefined={s.rerefined} now_failed={s.now_failed} unchanged={s.unchanged} errors={len(s.errors)}"
+    print(f"rerefined={s.rerefined} now_failed={s.now_failed} kept_previous={s.kept_previous} unchanged={s.unchanged} errors={len(s.errors)}"
           + (" (dry run: nothing written)" if args.dry_run else ""))
     for e in s.errors:
         print("error:", e)

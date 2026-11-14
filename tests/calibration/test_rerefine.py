@@ -68,3 +68,21 @@ def test_dry_run_writes_nothing(tmp_path):
     b = p.read_bytes()
     rr.rerefine(tmp_path, [tmp_path], dry_run=True, log=lambda *_: None)
     assert p.read_bytes() == b
+
+
+def test_unrefined_result_does_not_replace_refined_record(tmp_path, monkeypatch):
+    refined, coarse_only = _rec("proposed", 0.9), _rec("proposed", 0.9, 1)
+    refined["refine"] = {"applied": True}
+    coarse_only["refine"] = {"applied": False}
+    write_proposals(tmp_path, CLIP, {"clip": CLIP, "runs": {"r": {"frames": {"0": refined, "1": coarse_only}}}})
+    before = read_proposals(tmp_path, CLIP)
+
+    def fake(job):  # new refine fails to apply on both; scores differ
+        return job[0], job[1], job[2], {**_rec("proposed", 0.5, int(job[2])), "refine": {"applied": False}}, None
+
+    monkeypatch.setattr(rr, "_work", fake)
+    s = rr.rerefine(tmp_path, [tmp_path], workers=1, log=lambda *_: None)
+    assert (s.kept_previous, s.rerefined) == (1, 1)
+    after = read_proposals(tmp_path, CLIP)["runs"]["r"]["frames"]
+    assert after["0"] == before["runs"]["r"]["frames"]["0"] and "rerefined" not in after["0"]
+    assert after["1"]["score"] == 0.5  # previous was not refined: replaced as usual
