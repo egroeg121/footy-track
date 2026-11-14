@@ -4,6 +4,10 @@
     python -m footy_track.scripts.prelabel_calibration run --identifier claude-cli \
         --clips arsenal_mancity_seg010 --every 25 --limit 40
 
+    # GPT via the OpenAI Codex CLI (ChatGPT login; the binary must be on PATH)
+    python -m footy_track.scripts.prelabel_calibration run --identifier codex-cli \
+        --clips arsenal_mancity_seg010 --every 25 --limit 40
+
     # live Claude pilot (needs ANTHROPIC_API_KEY and `uv sync --extra llm`)
     python -m footy_track.scripts.prelabel_calibration run --identifier claude \
         --clips arsenal_mancity_seg010 --every 25 --limit 40
@@ -38,6 +42,7 @@ from footy_track.calibration.prelabel.identifier import (
     DEFAULT_MODEL,
     ClaudeCLIIdentifier,
     ClaudeIdentifier,
+    CodexCLIIdentifier,
     MockIdentifier,
 )
 from footy_track.calibration.prelabel.pipeline import RunConfig, run_prelabel
@@ -53,11 +58,34 @@ def _dirs(args) -> tuple[Path, Path]:
     return Path(gt), Path(clips)
 
 
+def _reviewer(args):
+    """The separate reviewer model (``--reviewer``), or None."""
+    if not args.reviewer:
+        return None
+    if args.reviewer == "codex-cli":
+        return CodexCLIIdentifier(
+            model=args.reviewer_model or "gpt-6-luna", effort=args.reviewer_effort, timeout=args.timeout,
+            command=args.codex_command, review_version=args.reviewer_prompt,
+        )
+    return ClaudeCLIIdentifier(
+        model=args.reviewer_model or "sonnet", effort=args.reviewer_effort, timeout=args.timeout,
+        review_version=args.reviewer_prompt,
+    )
+
+
 def _cmd_run(args) -> int:
     gt, clips = _dirs(args)
     if args.identifier == "claude-cli":
         model = "opus" if args.model is None else args.model
-        ident = ClaudeCLIIdentifier(model=model, effort=args.effort, timeout=args.timeout)
+        ident = ClaudeCLIIdentifier(
+            model=model, effort=args.effort, timeout=args.timeout, prompt_version=args.prompt_version
+        )
+    elif args.identifier == "codex-cli":
+        model = "gpt-6-luna" if args.model is None else args.model
+        ident = CodexCLIIdentifier(
+            model=model, effort=args.effort, timeout=args.timeout, command=args.codex_command,
+            prompt_version=args.prompt_version,
+        )
     elif args.identifier == "claude":
         if args.model is None:
             args.model = DEFAULT_MODEL
@@ -72,7 +100,7 @@ def _cmd_run(args) -> int:
         frames=[int(x) for x in args.frames.split(",")] if args.frames else None,
         every=args.every, skip_gt=args.skip_gt, limit=args.limit,
         render_dir=Path(args.render_dir) if args.render_dir else None,
-        verify=args.verify, run_id=args.run_id, refine=not args.no_refine,
+        verify=args.verify, reviewer=_reviewer(args), run_id=args.run_id, refine=not args.no_refine,
         k1=args.k1, fit_k1=args.fit_k1, pinhole=args.pinhole,
     )
     s = run_prelabel(cfg, ident)
@@ -128,7 +156,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--clips-dir")
     sub = ap.add_subparsers(dest="cmd", required=True)
     r = sub.add_parser("run", help="generate proposals")
-    r.add_argument("--identifier", choices=["claude", "claude-cli", "mock"], default="claude")
+    r.add_argument("--identifier", choices=["claude", "claude-cli", "codex-cli", "mock"], default="claude")
     r.add_argument("--clips", nargs="+", required=True, help="clip names or aliases")
     r.add_argument("--frames", help="comma-separated frame indices (default: keyframes)")
     r.add_argument("--every", type=int, default=25, help="keyframe stride (default 25)")
@@ -141,11 +169,21 @@ def main(argv: list[str] | None = None) -> int:
     r.add_argument("--pinhole", action="store_true",
                    help="fit a physical pinhole camera (square pixels) instead of a free homography (off by default)")
     r.add_argument("--limit", type=int, help="max frames processed in total")
-    r.add_argument("--model", help="default: claude-opus-5-5 (claude) / opus alias (claude-cli)")
-    r.add_argument("--timeout", type=float, default=300.0, help="claude-cli: seconds per call")
+    r.add_argument("--model", help="default: claude-opus-5-5 (claude) / opus alias (claude-cli) / gpt-6-luna (codex-cli)")
+    r.add_argument("--timeout", type=float, default=300.0, help="claude-cli / codex-cli: seconds per call")
+    r.add_argument("--codex-command", default="codex", help="codex-cli: the executable (default: `codex` on PATH)")
+    r.add_argument("--prompt-version", default="v1",
+                   help="claude-cli / codex-cli: system prompt version: v1 (default, the original) or v2 (adds labelling rules)")
     r.add_argument("--effort", choices=EFFORTS, default=DEFAULT_EFFORT)
     r.add_argument("--no-fallbacks", action="store_true", help="disable server-side refusal fallbacks")
     r.add_argument("--verify", action="store_true", help="second Claude call judging the overlay (extra cost)")
+    r.add_argument("--reviewer", choices=["claude-cli", "codex-cli"],
+                   help="a separate model reviews each fitted overlay (match yes/no, stored as rec['verify']); "
+                        "default: none")
+    r.add_argument("--reviewer-model", help="default: sonnet (claude-cli) / gpt-6-luna (codex-cli)")
+    r.add_argument("--reviewer-prompt", choices=["r1", "r2"], default="r1",
+                   help="review prompt: r1 (default, original) or r2 (per-feature checks, then a verdict)")
+    r.add_argument("--reviewer-effort", choices=EFFORTS, default=DEFAULT_EFFORT)
     r.add_argument("--mock-corrupt", type=int, default=0, help="mock only: swap k label pairs")
     r.add_argument("--mock-sigma", type=float, default=0.0, help="mock only: label noise std in px @1920 wide")
     r.add_argument("--mock-drop", type=float, default=0.0, help="mock only: probability of dropping a point")

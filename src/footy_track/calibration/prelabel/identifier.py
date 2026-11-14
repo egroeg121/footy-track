@@ -67,7 +67,7 @@ class IdentifyResult:
 
 
 class Identifier(Protocol):
-    source: str  # "claude" | "classical"
+    source: str  # "claude" | "codex" | "classical"
 
     def run_params(self) -> dict: ...
 
@@ -232,6 +232,49 @@ wrong end, or clearly absent. Give a short reason.
 """
 
 
+#: v2 = v1 + explicit labelling guidance, written from the v1 failure modes of the 2026-11-14 model comparison
+#: (too few labels on weaker models; wrong ids on box/arc/spot points; points floating mid-grass). Select with
+#: ``--prompt-version v2``; v1 stays the default.
+SYSTEM_V2 = SYSTEM + """
+LABELLING RULES (follow these; precision matters more than count):
+1. Coverage: aim for at least 6 well-spread points when the view allows it, and include at least one on \
+or very near the FAR touchline (top of the pitch in a standard view) whenever that touchline is visible. \
+With fewer than 4 clearly identifiable points, compensate with line labels (halfway line, far touchline, \
+box lines): give those lines instead of guessing points.
+2. Prefer line crossings. The most reliable points are where two straight white lines meet: box corners, \
+goal-area corners, the halfway line meeting a touchline or the centre circle, a touchline meeting a goal line. \
+Curve extremes (the top/bottom/left/right tangent points of a circle or arc) have no sharp feature: give them \
+only when the tangent is clearly visible, and place them ON the white curve.
+3. Tell look-alikes apart. CENTRE_CIRCLE_TOP/BOTTOM are the circle points ON the halfway line (the two places \
+the circle crosses it); CENTRE_CIRCLE_LEFT/RIGHT are its extremes along the pitch's long axis, away from the \
+halfway line. PEN_ARC_TOP/BOTTOM are where the penalty arc (the "D") meets the 18-yard box front line; \
+PEN_ARC_MID is the arc's furthest point from goal. The penalty spot lies between the 18-yard box front line \
+and the goal area, on the pitch's long axis; the PEN_BOX_*_OUTER corners are the far corners of the 18-yard \
+box (on its front line), the goal-area (6-yard) corners are the smaller box's corners nearer the goal line, and \
+the *_GOAL points lie on the goal line itself. Count the boxes: the larger box encloses the smaller one.
+4. Only label what you can see. Every point must sit exactly on the white marking (a crossing, spot centre, \
+corner flag base or post foot) in the image. Do not put a point where the marking is hidden by players, \
+cut off by the frame edge, or merely inferred from other markings; omit it. A point floating on bare grass, \
+a hoarding or the stands is wrong. Do not mirror L and R: choose L or R only from what the frame shows.
+5. Lines: for each line you name, p1 and p2 must lie on the visible white line and be far apart (ideally the \
+two ends of its visible stretch). Give the far touchline and the halfway line whenever they are visible.
+6. Use the grid to read pixel coordinates carefully (interpolate between the 100 px ticks).
+"""
+
+#: System prompts by version (the run id / params carry the version). ``PROMPT_VERSION`` is the default.
+V2_VERSION = "p3"
+SYSTEMS: dict[str, str] = {PROMPT_VERSION: SYSTEM, V2_VERSION: SYSTEM_V2}
+#: CLI-friendly aliases.
+PROMPT_ALIASES: dict[str, str] = {"v1": PROMPT_VERSION, "v2": V2_VERSION}
+
+
+def resolve_prompt_version(name: str | None) -> str:
+    v = PROMPT_ALIASES.get(name or "v1", name or PROMPT_VERSION)
+    if v not in SYSTEMS:
+        raise ValueError(f"unknown prompt version {name!r}; have {sorted(SYSTEMS)} / {sorted(PROMPT_ALIASES)}")
+    return v
+
+
 def keypoint_ids(pitch: PitchModel) -> list[str]:
     return list(pitch.keypoints())
 
@@ -306,6 +349,60 @@ REVIEW_SCHEMA = {
     "required": ["match", "reason"],
     "additionalProperties": False,
 }
+
+
+#: Reviewer v2: structured per-feature checks BEFORE the overall verdict (the schema's property order is the
+#: order the model fills them in). Same ``match`` / ``reason`` contract as v1, so callers are unchanged.
+REVIEW_SYSTEM_V2 = """\
+You judge whether a football pitch model has been drawn correctly over a broadcast frame. The pink and \
+yellow lines are a candidate projection of the pitch markings (pink = straight lines, yellow = \
+circle/arcs). Check each feature of the drawing separately against the real white markings in the image, \
+then give one overall verdict:
+- far_touchline: is the far touchline (the line along the top of the pitch, if visible) drawn ON the real white line, \
+not above/below it or on the hoarding base? One of "ok", "off", "not_visible".
+- halfway_and_circle: do the halfway line and centre circle (if visible) sit on the real markings? \
+One of "ok", "off", "not_visible".
+- boxes_and_goal_areas: do the penalty-box and goal-area lines (and the penalty arc) that are visible sit on the \
+real markings, at the right end of the pitch? One of "ok", "off", "not_visible".
+- near_side: are the near touchline / near box lines, where visible, on the real markings? \
+One of "ok", "off", "not_visible".
+Then match=true only if every visible feature is "ok" (offsets of a few pixels, and a slight curve from lens \
+distortion, are fine). match=false if any visible feature is clearly misplaced (more than about 10 px / the width \
+of a player), mirrored, or at the wrong end of the pitch. Give a short reason naming the worst feature.
+"""
+
+REVIEW_SCHEMA_V2 = {
+    "type": "object",
+    "properties": {
+        "far_touchline": {"type": "string", "enum": ["ok", "off", "not_visible"]},
+        "halfway_and_circle": {"type": "string", "enum": ["ok", "off", "not_visible"]},
+        "boxes_and_goal_areas": {"type": "string", "enum": ["ok", "off", "not_visible"]},
+        "near_side": {"type": "string", "enum": ["ok", "off", "not_visible"]},
+        "match": {"type": "boolean"},
+        "reason": {"type": "string"},
+    },
+    "required": ["far_touchline", "halfway_and_circle", "boxes_and_goal_areas", "near_side", "match", "reason"],
+    "additionalProperties": False,
+}
+
+#: review prompt/schema versions: ``r1`` is the original (default).
+REVIEWS: dict[str, tuple[str, dict]] = {"r1": (REVIEW_SYSTEM, REVIEW_SCHEMA), "r2": (REVIEW_SYSTEM_V2, REVIEW_SCHEMA_V2)}
+
+
+def resolve_review_version(name: str | None) -> tuple[str, str, dict]:
+    v = name or "r1"
+    if v not in REVIEWS:
+        raise ValueError(f"unknown review version {name!r}; have {sorted(REVIEWS)}")
+    return (v, *REVIEWS[v])
+
+
+def _verdict(data: dict, usage: dict, version: str) -> dict:
+    out = {"match": bool(data.get("match")), "reason": str(data.get("reason", "")), "usage": usage}
+    checks = {k: v for k, v in data.items() if k not in ("match", "reason")}
+    if checks:
+        out["checks"] = checks
+    out["review_version"] = version
+    return out
 
 
 def _img_block(jpg: bytes) -> dict:
@@ -480,27 +577,35 @@ class ClaudeCLIIdentifier:
         timeout: float = 300.0,
         retries: int = 1,
         cwd: str | Path | None = None,
+        prompt_version: str | None = None,
+        review_version: str | None = None,
     ) -> None:
         self.model, self.effort, self.timeout, self.retries = model, effort, timeout, retries
+        self.review_version = resolve_review_version(review_version)[0]
         self.command = [command] if isinstance(command, str) else list(command)
         self._cwd = Path(cwd) if cwd else None
+        self.prompt_version = resolve_prompt_version(prompt_version)
 
     def run_prefix(self) -> str:
-        return f"claudecli-{self.model}-{PROMPT_VERSION}"
+        return f"claudecli-{self.model}-{self.prompt_version}"
 
     def run_params(self) -> dict:
-        return {"model": self.model, "prompt_version": PROMPT_VERSION, "effort": self.effort, "backend": "claude-cli"}
+        return {"model": self.model, "prompt_version": self.prompt_version, "effort": self.effort,
+                "backend": "claude-cli"}
 
-    def _argv(self, schema: dict) -> list[str]:
+    def _argv(self, schema: dict, system: str | None = None) -> list[str]:
         return [
             *self.command, "-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose",
-            "--json-schema", json.dumps(schema), "--tools", "", "--system-prompt", SYSTEM,
+            "--json-schema", json.dumps(schema), "--tools", "", "--system-prompt",
+            system if system is not None else SYSTEMS[self.prompt_version],
             "--model", self.model, "--effort", self.effort, "--no-session-persistence",
             "--setting-sources", "", "--strict-mcp-config", "--mcp-config", '{"mcpServers":{}}',
             "--disable-slash-commands",
         ]
 
-    def _run_once(self, schema: dict, content: list[dict]) -> tuple[dict | None, dict, str | None]:
+    def _run_once(
+        self, schema: dict, content: list[dict], system: str | None = None
+    ) -> tuple[dict | None, dict, str | None]:
         """-> (structured_output, usage, error)."""
         import subprocess  # noqa: PLC0415
         import tempfile  # noqa: PLC0415
@@ -510,7 +615,8 @@ class ClaudeCLIIdentifier:
         usage: dict = {}
         try:
             cp = subprocess.run(
-                self._argv(schema), input=msg, capture_output=True, text=True, timeout=self.timeout, cwd=cwd,
+                self._argv(schema, system), input=msg, capture_output=True, text=True, timeout=self.timeout,
+                cwd=cwd,
             )
         except subprocess.TimeoutExpired:
             return None, usage, f"claude CLI timed out after {self.timeout:.0f}s"
@@ -554,6 +660,197 @@ class ClaudeCLIIdentifier:
                     err = f"malformed structured output: {exc!r}"
         return IdentifyResult(error=err, usage=usage)
 
+    def verify(self, overlay_jpeg: bytes, review_version: str | None = None) -> dict:
+        """Reviewer role (same contract as :meth:`ClaudeIdentifier.verify`): does the projected
+        model sit on the markings? -> ``{match, reason, usage}`` (``match`` None on a failure)."""
+        version, system, schema = resolve_review_version(review_version or self.review_version)
+        content = [_img_block(overlay_jpeg), {"type": "text", "text": "Does the drawn pitch model match?"}]
+        err, usage = None, {}
+        for _ in range(self.retries + 1):
+            data, usage, err = self._run_once(schema, content, system)
+            if err is None:
+                return _verdict(data, usage, version)
+        return {"match": None, "reason": err, "usage": usage, "review_version": version}
+
+
+#: Substrings of Codex CLI stderr/event text that mean "stop, retrying will not help".
+_CODEX_LIMIT_HINTS = ("usage limit", "rate limit", "rate_limit", "quota", "too many requests", "429", "try again at")
+_CODEX_AUTH_HINTS = ("not logged in", "log in", "login", "unauthorized", "401", "authentication", "sign in",
+                     "invalid api key")
+
+
+def classify_codex_failure(text: str) -> str | None:
+    """'limit' | 'auth' | None for CLI error text."""
+    low = (text or "").lower()
+    if any(h in low for h in _CODEX_LIMIT_HINTS):
+        return "limit"
+    if any(h in low for h in _CODEX_AUTH_HINTS):
+        return "auth"
+    return None
+
+
+class CodexCLIIdentifier:
+    """GPT via the OpenAI Codex CLI (``codex exec``), for machines logged in with a
+    ChatGPT account. Same system prompt, images, JSON schema and ``result_from_data``
+    as :class:`ClaudeCLIIdentifier`; the CLI has no system-prompt flag so the system
+    text leads the prompt, which goes in on stdin (``-``: with stdin left open and
+    the prompt as an argument the CLI hangs on "Reading additional input from stdin").
+    The two images are written to a scratch dir and attached with ``-i`` in order
+    (reference diagram, frame). Runs read-only in an empty scratch cwd, ephemeral,
+    no rules/sessions; the prompt tells the model not to run commands.
+
+    The answer is read from ``--output-last-message`` (the schema is
+    ``build_schema``: it already satisfies OpenAI strict mode). Usage/limit/auth
+    failures are reported in ``IdentifyResult.error`` with a ``codex CLI usage
+    limit`` / ``codex CLI auth`` prefix and are NOT retried. ``command`` is injectable."""
+
+    source = "codex"
+
+    def __init__(
+        self,
+        model: str = "gpt-6-luna",
+        effort: str = DEFAULT_EFFORT,
+        command: str | list[str] = "codex",
+        timeout: float = 300.0,
+        retries: int = 1,
+        cwd: str | Path | None = None,
+        prompt_version: str | None = None,
+        review_version: str | None = None,
+    ) -> None:
+        self.model, self.effort, self.timeout, self.retries = model, effort, timeout, retries
+        self.review_version = resolve_review_version(review_version)[0]
+        self.command = [command] if isinstance(command, str) else list(command)
+        self._cwd = Path(cwd) if cwd else None
+        self.prompt_version = resolve_prompt_version(prompt_version)
+
+    def run_prefix(self) -> str:
+        return f"codexcli-{self.model}-{self.prompt_version}"
+
+    def run_params(self) -> dict:
+        return {"model": self.model, "prompt_version": self.prompt_version, "effort": self.effort,
+                "backend": "codex-cli"}
+
+    def prompt_text(self, inp: IdentifyInput) -> str:
+        w, h = inp.detection.size
+        return (
+            f"{SYSTEMS[self.prompt_version]}\n"
+            "You are given two attached images, in this order: (1) the REFERENCE DIAGRAM (keypoint ids in yellow, "
+            f"straight line ids in light blue); (2) the FRAME ({w} x {h} px; grid ticks every {GRID_STEP} px). "
+            "Do not run any commands and do not read any files: look at the images and answer directly. "
+            "Reply with ONLY the JSON object required by the output schema.\n"
+            "Locate the visible keypoints and name the visible lines."
+        )
+
+    def _argv(self, schema_path: Path, out_path: Path, images: list[Path], cwd: Path) -> list[str]:
+        return [
+            *self.command, "exec", "--skip-git-repo-check", "--ephemeral", "--ignore-rules", "-s", "read-only",
+            "-m", self.model, "-c", f'model_reasoning_effort="{self.effort}"', "-C", str(cwd), "--json",
+            "--output-schema", str(schema_path), "-o", str(out_path),
+            *[a for im in images for a in ("-i", str(im))], "-",
+        ]
+
+    def _run_once(
+        self, prompt: str, jpegs: list[bytes], schema: dict
+    ) -> tuple[dict | None, dict, str | None, bool]:
+        """-> (json, usage, error, fatal); ``fatal`` = do not retry. ``jpegs`` are attached in order."""
+        import shutil  # noqa: PLC0415
+        import subprocess  # noqa: PLC0415
+        import tempfile  # noqa: PLC0415
+        import time  # noqa: PLC0415
+
+        usage: dict = {}
+        tmp = Path(tempfile.mkdtemp(prefix="codex_ident_"))
+        try:
+            (tmp / "images").mkdir()
+            cwd = self._cwd or (tmp / "cwd")
+            cwd.mkdir(exist_ok=True)
+            images = [tmp / "images" / f"{i + 1}.jpg" for i in range(len(jpegs))]
+            for im, b in zip(images, jpegs, strict=True):
+                im.write_bytes(b)
+            schema_path, out_path = tmp / "schema.json", tmp / "last_message.txt"
+            schema_path.write_text(json.dumps(schema))
+            t0 = time.monotonic()
+            try:
+                cp = subprocess.run(
+                    self._argv(schema_path, out_path, images, cwd), input=prompt,
+                    capture_output=True, text=True, timeout=self.timeout, cwd=cwd,
+                )
+            except subprocess.TimeoutExpired:
+                return None, usage, f"codex CLI timed out after {self.timeout:.0f}s", False
+            except OSError as exc:
+                return None, usage, f"cannot run codex CLI: {exc}", True
+            usage = {"model_served": self.model, "duration_ms": int((time.monotonic() - t0) * 1000)}
+            text, failure = None, None
+            for line in cp.stdout.splitlines():
+                try:
+                    ev = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if not isinstance(ev, dict):
+                    continue
+                kind = ev.get("type")
+                if kind == "turn.completed":
+                    u = ev.get("usage") or {}
+                    usage.update({k: u.get(k) for k in ("input_tokens", "cached_input_tokens", "output_tokens",
+                                                         "reasoning_output_tokens")})
+                elif kind == "item.completed" and (ev.get("item") or {}).get("type") == "agent_message":
+                    text = ev["item"].get("text")
+                elif kind in ("error", "turn.failed"):
+                    msg = ev.get("message") or (ev.get("error") or {}).get("message") or json.dumps(ev)
+                    failure = str(msg)
+            if out_path.exists() and out_path.read_text().strip():
+                text = out_path.read_text()
+            if failure or text is None:
+                detail = (failure or cp.stderr or cp.stdout)[-300:].strip()
+                kind = classify_codex_failure(detail)
+                if kind == "limit":
+                    return None, usage, f"codex CLI usage limit: {detail}", True
+                if kind == "auth":
+                    return None, usage, f"codex CLI auth failure (run `codex login`): {detail}", True
+                return None, usage, f"codex CLI failed (exit {cp.returncode}): {detail or 'no agent message'}", False
+            try:
+                data = json.loads(text)
+            except json.JSONDecodeError as exc:
+                return None, usage, f"unparseable JSON from codex: {exc}", False
+            if not isinstance(data, dict):
+                return None, usage, "codex answer is not a JSON object", False
+            return data, usage, None, False
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+    def identify(self, inp: IdentifyInput) -> IdentifyResult:
+        schema = build_schema(inp.pitch)
+        err, usage = None, {}
+        for _ in range(self.retries + 1):
+            data, usage, err, fatal = self._run_once(
+                self.prompt_text(inp), [inp.diagram_jpeg, inp.frame_jpeg], schema
+            )
+            if err is None:
+                try:
+                    return result_from_data(data, inp, usage)
+                except (KeyError, TypeError, ValueError) as exc:
+                    err, fatal = f"malformed structured output: {exc!r}", False
+            if fatal:
+                break
+        return IdentifyResult(error=err, usage=usage)
+
+    def verify(self, overlay_jpeg: bytes, review_version: str | None = None) -> dict:
+        """Reviewer role (same contract as :meth:`ClaudeIdentifier.verify`): -> ``{match, reason, usage}``
+        (``match`` None on a failure, with the error in ``reason``)."""
+        version, system, schema = resolve_review_version(review_version or self.review_version)
+        prompt = (
+            f"{system}\nThe attached image is the broadcast frame with the candidate pitch "
+            "model drawn over it. Do not run any commands and do not read any files. "
+            "Reply with ONLY the JSON object required by the output schema.\nDoes the drawn pitch model match?"
+        )
+        err, usage = None, {}
+        for _ in range(self.retries + 1):
+            data, usage, err, fatal = self._run_once(prompt, [overlay_jpeg], schema)
+            if err is None:
+                return _verdict(data, usage, version)
+            if fatal:
+                break
+        return {"match": None, "reason": err, "usage": usage, "review_version": version}
 
 
 # --------------------------------------------------------------------------
