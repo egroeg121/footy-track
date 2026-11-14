@@ -93,6 +93,24 @@ persisted in the JSONL sidecar as the second tag (`tags: [label, model, *markers
   - Tests: `test_review_endpoints.py::test_queue_sam3_legacy_tag_round_trips`,
     `test_session_roundtrip.py::test_roundtrip_preserves_model_tags_label_and_geometry`
 
+The next two requirements are **PLANNED**: nothing implements them and they
+have no tests yet. They belong to the proposed Claude-assisted ball labelling
+loop (`docs/design/claude_autolabel_loop.md`); they are not counted in the
+traceability summary in section 15.
+
+- **LAB-008** (PLANNED, MUST) A Claude proposal has provenance `claude`, which
+  sits at the machine level (tier 3). It lives only in a separate candidate
+  pool, never in a GT sidecar, and it never overwrites or replaces a box at or
+  above its own level (`labeller`, or a machine box carrying `human_checked`).
+  This restates LAB-002 for the new tag. Adding `claude` to the provenance tag
+  sets (`session.py`, `review.py`, `ingest_gt.py`) is part of the work.
+  - Tests: none yet
+- **LAB-009** (PLANNED, MUST) The `claude` tag is kept on a box through every
+  later step: a person's yes (LAB-1014) writes `[label, claude, human_checked]`,
+  so the origin of a tier 2 label can always be told, and the ball eval keeps
+  ignoring it as ground truth.
+  - Tests: none yet
+
 ## 2. Persistence — JSONL sidecar (LAB-1xx)
 
 One `<clip_stem>.jsonl` per clip under the GT-marks dir
@@ -755,13 +773,36 @@ reads `<gt dir>/ball_checks/` (`--ball-checks-dir`) into the feature store's
   (clip, frame, box, pad) — a different pad is a separate entry, never a stale
   hit.
   - Tests: `test_ball_check.py::test_crop_returns_jpeg_and_caches`
+- **LAB-1009a** (SHOULD) `GET /ball_check/clip/{clip}/{frame}/{box}.mp4`
+  (same `src`/`pad` params as the crop) returns a ~3 s H.264 MP4 (frame -1.5 s
+  .. +1.5 s, clamped to the clip, every source frame up to 30 fps, subsampled
+  above that) so a spare/crowd ball can be told from the match ball by how it
+  moves. It uses the still's crop window, fixed for every frame, upscaled
+  server-side (Lanczos) to 560 px wide, full colour, CRF 20, yuv420p, main
+  profile, even dimensions, moov atom first (iOS Safari). The box (and for
+  `src=list` the magenta other box) is drawn on the centre frame only, which is
+  repeated for 500 ms so the box is visible and exact. The response honours
+  HTTP `Range` (206 / 416; iOS requires it). Raw frames are piped from one seek
+  + sequential OpenCV reads into ffmpeg; results sit in a 40-entry LRU keyed by
+  (src, clip, frame, box, pad). Headers `X-Clip-Frames` / `X-Clip-Duration-Ms`.
+  If ffmpeg is not installed the same URL serves the old small GIF
+  (`image/gif`, 240 px, 40 colours, ~10 fps).
+  - Tests: `test_ball_check.py::test_clip_endpoint_serves_mp4_with_range_and_clamps`,
+    `test_clip_frame_indices_clamp_to_the_video`, `test_parse_range`,
+    `test_parse_range_unsatisfiable`, `test_mp4_writer_output_is_ios_playable`,
+    `test_clip_endpoint_falls_back_to_gif_without_ffmpeg`,
+    `test_gif_bytes_is_a_play_once_animation`,
+    `test_clip_endpoint_list_source_and_404s`
 - **LAB-1010** (MUST) `GET /ball_check` serves the page and the hub links to
   it; the page carries a mobile viewport meta.
   - Tests: `test_ball_check.py::test_ball_check_page_served_and_linked_from_hub`
 - **LAB-1011** (SHOULD) Frontend: swipe right = ball, left = not a ball (the
   card follows the finger; vertical drags are ignored); buttons for
   unsure/zoom/undo; arrow keys and y/n/u/z on a desktop. The next crops are
-  prefetched and the queue refills below 5 cards. A failed verdict POST puts
+  prefetched (stills and the next two clips) and the queue refills below 5
+  cards. When a card appears the page first plays its context clip (LAB-1009a,
+  a muted inline `<video>`), then on its `ended` event shows the still with the draggable box; the answer buttons work while it
+  plays, and Replay / `p` plays it again (stepping or Zoom also stop/restart it). A failed verdict POST puts
   the card back rather than reporting a saved verdict.
   - Tests: UNTESTED-FRONTEND (`web/ball_check.html`; the server contract is
     LAB-1004..1009)
@@ -774,6 +815,33 @@ reads `<gt dir>/ball_checks/` (`--ball-checks-dir`) into the feature store's
   Identity rules: `footy_track.clip_id` and
   [feature store §3.1a](../../../docs/design/feature_store.md#31a-clip-identity-canonical-clip-id).
   - Tests: `test_ball_check.py::test_save_box_on_a_raw_named_candidate_writes_into_the_existing_gt_stem`
+- **LAB-1013b** (MAY) `GET /ball_check/queue?source=list` serves the explicit
+  cards of the review list named by `FOOTY_BALL_CHECK_LIST` (`{"items": [{clip,
+  frame_index, bbox, other_bbox?, label?, note?, ...}]}`, normalised boxes), in
+  file order, skipping cards that have a verdict. A card's `box_index` is its
+  position in the file and its source is `list`; `/ball_check/crop` and
+  `crop_meta` with `src=list` resolve the box from the file and draw
+  `other_bbox` in magenta. The page forwards `?source=` and `?clip=` to the
+  queue (`/ball_check?source=list`). No file configured means an empty pool.
+  List verdicts go to the normal log and are excluded from `/ball_check/stats`
+  and the confidence-band estimate (hand-picked cards are not a sample).
+  Used by the Claude-verify re-check (`docs/design/claude_autolabel_loop.md`
+  section 8); a minimal piece of T-47, not the `claude` candidate pool.
+  - Tests: `test_ball_check.py::test_list_queue_file_order_skips_judged`,
+    `test_list_crop_and_meta`
+- **LAB-1014** (PLANNED, MUST) `/ball_check` can serve cards from the `claude`
+  candidate pool, uncertain first (Claude and the detector disagree, low
+  confidence, cell corrections). A "yes" on such a proposal writes the box to
+  the GT sidecar as `[label, claude, human_checked]` (tier 2). This is the one
+  case where Ball Check writes a box for a yes; a plain `ball` verdict on a
+  detector box still writes only to the verdict log (LAB-1004). A "no" is a
+  `not_ball` verdict as today. Nothing is written until the person acts.
+  - Tests: none yet
+- **LAB-1015** (PLANNED, MUST) Tap-to-place: on a card where the ball is visible
+  but no box is on it (a Claude "cell" answer, or a miss), tapping the ball
+  writes a new box as `[label, labeller]` (tier 1), the same result as a drag.
+  The Claude cell is a hint shown on the card, never a box.
+  - Tests: none yet
 
 ## 12. Confidence sampling — candidates (LAB-11xx)
 

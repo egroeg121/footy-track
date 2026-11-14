@@ -290,6 +290,8 @@ lands, because calibration does not depend on tracking. Phase 3 waits on the
 `player_reid.md` R7 question: is per-player identity needed at all, or are team
 and pitch position enough? Phase 4 comes last.
 
+**Where the label loop fits (proposal, not built).** Phase 1 needs more diverse ball labels and a held-out eval. The [Claude-assisted ball labelling loop](claude_autolabel_loop.md) is the proposed way to get the labels: Claude checks zoomed detector and tracker candidates on new matches, and a person confirms the doubtful ones in `/ball_check`. It sits beside Phase 1, not inside it: it consumes the Phase 1 ball tracker and the [ball tracking eval](../ball-tracking-eval.md) as its fill step and its score, and it feeds the labels a later retrain needs. Held-out eval clips stay human-only. It adds no box to the Part 1 diagram, which is already at the diagram size limit.
+
 ### Measured versus assumed
 
 | Measured (with denominator) | Assumed or unmeasured |

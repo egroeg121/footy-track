@@ -1,5 +1,7 @@
 # Architecture Review: GT Marking + Bake-off for Ball Autolabelling
 
+> **Update (2026-11).** This June review pre-dates the scored ball-tracker evaluation ([Ball tracking evaluation](../ball-tracking-eval.md)) and the merged label-pipeline fixes (T-01 to T-04). Its conclusion that detection, not tracking, is the main loss still holds in the 2026-11 numbers (only 74 of 119 held-out ball frames have a detector candidate within 25 px). A new proposal, the [Claude-assisted ball labelling loop](claude_autolabel_loop.md), picks up its "get GT first" advice with Claude supplying first-pass labels and a person confirming. The text below is unchanged and historical.
+
 **Bead:** ft-q3y · **Date:** 2026-06-21 · **Reviewer:** polecat jade
 **Scope:** the proposed architecture for autolabelling ball positions in broadcast
 football video — sparse human GT marking, tracker seeding, the 4-method bake-off,

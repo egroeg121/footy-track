@@ -83,17 +83,19 @@ Gaps between today and the target: no committed ball eval; no ball tracker in co
 |---|---|---|
 | Ball training boxes (tier 1/2) | v11 train 1,010; sidecars 692 T1 + 825 T2 over 45 clips; T3 machine 352k | **Yes, for diversity not count.** 520 of 1,035 v11 train images are one clip (`astonvilla_seg080`) and 212 another (`bournemouth_1st_seg070`). v3 to v11 doubled RT-DETR recall; more frames from the same long clips will not help. |
 | Player and referee boxes | v11 15.5k player, 1.7k referee; sidecars 18.7k, 2.1k | No. Players are about 0.97 mAP50. |
-| Hard negatives (`not_ball` verdicts, `no_ball` frames) | 144 `not_ball` verdicts; 68 `no_ball`, 138 `not_broadcast` markers | Moderate. Unused today; below 0.6 confidence precision is 0.42 or less. |
+| Hard negatives (`not_ball` verdicts, `no_ball` frames) | 144 `not_ball` verdicts; 68 `no_ball`, 138 `not_broadcast` markers | Moderate. `not_ball` verdicts are now stored in `detection_review` and dropped from exported positives (`feature_store/ball_checks.py`, `scripts/export_training_dataset.py:85-97`), but nothing trains on them as negatives yet ([T-26](todo.md)). Below 0.6 confidence precision is 0.42 or less. |
 | Single-frame eval, 2 or more matches | v11 val 211 (74% one clip); test 243 unused | **Yes, highest.** Every decision depends on it. |
 | Dense ball-tracker eval (contiguous frames, explicit `no_ball`) | `arsenal_example` (250 frames, 176 balls, video only as the example mp4), `mancity_seg031` (53). Other long clips are in train. | **Yes.** Needs about 5-10 held-out clips of 250+ frames from 2 or more matches, 1.5-3k balls [I]. |
 | Temporal training | About 1,450-1,520 ball frames; 942 in runs of 3 or more (KB) | No new label type; only after the eval exists. |
 | Identity (purity, jersey, merges, team) | 9 reviews, 68 proposals, 0 team labels | Defer; not needed for the ball. |
 
+**How route J would address these gaps (planned, nothing built).** The [Claude-assisted ball labelling loop](design/claude_autolabel_loop.md) targets the first and third rows. For ball training boxes it aims at **diversity**: it runs on new matches first, so a person confirms doubtful frames instead of drawing every box. For hard negatives, every Claude "none" or Ball Check "no" on a candidate is a stored negative. It does **not** touch the single-frame eval or the dense ball-tracker eval: held-out clips stay human-only and the loop never enters them. Whether it works is unmeasured; it is gated on a calibration run over the 26 human-marked clips.
+
 Do not bother: importing external single-frame ball sets at volume, more Man City or Aston Villa seg080-style frames, player boxes, identity labels for the ball pipeline.
 
 ## 4. How labels are created today
 
-Who this is for: anyone deciding where to spend labelling time, or tracing why a label did not reach a model. There are nine routes. Only two of them (A and E) have fed a model that anyone has measured.
+Who this is for: anyone deciding where to spend labelling time, or tracing why a label did not reach a model. There are nine routes today, plus a tenth that is only proposed (J). Only two of them (A and E) have fed a model that anyone has measured.
 
 ```mermaid
 flowchart LR
@@ -109,9 +111,11 @@ flowchart LR
   M1["VitTrack Run<br/>(route B)"]:::code
   M2["RT-DETR batch inference<br/>not in git (route F)"]:::missing
   M3["SAM3 prompts<br/>(route G)"]:::code
+  M4["Claude verify<br/>(route J, planned)"]:::missing
 
   SC[("Sidecars<br/>ball_gt_marks/")]:::data
-  VLOG[("Verdict log<br/>ball_checks/")]:::dead
+  VLOG[("Verdict log<br/>ball_checks/")]:::data
+  CPOOL[("claude candidate pool<br/>tier 3, planned")]:::missing
   ML[("machine_labels/<br/>tier 3")]:::data
   RFD[("Roboflow dataset v11")]:::data
   STORE[("Feature store")]:::data
@@ -122,35 +126,41 @@ flowchart LR
   M1 --> SC
   H3 -- "dragged box" --> SC
   H3 -- "yes or no" --> VLOG
+  VLOG -- "ingest_gt" --> STORE
   M2 --> ML --> H3
+  ML --> M4 --> CPOOL
+  CPOOL -.-> H3
+  H3 -. "yes writes human_checked, planned" .-> SC
   ML -. "not ingested" .-> STORE
   M3 --> STORE
   SC --> STORE --> EXP --> TRAIN
   H4 --> RFD --> TRAIN
 ```
 
-Legend: blue is code in git, orange dashed is not in git, purple is `/ball_check`, grey is data, red is data nothing reads. The diagram shows that two paths reach the trainer (the store export and a direct Roboflow download), that Ball Check yes and no answers stop at a log, and that the machine labels reach people only through Ball Check. Routes H (sparse centre GT) and I (identity review) are not drawn: neither reaches training.
+Legend: blue is code in git, orange dashed is not in git or planned, purple is `/ball_check`, grey is data. The diagram shows that two paths reach the trainer (the store export and a direct Roboflow download), that Ball Check yes and no answers go to a log that `ingest_gt` carries into the store, and that the machine labels reach people only through Ball Check. The orange dashed route J is the proposal: Claude checks machine candidates and its proposals reach people through the same Ball Check page. Routes H (sparse centre GT) and I (identity review) are not drawn: neither reaches training.
 
 | Route | Made by | Tool | Stored in | Tier | Reaches training how | Seams |
 |---|---|---|---|---|---|---|
 | **A. Hand labels** | Human | `/labeller` draws boxes (`session.py`) | `ball_gt_marks/<stem>.jsonl`, whole-file atomic rewrite | 1 (692 ball boxes) | `ingest_gt`, then `export_training_dataset`, then `--local-dataset` or a Roboflow version | S1, S6, S13 |
 | **B. VitTrack propagation** | Machine | `/labeller` Run (`VitTrackVideoLabeller`; "SAM3" in old names, but SAM3 is dead code) | Same sidecar, tag `vittrack` | 3 when written. Tier 2 only via a one-off backfill on 2026-08-23 (15,386 lines) | As A | S8 |
 | **C. Object review** | Human | `/object_review` grid; `/review/yolo` re-runs the detector | Same sidecar, rewritten in place (not atomic) | A corrected box is 1 | As A | S4, S10 |
-| **D. Ball Check** | Human, on machine candidates | `/ball_check` on a phone | Verdicts in `ball_checks/`; a dragged box in the sidecar | `corrected` is 1; `ball` and `not_ball` give nothing | Dragged boxes only, as A. Verdicts reach nothing. | S2, S3, S5, S7 |
+| **D. Ball Check** | Human, on machine candidates | `/ball_check` on a phone | Verdicts in `ball_checks/`, then `detection_review` in the store; a dragged box in the sidecar | `corrected` is 1; `ball` marks a detection reviewed; `not_ball` is a rejected negative; none creates a tier 2 box | Dragged boxes as A. `not_ball` verdicts drop the box from exported positives; `ball` verdicts add no box. | S5, S7 |
 | **E. Roboflow hand labels** | Human | Roboflow web annotation (`footy-track-detection`) | Roboflow; copies in `detection_dataset/` | Treated as `hand_label` | **The route the best model actually used:** download v11 and train. | |
 | **F. Machine labels** | Machine | RT-DETR batch inference (script not in repo) | `machine_labels/`, tag `rtdetr`, real confidence | 3 | Only the Ball Check pool and LapTracker input | |
 | **G. SAM3 text prompts** | Machine | `scripts/detect_objects.py --store_path` | Store, `source=sam3` | 3 | Store, then export if selected | |
 | **H. Sparse centre GT** | Human | `scripts/label_ball_centers.py` | `<stem>.jsonl` with a list `center` and null bbox | n/a | Dropped by `ingest_gt` (`:184`); eval only | |
 | **I. Identity review** | Human | `/identity`, `/identity/merge` | `identity_labels/`, append-only | 1 | None. No consumer; `track_meta` has 0 rows. | |
+| **J. Claude-assisted ball labels (planned)** | Machine proposes, Claude checks, a person confirms | Detector and tracker candidates, crop-and-re-detect, Claude verify (multiple choice on zoomed crops), then `/ball_check` | Candidate pool `claude`, then sidecar | 3 in the pool; **2** after a yes (`human_checked`); **1** after a drag or tap-to-place | Only after a person acts; never straight into a sidecar (LAB-002). Held-out clips are excluded. | S5, S7 |
 
 Seam ids (S1 and so on) are the rows of [Architecture, section 7](architecture.md#7-known-seams-and-risks). Notes that do not fit in a table cell:
 
 - **A.** Unknown tags default to `in_play_ball` on load. The data-loss bug in the older write path was fixed in `6bcd153`.
-- **B.** For the ball it is useless: it stays on the ball for 5% of frames (9 of 176) and Run halts at frame 1. Players propagate fine. **No code in the repo writes `human_checked`** (searched 2026-11-08), so new VitTrack output can never become tier 2. The v11 snapshot was exported on 2026-08-04, before the backfill, so its `vittrack` boxes went in unreviewed.
+- **B.** For the ball it is useless: it stays on the ball for 5% of frames (9 of 176) and Run halts at frame 1. Players propagate fine. **No code in the repo creates `human_checked`** (searched again on the ball-tracker branch; the labeller session only preserves an existing marker since T-01, `labeller/session.py:173-180`), so new VitTrack output can never become tier 2. The v11 snapshot was exported on 2026-08-04, before the backfill, so its `vittrack` boxes went in unreviewed.
 - **D.** Labelling speed, **measured** from the verdict timestamps of 2026-09-24 and 09-25: 360 decided verdicts in 19.9 active minutes (gaps over 60 s excluded), about **3.3 s per card**, 18 per minute. With a 30 s gap cap it is 2.6 s per card, so the figure is an estimate with about 25% slack, from one person on two days. How the page works is in [Architecture, Ball Check](architecture.md#ball-check-verdicts-corrections-and-undo).
 - **E.** v11 was built on 2026-08-04 from a store export. The uploader that does that exists only on unmerged branches (`feat/roboflow-dataset-export`, `feat/roboflow-upload-script`). Class `ball` is dead (one instance).
-- **F.** The run was `rtdetr-l_1920_v11` on a rented 3060, 82 minutes for 97,625 frames. A `ball` verdict, the cheapest human signal, is thrown away.
+- **F.** The run was `rtdetr-l_1920_v11` on a rented 3060, 82 minutes for 97,625 frames. A `ball` verdict, the cheapest human signal, is still thrown away as a label: it is stored in `detection_review` and marks the detection `reviewed`, but no code turns it into a tier 2 box (`feature_store/ball_checks.py:24`).
 - **H.** `mancity_seg104`, the designated eval clip, is centre-only and has no MP4 next to it.
+- **J.** Design and open questions: [Claude-assisted ball labelling loop](design/claude_autolabel_loop.md). Nothing is built. It reuses route F candidates and the bidirectional ball tracker ([Ball tracking evaluation](ball-tracking-eval.md)).
 
 The newest feature store (2026-08-04) predates the `human_checked` ingest fix, the Ball Check corrections and six new sidecars, so store, export and Roboflow is stale end to end ([T-07](todo.md)).
 
@@ -159,7 +169,7 @@ The newest feature store (2026-08-04) predates the `human_checked` ingest fix, t
 1. **Fix the record.** Done on this branch: the code comment and docs now cite .665 / .591 and the 74% caveat. The KB findings page still needs updating, with the maintainer's approval ([T-15](todo.md)).
 2. **One committed ball eval** over the v11 test split plus held-out dense clips (`arsenal_example` after checking it is not a sub-span of a training clip, and `mancity_seg031`), at 1280 and 1920, reporting instance counts and a per-match breakdown ([T-10](todo.md)). The 1280 half needs no GPU for the sidecar clips.
 3. **ByteTrack/Kalman ball association over existing machine labels**, with thresholds from the precision bands (0.7 or more near-certain; 0.6-0.7 about 0.79; below 0.6 at most 0.42). Run `analyse_ball_tracker.py` first to split detector misses from tracker misses ([T-20](todo.md)).
-4. **Diversity labelling on new matches** (Aston Villa, Bournemouth 2nd half, Norwich) with `/ball_check`, holding one full match out for eval; at about 3.3 s per card, 1,000 cards is about an hour ([T-13](todo.md), [T-21](todo.md)). Look at the 51-frame `arsenal_example` gap first.
+4. **Diversity labelling on new matches** (Aston Villa, Bournemouth 2nd half, Norwich) with `/ball_check`, holding one full match out for eval; at about 3.3 s per card, 1,000 cards is about an hour ([T-13](todo.md), [T-21](todo.md)). Look at the 51-frame `arsenal_example` gap first. **Once the calibration run passes its proposed thresholds, new-match ball labelling goes through the [Claude-assisted loop](design/claude_autolabel_loop.md#8-calibration-plan-and-acceptance-thresholds) (route J, planned): Claude pre-checks candidates and a person confirms the doubtful ones in `/ball_check`.** Until then, and for every held-out clip, a person does every card.
 5. **Before any retrain through the store**, fix S1 to S4 ([T-01 to T-04](todo.md)) and make the export default to tier 1/2 ([T-22](todo.md)).
 6. Commit the missing producers and recover the ft-1zq code from the desktop machine ([T-09](todo.md), [T-23](todo.md)); retrain RT-DETR-L at 1280 on v11 plus new-match labels and compare on the step 2 eval.
 7. Only then: finish ft-1zq on a rented GPU, or a heatmap/YOLOFT detector if the tracker and diversity plateau.

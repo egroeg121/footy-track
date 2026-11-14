@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#0f1419" />
+<title>Track a match video</title>
+<link rel="stylesheet" href="/infer/static/infer.css" />
+</head>
+<body>
+<header></header>
+<main>
+  <div id="fakeBanner" class="caveat hidden">
+    <strong>Dev mode:</strong> a fake detector is running. The boxes you see are
+    made up and say nothing about the video.
+  </div>
+  <div id="drop" tabindex="0">
+    <p><strong>Drop a match video here</strong> or tap to choose a file</p>
+    <p class="muted" id="limits"></p>
+    <input id="file" type="file" accept="video/*,.ts,.mkv" class="hidden" />
+  </div>
+  <div id="demoBox" class="panel hidden" style="margin-top:12px">
+    <p><strong>No video handy?</strong> <span class="muted" id="demoText"></span></p>
+    <button id="demoBtn" class="secondary">Try a demo clip</button>
+  </div>
+  <details class="panel" style="margin-top:12px">
+    <summary>Quick-run options (optional)</summary>
+    <p class="muted">Leave empty to track every frame of every clip. Use these to
+      get a fast preview.</p>
+    <div class="row">
+      <label>Max frames per clip <input id="maxFrames" type="number" min="1" /></label>
+      <label>Every Nth frame <input id="stride" type="number" min="1" value="1" /></label>
+    </div>
+  </details>
+
+  <div id="progress" class="panel hidden">
+    <div id="fileName"><b></b></div>
+    <div class="stages" id="stages"></div>
+    <div class="bar"><div id="barFill"></div></div>
+    <p id="line" class="muted"></p>
+    <p id="error" class="err"></p>
+    <div class="row">
+      <a id="open" class="btn hidden" href="#">Open results</a>
+      <button id="cancel" class="secondary hidden">Cancel</button>
+    </div>
+  </div>
+</main>
+<script src="/infer/static/infer.js"></script>
+<script>
+renderHeader("Track a match video");
+const drop = document.getElementById("drop"), fileInput = document.getElementById("file");
+let currentJob = null, timer = null;
+
+api("/config").then((c) => {
+  document.getElementById("limits").textContent =
+    "Up to " + c.max_upload_mb + " MB. Formats: " + c.extensions.join(" ");
+  if (c.demo) {
+    $("demoText").textContent = "Run the whole pipeline (cut, track, overlay) on a sample clip" +
+      (c.demo_duration_s ? " (about " + fmtSecs(c.demo_duration_s) + " long)" : "") +
+      ". No upload needed. The quick-run options below apply.";
+    $("demoBox").classList.remove("hidden");
+  }
+  if (c.fake) document.getElementById("fakeBanner").classList.remove("hidden");
+}).catch(() => {});
+
+drop.addEventListener("click", () => fileInput.click());
+drop.addEventListener("keydown", (e) => { if (e.key === "Enter") fileInput.click(); });
+["dragenter", "dragover"].forEach((t) => drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.add("over"); }));
+["dragleave", "drop"].forEach((t) => drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.remove("over"); }));
+drop.addEventListener("drop", (e) => { if (e.dataTransfer.files[0]) start(e.dataTransfer.files[0]); });
+fileInput.addEventListener("change", () => { if (fileInput.files[0]) start(fileInput.files[0]); });
+
+const $ = (id) => document.getElementById(id);
+const blankJob = { status: "queued", stages: { segment: { status: "queued" }, track: { status: "queued", clips_done: 0, clips_total: 0 } } };
+
+function queryOptions(q) {
+  if ($("maxFrames").value) q.set("max_frames", $("maxFrames").value);
+  if ($("stride").value && $("stride").value !== "1") q.set("stride", $("stride").value);
+  return q;
+}
+
+$("demoBtn").addEventListener("click", async () => {
+  $("demoBtn").disabled = true;
+  $("progress").classList.remove("hidden");
+  $("fileName").firstChild.textContent = "Demo clip";
+  $("error").textContent = "";
+  $("open").classList.add("hidden");
+  try {
+    const job = await api("/demo?" + queryOptions(new URLSearchParams()), { method: "POST" });
+    currentJob = job.id;
+    $("open").href = "/infer/jobs/" + currentJob;
+    $("cancel").classList.remove("hidden");
+    renderStages($("stages"), job, 100);
+    poll();
+  } catch (e) {
+    $("error").textContent = "Could not start the demo: " + e.message;
+  } finally {
+    $("demoBtn").disabled = false;
+  }
+});
+
+function start(file) {
+  $("progress").classList.remove("hidden");
+  $("fileName").firstChild.textContent = file.name;
+  $("error").textContent = "";
+  $("open").classList.add("hidden");
+  const q = new URLSearchParams({ name: file.name });
+  queryOptions(q);
+  const xhr = new XMLHttpRequest();
+  xhr.open("POST", API + "/jobs?" + q);
+  const tok = getCookie("footy_token");
+  if (tok) xhr.setRequestHeader("Authorization", "Bearer " + tok);
+  xhr.upload.onprogress = (e) => {
+    if (!e.lengthComputable) return;
+    const pct = Math.round((100 * e.loaded) / e.total);
+    renderStages($("stages"), blankJob, pct);
+    $("barFill").style.width = pct + "%";
+    $("line").textContent = "Uploading " + pct + "%";
+  };
+  xhr.onload = () => {
+    let body = {};
+    try { body = JSON.parse(xhr.responseText); } catch (e) { /* ignore */ }
+    if (xhr.status === 401) {
+      const t = prompt("This server needs an access token:");
+      if (t) { setToken(t); start(file); }
+      return;
+    }
+    if (xhr.status !== 201) {
+      $("error").textContent = body.detail || "Upload failed (" + xhr.status + ")";
+      return;
+    }
+    currentJob = body.id;
+    $("open").href = "/infer/jobs/" + currentJob;
+    $("cancel").classList.remove("hidden");
+    poll();
+  };
+  xhr.onerror = () => { $("error").textContent = "The upload was interrupted."; };
+  xhr.send(file);
+}
+
+async function poll() {
+  try {
+    const job = await api("/jobs/" + currentJob);
+    renderStages($("stages"), job, 100);
+    const trk = job.stages.track, clip = job.clips.find((c) => c.status === "running");
+    let pct = 100 * (trk.clips_done / Math.max(trk.clips_total, 1));
+    if (clip && clip.frames_total) pct += (100 / trk.clips_total) * (clip.frames_done / clip.frames_total);
+    $("barFill").style.width = (trk.clips_total ? Math.min(pct, 100) : 0) + "%";
+    $("line").textContent = stageLine(job);
+    $("open").classList.remove("hidden");
+    if (job.error) $("error").textContent = job.error;
+    if (["done", "failed", "cancelled"].includes(job.status)) {
+      $("cancel").classList.add("hidden");
+      return;
+    }
+  } catch (e) { $("error").textContent = e.message; return; }
+  timer = setTimeout(poll, 1500);
+}
+$("cancel").addEventListener("click", async () => {
+  if (currentJob) { await api("/jobs/" + currentJob + "/cancel", { method: "POST" }); }
+});
+</script>
+</body>
+</html>

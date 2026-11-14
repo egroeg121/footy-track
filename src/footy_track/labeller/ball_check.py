@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import asyncio
 import collections
+import contextlib
 import hashlib
 import json
 import logging
@@ -32,7 +33,7 @@ import time
 from pathlib import Path
 
 import cv2
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from fastapi.responses import Response
 
 from footy_track.clip_id import canonical_clip_id
@@ -89,6 +90,28 @@ _MAX_PAD_FACTOR = 40.0
 # LRU crop cache: key = (clip_stem, frame_idx, box_idx, pad), value = JPEG bytes
 _BC_CROP_CACHE: collections.OrderedDict[tuple, bytes] = collections.OrderedDict()
 _BC_CROP_CACHE_MAX = 200
+
+# Context clip (H.264 MP4, GIF fallback) --------------------------------------
+#: Seconds of footage either side of the card's frame.
+_CLIP_HALF_S = 1.5
+#: Output frame rate cap; sources above it are subsampled by whole frames.
+_CLIP_MAX_FPS = 30.0
+#: Rendered width in px: the crop is upscaled server-side (Lanczos) to this, so
+#: the phone shows a smooth, sharp picture rather than pixelated CSS scaling.
+_CLIP_W = 560
+#: H.264 quality (lower = better); the clip is ~3 s so size stays small.
+_CLIP_CRF = 20
+#: The centre frame (the one the box belongs to) is repeated this long, ms, so
+#: the box is on screen long enough to see and is exactly right (it is the
+#: frame the box was drawn on; neighbouring frames would carry a wrong box).
+_CLIP_HOLD_MS = 500
+#: GIF fallback (ffmpeg missing): native crop width, ~10 fps, 40 colours.
+_GIF_W = 240
+_GIF_FPS = 10.0
+_BC_CLIP_CACHE: collections.OrderedDict[tuple, tuple[bytes, str, int, int]] = (
+    collections.OrderedDict()
+)
+_BC_CLIP_CACHE_MAX = 40
 
 #: clip stem -> (width, height); frame size never changes within a clip.
 _CLIP_SIZES: dict[str, tuple[int, int]] = {}
@@ -157,6 +180,63 @@ def _append_verdict(rec: dict) -> None:
     path = _verdict_path(rec["clip"])
     with path.open("a") as fh:
         fh.write(json.dumps(rec) + "\n")
+
+
+# ---------------------------------------------------------------------------
+# Review list (explicit cards, source "list")
+# ---------------------------------------------------------------------------
+
+_LIST_CACHE: dict[str, tuple[float, list[dict]]] = {}
+
+
+def _list_path() -> Path | None:
+    from footy_track.labeller import server  # noqa: PLC0415 — avoid import cycle
+
+    raw = server._BALL_CHECK_LIST
+    return Path(raw).expanduser() if raw else None
+
+
+def _list_items() -> list[dict]:
+    """Cards of the review list, in file order; ``box_index`` is the position.
+
+    The file is ``{"items": [{"clip", "frame_index", "bbox": {x,y,w,h},
+    "label", "note", "other_bbox"?, ...}]}`` with normalised boxes. A missing or
+    unreadable file is an empty pool. Extra keys pass through to the page.
+    """
+    path = _list_path()
+    if path is None or not path.exists():
+        return []
+    mtime = path.stat().st_mtime
+    hit = _LIST_CACHE.get(str(path))
+    if hit is not None and hit[0] == mtime:
+        return hit[1]
+    try:
+        raw = json.loads(path.read_text())
+        items = raw["items"] if isinstance(raw, dict) else raw
+        out = []
+        for i, it in enumerate(items):
+            out.append({**it, "box_index": i, "frame_index": int(it["frame_index"])})
+    except (OSError, json.JSONDecodeError, KeyError, TypeError, ValueError):
+        LOGGER.warning("ball_check: review list %s unreadable", path)
+        return []
+    _LIST_CACHE[str(path)] = (mtime, out)
+    return out
+
+
+def _list_item(clip: str, frame_index: int, box_index: int) -> dict | None:
+    items = _list_items()
+    if 0 <= box_index < len(items):
+        it = items[box_index]
+        if it["clip"] == clip and it["frame_index"] == frame_index:
+            return it
+    return None
+
+
+def _list_box(it: dict, key: str = "bbox") -> tuple[float, float, float, float] | None:
+    b = it.get(key)
+    if not isinstance(b, dict):
+        return None
+    return float(b["x"]), float(b["y"]), float(b["w"]), float(b["h"])
 
 
 # ---------------------------------------------------------------------------
@@ -237,6 +317,8 @@ async def ball_check_queue(
     ``source=candidates`` draws from the detector's own output, which carries
     real confidences, and orders them by confidence-stratified sampling.
     ``source=sidecar`` reviews the boxes already in the GT sidecars.
+    ``source=list`` serves the explicit cards of the review list
+    (``FOOTY_BALL_CHECK_LIST``) in file order, skipping judged ones.
     ``auto`` (default) prefers candidates when any have been pulled down.
     """
     judged = await asyncio.to_thread(_read_verdicts)
@@ -249,8 +331,40 @@ async def ball_check_queue(
         )
         source = "candidates" if have_cands else "sidecar"
 
+    if source == "list":
+        all_items = [
+            it
+            for it in await asyncio.to_thread(_list_items)
+            if clip is None or it["clip"] == clip
+        ]
+        todo = [
+            it
+            for it in all_items
+            if ("list", it["clip"], it["frame_index"], it["box_index"]) not in judged
+        ]
+        return {
+            "source": "list",
+            "remaining": len(todo),
+            "judged": len(all_items) - len(todo),
+            "items": [
+                {
+                    **it,
+                    "source": "list",
+                    "label": it.get("label") or "in_play_ball",
+                    "provenance": it.get("provenance") or it.get("role") or "list",
+                    "confidence": it.get("confidence"),
+                    "image_url": (
+                        f"/ball_check/crop/{it['clip']}/{it['frame_index']}"
+                        f"/{it['box_index']}.jpg?src=list"
+                    ),
+                }
+                for it in todo[:limit]
+            ],
+        }
+
     if source == "candidates":
         pool = await asyncio.to_thread(cand.binned_pool, clip)
+        n_judged = sum(1 for k in judged if k[0] != "list")
         stats = cand.band_stats(list(judged.values()), BALL_PRESENT_VERDICTS)
         # tau < 0 means "measure it": the boundary is re-estimated from the
         # verdicts so far on every fetch, so the queue follows the labeller.
@@ -287,9 +401,9 @@ async def ball_check_queue(
             "source": "candidates",
             # Events, not raw rows: consecutive detections of one ball are one
             # card, so counting rows overstates the work left by ~2.7x.
-            "remaining": max(0, pool.events - len(judged)),
+            "remaining": max(0, pool.events - n_judged),
             "rows": pool.total,
-            "judged": len(judged),
+            "judged": n_judged,
             "items": items,
             "tau": round(tau_used, 4),
             "bands": stats,
@@ -335,7 +449,9 @@ async def ball_check_stats() -> dict:
     """Verdict tallies plus the precision they imply (unsure excluded)."""
     judged = await asyncio.to_thread(_read_verdicts)
     counts = dict.fromkeys(VERDICTS, 0)
-    for rec in judged.values():
+    for key, rec in judged.items():
+        if key[0] == "list":
+            continue  # hand-picked disagreement cards: not a detector precision sample
         verdict = rec.get("verdict")
         if verdict in counts:
             counts[verdict] += 1
@@ -344,7 +460,7 @@ async def ball_check_stats() -> dict:
     decided = present + counts["not_ball"]
     return {
         "counts": counts,
-        "judged": len(judged),
+        "judged": sum(1 for k in judged if k[0] != "list"),
         # A box_off card still found the ball, so it counts as a true positive
         # for detection precision; it is excluded from clean_precision, which
         # is the share good enough to train on as-is.
@@ -364,6 +480,9 @@ def _read_box(
     """Resolve a box from whichever source the card came from."""
     if src == "cand":
         return cand.read_candidate_box(clip_stem, frame_idx, box_idx)
+    if src == "list":
+        it = _list_item(clip_stem, frame_idx, box_idx)
+        return _list_box(it) if it else None
     from footy_track.labeller.review import _read_frame_box  # noqa: PLC0415
 
     return _read_frame_box(clip_stem, frame_idx, box_idx)
@@ -511,6 +630,19 @@ async def ball_check_crop(
             return None
         h_px, w_px = frame.shape[:2]
         x1, y1, x2, y2 = _crop_window(bx, by, bw, bh, w_px, h_px, pad)
+        if src == "list" and at_frame == frame_idx:
+            # The other box of the pair (GT mark vs Claude's box), magenta,
+            # so one card shows both.
+            it = _list_item(clip_stem, frame_idx, box_idx)
+            ob = _list_box(it, "other_bbox") if it else None
+            if ob is not None:
+                ox1, oy1 = int(ob[0] * w_px), int(ob[1] * h_px)
+                ox2, oy2 = int((ob[0] + ob[2]) * w_px), int((ob[1] + ob[3]) * h_px)
+                # Inflated a little and 2 px thick: at 1:1 a 1 px box around a
+                # 10 px object vanishes once the crop is upscaled and compressed.
+                cv2.rectangle(
+                    frame, (ox1 - 4, oy1 - 4), (ox2 + 4, oy2 + 4), (255, 0, 255), 2
+                )
         if not reticle:
             return _encode_window(frame, x1, y1, x2, y2)
         # Reticle first, on the full frame: without it the card is ambiguous
@@ -544,6 +676,383 @@ async def ball_check_crop(
     if len(_BC_CROP_CACHE) > _BC_CROP_CACHE_MAX:
         _BC_CROP_CACHE.popitem(last=False)
     return Response(content=data, media_type="image/jpeg")
+
+
+def _draw_box(frame, bx, by, bw, bh, w_px, h_px, colour, thickness=1, bracket=True):
+    """The still's reticle: the true box, plus corner brackets outside it."""
+    rx1, ry1 = int(bx * w_px), int(by * h_px)
+    rx2, ry2 = int((bx + bw) * w_px), int((by + bh) * h_px)
+    cv2.rectangle(frame, (rx1, ry1), (rx2, ry2), colour, thickness)
+    if not bracket:
+        return
+    gap = max(3, int(max(rx2 - rx1, ry2 - ry1) * 0.35))
+    arm = max(4, int(max(rx2 - rx1, ry2 - ry1) * 0.5))
+    for cx_, cy_, sx, sy in (
+        (rx1, ry1, -1, -1),
+        (rx2, ry1, 1, -1),
+        (rx1, ry2, -1, 1),
+        (rx2, ry2, 1, 1),
+    ):
+        ox, oy = cx_ + sx * gap, cy_ + sy * gap
+        cv2.line(frame, (ox, oy), (ox + sx * arm, oy), colour, 2)
+        cv2.line(frame, (ox, oy), (ox, oy + sy * arm), colour, 2)
+
+
+def _clip_frame_indices(frame_idx: int, fps: float, total: int) -> tuple[int, int, int]:
+    """(first, last, step) source frames for the clip, clamped to the video.
+
+    ``step`` is 1 up to ``_CLIP_MAX_FPS`` and subsamples above it; the centre
+    frame is always on the sampling grid because the grid is anchored at
+    ``frame_idx``.
+    """
+    fps = fps if fps and fps > 1 else 25.0
+    half = int(round(_CLIP_HALF_S * fps))
+    step = max(1, int(round(fps / _CLIP_MAX_FPS)))
+    first = max(0, frame_idx - half)
+    last = frame_idx + half
+    if total > 0:
+        last = min(last, total - 1)
+    return first, max(first, last), step
+
+
+def _gif_bytes(frames: list, durations: list[int]) -> bytes:
+    """Encode BGR ndarrays as a play-once GIF (no loop extension)."""
+    import io  # noqa: PLC0415
+
+    from PIL import Image  # noqa: PLC0415
+
+    imgs = [
+        Image.fromarray(f[:, :, ::-1]).quantize(colors=40, dither=Image.Dither.NONE)
+        for f in frames
+    ]
+    buf = io.BytesIO()
+    imgs[0].save(
+        buf,
+        format="GIF",
+        save_all=True,
+        append_images=imgs[1:],
+        duration=durations,
+        disposal=1,
+        optimize=False,
+    )
+    return buf.getvalue()
+
+
+def _have_ffmpeg() -> bool:
+    import shutil  # noqa: PLC0415
+
+    return shutil.which("ffmpeg") is not None
+
+
+class _Mp4Writer:
+    """Pipes raw BGR frames into ffmpeg (libx264) and returns the MP4 bytes.
+
+    Output goes to a temp file, not a pipe: ``+faststart`` moves the moov atom
+    to the front, which needs a seekable output. iOS Safari needs that plus
+    yuv420p / even dimensions / a main-or-baseline profile.
+    """
+
+    def __init__(self, width: int, height: int, fps: float) -> None:
+        import subprocess  # noqa: PLC0415
+        import tempfile  # noqa: PLC0415
+
+        self._tmp = tempfile.TemporaryDirectory(prefix="bc_clip_")
+        self._out = Path(self._tmp.name) / "clip.mp4"
+        self._err = (Path(self._tmp.name) / "err.txt").open("wb")
+        self.proc = subprocess.Popen(  # noqa: S603
+            [
+                "ffmpeg", "-v", "error", "-y",
+                "-f", "rawvideo", "-pix_fmt", "bgr24",
+                "-s", f"{width}x{height}", "-framerate", f"{fps:.3f}",
+                "-i", "-",
+                "-vf", "scale=out_color_matrix=bt709:out_range=tv",
+                "-c:v", "libx264", "-profile:v", "main", "-level", "4.0",
+                "-preset", "medium", "-crf", str(_CLIP_CRF),
+                "-pix_fmt", "yuv420p",
+                "-colorspace", "bt709", "-color_primaries", "bt709",
+                "-color_trc", "bt709",
+                "-movflags", "+faststart", "-an",
+                str(self._out),
+            ],  # fmt: skip
+            stdin=subprocess.PIPE,
+            stdout=subprocess.DEVNULL,
+            stderr=self._err,
+        )  # fmt: skip
+
+    def write(self, frame) -> None:
+        self.proc.stdin.write(frame.tobytes())
+
+    def finish(self) -> bytes | None:
+        try:
+            with contextlib.suppress(OSError):
+                self.proc.stdin.close()
+            rc = self.proc.wait(timeout=60)
+            self._err.close()
+            if rc != 0 or not self._out.exists():
+                LOGGER.warning("ffmpeg clip encode failed (rc=%s)", rc)
+                return None
+            return self._out.read_bytes()
+        finally:
+            self._tmp.cleanup()
+
+    def abort(self) -> None:
+        self.proc.kill()
+        self.proc.wait()
+        self._err.close()
+        self._tmp.cleanup()
+
+
+def _box_in_crop(b, w_px, h_px, win, out_wh):
+    """Normalised frame box -> normalised box in the upscaled crop."""
+    x1, y1, x2, y2 = win
+    sx, sy = out_wh[0] / (x2 - x1), out_wh[1] / (y2 - y1)
+    return (
+        (b[0] * w_px - x1) * sx / out_wh[0],
+        (b[1] * h_px - y1) * sy / out_wh[1],
+        b[2] * w_px * sx / out_wh[0],
+        b[3] * h_px * sy / out_wh[1],
+    )
+
+
+def _draw_centre_boxes(crop, bbox, ob, frame_wh, win, out_wh) -> None:
+    """Box (and magenta other box) on the upscaled centre frame."""
+    if ob is not None:
+        box = _box_in_crop(ob, *frame_wh, win, out_wh)
+        _draw_box(crop, *box, *out_wh, (255, 0, 255), 2, bracket=False)
+    box = _box_in_crop(bbox, *frame_wh, win, out_wh)
+    _draw_box(crop, *box, *out_wh, (0, 255, 255), 2)
+
+
+def _other_box(src: str, clip_stem: str, frame_idx: int, box_idx: int):
+    if src != "list":
+        return None
+    it = _list_item(clip_stem, frame_idx, box_idx)
+    return _list_box(it, "other_bbox") if it else None
+
+
+def _render_mp4(cap, clip_stem, src, frame_idx, box_idx, bbox, pad):
+    """Frames -> ffmpeg. Returns (bytes, 'video/mp4', n_frames, ms) or None."""
+    fps = float(cap.get(cv2.CAP_PROP_FPS) or 0.0)
+    total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
+    first, last, step = _clip_frame_indices(frame_idx, fps, total)
+    out_fps = (fps if fps and fps > 1 else 25.0) / step
+    cap.set(cv2.CAP_PROP_POS_FRAMES, first)
+    ob = _other_box(src, clip_stem, frame_idx, box_idx)
+    writer: _Mp4Writer | None = None
+    win = None
+    out_wh = (0, 0)
+    n_out = 0
+    try:
+        for idx in range(first, last + 1):
+            ok, frame = cap.read()
+            if not ok:
+                break
+            if (idx - frame_idx) % step:
+                continue
+            h_px, w_px = frame.shape[:2]
+            if win is None:
+                win = _crop_window(*bbox, w_px, h_px, pad)
+            x1, y1, x2, y2 = win
+            crop = frame[y1:y2, x1:x2]
+            if crop.size == 0:
+                continue
+            cw, ch = x2 - x1, y2 - y1
+            if writer is None:
+                # even dimensions, same aspect as the window
+                ow = max(2, (_CLIP_W // 2) * 2)
+                oh = max(2, int(round(ow * ch / max(1, cw) / 2)) * 2)
+                out_wh = (ow, oh)
+                writer = _Mp4Writer(ow, oh, out_fps)
+            interp = (
+                getattr(cv2, "INTER_LANCZOS4", 4)
+                if out_wh[0] > cw
+                else getattr(cv2, "INTER_AREA", 3)
+            )
+            crop = cv2.resize(crop, out_wh, interpolation=interp)
+            reps = 1
+            if idx == frame_idx:
+                # draw on the upscaled crop so the lines stay crisp
+                _draw_centre_boxes(crop, bbox, ob, (w_px, h_px), win, out_wh)
+                reps = max(1, int(round(_CLIP_HOLD_MS / 1000 * out_fps)))
+            for _ in range(reps):
+                writer.write(crop)
+            n_out += reps
+    except BaseException:
+        if writer is not None:
+            writer.abort()
+        raise
+    data = writer.finish() if writer is not None and n_out else None
+    if data is None:
+        if writer is not None and not n_out:
+            writer.abort()
+        return None
+    return data, "video/mp4", n_out, int(round(n_out * 1000 / out_fps))
+
+
+def _render_gif(cap, clip_stem, src, frame_idx, box_idx, bbox, pad):
+    """ffmpeg-less fallback: small play-once GIF (native crop, ~10 fps)."""
+    bx, by, bw, bh = bbox
+    fps = float(cap.get(cv2.CAP_PROP_FPS) or 0.0)
+    total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
+    first, last, _ = _clip_frame_indices(frame_idx, fps, total)
+    step = max(1, int(round((fps if fps and fps > 1 else 25.0) / _GIF_FPS)))
+    cap.set(cv2.CAP_PROP_POS_FRAMES, first)
+    ob = _other_box(src, clip_stem, frame_idx, box_idx)
+    base_ms = int(round(1000 / _GIF_FPS))
+    frames: list = []
+    durations: list[int] = []
+    win = None
+    for idx in range(first, last + 1):
+        ok, frame = cap.read()
+        if not ok:
+            break
+        if (idx - frame_idx) % step:
+            continue
+        h_px, w_px = frame.shape[:2]
+        if win is None:
+            win = _crop_window(bx, by, bw, bh, w_px, h_px, pad)
+        x1, y1, x2, y2 = win
+        centre = idx == frame_idx
+        if centre:
+            if ob is not None:
+                _draw_box(frame, *ob, w_px, h_px, (255, 0, 255), 2, bracket=False)
+            _draw_box(frame, bx, by, bw, bh, w_px, h_px, (0, 255, 255))
+        crop = frame[y1:y2, x1:x2]
+        if crop.size == 0:
+            continue
+        scale = _GIF_W / max(1, x2 - x1)
+        if scale < 1:
+            crop = cv2.resize(
+                crop,
+                None,
+                fx=scale,
+                fy=scale,
+                interpolation=getattr(cv2, "INTER_AREA", cv2.INTER_NEAREST),
+            )
+        frames.append(crop)
+        durations.append(_CLIP_HOLD_MS if centre else base_ms)
+    if not frames:
+        return None
+    return _gif_bytes(frames, durations), "image/gif", len(frames), sum(durations)
+
+
+def _render_clip(
+    video_path: Path,
+    src: str,
+    clip_stem: str,
+    frame_idx: int,
+    box_idx: int,
+    bbox: tuple[float, float, float, float],
+    pad: float,
+) -> tuple[bytes, str, int, int] | None:
+    """Decode once (seek, then sequential reads) and encode.
+
+    Returns ``(bytes, media_type, n_frames, duration_ms)``: MP4 via ffmpeg when
+    available (full frame rate, crop upscaled with Lanczos, box on the held
+    centre frame only), otherwise the old small GIF.
+    """
+    render = _render_mp4 if _have_ffmpeg() else _render_gif
+    cap = cv2.VideoCapture(str(video_path))
+    try:
+        return render(cap, clip_stem, src, frame_idx, box_idx, bbox, pad)
+    finally:
+        cap.release()
+
+
+@router.get("/ball_check/clip/{clip_stem}/{frame_idx}/{box_idx}.mp4")
+async def ball_check_clip(
+    clip_stem: str,
+    frame_idx: int,
+    box_idx: int,
+    request: Request,
+    pad: float = _PAD_FACTOR,
+    src: str = "sidecar",
+) -> Response:
+    """~3 s context clip (H.264 MP4) centred on the card's frame.
+
+    Shows whether the marked object is moving like the in-play ball or is a
+    spare/crowd ball, which a single still cannot. The crop window is the
+    still's window, fixed for every frame, so the view never jumps. The box
+    (and, for ``src=list``, the magenta other box) is drawn only on the centre
+    frame, which is held ~0.5 s: the ball moves, so a box carried onto other
+    frames would lie. Supports HTTP Range (iOS Safari needs 206 for <video>).
+    Falls back to a small GIF (same URL, ``image/gif``) if ffmpeg is missing.
+    """
+    pad = max(0.0, min(float(pad), _MAX_PAD_FACTOR))
+    cache_key = (src, clip_stem, frame_idx, box_idx, round(pad, 2))
+    hit = _BC_CLIP_CACHE.get(cache_key)
+    if hit is not None:
+        _BC_CLIP_CACHE.move_to_end(cache_key)
+        return _clip_response(request, *hit)
+
+    video_path = _find_video(clip_stem)
+    if video_path is None:
+        return Response(status_code=404)
+    bbox_raw = await asyncio.to_thread(_read_box, src, clip_stem, frame_idx, box_idx)
+    if bbox_raw is None:
+        return Response(status_code=404)
+    out = await asyncio.to_thread(
+        _render_clip, video_path, src, clip_stem, frame_idx, box_idx, bbox_raw, pad
+    )
+    if out is None:
+        return Response(status_code=404)
+    _BC_CLIP_CACHE[cache_key] = out
+    _BC_CLIP_CACHE.move_to_end(cache_key)
+    if len(_BC_CLIP_CACHE) > _BC_CLIP_CACHE_MAX:
+        _BC_CLIP_CACHE.popitem(last=False)
+    return _clip_response(request, *out)
+
+
+def _parse_range(header: str | None, size: int) -> tuple[int, int] | None:
+    """Inclusive (start, end) for a single ``bytes=`` range, else None.
+
+    Raises ValueError for an unsatisfiable range (caller answers 416).
+    """
+    if not header or not header.startswith("bytes=") or "," in header:
+        return None
+    a, _, b = header[6:].strip().partition("-")
+    try:
+        if a == "":
+            n = int(b)
+            if n <= 0:
+                raise ValueError
+            start, end = max(0, size - n), size - 1
+        else:
+            start = int(a)
+            end = min(int(b), size - 1) if b else size - 1
+    except ValueError:
+        raise ValueError("bad range") from None
+    if start > end or start >= size:
+        raise ValueError("unsatisfiable")
+    return start, end
+
+
+def _clip_response(
+    request: Request, data: bytes, media_type: str, n_frames: int, duration_ms: int
+) -> Response:
+    headers = {
+        "X-Clip-Frames": str(n_frames),
+        "X-Clip-Duration-Ms": str(duration_ms),
+        "Access-Control-Expose-Headers": "X-Clip-Frames, X-Clip-Duration-Ms",
+        "Cache-Control": "private, max-age=600",
+        "Accept-Ranges": "bytes",
+    }
+    size = len(data)
+    try:
+        rng = _parse_range(request.headers.get("range"), size)
+    except ValueError:
+        headers["Content-Range"] = f"bytes */{size}"
+        return Response(status_code=416, headers=headers)
+    if rng is None:
+        return Response(content=data, media_type=media_type, headers=headers)
+    start, end = rng
+    headers["Content-Range"] = f"bytes {start}-{end}/{size}"
+    return Response(
+        content=data[start : end + 1],
+        status_code=206,
+        media_type=media_type,
+        headers=headers,
+    )
 
 
 def _sidecar_ball_boxes(clip_stem: str, frame_index: int) -> list[dict]:
@@ -612,6 +1121,8 @@ async def ball_check_step(
             rows = [
                 r for r in cand.read_candidates(clip_stem) if r["frame_index"] == target
             ]
+        elif src == "list":
+            rows = []  # explicit cards carry a box on their own frame only
         else:
             rows = [
                 {**r, "confidence": None}
