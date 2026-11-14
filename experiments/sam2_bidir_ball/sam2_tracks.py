@@ -56,7 +56,7 @@ def read_frames(video: str, wanted: set[int], w: int, h: int) -> dict[int, np.nd
     import subprocess
     nbytes = w * h * 3
     last = max(wanted)
-    proc = subprocess.Popen(["ffmpeg", "-v", "error", "-i", video, "-frames:v", str(last + 1),
+    proc = subprocess.Popen(["ffmpeg", "-v", "error", "-i", video, "-fps_mode", "passthrough", "-frames:v", str(last + 1),
                              "-f", "rawvideo", "-pix_fmt", "rgb24", "-"],
                             stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, bufsize=nbytes * 2)
     out, i = {}, 0
