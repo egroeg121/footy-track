@@ -118,6 +118,8 @@ def subsets(base: list[dict], motion_edges: tuple[float, float]) -> dict[str, li
     S: dict[str, list[str]] = {}
     for sp in ("val", "test", "heldout"):
         S[sp] = [key(i) for i in base if i["split"] == sp]
+    S["val / clip arsenal_example (74% of val balls)"] = [key(i) for i in base if i["split"] == "val" and i["clip_id"] == "arsenal_example"]
+    S["val / all other clips"] = [key(i) for i in base if i["split"] == "val" and i["clip_id"] != "arsenal_example"]
     S["heldout_strict"] = [key(i) for i in base if i["split"] == "heldout" and i["strict_heldout"]]
     S["test+heldout"] = S["test"] + S["heldout"]
     S["val+test+heldout"] = S["val"] + S["test"] + S["heldout"]
@@ -125,8 +127,9 @@ def subsets(base: list[dict], motion_edges: tuple[float, float]) -> dict[str, li
         S[f"test+heldout / neighbours {name}"] = [key(i) for i in base if i["split"] in ("test", "heldout") and pred(i)]
     lo, hi = motion_edges
     for name, pred in (("low", lambda m: m < lo), ("mid", lambda m: lo <= m < hi), ("high", lambda m: m >= hi)):
-        S[f"val+test+heldout / ball motion {name}"] = [
-            key(i) for i in base if i["gt"] and ok(i) and pred(max(i["motion_prev"], i["motion_next"]))]
+        S[f"test+heldout / ball motion {name}"] = [
+            key(i) for i in base if i["split"] in ("test", "heldout") and i["gt"] and ok(i)
+            and pred(max(i["motion_prev"], i["motion_next"]))]
     return S
 
 
@@ -169,13 +172,13 @@ def crop_example(root: Path, im: dict, preds: dict[str, tuple], title: str, dst:
         cv2.drawMarker(big, (int((px - x0) * z), int((py - y0) * z)), colours[k], cv2.MARKER_CROSS, 18, 2)
     panels = [big]
     for nb in (0, 4):
-        d = np.clip(np.abs(g - img5[sl][..., nb].astype(np.int16)) * 4, 0, 255).astype(np.uint8)
+        d = np.clip(np.abs(g - img5[sl][..., nb].astype(np.int16)) * 2, 0, 255).astype(np.uint8)
         panels.append(cv2.cvtColor(cv2.resize(d, None, fx=z, fy=z, interpolation=cv2.INTER_NEAREST), cv2.COLOR_GRAY2BGR))
     row = np.hstack(panels)
     bar = np.full((44, row.shape[1], 3), 255, np.uint8)
     cv2.putText(bar, title, (6, 17), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1, cv2.LINE_AA)
     leg = "  ".join(f"{k}: " + ("none" if v[0] is None else f"conf {v[2]:.2f} d={np.hypot((v[0] - gx) * sx, (v[1] - gy) * sy):.0f}px") for k, v in preds.items())
-    cv2.putText(bar, leg + "   yellow=GT  left=RGB(t)  mid=|t-prev|x4  right=|next-t|x4", (6, 36), cv2.FONT_HERSHEY_SIMPLEX, 0.42, (60, 60, 60), 1, cv2.LINE_AA)
+    cv2.putText(bar, leg + "   yellow=GT  left=RGB(t)  mid=|t-prev|x2  right=|next-t|x2", (6, 36), cv2.FONT_HERSHEY_SIMPLEX, 0.42, (60, 60, 60), 1, cv2.LINE_AA)
     cv2.imwrite(str(dst), np.vstack([bar, row]))
 
 
@@ -201,8 +204,8 @@ def main():
     first = arms["A"][0]
     base = [v for k, v in runs[first].items() if k != "__meta__"]
     # motion terciles over images with a GT ball and both neighbours ok
-    ms = np.array([max(i["motion_prev"], i["motion_next"]) for i in base
-                   if i["gt"] and i["prev_status"] == "ok" and i["next_status"] == "ok"])
+    ms = np.array([max(i["motion_prev"], i["motion_next"]) for i in base if i["split"] in ("test", "heldout")
+                   and i["gt"] and i["prev_status"] == "ok" and i["next_status"] == "ok"])
     edges = (float(np.percentile(ms, 100 / 3)), float(np.percentile(ms, 200 / 3)))
     S = subsets(base, edges)
     rng = np.random.default_rng(0)
@@ -264,6 +267,10 @@ def main():
         # discordant pairs (seed-averaged hits rounded to majority)
         row["B_only"] = int(np.sum((hb > 0.5) & (ha <= 0.5)))
         row["A_only"] = int(np.sum((ha > 0.5) & (hb <= 0.5)))
+        any_a = np.array([np.mean([pim[t][k]["any"] for t in arms["A"]]) for k in gk])
+        any_b = np.array([np.mean([pim[t][k]["any"] for t in arms["B"]]) for k in gk])
+        row["any10"] = {"A": float(any_a.mean()), "B": float(any_b.mean()), "diff_img": bootstrap_diff(any_a, any_b, None, rng),
+                        "diff_clip": bootstrap_diff(any_a, any_b, clips, rng)}
         paired[sname] = row
     res["paired_B_minus_A_hit10"] = paired
 
@@ -274,8 +281,18 @@ def main():
         rows = [r for r in rows if "ball_ap50" in r]
         if not rows:
             continue
-        # one row per epoch (the callback fires twice at the end of training)
-        rows = list({r["epoch"]: r for r in rows}.values())
+        # training wall time summed over sessions (elapsed_s restarts at 0 when a run is resumed after a crash)
+        wall, seg_max, prev = 0.0, 0.0, 0.0
+        for r in rows:
+            if r["elapsed_s"] < prev:
+                wall, seg_max = wall + seg_max, 0.0
+            seg_max, prev = r["elapsed_s"], r["elapsed_s"]
+        wall += seg_max
+        # one row per epoch (the callback fires twice at the end of training; resumed runs repeat an epoch)
+        first = {}
+        for r in rows:
+            first.setdefault(r["epoch"], r)  # the epoch's own validation (a second row at the end is best.pt's re-validation)
+        rows = list(first.values())
         apv = np.array([r["ball_ap50"] for r in rows])
         tp = p.stem.removeprefix("curve_")
         t_file = a.runs / f"time_{tp}.json"
@@ -283,7 +300,7 @@ def main():
                       "last": float(apv[-1]), "mean_last10": float(apv[-10:].mean()),
                       "ap50_at": {str(r["epoch"]): r["ball_ap50"] for r in rows if r["epoch"] % 10 == 0 or r["epoch"] == len(rows)},
                       "val_loss_note": "train loss at last epoch " + str(rows[-1]["loss"]),
-                      "train_seconds": rows[-1]["elapsed_s"], "wall": json.loads(t_file.read_text()) if t_file.exists() else None}
+                      "train_seconds": wall, "wall": json.loads(t_file.read_text()) if t_file.exists() else None}
     res["curves"] = curves
 
     # examples: discordant images on test/heldout, seed-averaged
@@ -291,14 +308,14 @@ def main():
     ex_dir.mkdir(parents=True, exist_ok=True)
     cand = [k for k in S["test+heldout"] if by_key[k]["gt"]]
     ha, hb = hits(arms["A"], cand), hits(arms["B"], cand)
-    b_wins = [k for k, x, y in zip(cand, ha, hb, strict=True) if y - x >= 0.99]
-    a_wins = [k for k, x, y in zip(cand, ha, hb, strict=True) if x - y >= 0.99]
+    # seed-averaged top-1 hit differs by >= 0.5 (both seeds agree -> 1.0); strongest agreement first
+    b_wins = [k for k, x, y in sorted(zip(cand, ha, hb, strict=True), key=lambda t: -(t[2] - t[1])) if y - x >= 0.5]
+    a_wins = [k for k, x, y in sorted(zip(cand, ha, hb, strict=True), key=lambda t: -(t[1] - t[2])) if x - y >= 0.5]
     both_miss = [k for k, x, y in zip(cand, ha, hb, strict=True) if x == 0 and y == 0]
     rng2 = np.random.default_rng(1)
     pick = []
-    for name, lst, n in (("B_hit_A_miss", b_wins, int(a.n_examples * 0.6)), ("A_hit_B_miss", a_wins, int(a.n_examples * 0.4))):
-        lst = sorted(lst)
-        sel = list(rng2.permutation(lst)[:n]) if lst else []
+    for name, lst, n in (("B_hit_A_miss", b_wins, round(a.n_examples * 0.6)), ("A_hit_B_miss", a_wins, round(a.n_examples * 0.4))):
+        sel = lst[:n]
         pick += [(name, k) for k in sel]
     ex_meta = []
     for j, (name, k) in enumerate(pick):
@@ -324,7 +341,7 @@ def write_md(res, a, S, arms):
     L.append("# Temporal detector ablation: single frame vs camera-aligned neighbours\n")
     if a.meta:
         L.append(a.meta + "\n")
-    L.append("Counts: " + ", ".join(f"{k}: {len(v)} images" for k, v in S.items() if "/" not in k) + ".\n")
+    L.append("Counts: " + ", ".join(f"{k}: {len(v)} images" for k, v in S.items() if " / " not in k) + ".\n")
     cols = ["val", "test", "heldout", "heldout_strict"]
     for metric, title in (("hit10", "Top-1 ball recall @10 px (hit@10)"), ("any10", "Candidate recall @10 px (any detection within 10 px)"),
                           ("ap50", "Ball AP50")):
@@ -344,6 +361,14 @@ def write_md(res, a, S, arms):
         L.append(f"| {s} | {r['n']} | {r['n_clips']} | {fmt(r['A'])} | {fmt(r['B'])} | {d[0]:+.3f} | [{di[1]:+.3f}, {di[2]:+.3f}] | "
                  f"[{dc[1]:+.3f}, {dc[2]:+.3f}] | {r['B_only']} / {r['A_only']} | {ps} |")
     L.append("")
+    L.append("## Paired difference B - A in candidate recall any@10 (does the detector at least propose the ball?)\n")
+    L.append("| subset | n imgs | A | B | B-A | 95% CI (images) | 95% CI (clips) |")
+    L.append("|---|---|---|---|---|---|---|")
+    for s_, r in res["paired_B_minus_A_hit10"].items():
+        q = r["any10"]
+        L.append(f"| {s_} | {r['n']} | {fmt(q['A'])} | {fmt(q['B'])} | {q['diff_img'][0]:+.3f} | [{q['diff_img'][1]:+.3f}, {q['diff_img'][2]:+.3f}] | "
+                 f"[{q['diff_clip'][1]:+.3f}, {q['diff_clip'][2]:+.3f}] |")
+    L.append("")
     L.append("## Top-1 precision and false positives by confidence threshold (val+test+heldout)\n")
     sub = res["subsets"]["val+test+heldout"]
     L.append("| model | " + " | ".join(f"prec@{t} / recall@{t}" for t in THRS) + " | " + " | ".join(f"FP(ball-free)@{t}" for t in THRS) + " |")
@@ -352,15 +377,15 @@ def write_md(res, a, S, arms):
         L.append(f"| {m} | " + " | ".join(f"{fmt(sub[m].get(f'prec@{t}'))} / {fmt(sub[m].get(f'hit@conf{t}'))}" for t in THRS) + " | "
                  + " | ".join(fmt(sub[m].get(f"fp_free@{t}")) for t in THRS) + " |")
     L.append(f"\nBall-free images in val+test+heldout: {sub[res['models'][0]]['n_ball_free']} (FP rate is noisy).\n")
-    L.append("## By neighbour status and ball motion (hit@10; test+heldout resp. val+test+heldout)\n")
-    subs = [s for s in res["subsets"] if "/" in s]
+    L.append("## By neighbour status and ball motion (hit@10, test+heldout)\n")
+    subs = [s for s in res["subsets"] if "/" in s and not s.startswith("val /")]
     L.append("| model | " + " | ".join(f"{s} (n={res['subsets'][s][res['models'][0]]['n_gt_img']})" for s in subs) + " |")
     L.append("|---|" + "---|" * len(subs))
     for m in res["models"]:
         L.append(f"| {m} | " + " | ".join(fmt(res["subsets"][s][m].get("hit10")) for s in subs) + " |")
     e = res["motion_edges_p90_absdiff"]
     L.append(f"\nMotion score = max over the two neighbours of the p90 of |gray(t) - aligned neighbour| in a 15x15 window at the GT ball; "
-             f"terciles over balls with both neighbours ok: low < {e[0]:.1f} <= mid < {e[1]:.1f} <= high.\n")
+             f"terciles over test+heldout balls with both neighbours ok: low < {e[0]:.1f} <= mid < {e[1]:.1f} <= high.\n")
     L.append("Paired B-A for these subsets:\n")
     L.append("| subset | n | B-A | 95% CI (images) | 95% CI (clips) |")
     L.append("|---|---|---|---|---|")
@@ -380,7 +405,7 @@ def write_md(res, a, S, arms):
         L.append(f"| {t} | {c['epochs']} | {c['best_ball_ap50']:.3f} ({c['best_epoch']}) | {c['last']:.3f} | {fmt(mine)} | {c['mean_last10']:.3f} | {pts} | {c['train_seconds'] / 3600:.2f} h |")
     L.append("\n## Examples where A and B disagree (test + heldout)\n")
     d = res["discordant"]
-    L.append(f"Seed-averaged top-1 hits: B hit / A miss: {d['B_hit_A_miss']}, A hit / B miss: {d['A_hit_B_miss']}, both miss: {d['both_miss']} of {d['n']}.\n")
+    L.append(f"Images where the seed-averaged top-1 hit differs by >= 0.5: B better {d['B_hit_A_miss']}, A better {d['A_hit_B_miss']}; both miss {d['both_miss']} of {d['n']}. Shown: the clearest ones (all seeds agree first); the A / B markers are the seed-0 top-1 detections.\n")
     for ex in res["examples"]:
         L.append(f"![{ex['kind']}]({a.out.name}/{ex['file']})\n")
     Path(str(a.out) + ".md").write_text("\n".join(L) + "\n")
