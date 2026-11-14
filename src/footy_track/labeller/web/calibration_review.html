@@ -294,7 +294,7 @@ async function setWarp(on) {
   try {
     if (!warpUrl) {
       const r = await fetch(`${API}/warp`, { method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ clip: it.clip, frame_index: it.frame_index, H: rec.H, pitch_dims: rec.pitch_dims }) });
+        body: JSON.stringify({ clip: it.clip, frame_index: it.frame_index, H: rec.H, pitch_dims: rec.pitch_dims, distortion: rec.distortion || null }) });
       if (!r.ok) throw new Error((await r.json()).error || r.statusText);
       warpUrl = URL.createObjectURL(await r.blob());
     }

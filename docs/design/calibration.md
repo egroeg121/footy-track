@@ -243,3 +243,40 @@ that a human accepts on a phone (`/calibration/review`).
 Frames are read by `calibration.video.read_frame`: OpenCV 5.0 decodes some clips as
 all-black frames ("Cannot convert interlaced to progressive frames"), so it
 falls back to the ffmpeg CLI.
+
+## 8. Lens distortion (division model)
+
+A homography maps straight pitch lines to straight image lines; broadcast lenses do not. On wide
+shots the far touchline (long, near the top of the frame) visibly bows, and in the bird's-eye
+warp that shows as a curved edge and a real line sitting a metre or two off the drawn one
+(far-field depth is foreshortened: ~1 px of image error at the far touchline is ~0.25 m on the pitch).
+
+**Model.** One-parameter division model about the image centre,
+`x_u = c + (x_d - c) / (1 + k1 r^2)`, `r^2 = |((x_d - c) * 2) / (1, aspect)|^2` (r = 1 at the middle
+of the left/right edge, vertical axis aspect-corrected; code in `calibration/geometry.py`).
+`H` maps the *undistorted* normalised point to pitch metres, so everything observed in the image
+(labels, detection anchors, drawn lines) is in distorted coordinates. Measured k1 on this footage is
+**positive** (about +0.01 to +0.03): the far touchline sags in the middle, pincushion in this
+convention, so the model's line bows the same way.
+
+**Storage / back-compat.** A record carries `distortion: {"model": "division", "k1": ..,
+"centre": [0.5, 0.5], "aspect": 1.7778}` next to `H`. Missing, `null` or `k1 == 0` is exactly the
+old behaviour (the old `cv2.warpPerspective` path, byte-identical). `calibration` rows get
+`distortion_k1 DOUBLE` (added by `ALTER ... IF NOT EXISTS` on existing stores; only a centred lens
+is accepted by the importer), and `frame_calibration_best` exposes it.
+
+**Where it is applied.** `geometry.project_pitch_model/project_polyline_to_image` (camera overlay),
+`geometry.warp_to_pitch` (per-pixel remap when k1 != 0), `reprojection_errors`, the labeller
+`/fit`, `/warp`, GT save and proposal accept (points are undistorted before the DLT, the stored
+`H` and points reproduce each other), the review/manual pages (they pass `distortion` through),
+`PitchProjector.project_frame(distortion=...)` and the SQL view `detections_on_pitch`. The SQL
+direction is image -> pitch, which is closed form (`x_u = c + (x - c) / (1 + k1 r^2)`), so the view
+undistorts the anchor itself from `distortion_k1` and the stored `image_width/height`; the
+difficult inverse (pitch -> image) is only needed for drawing and lives in Python.
+
+**Estimation.** `refine_homography(..., fit_k1=True)` adds k1 as a 9th LM parameter in the two finer
+stages (the coarse capture stage keeps it fixed), with a quadratic (non-robust) prior pulling it to
+0 (`K1_PRIOR_PX`, scaled by `k1_prior`) and a clamp at +-0.15. `k1=<value>` without `fit_k1` holds a
+given value (per clip / zoom level) and the coarse fit then undistorts the labels first.
+`prelabel_calibration run --fit-k1` / `--k1 0.012`; the default stays **off**. k1 trades off against
+H (focal length / tilt) on frames with few lines, so a per-clip value is the safe way to use it.

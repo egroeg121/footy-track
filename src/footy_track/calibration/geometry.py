@@ -56,6 +56,91 @@ def apply_homography(H: Array, pts: Array) -> tuple[Array, Array]:
 
 
 # --------------------------------------------------------------------------
+# Lens distortion (one-parameter division model)
+# --------------------------------------------------------------------------
+#
+# A pure homography cannot bow a straight pitch line. Broadcast lenses are
+# barrel-distorted, so the far touchline curves near the top of the frame. The
+# camera model is ``image_norm --undistort--> image_norm' --H--> pitch``:
+#
+#     x_u = c + (x_d - c) / (1 + k1 r^2),   r^2 = |((x_d - c) * 2) / (1, aspect)|^2
+#
+# i.e. coordinates are centred on ``c``, scaled so that r = 1 at the middle of the
+# left/right image edge and the vertical axis is aspect-corrected. ``k1 < 0`` is
+# barrel (lines bow outward, away from the centre). ``distortion`` dicts look like
+# ``{"model": "division", "k1": -0.02, "centre": [0.5, 0.5], "aspect": 1.7778}``;
+# ``None``, a missing key or ``k1 == 0`` is exactly the plain homography.
+
+DEFAULT_ASPECT = 16.0 / 9.0
+
+
+def distortion_params(dist: dict | None) -> tuple[float, tuple[float, float], float] | None:
+    """``(k1, centre, aspect)`` of a distortion dict, ``None`` when it is a no-op."""
+    if not dist:
+        return None
+    k1 = dist.get("k1")
+    if k1 is None or float(k1) == 0.0 or not np.isfinite(k1):
+        return None
+    if dist.get("model", "division") != "division":
+        raise ValueError(f"unknown distortion model {dist.get('model')!r}")
+    c = dist.get("centre") or (0.5, 0.5)
+    return float(k1), (float(c[0]), float(c[1])), float(dist.get("aspect") or DEFAULT_ASPECT)
+
+
+def make_distortion(k1: float, aspect: float = DEFAULT_ASPECT, centre=(0.5, 0.5)) -> dict | None:
+    """The storable distortion dict (``None`` for k1 == 0)."""
+    if not k1:
+        return None
+    return {"model": "division", "k1": float(k1), "centre": [float(centre[0]), float(centre[1])],
+            "aspect": float(aspect)}
+
+
+def undistort_norm(pts: Array, k1: float, centre=(0.5, 0.5), aspect: float = DEFAULT_ASPECT) -> Array:
+    """Distorted -> undistorted normalised image coords (closed form)."""
+    p = np.atleast_2d(np.asarray(pts, dtype=np.float64))
+    c = np.asarray(centre, dtype=np.float64)
+    d = (p - c) * np.array([2.0, 2.0 / aspect])
+    s = 1.0 / (1.0 + k1 * np.sum(d * d, axis=1))
+    return c + (d * s[:, None]) / np.array([2.0, 2.0 / aspect])
+
+
+def distort_norm(pts: Array, k1: float, centre=(0.5, 0.5), aspect: float = DEFAULT_ASPECT) -> Array:
+    """Undistorted -> distorted normalised image coords (NaN where no real inverse exists)."""
+    p = np.atleast_2d(np.asarray(pts, dtype=np.float64))
+    c = np.asarray(centre, dtype=np.float64)
+    d = (p - c) * np.array([2.0, 2.0 / aspect])
+    disc = 1.0 - 4.0 * k1 * np.sum(d * d, axis=1)
+    with np.errstate(invalid="ignore"):
+        f = 2.0 / (1.0 + np.sqrt(disc))  # r_d / r_u; stable form of the smaller root of the quadratic
+    f = np.where(disc >= 0, f, np.nan)
+    return c + (d * f[:, None]) / np.array([2.0, 2.0 / aspect])
+
+
+def undistort_points(pts: Array, dist: dict | None) -> Array:
+    """``undistort_norm`` driven by a distortion dict (identity when it is a no-op)."""
+    p = np.atleast_2d(np.asarray(pts, dtype=np.float64))
+    dp = distortion_params(dist)
+    return p if dp is None else undistort_norm(p, *dp)
+
+
+def distort_points(pts: Array, dist: dict | None) -> Array:
+    p = np.atleast_2d(np.asarray(pts, dtype=np.float64))
+    dp = distortion_params(dist)
+    return p if dp is None else distort_norm(p, *dp)
+
+
+def image_to_pitch(H: Array, pts: Array, dist: dict | None = None) -> tuple[Array, Array]:
+    """Observed (distorted) normalised image points -> pitch metres: ``(xy, w)``."""
+    return apply_homography(H, undistort_points(pts, dist))
+
+
+def pitch_to_image(H: Array, pts_m: Array, dist: dict | None = None) -> tuple[Array, Array]:
+    """Pitch metres -> observed normalised image points: ``(xy, w)`` (``w`` as in ``H^-1``)."""
+    xy, w = apply_homography(np.linalg.inv(H), pts_m)
+    return distort_points(xy, dist), w
+
+
+# --------------------------------------------------------------------------
 # Fitting
 # --------------------------------------------------------------------------
 
@@ -242,6 +327,7 @@ def reprojection_errors(
     img_norm: Array,
     pitch_m: Array,
     image_size: tuple[float, float] | None = None,
+    distortion: dict | None = None,
 ) -> dict[str, Array | None]:
     """Per-point errors of ``H`` against its correspondences.
 
@@ -250,14 +336,15 @@ def reprojection_errors(
       clicked point (``None`` without ``image_size``). This is the error the
       operator sees on the frame.
     Points that do not project (w <= 0 under the inverse) give NaN px error.
+    ``img_norm`` are observed (distorted) coordinates; ``distortion`` is optional.
     """
     src = np.asarray(img_norm, dtype=np.float64).reshape(-1, 2)
     dst = np.asarray(pitch_m, dtype=np.float64).reshape(-1, 2)
-    fwd, _ = apply_homography(H, src)
+    fwd, _ = image_to_pitch(H, src, distortion)
     metres = np.linalg.norm(fwd - dst, axis=1)
     px = None
     if image_size is not None:
-        back, w = apply_homography(np.linalg.inv(H), dst)
+        back, w = pitch_to_image(H, dst, distortion)
         err = np.linalg.norm(
             (back - src) * np.array(image_size, dtype=np.float64), axis=1
         )
@@ -281,7 +368,7 @@ def _densify(poly: Array, step_m: float) -> Array:
 
 
 def project_polyline_to_image(
-    H: Array, poly_pitch: Array, step_m: float = 0.5
+    H: Array, poly_pitch: Array, step_m: float = 0.5, distortion: dict | None = None
 ) -> list[Array]:
     """Project a pitch polyline into normalised image coords via ``H^-1``.
 
@@ -292,7 +379,7 @@ def project_polyline_to_image(
     piece, so a line never wraps across the horizon.
     """
     pts = _densify(np.asarray(poly_pitch, dtype=np.float64), step_m)
-    xy, w = apply_homography(np.linalg.inv(H), pts)
+    xy, w = pitch_to_image(H, pts, distortion)
     ok = (
         (w > W_EPS)
         & np.all(np.isfinite(xy), axis=1)
@@ -312,12 +399,12 @@ def project_polyline_to_image(
 
 
 def project_pitch_model(
-    H: Array, pitch: PitchModel, step_m: float = 0.5
+    H: Array, pitch: PitchModel, step_m: float = 0.5, distortion: dict | None = None
 ) -> dict[str, list[Array]]:
     """All pitch lines/curves as ``name -> runs`` of normalised image points."""
     out = {}
     for name, poly in pitch.polylines().items():
-        runs = project_polyline_to_image(H, poly, step_m)
+        runs = project_polyline_to_image(H, poly, step_m, distortion)
         if runs:
             out[name] = runs
     return out
@@ -358,10 +445,29 @@ def warp_to_pitch(
     pitch: PitchModel,
     px_per_m: float = 10.0,
     margin_m: float = 3.0,
+    distortion: dict | None = None,
 ) -> Array:
-    """Warp a BGR frame into a top-down pitch raster (black outside the view)."""
+    """Warp a BGR frame into a top-down pitch raster (black outside the view).
+
+    With a ``distortion`` the raster is sampled per pixel (raster -> pitch -> ``H^-1`` ->
+    distort -> frame pixel) so the lens bow is removed; without one it is the exact
+    ``cv2.warpPerspective`` of old.
+    """
     h_img, w_img = frame.shape[:2]
     to_norm = np.diag([1.0 / w_img, 1.0 / h_img, 1.0])
+    if distortion_params(distortion) is not None:
+        T = pitch_raster_transform(pitch, px_per_m, margin_m)
+        w_r, h_r = pitch_raster_size(pitch, px_per_m, margin_m)
+        gx, gy = np.meshgrid(np.arange(w_r, dtype=np.float64), np.arange(h_r, dtype=np.float64))
+        ras = np.stack([gx.ravel(), gy.ravel(), np.ones(gx.size)], axis=1)
+        pm = ras @ np.linalg.inv(T).T
+        xy, w = pitch_to_image(np.asarray(H, dtype=np.float64), pm[:, :2], distortion)
+        px = xy * np.array([w_img, h_img])
+        bad = ~np.isfinite(px).all(axis=1) | (w <= W_EPS)
+        px[bad] = -1.0
+        mx = px[:, 0].reshape(h_r, w_r).astype(np.float32)
+        my = px[:, 1].reshape(h_r, w_r).astype(np.float32)
+        return cv2.remap(frame, mx, my, cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT)
     M = pitch_raster_transform(pitch, px_per_m, margin_m) @ np.asarray(H) @ to_norm
     return cv2.warpPerspective(
         frame, M, pitch_raster_size(pitch, px_per_m, margin_m), flags=cv2.INTER_LINEAR

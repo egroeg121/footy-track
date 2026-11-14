@@ -153,6 +153,8 @@ def proposal_record(idx, image_size, pitch, fit, res) -> dict:
         rec["pre_refine"] = _pre_refine_record(fit)
     if fit.refine is not None:
         rec["refine"] = fit.refine.to_dict()
+    if fit.distortion is not None:  # absent == plain homography (k1 = 0)
+        rec["distortion"] = fit.distortion
     if fit.line_labels:
         rec["line_labels"] = [
             {"line_id": ll.line_id, "points": [list(p) for p in ll.points], "confidence": ll.confidence}
@@ -161,14 +163,14 @@ def proposal_record(idx, image_size, pitch, fit, res) -> dict:
     return rec
 
 
-def overlay_render(frame_bgr: np.ndarray, H: np.ndarray, pitch: PitchModel) -> np.ndarray:
+def overlay_render(frame_bgr: np.ndarray, H: np.ndarray, pitch: PitchModel, distortion: dict | None = None) -> np.ndarray:
     """Frame (<=1568 px) with the pitch model projected through ``H``."""
     from footy_track.calibration.prelabel.candidates import resize_to_work  # noqa: PLC0415
 
     img, _ = resize_to_work(frame_bgr)
     img = img.copy()  # resize_to_work returns the input itself for small frames: never draw on the caller's array
     h, w = img.shape[:2]
-    for name, runs in geo.project_pitch_model(np.asarray(H), pitch).items():
+    for name, runs in geo.project_pitch_model(np.asarray(H), pitch, distortion=distortion).items():
         col = (0, 215, 255) if ("CIRCLE" in name or "ARC" in name) else (255, 43, 214)
         for run in runs:
             cv2.polylines(img, [np.round(run * np.array([w, h])).astype(np.int32)], False, col, 2, cv2.LINE_AA)
@@ -193,6 +195,10 @@ class RunConfig:
     render_dir: Path | None = None
     verify: bool = False
     refine: bool = True  # line refinement of the coarse fit
+    #: lens distortion: ``fit_k1`` estimates the division-model k1 per frame (jointly with H);
+    #: otherwise ``k1`` (default 0 = off) is a given value, e.g. one per clip / zoom level.
+    k1: float = 0.0
+    fit_k1: bool = False
     run_id: str | None = None
 
 
@@ -257,12 +263,13 @@ def run_prelabel(cfg: RunConfig, identifier: Identifier, log=print) -> RunSummar
             elif res.unusable:
                 rec = failed_record(idx, (iw, ih), pitch, f"unusable: {res.unusable_reason or 'unspecified'}", res)
             else:
-                fit = fit_and_score(res.labels, pitch, det, (iw, ih), line_labels=res.line_labels, refine=cfg.refine)
+                fit = fit_and_score(res.labels, pitch, det, (iw, ih), line_labels=res.line_labels, refine=cfg.refine,
+                                 k1=cfg.k1, fit_k1=cfg.fit_k1)
                 if not fit.ok:
                     rec = failed_record(idx, (iw, ih), pitch, fit.failure, res, fit.labels)
                 else:
                     rec = proposal_record(idx, (iw, ih), pitch, fit, res)
-                    ov = overlay_render(frame, fit.H, pitch)
+                    ov = overlay_render(frame, fit.H, pitch, fit.distortion)
                     if cfg.render_dir:
                         cv2.imwrite(str(Path(cfg.render_dir) / f"{canon}_{idx}_overlay.jpg"), ov)
                     if cfg.verify and hasattr(identifier, "verify"):

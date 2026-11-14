@@ -252,3 +252,26 @@ def test_pad_points_breaks_collinearity_in_the_pipeline():
     assert add and all(0.03 < u < 0.97 and 0.03 < v < 0.97 for _k, (u, v), _xy in add)
     assert refit_gap_m(np.array(_H575), np.vstack([uv, [a[1] for a in add]]),
                        np.vstack([xy, [a[2] for a in add]])) < 0.25
+
+
+def test_proposal_with_distortion_overlays_and_accepts_with_its_lens(client, prop_env):
+    pitch = PitchModel()
+    lens = geo.make_distortion(-0.03, W / H)
+    rec = _record(0.8)
+    obs, _ = geo.pitch_to_image(_camera_h(), np.array([pitch.keypoints()[k] for k in KP]), lens)
+    for c, p in zip(rec["correspondences"], obs, strict=True):
+        c["image"] = p.tolist()
+    rec["distortion"] = lens
+    run = "claude-x-p1-20260101T000000"
+    doc = read_proposals(prop_env, CLIP)
+    doc["runs"][run]["frames"]["5"] = rec
+    write_proposals(prop_env, CLIP, doc)
+    got = client.get(f"/calibration/api/proposals/{CLIP}/{run}/5").json()
+    plain = client.get(f"/calibration/api/proposals/{CLIP}/{run}/0").json()
+    assert got["distortion"]["k1"] == -0.03
+    assert got["overlay"]["TOUCHLINE_TOP"] != plain["overlay"]["TOUCHLINE_TOP"]
+    r = client.post(f"/calibration/api/proposals/{CLIP}/{run}/5/accept")
+    assert r.status_code == 200
+    gt = json.loads((prop_env / "calibration_gt" / f"{CLIP}.json").read_text())["frames"]["5"]
+    assert gt["distortion"]["k1"] == -0.03 and max(gt["err_px"]) < 0.05
+    assert np.allclose(np.array(gt["H"]) / np.linalg.norm(gt["H"]), _camera_h() / np.linalg.norm(_camera_h()), atol=1e-5)

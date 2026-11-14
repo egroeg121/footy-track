@@ -66,13 +66,19 @@ class RefineResult:
     n_samples: int = 0
     stage_costs: list[float] = field(default_factory=list)
     max_shift_px: float | None = None  # largest movement of a model sample point
+    k1: float = 0.0  # lens distortion (division model, see geometry) of ``H``; 0 = none
+    k1_fitted: bool = False  # k1 was estimated here (not given)
 
     def to_dict(self) -> dict:
-        return {
+        d = {
             "applied": self.applied, "reason": self.reason,
             "cost_before": self.cost_before, "cost_after": self.cost_after,
             "n_samples": self.n_samples, "max_shift_px": self.max_shift_px,
         }
+        if self.k1 or self.k1_fitted:
+            d["k1"] = self.k1
+            d["k1_fitted"] = self.k1_fitted
+        return d
 
 
 # --------------------------------------------------------------------------
@@ -109,18 +115,31 @@ def _bilinear(img: np.ndarray, xy: np.ndarray) -> np.ndarray:
     )
 
 
-def _project(G: np.ndarray, pts_m: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    """metres -> working px through G (3x3); returns (xy, w)."""
+def _distort_px(xy: np.ndarray, k1: float, size, aspect: float) -> np.ndarray:
+    """undistorted working px -> observed working px (division model, see geometry)."""
+    sz = np.asarray(size, float)
+    return geo.distort_norm(xy / sz, k1, aspect=aspect) * sz
+
+
+def _undistort_px(xy: np.ndarray, k1: float, size, aspect: float) -> np.ndarray:
+    sz = np.asarray(size, float)
+    return geo.undistort_norm(xy / sz, k1, aspect=aspect) * sz
+
+
+def _project(G: np.ndarray, pts_m: np.ndarray, k1: float = 0.0, size=None, aspect: float = geo.DEFAULT_ASPECT):
+    """metres -> observed working px through G (3x3) and the lens (k1); returns (xy, w)."""
     ph = np.concatenate([pts_m, np.ones((len(pts_m), 1))], axis=1) @ G.T
     w = ph[:, 2]
     with np.errstate(divide="ignore", invalid="ignore"):
         xy = ph[:, :2] / w[:, None]
+    if k1 != 0.0:
+        xy = _distort_px(xy, k1, size, aspect)
     return xy, w
 
 
-def _valid_mask(G, pts_m, size, grass) -> np.ndarray:
+def _valid_mask(G, pts_m, size, grass, k1: float = 0.0, aspect: float = geo.DEFAULT_ASPECT) -> np.ndarray:
     w_img, h_img = size
-    xy, w = _project(G, pts_m)
+    xy, w = _project(G, pts_m, k1, size, aspect)
     ok = (w > 1e-9) & np.all(np.isfinite(xy), axis=1)
     ok &= (xy[:, 0] >= 0) & (xy[:, 0] < w_img - 1) & (xy[:, 1] >= 0) & (xy[:, 1] < h_img - 1)
     if ok.any():
@@ -172,17 +191,17 @@ def _pitch_line_h(seg: np.ndarray) -> np.ndarray:
 
 
 class _Problem:
-    def __init__(self, pitch, samples, size, prior_pts, prior_lines, prior_w):
-        self.pitch, self.samples, self.size = pitch, samples, size
+    def __init__(self, pitch, samples, size, prior_pts, prior_lines, prior_w, aspect=geo.DEFAULT_ASPECT):
+        self.pitch, self.samples, self.size, self.aspect = pitch, samples, size, aspect
         self.prior_xy = np.array([p[0] for p in prior_pts]).reshape(-1, 2)  # metres
         self.prior_px = np.array([p[1] for p in prior_pts]).reshape(-1, 2)  # working px
         self.prior_conf = np.array([p[2] for p in prior_pts], float)
         self.prior_lines = prior_lines  # [(line3, pts_px (k,2), conf)]
         self.prior_w = prior_w
 
-    def residual(self, G, idx, dt, trunc, cauchy, ref):
+    def residual(self, G, idx, dt, trunc, cauchy, ref, k1=0.0):
         """-> (r, weights-free residual vector, with robust weights applied by caller)."""
-        xy, w = _project(G, self.samples[idx])
+        xy, w = _project(G, self.samples[idx], k1, self.size, self.aspect)
         bad = (w <= 1e-9) | ~np.all(np.isfinite(xy), axis=1)
         d = np.full(len(idx), trunc, np.float64)
         ok = ~bad
@@ -193,12 +212,14 @@ class _Problem:
         parts = [d]
         # prior: labelled points as px reprojection error, robustified separately
         if len(self.prior_xy) and self.prior_w > 0:
-            pxy, pw = _project(G, self.prior_xy)
+            pxy, pw = _project(G, self.prior_xy, k1, self.size, self.aspect)
             e = pxy - self.prior_px
             e[(pw <= 1e-9) | ~np.all(np.isfinite(e), axis=1)] = 1e3
             parts.append((self.prior_w * np.sqrt(self.prior_conf)[:, None] * e).ravel())
         for line3, pts, conf in self.prior_lines:
             if self.prior_w > 0:
+                if k1 != 0.0:
+                    pts = _undistort_px(pts, k1, self.size, self.aspect)
                 parts.append(self.prior_w * np.sqrt(conf) * _line_dist_px(G, line3, pts))
         return np.concatenate(parts), len(idx)
 
@@ -207,27 +228,39 @@ def _cauchy_w(r: np.ndarray, c: float) -> np.ndarray:
     return 1.0 / (1.0 + (r / c) ** 2)
 
 
-def _lm(problem, G0, idx, dt, st: RefineStage, scale: float, log=None):
+#: weight (px of residual per unit k1) of the k1 prior; ``k1_prior`` scales it. A quadratic
+#: (non-robust) penalty: with 150, k1 = 0.02 (~20 px of bow at the image edge) costs 3 px.
+K1_PRIOR_PX = 150.0
+
+
+def _lm(problem, G0, idx, dt, st: RefineStage, scale: float, k1=0.0, fit_k1=False, k1_prior=1.0):
+    """LM on the 8 DOF of G (+ k1 when ``fit_k1``). Returns (G, k1, robust cost)."""
     trunc, cauchy = st.trunc_px * scale, st.cauchy_px * scale
+    npar = 9 if fit_k1 else 8
+    wk = K1_PRIOR_PX * k1_prior
 
     def cost_and_r(p):
-        G = _G_from_params(G0, p)
-        r, n = problem.residual(G, idx, dt, trunc, cauchy, scale)
+        G = _G_from_params(G0, p[:8])
+        k = k1 + (p[8] if fit_k1 else 0.0)
+        r, n = problem.residual(G, idx, dt, trunc, cauchy, scale, k)
         w = _cauchy_w(r, cauchy)
-        # cauchy rho = c^2/2 log(1+(r/c)^2); report the robust cost
-        return float(np.sum(0.5 * cauchy**2 * np.log1p((r / cauchy) ** 2))), r, w
+        c = float(np.sum(0.5 * cauchy**2 * np.log1p((r / cauchy) ** 2)))
+        if fit_k1:  # quadratic prior pulling k1 to 0, outside the robust loss
+            r = np.append(r, wk * k)
+            w = np.append(w, 1.0)
+            c += 0.5 * (wk * k) ** 2
+        return c, r, w
 
-    p = np.zeros(8)
+    p = np.zeros(npar)
     c, r, w = cost_and_r(p)
     lam = 1e-2
     for _ in range(st.iters):
-        J = np.empty((len(r), 8))
-        eps = 1e-5
-        for k in range(8):
+        J = np.empty((len(r), npar))
+        for k in range(npar):
             q = p.copy()
-            q[k] += eps
+            q[k] += 1e-5
             _, rk, _ = cost_and_r(q)
-            J[:, k] = (rk - r) / eps
+            J[:, k] = (rk - r) / 1e-5
         Jw = J * np.sqrt(w)[:, None]
         A = Jw.T @ Jw
         g = Jw.T @ (r * np.sqrt(w))
@@ -247,7 +280,7 @@ def _lm(problem, G0, idx, dt, st: RefineStage, scale: float, log=None):
             lam *= 4
         if not improved or np.linalg.norm(dp) < 1e-7:
             break
-    return _G_from_params(G0, p), c
+    return _G_from_params(G0, p[:8]), k1 + (p[8] if fit_k1 else 0.0), c
 
 
 # --------------------------------------------------------------------------
@@ -255,14 +288,16 @@ def _lm(problem, G0, idx, dt, st: RefineStage, scale: float, log=None):
 # --------------------------------------------------------------------------
 
 
-def dt_residual(G: np.ndarray, samples: np.ndarray, mask: np.ndarray, grass: np.ndarray, trunc_px: float = 20.0):
+def dt_residual(G: np.ndarray, samples: np.ndarray, mask: np.ndarray, grass: np.ndarray, trunc_px: float = 20.0,
+                k1: float = 0.0):
     """(mean truncated distance in px, n) of in-image, on-grass model samples to the mask."""
     h, w = mask.shape
-    ok = _valid_mask(G, samples, (w, h), grass)
+    aspect = w / h
+    ok = _valid_mask(G, samples, (w, h), grass, k1, aspect)
     if ok.sum() == 0:
         return float("inf"), 0
     d = _truncated_dt(mask, trunc_px, 0.0)
-    xy, _ = _project(G, samples[ok])
+    xy, _ = _project(G, samples[ok], k1, (w, h), aspect)
     return float(_bilinear(d, xy).mean()), int(ok.sum())
 
 
@@ -300,6 +335,10 @@ def refine_homography(
     rank_label_weight: float = 0.05,
     label_tol_px: float = 45.0,
     max_shift_frac: float = 0.35,
+    k1: float = 0.0,
+    fit_k1: bool = False,
+    k1_prior: float = 1.0,
+    k1_limit: float = 0.15,
 ) -> RefineResult:
     """Refine ``H`` (normalised image -> pitch m) against the white-line mask.
 
@@ -313,11 +352,19 @@ def refine_homography(
     ``max_shift_frac`` rejects a result that moved the in-view model further than
     this fraction of the image width from ``H`` (runaway; 90th percentile over samples in view under both).
     The returned ``H`` is the input when the result is rejected.
+
+    Lens distortion (division model, :func:`footy_track.calibration.geometry.undistort_norm`):
+    ``k1`` is the distortion ``H`` is given with (0 = plain homography). With ``fit_k1`` it
+    is estimated jointly with ``H`` in the two finer stages (the coarse capture stage keeps
+    it fixed), pulled to 0 by a quadratic prior of weight ``k1_prior`` and clamped to
+    ``+-k1_limit``; the result's ``k1`` is then the new value. Without ``fit_k1`` the given
+    ``k1`` is held fixed (a per-clip value) and returned unchanged.
     """
     H = np.asarray(H, np.float64)
     h_img, w_img = lines_mask.shape
     size = (w_img, h_img)
     scale = w_img / _REF_WIDTH
+    aspect = w_img / h_img
     to_norm = np.diag([1.0 / w_img, 1.0 / h_img, 1.0])
     from_norm = np.diag([w_img, h_img, 1.0])
 
@@ -334,15 +381,15 @@ def refine_homography(
     for ll in line_labels or []:
         if ll.line_id in segs and len(ll.points) >= 2:
             plines.append((_pitch_line_h(segs[ll.line_id]), np.array(ll.points, float) * px, ll.confidence))
-    problem = _Problem(pitch, samples, size, pts, plines, prior_weight)
+    problem = _Problem(pitch, samples, size, pts, plines, prior_weight, aspect)
     dts = [_truncated_dt(lines_mask, st.trunc_px * scale, st.blur_px * scale) for st in stages]
     rank_trunc = 12.0 * scale
     rank_dt = _truncated_dt(lines_mask, rank_trunc, 0.0)
 
-    def rank_cost(G) -> float:
+    def rank_cost(G, k=0.0) -> float:
         """Mean truncated DT over ALL model samples; off-image / behind-camera ones count as
         ``rank_trunc`` so hiding the model cannot win; plus a small label-reprojection term."""
-        xy, w = _project(G, samples)
+        xy, w = _project(G, samples, k, size, aspect)
         inside = (w > 1e-9) & np.all(np.isfinite(xy), axis=1)
         inside &= (xy[:, 0] >= 0) & (xy[:, 0] <= w_img - 1) & (xy[:, 1] >= 0) & (xy[:, 1] <= h_img - 1)
         d = np.full(len(samples), rank_trunc)
@@ -354,7 +401,7 @@ def refine_homography(
             d[inside] = dd
         c = float(d.mean())
         if len(problem.prior_xy) and rank_label_weight > 0:
-            pxy, pw = _project(G, problem.prior_xy)
+            pxy, pw = _project(G, problem.prior_xy, k, size, aspect)
             e = np.linalg.norm(pxy - problem.prior_px, axis=1)
             e[(pw <= 1e-9) | ~np.isfinite(e)] = 400.0 * scale
             # only label error beyond what imprecise labelling explains counts (px at 1568 wide)
@@ -362,18 +409,19 @@ def refine_homography(
         return c
 
     G_in = to_G(H)
-    idx_in = np.flatnonzero(_valid_mask(G_in, samples, size, grass))
-    cost_in = rank_cost(G_in)
+    idx_in = np.flatnonzero(_valid_mask(G_in, samples, size, grass, k1, aspect))
+    cost_in = rank_cost(G_in, k1)
 
     def run(G0):
-        G, costs = G0, []
-        for st, dt in zip(stages, dts, strict=True):
-            idx = np.flatnonzero(_valid_mask(G, samples, size, grass))
+        G, k, costs = G0, k1, []
+        for si, (st, dt) in enumerate(zip(stages, dts, strict=True)):
+            idx = np.flatnonzero(_valid_mask(G, samples, size, grass, k, aspect))
             if len(idx) < 30:
                 return None
-            G, c = _lm(problem, G, idx, dt, st, scale)
+            G, k, c = _lm(problem, G, idx, dt, st, scale, k, fit_k1 and si >= 1, k1_prior)
+            k = float(np.clip(k, -k1_limit, k1_limit))
             costs.append(c)
-        return G, costs
+        return G, k, costs
 
     best = None  # (rank cost, G, stage costs)
     for Hs in [H, *(starts or [])]:
@@ -386,39 +434,40 @@ def refine_homography(
         out = run(G0)
         if out is None:
             continue
-        G, costs = out
+        G, k, costs = out
         if _degenerate(G, size):
             continue
-        c = rank_cost(G)
+        c = rank_cost(G, k)
         if best is None or c < best[0]:
-            best = (c, G, costs)
+            best = (c, G, costs, k)
     if best is None:
         return RefineResult(H, False, "no usable start (degenerate or nothing on grass)", cost_in, None,
-                            len(idx_in))
-    c_best, G, costs = best
-    idx_f = np.flatnonzero(_valid_mask(G, samples, size, grass))
+                            len(idx_in), k1=k1)
+    c_best, G, costs, k_f = best
+    idx_f = np.flatnonzero(_valid_mask(G, samples, size, grass, k_f, aspect))
     # all-sample DT cost before/after (see rank_cost; label term excluded for reporting)
-    def dt_only(Gx):
+    def dt_only(Gx, kx):
         keep = problem.prior_xy, rank_label_weight
         problem.prior_xy = np.zeros((0, 2))
         try:
-            return rank_cost(Gx)
+            return rank_cost(Gx, kx)
         finally:
             problem.prior_xy = keep[0]
 
-    b, a = dt_only(G_in), dt_only(G)
+    b, a = dt_only(G_in, k1), dt_only(G, k_f)
     both = np.intersect1d(idx_f, idx_in)  # in view under the input and the refined H
     shift = None
     if len(both):
-        xy0, _ = _project(G_in, samples[both])
-        xy1, _ = _project(G, samples[both])
+        xy0, _ = _project(G_in, samples[both], k1, size, aspect)
+        xy1, _ = _project(G, samples[both], k_f, size, aspect)
         shift = float(np.percentile(np.linalg.norm(xy1 - xy0, axis=1), 90))
     if len(idx_f) < 30:
         return RefineResult(H, False, "too little of the refined model on grass in the image", b, a, len(idx_f),
-                            costs, shift)
+                            costs, shift, k1)
     if not c_best < cost_in - 1e-3:
-        return RefineResult(H, False, "cost did not improve", b, a, len(idx_f), costs, shift)
+        return RefineResult(H, False, "cost did not improve", b, a, len(idx_f), costs, shift, k1)
     if shift is not None and shift > max_shift_frac * w_img:
-        return RefineResult(H, False, f"max model shift {shift:.0f}px exceeds limit", b, a, len(idx_f), costs, shift)
+        return RefineResult(H, False, f"max model shift {shift:.0f}px exceeds limit", b, a, len(idx_f), costs, shift,
+                            k1)
     Hn = geo.orient_homography(np.linalg.inv(G) @ from_norm, np.array([[0.5, 0.5]]))
-    return RefineResult(Hn, True, None, b, a, len(idx_f), costs, shift)
+    return RefineResult(Hn, True, None, b, a, len(idx_f), costs, shift, k_f, fit_k1)

@@ -108,7 +108,7 @@ async def get_proposal(clip: str, run_id: str, idx: int):
         pitch = PitchModel(*rec["pitch_dims"])
         out["overlay"] = {
             n: [r.tolist() for r in runs]
-            for n, runs in geo.project_pitch_model(np.array(rec["H"]), pitch).items()
+            for n, runs in geo.project_pitch_model(np.array(rec["H"]), pitch, distortion=rec.get("distortion")).items()
         }
     return out
 
@@ -142,9 +142,10 @@ def _pad_to_reproduce(rec: dict, pts: list[dict], pitch_dims) -> tuple[list[dict
     uv = [tuple(c["image"]) for c in pts]
     kids = [c.get("pitch_id") for c in pts]
     xy = [tuple(kps[c["pitch_id"]]) if c.get("pitch_id") else tuple(c["pitch_xy"]) for c in pts]
-    if len(pts) >= 4 and refit_gap_m(Hs, np.array(uv), np.array(xy)) <= REFIT_TOL_M:
+    dist = rec.get("distortion")
+    if len(pts) >= 4 and refit_gap_m(Hs, np.array(uv), np.array(xy), dist) <= REFIT_TOL_M:
         return pts, []
-    add = pad_points(Hs, uv, kids, xy, pitch)
+    add = pad_points(Hs, uv, kids, xy, pitch, distortion=dist)
     out = list(pts) + [
         {"image": [u, v], "pitch_id": k, "pitch_xy": list(xy_), "confidence": 0.3, "synthetic": True}
         for k, (u, v), xy_ in add
@@ -192,6 +193,8 @@ async def accept_proposal(clip: str, run_id: str, idx: int, body: dict | None = 
         "correspondences": pts, "pitch_dims": body.get("pitch_dims") or rec["pitch_dims"],
         "method": body.get("method", "dlt"), "image_size": body.get("image_size") or rec["image_size"],
     }
+    if rec.get("distortion"):  # points are observed coords; the lens model goes with the proposal's H
+        fit_body["distortion"] = rec["distortion"]
     padded: list[str] = []
     if "correspondences" not in body and rec.get("H") is not None:
         # Accept-as-proposed must reproduce the H the reviewer saw. If the stored points cannot
