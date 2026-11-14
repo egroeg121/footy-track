@@ -40,6 +40,7 @@ import hashlib
 import json
 import sys
 import threading
+import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict
 from pathlib import Path
@@ -423,7 +424,11 @@ def cmd_ask(args: argparse.Namespace) -> int:  # noqa: PLR0915
         with lock:
             for a in attempts:
                 rec = {k: v for k, v in asdict(a).items() if k != "answers"}
-                rec |= {"prompt_version": args.prompt_version, "n": len(items)}
+                rec |= {
+                    "prompt_version": args.prompt_version,
+                    "n": len(items),
+                    "ts": round(time.time(), 1),  # the queue counts questions per day
+                }
                 with log_path.open("a") as fh:
                     fh.write(json.dumps(rec) + "\n")
             final = attempts[-1]
