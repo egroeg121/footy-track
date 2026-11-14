@@ -96,6 +96,18 @@ _NOT_REJECTED = """
           )"""
 
 
+#: Matches that must NEVER reach a training export (held-out evaluation matches).
+#: ``arsenal_norwich`` is the only match absent from every detector training set; its
+#: clips are ``arsenal_norwich_segNNN``. Checked on the canonical clip id, in addition
+#: to the eval-dir / --exclude-clip mechanism, so it holds even if nobody passes a flag.
+HELDOUT_CLIP_PREFIXES: tuple[str, ...] = ("arsenal_norwich",)
+
+
+def is_heldout_clip(name: str) -> bool:
+    """True if ``name`` (any alias of a clip) belongs to a held-out match."""
+    return canonical_clip_id(name).startswith(HELDOUT_CLIP_PREFIXES)
+
+
 def _eval_clip_stems(eval_dir: Path) -> set[str]:
     """Clips the ball_eval harness scores on = those with a GT .jsonl sidecar."""
     return {p.stem for p in eval_dir.glob("*.jsonl")}
@@ -520,7 +532,7 @@ def export(
     rows_by_clip: dict[str, list] = defaultdict(list)
     excluded_boxes = 0
     for r in df.itertuples():
-        if canonical_clip_id(r.game_id) in excluded_ids:
+        if canonical_clip_id(r.game_id) in excluded_ids or is_heldout_clip(r.game_id):
             excluded_boxes += 1
             continue
         rows_by_clip[r.game_id].append(r)
