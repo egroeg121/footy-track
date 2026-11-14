@@ -638,9 +638,11 @@ async function saveGt() {
   return true;
 }
 async function saveAndNext() {
-  if (!(await saveGt())) return;   // stay put (status already shows why)
+  // a frame marked not-broadcast has no GT to save: just move on
+  const nb = (state.notBroadcast || []).includes(state.frame);
+  if (!nb && !(await saveGt())) return;   // stay put (status already shows why)
   const ok = state.clips.some(c => clipState(c) === "todo");
-  if (!ok) { status("saved: all clips in this queue are done"); return; }
+  if (!ok) { status(`${nb ? "skipped" : "saved"}: all clips in this queue are done`); return; }
   await goNextTodo();
 }
 function syncNb() {
