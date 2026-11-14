@@ -82,6 +82,20 @@ def _cmd_run(args) -> int:
     return 0
 
 
+def _cmd_rerefine(args) -> int:
+    from footy_track.calibration.prelabel.rerefine import rerefine  # noqa: PLC0415
+
+    gt, clips = _dirs(args)
+    dirs = [clips] + [Path(d) for d in (args.extra_clips_dir or [])]
+    s = rerefine(gt, dirs, clips=args.clips, runs=args.runs, fit_k1=args.fit_k1, dry_run=args.dry_run,
+                 workers=args.workers)
+    print(f"rerefined={s.rerefined} now_failed={s.now_failed} unchanged={s.unchanged} errors={len(s.errors)}"
+          + (" (dry run: nothing written)" if args.dry_run else ""))
+    for e in s.errors:
+        print("error:", e)
+    return 0
+
+
 def _cmd_sweep(args) -> int:
     from footy_track.calibration.prelabel import sweep as sw  # noqa: PLC0415
 
@@ -138,6 +152,14 @@ def main(argv: list[str] | None = None) -> int:
     r.add_argument("--render-dir", help="also save candidate/overlay/diagram images here")
     r.add_argument("--run-id")
     r.set_defaults(fn=_cmd_run)
+    rr = sub.add_parser("rerefine", help="re-run detection + refinement on 'proposed' items (no Claude calls)")
+    rr.add_argument("--clips", nargs="+")
+    rr.add_argument("--runs", nargs="+")
+    rr.add_argument("--fit-k1", action=argparse.BooleanOptionalAction, default=True)
+    rr.add_argument("--extra-clips-dir", nargs="+", help="more directories to search for videos")
+    rr.add_argument("--dry-run", action="store_true")
+    rr.add_argument("--workers", type=int, default=2)
+    rr.set_defaults(fn=_cmd_rerefine)
     sw = sub.add_parser("sweep", help="noise sweep: success vs label noise, before/after line refinement")
     sw.add_argument("--clip", required=True)
     sw.add_argument("--frames", required=True, help="comma-separated GT frame indices")
