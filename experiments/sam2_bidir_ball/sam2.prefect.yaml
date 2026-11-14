@@ -13,3 +13,11 @@ deployments:
     entrypoint: sam2_ball.py:sam2_ball
     parameters: {run_name: "", clips: arsenal_example, models: small, variants: "full,crop512"}
     work_pool: {name: gpu}
+  - name: sam2-machine
+    entrypoint: sam2_ball.py:sam2_machine
+    parameters: {run_name: "", spec: "", model: small, variant: crop512}
+    work_pool: {name: gpu}
+  - name: sam2-detect
+    entrypoint: sam2_ball.py:sam2_detect
+    parameters: {clip: arsenal_example}
+    work_pool: {name: gpu}
