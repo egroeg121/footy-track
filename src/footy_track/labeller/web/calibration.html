@@ -541,7 +541,10 @@ async function deleteGt() {
 }
 
 // ---------------------------------------------------------------- wiring
-$("clipSel").onchange = () => { state.dirty = false; selectClip(); };
+$("clipSel").onchange = () => {  // switching clip used to drop unsaved points silently
+  if (state.dirty && state.imgPts.length && !confirm("Discard unsaved points on this frame?")) { $("clipSel").value = state.clip; return; }
+  state.dirty = false; selectClip();
+};
 $("frameSlider").onchange = e => gotoFrame(parseInt(e.target.value));
 $("frameNum").onchange = e => gotoFrame(parseInt(e.target.value) || 0);
 $("prevBtn").onclick = () => gotoFrame(state.frame - 1);
