@@ -200,6 +200,8 @@ class RunConfig:
     #: otherwise ``k1`` (default 0 = off) is a given value, e.g. one per clip / zoom level.
     k1: float = 0.0
     fit_k1: bool = False
+    #: fit a physical pinhole camera instead of a free homography (see refine.CameraPrior)
+    pinhole: bool = False
     run_id: str | None = None
 
 
@@ -265,7 +267,7 @@ def run_prelabel(cfg: RunConfig, identifier: Identifier, log=print) -> RunSummar
                 rec = failed_record(idx, (iw, ih), pitch, f"unusable: {res.unusable_reason or 'unspecified'}", res)
             else:
                 fit = fit_and_score(res.labels, pitch, det, (iw, ih), line_labels=res.line_labels, refine=cfg.refine,
-                                 k1=cfg.k1, fit_k1=cfg.fit_k1)
+                                 k1=cfg.k1, fit_k1=cfg.fit_k1, camera=cfg.pinhole or None)
                 if not fit.ok:
                     rec = failed_record(idx, (iw, ih), pitch, fit.failure, res, fit.labels)
                 else:

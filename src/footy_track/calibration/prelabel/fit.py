@@ -330,6 +330,23 @@ def _pad_visible(H: np.ndarray, labels: list[Label], pitch: PitchModel, det: Det
     return list(labels) + [Label(k, uv, 0.3, None, None, True, None if k else xy) for k, uv, xy in add]
 
 
+
+#: refit without the far-edge strip only when that lowers the median label error (px at 1568 wide) by this much
+FAR_OFF_MARGIN_PX = 4.0
+
+
+def _label_px_err(rr, labels, inl, pitch, image_size, det) -> float:
+    """Median reprojection error (px, scaled to 1568 wide) of the inlier labels under a refinement result."""
+    dist = geo.make_distortion(rr.k1, det.size[0] / det.size[1])
+    sel = [lb for lb, k in zip(labels, inl, strict=True) if k]
+    if not sel:
+        return float("inf")
+    uv = np.array([lb.uv for lb in sel])
+    xy = np.array([label_xy(lb, pitch) for lb in sel])
+    e = geo.reprojection_errors(rr.H, uv, xy, image_size, dist)["px"]
+    return float(np.median(e[np.isfinite(e)]) * 1568.0 / image_size[0]) if np.isfinite(e).any() else float("inf")
+
+
 def fit_and_score(
     labels: list[Label],
     pitch: PitchModel,
@@ -341,6 +358,7 @@ def fit_and_score(
     k1: float = 0.0,
     fit_k1: bool = False,
     k1_prior: float = 1.0,
+    camera=None,
 ) -> FitResult:
     """Coarse fit (RANSAC DLT over point labels; a points+lines DLT when there are
     too few points), then line refinement against the white-line mask
@@ -396,8 +414,20 @@ def fit_and_score(
             line_labels=lines,
             far_mask=det.far_line,
             starts=starts,
-            k1=k1, fit_k1=fit_k1, k1_prior=k1_prior,
+            k1=k1, fit_k1=fit_k1, k1_prior=k1_prior, camera=camera,
         )
+        if camera and rr.applied and det.far_line is not None and det.far_line.any():
+            # The far-edge strip can be the hoarding base a metre or two behind the real touchline (circle-only
+            # views): it then shrinks the whole pitch. Refit without it and keep that one if it explains the
+            # labels (independent evidence of scale) clearly better.
+            rr2 = refine_homography(
+                H, pitch, det.lines_mask, det.grass,
+                prior_points=[(lb.keypoint_id, lb.uv, lb.confidence) for lb, k in zip(labels, inl_arr, strict=True) if k],
+                line_labels=lines, far_mask=None, starts=starts, k1=k1, fit_k1=fit_k1, k1_prior=k1_prior, camera=camera,
+            )
+            if rr2.applied and _label_px_err(rr2, labels, inl_arr, pitch, image_size, det) + FAR_OFF_MARGIN_PX < \
+                    _label_px_err(rr, labels, inl_arr, pitch, image_size, det):
+                rr = rr2
         if rr.applied:
             H_final = rr.H
             dist_f = geo.make_distortion(rr.k1, det.size[0] / det.size[1])

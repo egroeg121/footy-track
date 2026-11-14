@@ -327,3 +327,36 @@ masks, not the labels (Claude's centre-circle / halfway points were right):
 k1 helps further (the circle and the far line cannot both fit a plain homography): `--fit-k1` gave +0.05..+0.15 in
 score on the affected frames, but stays opt-in. Not fixed: frames where Claude gives < 4 usable points, and panned
 shots where the far line is out of view.
+
+## 10. Hard views: Aston Villa and Bournemouth (pinhole camera mode)
+
+**What the verdicts looked like.** Arsenal-Man City 32/14/15 accepted/rejected/failed, Aston Villa 12/23/4, Bournemouth 0/12/37.
+Most Villa verdicts and all but a few Bournemouth ones were given on fits made *before* the lens-k1 and far-touchline changes
+(`rerefined`/`previous` is only set on 5 Villa and 3 Bournemouth records; proposals carry no review timestamp). Findings, from
+rendering camera view + warp for every rejected frame and decomposing each stored `H` into a camera
+(`refine.decompose_G`: square pixels, centred principal point):
+
+1. **Non-physical homographies.** The three Arsenal matches' stored fits put the camera at about (0, -65, 15) m (x along the pitch,
+   y behind the near touchline, z up; Villa accepted median (0, -64, 15), Man City accepted (0, -66, 15)). The Bournemouth rejects
+   have |r1|/|r2| of 1.2 to 5.7 (a real pinhole is 1) and cameras at 7-45 m height. A free 8-DOF `H` can express such cameras; a
+   centre-circle + halfway-line view (4-5 collinear/near-collinear labels) does not pin it down.
+2. **The far-edge strip is the hoarding, not the touchline.** On circle-only views the strip term of §9 pulls the model touchline
+   onto the advertising-board base 1-3 m behind the real line; the whole pitch shrinks (Villa seg110 f45: model circle smaller than
+   the visible ring and than Claude's own CC_LEFT/RIGHT labels; removing the term made it match).
+3. **Claude's labels on Bournemouth failures are often wrong, not just imprecise** (seg030 f154, seg009 f87: points floating on the
+   grass or on the hoarding, 0/9 RANSAC inliers; seg035 f320: the circle's right extreme labelled as a penalty-box point).
+   Not fixable offline; needs a prompt change / relabel (not attempted: <= 10 live calls budget, no evidence for a specific prompt fix).
+4. **Villa corner/penalty-box views (seg020, seg140): no visible defect.** Overlays sit on the visible lines at full resolution and
+   the rejected frames differ from the accepted f36 by 4-17 px mean, so those verdicts are not explained by fit error that we can see.
+
+**Fix (opt-in `--pinhole` on `run` / `rerefine`).** `refine_homography(camera=True)` replaces the free `H` by a 7-DOF pinhole camera
+(log f, rotation, camera centre) with the same cost; starts are the 8-DOF winner and a look-at grid fitted to the labels;
+`CameraPrior` can add a per-match camera-position prior (default weight 0: it did not help on the frames tried). It is skipped when
+the free fit already decomposes to ratio 0.8-1.25. `fit_and_score(camera=...)` also refits without the far-edge strip and keeps that
+fit when it lowers the median label error by > 4 px.
+
+**Measured (offline, stored labels, 1 process).** 51 frames: see the task report; summary: Bournemouth wide circle frames
+(f805, f161, f251, f826, f229) go from ratio 1.2-5.7 to exactly 1 with far line on the grass edge and no boards in the warp; Villa
+rejected frames change by 4-29 px mean; accepted frames change by 2-12 px mean except Man City seg031 f328 (23 px, one regression:
+the camera fit disagrees with a box line the old fit followed). Not solved: circle-only frames where the model circle is still
+smaller than the ring (Bournemouth seg015 f586, f251), frames whose far touchline is out of view, and wrong labels (item 3).

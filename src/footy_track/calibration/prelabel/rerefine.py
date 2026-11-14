@@ -44,7 +44,7 @@ def labels_from_record(rec: dict):
     return labels, lines
 
 
-def new_record(old: dict, frame, pitch: PitchModel, fit_k1: bool) -> dict:
+def new_record(old: dict, frame, pitch: PitchModel, fit_k1: bool, camera=None) -> dict:
     """Fresh record for ``old`` from ``frame``. Pure: no I/O."""
     from footy_track.calibration.prelabel.candidates import find_candidates  # noqa: PLC0415
     from footy_track.calibration.prelabel.fit import fit_and_score  # noqa: PLC0415
@@ -53,7 +53,7 @@ def new_record(old: dict, frame, pitch: PitchModel, fit_k1: bool) -> dict:
     ih, iw = frame.shape[:2]
     det = find_candidates(frame)
     labels, lines = labels_from_record(old)
-    fit = fit_and_score(labels, pitch, det, (iw, ih), line_labels=lines, refine=True, fit_k1=fit_k1)
+    fit = fit_and_score(labels, pitch, det, (iw, ih), line_labels=lines, refine=True, fit_k1=fit_k1, camera=camera)
     view = old.get("view")
 
     class _Res:  # carries the stored view into the record builders
@@ -81,7 +81,7 @@ def _work(job):
     from footy_track.calibration.prelabel.pipeline import find_video  # noqa: PLC0415
     from footy_track.calibration.video import read_frame  # noqa: PLC0415
 
-    clip, run_id, idx, old, clips_dirs, fit_k1, pitch_dims = job
+    clip, run_id, idx, old, clips_dirs, fit_k1, pitch_dims, pinhole = job
     try:
         video = next((v for d in clips_dirs if (v := find_video(Path(d), clip))), None)
         if video is None:
@@ -89,7 +89,7 @@ def _work(job):
         frame = read_frame(video, int(idx))
         if frame is None:
             return clip, run_id, idx, None, "cannot read frame"
-        return clip, run_id, idx, new_record(old, frame, PitchModel(*pitch_dims), fit_k1), None
+        return clip, run_id, idx, new_record(old, frame, PitchModel(*pitch_dims), fit_k1, camera=pinhole or None), None
     except Exception as e:  # noqa: BLE001
         return clip, run_id, idx, None, f"{type(e).__name__}: {e}"
 
@@ -106,7 +106,7 @@ class RerefineSummary:
 
 
 def rerefine(gt_dir: Path, clips_dirs, clips=None, runs=None, fit_k1=True, dry_run=False, workers=2,
-             log=print) -> RerefineSummary:
+             log=print, pinhole=False) -> RerefineSummary:
     gt_dir = Path(gt_dir)
     clips_dirs = [str(d) for d in (clips_dirs if isinstance(clips_dirs, (list, tuple)) else [clips_dirs])]
     want = {canonical_clip_id(c) for c in clips} if clips else None
@@ -122,7 +122,7 @@ def rerefine(gt_dir: Path, clips_dirs, clips=None, runs=None, fit_k1=True, dry_r
             for idx, rec in run["frames"].items():
                 if rec.get("status") == "proposed":
                     pd = tuple(rec.get("pitch_dims") or (105.0, 68.0))
-                    jobs.append((clip, run_id, idx, rec, clips_dirs, fit_k1, pd))
+                    jobs.append((clip, run_id, idx, rec, clips_dirs, fit_k1, pd, pinhole))
                 else:
                     s.unchanged += 1
     log(f"{len(jobs)} proposed items to re-refine ({s.unchanged} non-proposed left alone)")
