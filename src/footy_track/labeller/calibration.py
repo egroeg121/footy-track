@@ -159,7 +159,8 @@ def mark_not_broadcast(clip: str, idx: int, *, overwrite: bool = False, run_id: 
     (the named ``run_id``'s whatever its status; other runs' only while still
     ``proposed``/``failed``). A frame that already has calibration GT (hand or accepted)
     is refused with ``{"conflict": <existing GT record>}`` and nothing is written, unless
-    ``overwrite``, which also removes that GT record.
+    ``overwrite``, which moves that GT record into the flag (``displaced_gt``) so
+    :func:`clear_not_broadcast` can put it back: GT is never destroyed by this action.
     """
     existing = _read_gt(clip)["frames"].get(str(idx))
     if existing is not None and not overwrite:
@@ -170,6 +171,8 @@ def mark_not_broadcast(clip: str, idx: int, *, overwrite: bool = False, run_id: 
         rec = {"type": NOT_BROADCAST, "ts": ts}
         if run_id:
             rec["run_id"] = run_id
+        if existing is not None:
+            rec["displaced_gt"] = existing
         doc["frames"][str(idx)] = rec
 
     update_frame_types(_gt_marks_dir(), clip, _flag)
@@ -195,14 +198,24 @@ def mark_not_broadcast(clip: str, idx: int, *, overwrite: bool = False, run_id: 
 
 
 def clear_not_broadcast(clip: str, idx: int) -> bool:
-    """Undo ``mark_not_broadcast``; proposals go back to their previous status. ``False``
-    when the frame was not flagged."""
+    """Undo ``mark_not_broadcast``; proposals go back to their previous status and any GT
+    the mark displaced is restored (unless the frame has new GT since). ``False`` when the
+    frame was not flagged."""
     gone: list[bool] = []
+    displaced: list[dict] = []
 
     def _unflag(doc: dict) -> None:
-        gone.append(doc["frames"].pop(str(idx), None) is not None)
+        rec = doc["frames"].pop(str(idx), None)
+        gone.append(rec is not None)
+        if rec and rec.get("displaced_gt"):
+            displaced.append(rec["displaced_gt"])
 
     update_frame_types(_gt_marks_dir(), clip, _unflag)
+    if displaced:
+        doc = _read_gt(clip)
+        if str(idx) not in doc["frames"]:
+            doc["frames"][str(idx)] = displaced[0]
+            _write_gt(clip, doc)
 
     def _props(doc: dict) -> None:
         for run in doc["runs"].values():
@@ -250,7 +263,7 @@ def _not_broadcast_conflict(existing: dict) -> JSONResponse:
     return JSONResponse(
         {"ok": False, "existing_gt": "human" if human else "machine",
          "error": f"this frame already has {what} calibration GT; marking it not broadcast "
-                  "would delete that GT. Resend with overwrite=true to do so"},
+                  "would set that GT aside (Undo restores it). Resend with overwrite=true to do so"},
         status_code=409,
     )
 
