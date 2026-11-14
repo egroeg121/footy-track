@@ -1,0 +1,15 @@
+# SAM2.1 bidirectional ball-propagation experiment (sam2_ball.py).
+# Deploy (from the mini, auth loaded): cd ~/code/jobs && $PF cli deploy --prefect-file sam2.prefect.yaml --all
+# GPU job: run ~/.claude/skills/prefect-jobs/scripts/sync-desktop.sh first.
+name: jobs
+prefect-version: 3.6.29
+
+pull:
+  - prefect.deployments.steps.set_working_directory:
+      directory: /home/george/code/jobs
+
+deployments:
+  - name: sam2-ball
+    entrypoint: sam2_ball.py:sam2_ball
+    parameters: {run_name: "", clips: arsenal_example, models: small, variants: "full,crop512"}
+    work_pool: {name: gpu}
