@@ -280,3 +280,29 @@ stages (the coarse capture stage keeps it fixed), with a quadratic (non-robust) 
 given value (per clip / zoom level) and the coarse fit then undistorts the labels first.
 `prelabel_calibration run --fit-k1` / `--k1 0.012`; the default stays **off**. k1 trades off against
 H (focal length / tilt) on frames with few lines, so a per-clip value is the safe way to use it.
+
+## 9. The far touchline on a high wide camera (Bournemouth)
+
+Failure seen on `arsenal_bournemouth_1st_*`: the fitted far touchline landed in the stands / on the hoarding
+(median 30-100 px off the real line at 1568 wide), most visibly at the HALFWAY_TOP junction. Diagnosed from the
+masks, not the labels (Claude's centre-circle / halfway points were right):
+
+1. **Grass mask leaked.** The hue-only test also accepts the dark green-tinted stands and the apron, so "grass" ran
+   up past the hoardings and the line mask filled with hoarding lettering and crowd texture. `grass_mask` now redoes
+   the mask with a saturation (0.58x) / brightness (0.5x) gate relative to the pitch's own median colour
+   (`pitch_colour`) when that changes the result; frames it does not change keep the old mask byte-for-byte.
+2. **The far touchline was not in the mask at all.** From this camera it is 1-3 px, *not brighter than the grass*
+   (a saturation dip, V ~ grass) so the V top-hat misses it. `far_edge_line` finds it as a long, thin, pale strip
+   hugging the top edge of the pitch (opening with +-30 deg line kernels so players' legs drop out); it is ORed
+   into `lines_mask` and also returned as `Detection.far_line`. It is suppressed if the strip is much brighter than
+   the grass (`FAR_MAX_V_RATIO`; that is a white board base, which on Arsenal-Man City sits a few metres *behind*
+   the real white touchline and must not attract the fit) or in the lower 40 % of the frame.
+3. **Capture range.** With labels only on the centre circle the coarse H puts the far line 70-200 px away, outside
+   the 40 px capture of the DT. `refine_homography(far_mask=...)` adds a term (wide capture, weight
+   `FAR_WEIGHT` = 2) pulling whichever model touchline projects highest to the strip, active only when it lands
+   within `FAR_MAX_DY_FRAC` of the image height of it. `fit_and_score` passes `det.far_line`; other callers are
+   unchanged. "On grass" is also tested with a few px margin, because the touchline is the pitch's edge.
+
+k1 helps further (the circle and the far line cannot both fit a plain homography): `--fit-k1` gave +0.05..+0.15 in
+score on the affected frames, but stays opt-in. Not fixed: frames where Claude gives < 4 usable points, and panned
+shots where the far line is out of view.

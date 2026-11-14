@@ -88,10 +88,16 @@ class RefineResult:
 
 def model_samples(pitch: PitchModel, step_m: float = 0.5) -> np.ndarray:
     """(N, 2) pitch points (metres) along every line and arc."""
-    pts = []
-    for poly in pitch.polylines().values():
-        pts.append(geo._densify(np.asarray(poly, np.float64), step_m))
-    return np.concatenate(pts)
+    return _model_samples_grouped(pitch, step_m)[0]
+
+
+def _model_samples_grouped(pitch: PitchModel, step_m: float = 0.5):
+    pts, names = [], []
+    for name, poly in pitch.polylines().items():
+        d = geo._densify(np.asarray(poly, np.float64), step_m)
+        pts.append(d)
+        names.append(np.full(len(d), name))
+    return np.concatenate(pts), np.concatenate(names)
 
 
 def _truncated_dt(mask: np.ndarray, trunc: float, blur: float) -> np.ndarray:
@@ -191,15 +197,43 @@ def _pitch_line_h(seg: np.ndarray) -> np.ndarray:
 
 
 class _Problem:
-    def __init__(self, pitch, samples, size, prior_pts, prior_lines, prior_w, aspect=geo.DEFAULT_ASPECT):
+    def __init__(self, pitch, samples, size, prior_pts, prior_lines, prior_w, aspect=geo.DEFAULT_ASPECT,
+                 far=None):
         self.pitch, self.samples, self.size, self.aspect = pitch, samples, size, aspect
+        self.far = far  # None or dict(groups={name: sample idx}, y=ridge median y px, weight, dts=[per stage])
         self.prior_xy = np.array([p[0] for p in prior_pts]).reshape(-1, 2)  # metres
         self.prior_px = np.array([p[1] for p in prior_pts]).reshape(-1, 2)  # working px
         self.prior_conf = np.array([p[2] for p in prior_pts], float)
         self.prior_lines = prior_lines  # [(line3, pts_px (k,2), conf)]
         self.prior_w = prior_w
 
-    def residual(self, G, idx, dt, trunc, cauchy, ref, k1=0.0):
+    def _far_residual(self, G, trunc_far, dt, k1):
+        """Distance of the model's far touchline (whichever touchline projects highest in the image, if it
+        is near the detected far-edge strip) to that strip, with a wide capture range. Few samples carry
+        a lot of the depth/tilt information on a high wide camera, hence the extra weight."""
+        far = self.far
+        h = self.size[1]
+        nmax = max(len(gi) for gi in far["groups"].values())
+        out = np.zeros(nmax)  # fixed length: the LM needs a constant residual count
+        best = None
+        for name, gi in far["groups"].items():
+            xy, w = _project(G, self.samples[gi], k1, self.size, self.aspect)
+            ok = (w > 1e-9) & np.all(np.isfinite(xy), axis=1)
+            ok &= (xy[:, 0] >= 0) & (xy[:, 0] <= self.size[0] - 1) & (xy[:, 1] >= 0) & (xy[:, 1] <= h - 1)
+            if ok.sum() < 15:
+                continue
+            my = float(np.median(xy[ok, 1]))
+            if best is None or my < best[0]:
+                best = (my, xy, ok)
+        if best is None or abs(best[0] - far["y"]) > far["max_dy_frac"] * h:
+            return out
+        _, xy, ok = best
+        d = np.full(len(xy), trunc_far)
+        d[ok] = _bilinear(dt, xy[ok])
+        out[: len(d)] = far["weight"] * d
+        return out
+
+    def residual(self, G, idx, dt, trunc, cauchy, ref, k1=0.0, stage_i=None):
         """-> (r, weights-free residual vector, with robust weights applied by caller)."""
         xy, w = _project(G, self.samples[idx], k1, self.size, self.aspect)
         bad = (w <= 1e-9) | ~np.all(np.isfinite(xy), axis=1)
@@ -210,6 +244,8 @@ class _Problem:
             trunc, _bilinear(dt, xy[ok]),
         )
         parts = [d]
+        if self.far is not None and stage_i is not None:
+            parts.append(self._far_residual(G, trunc_far=self.far["trunc"][stage_i], dt=self.far["dts"][stage_i], k1=k1))
         # prior: labelled points as px reprojection error, robustified separately
         if len(self.prior_xy) and self.prior_w > 0:
             pxy, pw = _project(G, self.prior_xy, k1, self.size, self.aspect)
@@ -232,8 +268,13 @@ def _cauchy_w(r: np.ndarray, c: float) -> np.ndarray:
 #: (non-robust) penalty: with 150, k1 = 0.02 (~20 px of bow at the image edge) costs 3 px.
 K1_PRIOR_PX = 150.0
 
+#: weight of the far-touchline term (see ``refine_homography(far_mask=...)``) and its minimum strip length
+FAR_WEIGHT = 2.0
+FAR_MIN_EXTENT_FRAC = 0.25
+FAR_MAX_DY_FRAC = 0.35
 
-def _lm(problem, G0, idx, dt, st: RefineStage, scale: float, k1=0.0, fit_k1=False, k1_prior=1.0):
+
+def _lm(problem, G0, idx, dt, st: RefineStage, scale: float, k1=0.0, fit_k1=False, k1_prior=1.0, stage_i=None):
     """LM on the 8 DOF of G (+ k1 when ``fit_k1``). Returns (G, k1, robust cost)."""
     trunc, cauchy = st.trunc_px * scale, st.cauchy_px * scale
     npar = 9 if fit_k1 else 8
@@ -242,7 +283,7 @@ def _lm(problem, G0, idx, dt, st: RefineStage, scale: float, k1=0.0, fit_k1=Fals
     def cost_and_r(p):
         G = _G_from_params(G0, p[:8])
         k = k1 + (p[8] if fit_k1 else 0.0)
-        r, n = problem.residual(G, idx, dt, trunc, cauchy, scale, k)
+        r, n = problem.residual(G, idx, dt, trunc, cauchy, scale, k, stage_i)
         w = _cauchy_w(r, cauchy)
         c = float(np.sum(0.5 * cauchy**2 * np.log1p((r / cauchy) ** 2)))
         if fit_k1:  # quadratic prior pulling k1 to 0, outside the robust loss
@@ -339,6 +380,8 @@ def refine_homography(
     fit_k1: bool = False,
     k1_prior: float = 1.0,
     k1_limit: float = 0.15,
+    far_mask: np.ndarray | None = None,
+    far_weight: float = FAR_WEIGHT,
 ) -> RefineResult:
     """Refine ``H`` (normalised image -> pitch m) against the white-line mask.
 
@@ -349,6 +392,10 @@ def refine_homography(
     every start is refined and the best by (all-sample DT cost + a small label
     term) wins, which makes the fit robust to a poor DLT from noisy labels.
     ``label_tol_px`` is the label error (px at 1568 wide) that is free in the ranking.
+    ``far_mask`` (bool, the pale far-touchline strip from the detector) adds a wide-capture, extra-weight term
+    pulling whichever model touchline projects highest to that strip, when it lands within ``FAR_MAX_DY_FRAC``
+    of the image height of it; this is what fixes the depth/tilt of a high wide camera whose labels are all
+    near the centre circle.
     ``max_shift_frac`` rejects a result that moved the in-view model further than
     this fraction of the image width from ``H`` (runaway; 90th percentile over samples in view under both).
     The returned ``H`` is the input when the result is rejected.
@@ -372,7 +419,10 @@ def refine_homography(
         G = np.linalg.inv(np.asarray(Hn, np.float64) @ to_norm)
         return G / np.linalg.norm(G)
 
-    samples = model_samples(pitch)
+    samples, sample_names = _model_samples_grouped(pitch)
+    # the far touchline sits on the very edge of the pitch, so "on grass" is tested with a margin
+    rg = max(2, w_img // 260)
+    grass = cv2.dilate(grass.astype(np.uint8), cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * rg + 1, 2 * rg + 1))).astype(bool)
     kps = pitch.keypoints()
     px = np.array([w_img, h_img], float)
     pts = [(np.array(kps[k]), np.array(uv) * px, conf) for k, uv, conf in (prior_points or []) if k in kps]
@@ -381,7 +431,18 @@ def refine_homography(
     for ll in line_labels or []:
         if ll.line_id in segs and len(ll.points) >= 2:
             plines.append((_pitch_line_h(segs[ll.line_id]), np.array(ll.points, float) * px, ll.confidence))
-    problem = _Problem(pitch, samples, size, pts, plines, prior_weight, aspect)
+    far = None
+    if far_mask is not None and far_weight > 0 and far_mask.any():
+        ys, xs = np.nonzero(far_mask)
+        if xs.max() - xs.min() >= FAR_MIN_EXTENT_FRAC * w_img:
+            far = {
+                "groups": {n: np.flatnonzero(sample_names == n) for n in ("TOUCHLINE_TOP", "TOUCHLINE_BOTTOM")
+                           if n in set(sample_names)},
+                "y": float(np.median(ys)), "weight": far_weight, "max_dy_frac": FAR_MAX_DY_FRAC,
+                "trunc": [min(4.0 * st.trunc_px * scale, 0.2 * h_img) for st in stages],
+            }
+            far["dts"] = [_truncated_dt(far_mask, t, st.blur_px * scale) for t, st in zip(far["trunc"], stages, strict=True)]
+    problem = _Problem(pitch, samples, size, pts, plines, prior_weight, aspect, far)
     dts = [_truncated_dt(lines_mask, st.trunc_px * scale, st.blur_px * scale) for st in stages]
     rank_trunc = 12.0 * scale
     rank_dt = _truncated_dt(lines_mask, rank_trunc, 0.0)
@@ -418,7 +479,7 @@ def refine_homography(
             idx = np.flatnonzero(_valid_mask(G, samples, size, grass, k, aspect))
             if len(idx) < 30:
                 return None
-            G, k, c = _lm(problem, G, idx, dt, st, scale, k, fit_k1 and si >= 1, k1_prior)
+            G, k, c = _lm(problem, G, idx, dt, st, scale, k, fit_k1 and si >= 1, k1_prior, si)
             k = float(np.clip(k, -k1_limit, k1_limit))
             costs.append(c)
         return G, k, costs

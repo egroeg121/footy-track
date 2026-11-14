@@ -394,6 +394,7 @@ def fit_and_score(
             H, pitch, det.lines_mask, det.grass,
             prior_points=[(lb.keypoint_id, lb.uv, lb.confidence) for lb, k in zip(labels, inl_arr, strict=True) if k],
             line_labels=lines,
+            far_mask=det.far_line,
             starts=starts,
             k1=k1, fit_k1=fit_k1, k1_prior=k1_prior,
         )
