@@ -4,7 +4,7 @@
     python evaluate.py --kind rtdetr --weights rtdetr_1920_v11/best.pt ...        # production reference, frame t only
 
 Inference is explicit (no Ultralytics predictor) because the predictor reverses all channels of a numpy input, which
-would scramble the 5-channel layout: letterbox to 1280 (INTER_AREA, pad 114 on every channel, rect 736x1280 like val),
+would scramble the 5-channel layout: letterbox to 1280 (INTER_LINEAR like Ultralytics' dataset loader, pad 114 on every channel, rect 736x1280 like val),
 fp16 forward, NMS (conf 0.001, IoU 0.7, multi-label, ball class only), boxes mapped back to the original 1920x1080 frame.
 Metrics (AP50, recall@10px, ...) are computed from this file by report.py.
 """
@@ -26,9 +26,11 @@ MOTION_WIN = 7  # half window (px) around the GT centre for the temporal-differe
 
 def motion_scores(img5: np.ndarray, cx: float, cy: float) -> tuple[float, float]:
     """p90 of |gray(t) - neighbour| in a 15x15 window at the GT ball (the neighbours are camera-aligned already)."""
+    ih, iw = img5.shape[:2]  # cx, cy in native pixels of this image
+    cx, cy = min(max(cx, 0), iw - 1), min(max(cy, 0), ih - 1)  # a few GT centres sit on/over the frame edge
     g = cv2.cvtColor(bgr_of(img5), cv2.COLOR_BGR2GRAY).astype(np.int16)
-    x0, x1 = int(max(cx - MOTION_WIN, 0)), int(min(cx + MOTION_WIN + 1, IMG_W))
-    y0, y1 = int(max(cy - MOTION_WIN, 0)), int(min(cy + MOTION_WIN + 1, IMG_H))
+    x0, x1 = int(max(cx - MOTION_WIN, 0)), int(min(cx + MOTION_WIN + 1, iw))
+    y0, y1 = int(max(cy - MOTION_WIN, 0)), int(min(cy + MOTION_WIN + 1, ih))
     win = (slice(y0, y1), slice(x0, x1))
     dp = np.abs(g[win] - img5[win][..., 0].astype(np.int16))
     dn = np.abs(img5[win][..., 4].astype(np.int16) - g[win])
@@ -50,7 +52,7 @@ class YoloRunner:
         h, w = x.shape[:2]
         r = imgsz / max(h, w)
         nw, nh = round(w * r), round(h * r)
-        x = cv2.resize(x, (nw, nh), interpolation=cv2.INTER_AREA)
+        x = cv2.resize(x, (nw, nh), interpolation=cv2.INTER_LINEAR)
         if x.ndim == 2:
             x = x[..., None]
         ph = (-nh) % 32
@@ -74,7 +76,7 @@ class YoloRunner:
         for x1, y1, x2, y2, c, _ in det:
             x1, x2 = (x1 - left) / r, (x2 - left) / r
             y1, y2 = (y1 - top) / r, (y2 - top) / r
-            res.append([(x1 + x2) / 2, (y1 + y2) / 2, x2 - x1, y2 - y1, float(c)])
+            res.append([float((x1 + x2) / 2), float((y1 + y2) / 2), float(x2 - x1), float(y2 - y1), float(c)])
         return res
 
 
@@ -118,13 +120,17 @@ def main():
         for i, p in enumerate(files):
             img5 = read_tiff5(p)
             lab = read_labels(root / "labels" / split / (p.stem + ".txt"), BALL_CLS)
+            # a few source clips are 1280x720: report every box in the canonical 1920x1080 frame (normalised * 1920/1080)
+            ih, iw = img5.shape[:2]
+            sx, sy = IMG_W / iw, IMG_H / ih
             gt = [[c * IMG_W, d * IMG_H, w * IMG_W, h * IMG_H] for _, c, d, w, h in lab]
-            m = meta.get((split, p.stem), {})
-            rec = {"id": p.stem, "split": split, "gt": gt, "dets": runner(img5)[:60],
+            m = meta.get(("valid" if split == "val" else split, p.stem), {})  # meta.jsonl calls the val split "valid"
+            dets = [[x * sx, y * sy, w * sx, h * sy, c] for x, y, w, h, c in runner(img5)[:60]]
+            rec = {"id": p.stem, "split": split, "gt": gt, "dets": dets, "native_hw": [ih, iw],
                    "prev_status": m.get("prev", {}).get("status"), "next_status": m.get("next", {}).get("status"),
                    "strict_heldout": bool(m.get("strict_heldout", False)), "clip_id": m.get("clip_id")}
             if gt:
-                rec["motion_prev"], rec["motion_next"] = motion_scores(img5, gt[0][0], gt[0][1])
+                rec["motion_prev"], rec["motion_next"] = motion_scores(img5, gt[0][0] / sx, gt[0][1] / sy)
             out["images"].append(rec)
             if i % 50 == 0:
                 print(f"{split} {i}/{len(files)} {time.time() - t0:.0f}s", flush=True)

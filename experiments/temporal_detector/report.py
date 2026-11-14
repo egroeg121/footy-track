@@ -91,10 +91,20 @@ def per_image(im: dict) -> dict:
 
 
 # ------------------------------------------------------------------------------------------------ data
-def load_runs(runs: Path) -> dict[str, dict]:
+def load_runs(runs: Path, dataset: Path) -> dict[str, dict]:
+    """Per-model {id|split: image record}. Early runs were evaluated before evaluate.py mapped split 'val' to meta's
+    'valid', so neighbour status / clip id / strict flag are (re)filled from meta.jsonl here for every run."""
+    meta = {}
+    for line in open(dataset / "meta.jsonl"):
+        r = json.loads(line)
+        meta[("val" if r["split"] == "valid" else r["split"], r["id"])] = r
     out = {}
     for p in sorted(runs.glob("preds_*.json")):
         d = json.loads(p.read_text())
+        for im in d["images"]:
+            m = meta[(im["split"], im["id"])]
+            im["prev_status"], im["next_status"] = m["prev"]["status"], m["next"]["status"]
+            im["clip_id"], im["strict_heldout"] = m["clip_id"], bool(m.get("strict_heldout", False))
         out[p.stem.removeprefix("preds_")] = {im["id"] + "|" + im["split"]: im for im in d["images"]} | {"__meta__": d}
     return out
 
@@ -142,8 +152,11 @@ def crop_example(root: Path, im: dict, preds: dict[str, tuple], title: str, dst:
     sys_path = str(root / "images" / im["split"] / (im["id"] + ".tiff"))
     ok, pages = cv2.imdecodemulti(np.fromfile(sys_path, np.uint8), cv2.IMREAD_UNCHANGED)
     img5 = np.stack(pages, axis=2)
-    gx, gy = im["gt"][0][0], im["gt"][0][1]
-    x0, y0 = int(np.clip(gx - r, 0, 1920 - 2 * r)), int(np.clip(gy - r, 0, 1080 - 2 * r))
+    ih, iw = img5.shape[:2]  # a few clips are 1280x720: boxes in the json are in the 1920x1080 frame, convert back
+    sx, sy = 1920 / iw, 1080 / ih
+    gx, gy = im["gt"][0][0] / sx, im["gt"][0][1] / sy
+    preds = {k: ((v[0] / sx, v[1] / sy, v[2]) if v[0] is not None else v) for k, v in preds.items()}
+    x0, y0 = int(np.clip(gx - r, 0, iw - 2 * r)), int(np.clip(gy - r, 0, ih - 2 * r))
     sl = (slice(y0, y0 + 2 * r), slice(x0, x0 + 2 * r))
     bgr = np.ascontiguousarray(img5[sl][..., 1:4])
     g = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY).astype(np.int16)
@@ -161,7 +174,7 @@ def crop_example(root: Path, im: dict, preds: dict[str, tuple], title: str, dst:
     row = np.hstack(panels)
     bar = np.full((44, row.shape[1], 3), 255, np.uint8)
     cv2.putText(bar, title, (6, 17), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1, cv2.LINE_AA)
-    leg = "  ".join(f"{k}: " + ("none" if v[0] is None else f"conf {v[2]:.2f} d={np.hypot(v[0] - gx, v[1] - gy):.0f}px") for k, v in preds.items())
+    leg = "  ".join(f"{k}: " + ("none" if v[0] is None else f"conf {v[2]:.2f} d={np.hypot((v[0] - gx) * sx, (v[1] - gy) * sy):.0f}px") for k, v in preds.items())
     cv2.putText(bar, leg + "   yellow=GT  left=RGB(t)  mid=|t-prev|x4  right=|next-t|x4", (6, 36), cv2.FONT_HERSHEY_SIMPLEX, 0.42, (60, 60, 60), 1, cv2.LINE_AA)
     cv2.imwrite(str(dst), np.vstack([bar, row]))
 
@@ -180,7 +193,7 @@ def main():
     ap.add_argument("--meta", default="", help="free text put at the top of the md (training config etc.)")
     a = ap.parse_args()
 
-    runs = load_runs(a.runs)
+    runs = load_runs(a.runs, a.dataset)
     tags = [t for t in runs]
     seeds = sorted({t.split("_s")[1] for t in tags if t.startswith(("A_s", "B_s"))})
     arms = {arm: [f"{arm}_s{s}" for s in seeds if f"{arm}_s{s}" in runs] for arm in "AB"}
@@ -204,7 +217,7 @@ def main():
 
     pim = {t: {k: per_image(v) for k, v in runs[t].items() if k != "__meta__"} for t in runs}
     by_key = {k: v for k, v in runs[first].items() if k != "__meta__"}
-    res: dict = {"seeds": seeds, "motion_edges_p90_absdiff": edges, "subsets": {}, "models": list(models)}
+    res: dict = {"model_tags": models, "seeds": seeds, "motion_edges_p90_absdiff": edges, "subsets": {}, "models": list(models)}
 
     def metric_block(tag_list: list[str], keys: list[str]) -> dict:
         gt_keys = [k for k in keys if by_key[k]["gt"]]
@@ -357,11 +370,14 @@ def write_md(res, a, S, arms):
             L.append(f"| {s} | {r['n']} | {r['diff_img'][0]:+.3f} | [{r['diff_img'][1]:+.3f}, {r['diff_img'][2]:+.3f}] | "
                      f"[{r['diff_clip'][1]:+.3f}, {r['diff_clip'][2]:+.3f}] |")
     L.append("\n## Training curves (ball AP50 on val, each epoch)\n")
-    L.append("| run | epochs | best ball AP50 (epoch) | last | mean last 10 | AP50 at epoch ... | training time |")
-    L.append("|---|---|---|---|---|---|---|")
+    L.append("Ultralytics' own validator at the last epoch ('last') vs this report's explicit-inference AP50 on the same val split "
+             "(cross-check of the evaluation code path; small differences come from letterbox padding and the AP matching).\n")
+    L.append("| run | epochs | best ball AP50 (epoch) | last (Ultralytics val) | last (report.py val AP50) | mean last 10 | AP50 at epoch ... | training time |")
+    L.append("|---|---|---|---|---|---|---|---|")
     for t, c in res["curves"].items():
         pts = ", ".join(f"{k}: {v:.3f}" for k, v in c["ap50_at"].items())
-        L.append(f"| {t} | {c['epochs']} | {c['best_ball_ap50']:.3f} ({c['best_epoch']}) | {c['last']:.3f} | {c['mean_last10']:.3f} | {pts} | {c['train_seconds'] / 3600:.2f} h |")
+        mine = next((res["subsets"]["val"][m].get("ap50") for m, tl in res["model_tags"].items() if tl == [t]), None)
+        L.append(f"| {t} | {c['epochs']} | {c['best_ball_ap50']:.3f} ({c['best_epoch']}) | {c['last']:.3f} | {fmt(mine)} | {c['mean_last10']:.3f} | {pts} | {c['train_seconds'] / 3600:.2f} h |")
     L.append("\n## Examples where A and B disagree (test + heldout)\n")
     d = res["discordant"]
     L.append(f"Seed-averaged top-1 hits: B hit / A miss: {d['B_hit_A_miss']}, A hit / B miss: {d['A_hit_B_miss']}, both miss: {d['both_miss']} of {d['n']}.\n")
