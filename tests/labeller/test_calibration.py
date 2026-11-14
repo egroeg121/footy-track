@@ -99,12 +99,26 @@ def test_clips_meta_and_frame(client, cal_env):
     clips = client.get("/calibration/api/clips").json()["clips"]
     assert [(c["name"], c["n_gt"]) for c in clips] == [("arsenal_mancity_20250925_seg010", 0)]
     assert clips[0]["canonical"] == canonical_clip_id("arsenal_mancity_20250925_seg010")
+    assert clips[0]["n_not_broadcast"] == 0
     m = client.get("/calibration/api/clips/arsenal_mancity_20250925_seg010/meta").json()
     assert m["frames"] == 50 and m["gt_frames"] == []
     r = client.get("/calibration/api/frame/arsenal_mancity_20250925_seg010/3.jpg")
     assert r.status_code == 200 and r.content[:2] == b"\xff\xd8"
     assert client.get("/calibration/api/frame/arsenal_mancity_20250925_seg010/99.jpg").status_code == 404
     assert client.get("/calibration/api/frame/nope/0.jpg").status_code == 404
+
+
+def test_clips_list_counts_not_broadcast_frames(client, cal_env, clips_dir):
+    clip = "arsenal_mancity_20250925_seg010"
+    (clips_dir / "other_clip_seg001.mp4").touch()
+    assert client.put(f"/calibration/api/frame_type/{clip}/3", json={}).status_code == 200
+    assert client.put(f"/calibration/api/frame_type/{clip}/9", json={}).status_code == 200
+    by_name = {c["name"]: c for c in client.get("/calibration/api/clips").json()["clips"]}
+    assert by_name[clip]["n_not_broadcast"] == 2 and by_name[clip]["n_gt"] == 0
+    assert by_name["other_clip_seg001"]["n_not_broadcast"] == 0
+    assert client.delete(f"/calibration/api/frame_type/{clip}/3").status_code == 200
+    by_name = {c["name"]: c for c in client.get("/calibration/api/clips").json()["clips"]}
+    assert by_name[clip]["n_not_broadcast"] == 1
 
 
 def test_warp_returns_raster_of_expected_size(client, cal_env):

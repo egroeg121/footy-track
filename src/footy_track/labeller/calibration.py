@@ -450,7 +450,13 @@ async def list_clips() -> dict:
     paths = sorted(p for p in cdir.iterdir() if p.suffix.lower() in _VIDEO_SUFFIXES)
     return {
         "clips": [
-            {"name": p.stem, "canonical": canonical_clip_id(p.stem), "n_gt": len(_gt_frames(p.stem))} for p in paths
+            {
+                "name": p.stem,
+                "canonical": canonical_clip_id(p.stem),
+                "n_gt": len(_gt_frames(p.stem)),
+                "n_not_broadcast": len(_not_broadcast(p.stem)),
+            }
+            for p in paths
         ]
     }
 

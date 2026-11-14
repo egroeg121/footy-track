@@ -64,6 +64,20 @@
               background:#3a1517; border:1px solid var(--red); color:#ffb4ae; font-weight:600; }
   #fitWarn { margin:6px 10px 0; padding:6px 8px; border-radius:5px; display:none;
              background:#2e2410; border:1px solid var(--amber); color:#f0cf7a; }
+  #clipNav { display:flex; flex-wrap:wrap; align-items:center; gap:8px 10px;
+             padding:8px 12px; background:var(--panel); border-bottom:1px solid var(--border); flex:none; }
+  #clipNav button { min-height:34px; padding:5px 14px; font-weight:600; }
+  #clipNav button:disabled { opacity:.4; cursor:default; }
+  #clipNav button:disabled:hover { border-color:var(--border); }
+  #navProgress { font-weight:600; min-width:0; }
+  #navProgress .sub { color:var(--muted); font-weight:400; }
+  #clipBadge { display:inline-block; padding:2px 10px; border-radius:10px; font-size:12px; font-weight:700;
+               border:1px solid var(--border); color:var(--muted); white-space:nowrap; }
+  #clipBadge.done { background:#1b3a2a; border-color:var(--green); color:var(--green); }
+  #clipBadge.skipped { background:#2e2410; border-color:var(--amber); color:var(--amber); }
+  #clipBadge.todo { background:#10263d; border-color:var(--accent); color:var(--accent); }
+  #clipNav .spacer { flex:1; }
+  @media (max-width:700px) { #clipNav button { flex:1 1 auto; padding:5px 8px; } #clipNav .spacer { display:none; } }
   .row { display:flex; flex-wrap:wrap; gap:6px 12px; align-items:center; margin:2px 0; }
 </style>
 </head>
@@ -87,6 +101,15 @@
   <span id="nbBanner" style="display:none;color:var(--amber);font-weight:600">not a broadcast frame
     <button id="nbUndo">Undo</button></span>
 </header>
+<div id="clipNav">
+  <button id="prevClipBtn" title="previous clip ( [ )">&#9664; Prev clip</button>
+  <button id="nextClipBtn" title="next clip ( ] )">Next clip &#9654;</button>
+  <button id="nextTodoBtn" title="next clip still to do, wrapping round ( Shift+] )">Next to-do &#9654;</button>
+  <span id="navProgress">no clips</span>
+  <span id="clipBadge" title="state of this clip: done (has GT), skipped (only not-broadcast marks) or to-do"></span>
+  <span class="spacer"></span>
+  <button id="saveNextBtn" class="primary" title="Save GT, then go to the next to-do clip if the save worked">Save &amp; next &#9654;</button>
+</div>
 <div id="frameRow">
   <button id="prevBtn" title="previous frame (Left, Shift+Left = 10)">&lsaquo;</button>
   <input id="frameSlider" type="range" min="0" max="0" value="0">
@@ -130,6 +153,8 @@ const state = {
   fit: null, warpImg: null, warpKey: null, dirty: false, gtFrames: [],
   hoverKp: null, fitSeq: 0, fitError: null,
   distortion: null,            // lens model of the loaded GT/proposal ({k1,...}); null = plain homography
+  clips: [],                   // the queue: deduped by canonical, filtered by ?queue=, ordered by canonical
+  queueFilter: "",
   proposal: null,              // {run_id} while editing a machine proposal: Save accepts it as edited
 };
 
@@ -411,28 +436,127 @@ async function loadPitch() {
   // keypoint metres in stored pairs follow the pitch dims
   for (const p of state.pitchPts) if (p.id && state.pitch.keypoints[p.id]) [p.x, p.y] = state.pitch.keypoints[p.id];
 }
+// ---- clip queue / progress
+function clipState(c) { return c.n_gt >= 1 ? "done" : (c.n_not_broadcast || 0) >= 1 ? "skipped" : "todo"; }
+const STATE_LABEL = { done: "done", skipped: "skipped", todo: "to-do" };
+function buildQueue(all, filter) {
+  // One entry per canonical id (first video file wins), optional case-insensitive substring filter, ordered by canonical.
+  const seen = new Set(), out = [];
+  for (const c of all) {
+    if (seen.has(c.canonical)) continue;
+    seen.add(c.canonical); out.push(c);
+  }
+  const f = (filter || "").trim().toLowerCase();
+  return out.filter(c => !f || c.canonical.toLowerCase().includes(f))
+            .sort((a, b) => (a.canonical < b.canonical ? -1 : a.canonical > b.canonical ? 1 : 0));
+}
+const curIdx = () => state.clips.findIndex(c => c.name === state.clip);
+function nextIdx(from, pred) {  // next queue index after `from` (wrapping, never `from` itself) satisfying pred; -1 if none
+  const n = state.clips.length;
+  for (let k = 1; k < n; k++) { const i = ((from < 0 ? -1 : from) + k + n) % n; if (pred(state.clips[i])) return i; }
+  return -1;
+}
+function drawClipSelect() {
+  const sel = $("clipSel"); sel.innerHTML = "";
+  for (const c of state.clips) {
+    const o = document.createElement("option"); o.value = c.name;
+    const st = clipState(c);
+    o.textContent = (st === "done" ? "\u2713 " : st === "skipped" ? "\u2013 " : "") + c.name + (c.n_gt ? `  (${c.n_gt} GT)` : "")
+      + (st === "skipped" ? "  (not broadcast)" : "");
+    sel.appendChild(o);
+  }
+  if (state.clip) sel.value = state.clip;
+}
+function syncNav() {
+  const n = state.clips.length, i = curIdx();
+  const nDone = state.clips.filter(c => clipState(c) === "done").length;
+  const nSkip = state.clips.filter(c => clipState(c) === "skipped").length;
+  $("navProgress").innerHTML = n
+    ? `Clip ${i >= 0 ? i + 1 : "?"} / ${n} <span class="sub">&middot; ${nDone + nSkip} / ${n} done (${nDone} labelled, ${nSkip} skipped)</span>`
+    : "no clips";
+  const badge = $("clipBadge");
+  if (i >= 0) { const st = clipState(state.clips[i]); badge.className = st; badge.textContent = STATE_LABEL[st]; badge.style.display = ""; }
+  else { badge.className = ""; badge.textContent = ""; badge.style.display = "none"; }
+  const hasOther = n > 1;
+  $("prevClipBtn").disabled = $("nextClipBtn").disabled = !hasOther;
+  $("nextTodoBtn").disabled = nextIdx(i, c => clipState(c) === "todo") < 0;
+  $("saveNextBtn").disabled = !n;
+  if ($("clipSel").value !== state.clip && state.clip) $("clipSel").value = state.clip;
+}
+function syncUrl() {
+  // keep ?clip=&queue= so a reload stays on this clip (frame/proposal links are one-shot and dropped)
+  try {
+    const q = new URLSearchParams();
+    if (state.clip) q.set("clip", state.clip);
+    if (state.queueFilter) q.set("queue", state.queueFilter);
+    history.replaceState(null, "", location.pathname + (q.toString() ? "?" + q : "") + location.hash);
+  } catch (e) {}
+}
+let countsSeq = 0;
+async function refreshCounts() {  // re-fetch per-clip GT / not-broadcast counts so progress is live
+  const seq = ++countsSeq;
+  try {
+    const r = await (await api("/clips")).json();
+    if (seq !== countsSeq) return;
+    const fresh = new Map(r.clips.map(c => [c.name, c]));
+    for (const c of state.clips) { const f = fresh.get(c.name); if (f) { c.n_gt = f.n_gt; c.n_not_broadcast = f.n_not_broadcast || 0; } }
+    drawClipSelect(); syncNav();
+  } catch (e) { /* progress just stays stale */ }
+}
 async function loadClips() {
   const r = await (await api("/clips")).json();
-  const sel = $("clipSel"); sel.innerHTML = "";
-  for (const c of r.clips) {
-    const o = document.createElement("option"); o.value = c.name;
-    o.textContent = c.name + (c.n_gt ? `  (${c.n_gt} GT)` : ""); sel.appendChild(o);
+  const qp = new URLSearchParams(location.search);
+  state.queueFilter = (qp.get("queue") || "").trim();
+  state.clips = buildQueue(r.clips, state.queueFilter);
+  const want = qp.get("clip");
+  // links may use the canonical id (arsenal_bournemouth_1st_seg005) instead of the video stem
+  const hitAll = want ? (r.clips.find(c => c.name === want) || r.clips.find(c => c.canonical === want)) : null;
+  if (state.queueFilter && !state.clips.length) {
+    status(`no clips match queue "${state.queueFilter}": showing all`, true);
+    state.queueFilter = ""; state.clips = buildQueue(r.clips, "");
+  } else if (hitAll && !state.clips.some(c => c.canonical === hitAll.canonical)) {
+    status(`clip ${want} is not in queue "${state.queueFilter}": showing all clips`, true);
+    state.queueFilter = ""; state.clips = buildQueue(r.clips, "");
   }
+  let start = null;
+  if (hitAll) start = state.clips.find(c => c.canonical === hitAll.canonical) || null;   // dedupe may have kept a sibling file
+  else if (want) status(`clip ${want} not found`, true);
+  if (!start) start = state.clips.find(c => clipState(c) === "todo") || state.clips[0] || null;
+  state.clip = start ? start.name : null;
+  drawClipSelect(); syncNav();
   if (!r.clips.length) status("no clips found", true);
-  const want = new URLSearchParams(location.search).get("clip");
-  if (want) {  // links may use the canonical id (arsenal_bournemouth_1st_seg005) instead of the video stem
-    const hit = r.clips.find(c => c.name === want) || r.clips.find(c => c.canonical === want);
-    if (hit) sel.value = hit.name; else status(`clip ${want} not found`, true);
+  return state.clips.length;
+}
+function changeClip(name) {
+  // Single entry point for every clip change (select, buttons, keys): same unsaved-points guard as before.
+  if (!name || name === state.clip) { syncNav(); return Promise.resolve(); }
+  if (state.dirty && state.imgPts.length && !confirm("Discard unsaved points on this frame?")) {
+    $("clipSel").value = state.clip; return Promise.resolve();
   }
-  return r.clips.length;
+  state.dirty = false; state.clip = name; syncNav();
+  return selectClip();
+}
+function goRel(step) {
+  const n = state.clips.length; if (n < 2) return Promise.resolve();
+  return changeClip(state.clips[(curIdx() + step + n) % n].name);
+}
+function goNextTodo() {
+  const i = nextIdx(curIdx(), c => clipState(c) === "todo");
+  if (i < 0) { status("no other to-do clips left"); return Promise.resolve(); }
+  return changeClip(state.clips[i].name);
 }
 async function selectClip() {
-  state.clip = $("clipSel").value; if (!state.clip) return;
-  state.meta = await (await api(`/clips/${encodeURIComponent(state.clip)}/meta`)).json();
+  if (!state.clip) return;
+  $("clipSel").value = state.clip; syncNav();
+  const wantClip = state.clip;
+  const meta = await (await api(`/clips/${encodeURIComponent(wantClip)}/meta`)).json();
+  if (state.clip !== wantClip) return;   // user already moved on to another clip while this one loaded
+  state.meta = meta;
   state.gtFrames = state.meta.gt_frames; state.notBroadcast = state.meta.not_broadcast || [];
   $("frameSlider").max = $("frameNum").max = Math.max(0, state.meta.frames - 1);
   $("frameTotal").textContent = `/ ${state.meta.frames - 1}`;
   const qp = new URLSearchParams(location.search);
+  syncUrl();   // after qp is read: ?frame=/?proposal= are one-shot
   const f0 = qp.get("frame") !== null ? parseInt(qp.get("frame")) : null;
   await gotoFrame(f0 !== null && !isNaN(f0) ? f0 : (state.gtFrames.length ? state.gtFrames[0] : 0), true);
   const run = qp.get("proposal");
@@ -493,21 +617,31 @@ async function loadGt(quiet) {
   } catch (e) { status("load: " + e.message, true); }
 }
 async function saveGt() {
-  if (nPairs() < 4) { status("need at least 4 complete pairs", true); return; }
+  // resolves true only when the GT was actually saved / the proposal accepted
+  if (nPairs() < 4) { status("need at least 4 complete pairs", true); return false; }
   if (state.proposal) {
     try {
       const body = { ...fitBody(), overwrite: state.gtFrames.includes(state.frame) };
       const r = await (await api(`/proposals/${encodeURIComponent(state.clip)}/${encodeURIComponent(state.proposal.run_id)}/${state.frame}/accept`, jsonOpts("POST", body))).json();
       state.gtFrames = r.gt_frames; state.dirty = false; state.proposal = null; $("propBanner").style.display = "none"; drawChips();
       status(`accepted as ${r.status} (mean err ${r.record.mean_err_m.toFixed(2)} m)`);
-    } catch (e) { status("accept failed: " + e.message, true); }
-    return;
+    } catch (e) { status("accept failed: " + e.message, true); return false; }
+    await refreshCounts();
+    return true;
   }
   try {
     const r = await (await api(`/gt/${encodeURIComponent(state.clip)}/${state.frame}`, jsonOpts("PUT", fitBody()))).json();
     state.gtFrames = r.gt_frames; state.dirty = false; drawChips();
     status(`saved (mean err ${r.record.mean_err_m.toFixed(2)} m)`);
-  } catch (e) { status("save failed: " + e.message, true); }
+  } catch (e) { status("save failed: " + e.message, true); return false; }
+  await refreshCounts();
+  return true;
+}
+async function saveAndNext() {
+  if (!(await saveGt())) return;   // stay put (status already shows why)
+  const ok = state.clips.some(c => clipState(c) === "todo");
+  if (!ok) { status("saved: all clips in this queue are done"); return; }
+  await goNextTodo();
 }
 function syncNb() {
   const on = (state.notBroadcast || []).includes(state.frame);
@@ -520,6 +654,7 @@ async function markNotBroadcast(overwrite) {
     const j = await r.json();
     state.notBroadcast = [...new Set([...(state.notBroadcast || []), state.frame])]; state.gtFrames = j.gt_frames; drawChips(); syncNb();
     status("marked not a broadcast frame (Undo to clear)");
+    refreshCounts();
   } catch (e) {
     if (/already has/.test(e.message) && !overwrite && confirm(e.message + ". Delete the GT and mark it?")) return markNotBroadcast(true);
     status("not broadcast failed: " + e.message, true);
@@ -528,7 +663,7 @@ async function markNotBroadcast(overwrite) {
 async function clearNotBroadcast() {
   try {
     const j = await (await api(`/frame_type/${encodeURIComponent(state.clip)}/${state.frame}`, { method: "DELETE" })).json();
-    state.notBroadcast = j.not_broadcast; syncNb(); status("not-broadcast mark cleared");
+    state.notBroadcast = j.not_broadcast; syncNb(); status("not-broadcast mark cleared"); refreshCounts();
   } catch (e) { status("undo failed: " + e.message, true); }
 }
 async function deleteGt() {
@@ -536,15 +671,16 @@ async function deleteGt() {
   if (!confirm("Delete saved GT for this frame?")) return;
   try {
     const r = await (await api(`/gt/${encodeURIComponent(state.clip)}/${state.frame}`, { method: "DELETE" })).json();
-    state.gtFrames = r.gt_frames; drawChips(); status("GT deleted");
+    state.gtFrames = r.gt_frames; drawChips(); status("GT deleted"); refreshCounts();
   } catch (e) { status("delete failed: " + e.message, true); }
 }
 
 // ---------------------------------------------------------------- wiring
-$("clipSel").onchange = () => {  // switching clip used to drop unsaved points silently
-  if (state.dirty && state.imgPts.length && !confirm("Discard unsaved points on this frame?")) { $("clipSel").value = state.clip; return; }
-  state.dirty = false; selectClip();
-};
+$("clipSel").onchange = () => changeClip($("clipSel").value);   // guard for unsaved points lives in changeClip
+$("prevClipBtn").onclick = () => goRel(-1);
+$("nextClipBtn").onclick = () => goRel(1);
+$("nextTodoBtn").onclick = goNextTodo;
+$("saveNextBtn").onclick = saveAndNext;
 $("frameSlider").onchange = e => gotoFrame(parseInt(e.target.value));
 $("frameNum").onchange = e => gotoFrame(parseInt(e.target.value) || 0);
 $("prevBtn").onclick = () => gotoFrame(state.frame - 1);
@@ -565,6 +701,11 @@ document.addEventListener("keydown", e => {
   if (e.key === "ArrowLeft") gotoFrame(state.frame - step);
   else if (e.key === "ArrowRight") gotoFrame(state.frame + step);
   else if (e.key === "n") markNotBroadcast(false);
+  else if (e.ctrlKey || e.metaKey || e.altKey) return;
+  else if (e.key === "[") goRel(-1);
+  else if (e.key === "]" && e.shiftKey) goNextTodo();   // some layouts report Shift+] as "]"
+  else if (e.key === "]") goRel(1);
+  else if (e.key === "}") goNextTodo();
 });
 new ResizeObserver(() => {
   for (const [S, id] of [[L, "leftStage"], [R, "rightStage"]]) S.stage.size({ width: $(id).clientWidth, height: $(id).clientHeight });
