@@ -167,3 +167,39 @@ def test_noise_sweep_reports_pre_and_post_per_sigma(tmp_path, det, frame, monkey
     assert s25["post_le10"] >= s25["pre_le10"]  # refinement does not lose frames on a clean synthetic view
     txt = sw.format_sweep(res)
     assert "sigma" in txt and "<=5px pre" in txt and "<=10px pre" in txt
+
+
+# --------------------------------------------------------------------------
+# pinhole camera mode
+# --------------------------------------------------------------------------
+
+
+def test_decompose_recovers_a_pinhole_camera():
+    from footy_track.calibration import refine as rf  # noqa: PLC0415
+
+    size = (1568, 882)
+    c = np.array([1.5, -64.0, 15.0])
+    R0 = rf._lookat_R(c, np.array([30.0, 0.0, 0.0]))
+    q = np.array([np.log(2400.0), 0.02, -0.01, 0.015, *c])
+    G = rf._cam_G(q, R0, size)
+    f, R, C, ratio = rf.decompose_G(G * 3.7, size)  # any scale of G
+    assert abs(f - 2400.0) < 1e-6 and abs(ratio - 1.0) < 1e-9
+    assert np.allclose(C, c, atol=1e-6)
+    # a homography with unequal x/y scales is not a pinhole: the ratio shows it
+    S = np.diag([1.0, 1.3, 1.0])  # a pitch stretched along y is not a pinhole view of the real one
+    assert abs(rf.decompose_G(G @ S, size)[3] - 1.0) > 0.05
+
+
+def test_camera_mode_returns_a_physical_camera(det, monkeypatch):
+    from footy_track.calibration import refine as rf  # noqa: PLC0415
+
+    monkeypatch.setattr(rf, "PINHOLE_RATIO_OK", (10.0, 11.0))  # never 'already plausible': always fit the camera
+
+    H0 = _perturbed()
+    r = refine_homography(H0, PITCH, det.lines_mask, det.grass, camera=True)
+    assert r.applied, r.reason
+    h_img, w_img = det.lines_mask.shape
+    G = np.linalg.inv(r.H @ np.diag([1.0 / w_img, 1.0 / h_img, 1.0]))
+    dec = rf.decompose_G(G / np.linalg.norm(G), (w_img, h_img))
+    assert dec is not None and abs(dec[3] - 1.0) < 1e-6  # exactly a pinhole camera
+    assert _kp_err_px(r.H) < 6.0  # and still a good fit of the synthetic pitch

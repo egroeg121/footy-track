@@ -260,6 +260,81 @@ class _Problem:
         return np.concatenate(parts), len(idx)
 
 
+# --------------------------------------------------------------------------
+# pinhole camera parametrisation (square pixels, principal point at the image centre)
+# --------------------------------------------------------------------------
+
+
+@dataclass
+class CameraPrior:
+    """Where the (fixed) main broadcast camera stands, in pitch metres (x along the pitch, y toward the
+    far touchline, z up), and how sure we are. ``weight`` is px of residual per sigma of position error (default 0:
+    the position prior did not help on the frames tried and is only a hook for a per-match value)."""
+
+    c0: tuple[float, float, float] = (0.0, -65.0, 15.0)
+    sigma: tuple[float, float, float] = (4.0, 8.0, 3.0)
+    weight: float = 0.0  # 0 = pure pinhole constraint, no position prior (see docs/design/calibration.md §10)
+    label_weight: float = 0.25  # px of residual per px of label error while fitting the (7-DOF) camera
+
+
+def _rodrigues(w: np.ndarray) -> np.ndarray:
+    th = float(np.linalg.norm(w))
+    if th < 1e-12:
+        return np.eye(3)
+    k = w / th
+    K = np.array([[0, -k[2], k[1]], [k[2], 0, -k[0]], [-k[1], k[0], 0]])
+    return np.eye(3) + np.sin(th) * K + (1 - np.cos(th)) * K @ K
+
+
+def _lookat_R(c: np.ndarray, target: np.ndarray) -> np.ndarray:
+    """world -> camera rotation (rows: right, down, forward) of a camera at ``c`` looking at ``target``, z up."""
+    f = target - c
+    f = f / np.linalg.norm(f)
+    r = np.cross(f, [0.0, 0.0, 1.0])
+    r = r / np.linalg.norm(r)
+    d = np.cross(f, r)
+    return np.stack([r, d, f])
+
+
+def _cam_G(q: np.ndarray, R0: np.ndarray, size) -> np.ndarray:
+    """metres (pitch plane, z=0) -> working px for camera params q = (log f, rotvec(3) rel. R0, C(3))."""
+    f = np.exp(q[0])
+    R = _rodrigues(q[1:4]) @ R0
+    C = q[4:7]
+    t = -R @ C
+    K = np.array([[f, 0, size[0] / 2.0], [0, f, size[1] / 2.0], [0, 0, 1.0]])
+    return K @ np.stack([R[:, 0], R[:, 1], t], axis=1)
+
+
+def decompose_G(G: np.ndarray, size):
+    """Nearest pinhole camera (square pixels, centred principal point) of G (metres -> working px).
+    -> (f_px, R, C, ratio) or None; ``ratio`` = |r1|/|r2| before normalisation (1 for a true pinhole)."""
+    cx, cy = size[0] / 2.0, size[1] / 2.0
+    q = [np.array([G[0, j] - cx * G[2, j], G[1, j] - cy * G[2, j], G[2, j]]) for j in range(3)]
+    den = q[0][2] * q[1][2]
+    if abs(den) < 1e-15:
+        return None
+    f2 = -(q[0][0] * q[1][0] + q[0][1] * q[1][1]) / den
+    if not (f2 > 0 and np.isfinite(f2)):
+        return None
+    f = float(np.sqrt(f2))
+    a = [np.array([v[0] / f, v[1] / f, v[2]]) for v in q]
+    n1, n2 = np.linalg.norm(a[0]), np.linalg.norm(a[1])
+    lam = np.sqrt(n1 * n2)
+    r1, r2, t = a[0] / lam, a[1] / lam, a[2] / lam
+    R = np.stack([r1, r2, np.cross(r1, r2)], axis=1)
+    U, _, Vt = np.linalg.svd(R)
+    R = U @ Vt
+    C = -R.T @ t
+    if C[2] < 0:  # overall sign ambiguity of a homography
+        r1, r2, t = -r1, -r2, -t
+        R = np.stack([r1, r2, np.cross(r1, r2)], axis=1)
+        U, _, Vt = np.linalg.svd(R)
+        R = U @ Vt
+        C = -R.T @ t
+    return f, R, C, float(n1 / n2)
+
+
 def _cauchy_w(r: np.ndarray, c: float) -> np.ndarray:
     return 1.0 / (1.0 + (r / c) ** 2)
 
@@ -273,19 +348,39 @@ FAR_WEIGHT = 2.0
 FAR_MIN_EXTENT_FRAC = 0.25
 FAR_MAX_DY_FRAC = 0.35
 
+#: how much worse (px, mean line distance at 1568 wide) a pinhole fit may be than the input homography and still win
+CAMERA_SLACK_PX = 1.0
 
-def _lm(problem, G0, idx, dt, st: RefineStage, scale: float, k1=0.0, fit_k1=False, k1_prior=1.0, stage_i=None):
+#: a pinhole fit this much worse (px mean line distance at 1568 wide) than the free homography is not used
+PINHOLE_MAX_WORSE_PX = 1.5
+
+#: |r1|/|r2| of the free homography's camera decomposition (1 for a square-pixel pinhole) that counts as plausible
+PINHOLE_RATIO_OK = (0.8, 1.25)
+
+
+def _lm(problem, G0, idx, dt, st: RefineStage, scale: float, k1=0.0, fit_k1=False, k1_prior=1.0, stage_i=None,
+        cam=None):
     """LM on the 8 DOF of G (+ k1 when ``fit_k1``). Returns (G, k1, robust cost)."""
     trunc, cauchy = st.trunc_px * scale, st.cauchy_px * scale
-    npar = 9 if fit_k1 else 8
+    nG = 7 if cam is not None else 8  # ``cam`` = (q0, R0, size, CameraPrior|None): pinhole parametrisation
+    npar = nG + (1 if fit_k1 else 0)
     wk = K1_PRIOR_PX * k1_prior
 
+    def make_G(p):
+        return _G_from_params(G0, p[:8]) if cam is None else _cam_G(cam[0] + p[:7], cam[1], cam[2])
+
     def cost_and_r(p):
-        G = _G_from_params(G0, p[:8])
-        k = k1 + (p[8] if fit_k1 else 0.0)
+        G = make_G(p)
+        k = k1 + (p[nG] if fit_k1 else 0.0)
         r, n = problem.residual(G, idx, dt, trunc, cauchy, scale, k, stage_i)
         w = _cauchy_w(r, cauchy)
         c = float(np.sum(0.5 * cauchy**2 * np.log1p((r / cauchy) ** 2)))
+        if cam is not None and cam[3] is not None:  # where the camera stands: quadratic, outside the robust loss
+            cp = cam[3]
+            rc = cp.weight * ((cam[0][4:7] + p[4:7]) - np.asarray(cp.c0)) / np.asarray(cp.sigma)
+            r = np.append(r, rc)
+            w = np.append(w, np.ones(3))
+            c += 0.5 * float(np.sum(rc**2))
         if fit_k1:  # quadratic prior pulling k1 to 0, outside the robust loss
             r = np.append(r, wk * k)
             w = np.append(w, 1.0)
@@ -321,7 +416,9 @@ def _lm(problem, G0, idx, dt, st: RefineStage, scale: float, k1=0.0, fit_k1=Fals
             lam *= 4
         if not improved or np.linalg.norm(dp) < 1e-7:
             break
-    return _G_from_params(G0, p[:8]), k1 + (p[8] if fit_k1 else 0.0), c
+    if cam is not None:
+        return _cam_G(cam[0] + p[:7], cam[1], cam[2]), k1 + (p[nG] if fit_k1 else 0.0), c, cam[0] + p[:7]
+    return _G_from_params(G0, p[:8]), k1 + (p[nG] if fit_k1 else 0.0), c
 
 
 # --------------------------------------------------------------------------
@@ -363,6 +460,67 @@ def _degenerate(G: np.ndarray, size) -> str | None:
     return None
 
 
+
+def _pinhole_search(problem, pts, cp, best, stages, dts, samples, grass, size, scale, aspect, k1, fit_k1, k1_prior,
+                    k1_limit, rank_cost, lm, valid_mask):
+    """Best pinhole-camera fit as ``(rank cost, G, stage costs, k1)`` (same tuple as the 8-DOF ``best``) or None."""
+    w_img, h_img = size
+    c0 = np.asarray(cp.c0, float)
+    starts = []  # (q0, R0, k_start)
+    if best is not None:
+        dec = decompose_G(best[1], size)
+        if dec is not None:
+            f, R, C, _ = dec
+            starts.append((np.array([np.log(f), 0, 0, 0, *C]), R, best[3]))
+    if len(problem.prior_xy) >= 2:  # look-at grid at the prior position, scored by label reprojection only
+        cand = []
+        hl, hw = problem.pitch.hl, problem.pitch.hw
+        for tx in np.linspace(-hl, hl, 15):
+            for ty in np.linspace(-hw, hw, 9):
+                R0 = _lookat_R(c0, np.array([tx, ty, 0.0]))
+                for f in 1200.0 * (w_img / 1920.0) * 1.25 ** np.arange(0, 9):
+                    q = np.array([np.log(f), 0, 0, 0, *c0])
+                    xy, w = _project(_cam_G(q, R0, size), problem.prior_xy, 0.0, size, aspect)
+                    if np.any(w <= 1e-9) or not np.all(np.isfinite(xy)):
+                        continue
+                    e = np.linalg.norm(xy - problem.prior_px, axis=1)
+                    cand.append((float(np.minimum(e, 300.0 * scale).mean()), q, R0))
+        cand.sort(key=lambda t: t[0])
+        for _, q, R0 in cand[:3]:
+            starts.append((q, R0, k1))
+    out = None
+    prior_w0 = problem.prior_w
+    problem.prior_w = cp.label_weight
+    for q0, R0, ks in starts:
+        q, k = q0.copy(), ks
+        costs = []
+        ok = True
+        for si, (st, dt) in enumerate(zip(stages, dts, strict=True)):
+            G = _cam_G(q, R0, size)
+            idx = np.flatnonzero(valid_mask(G, samples, size, grass, k, aspect))
+            if len(idx) < 30:
+                ok = False
+                break
+            G, k, c, qn = lm(problem, G, idx, dt, st, scale, k, fit_k1 and si >= 1, k1_prior, si,
+                             cam=(q, R0, size, cp if cp.weight > 0 else None))
+            k = float(np.clip(k, -k1_limit, k1_limit))
+            q = qn
+            costs.append(c)
+        if not ok:
+            continue
+        G = _cam_G(q, R0, size)
+        if _degenerate(G, size):
+            continue
+        z = (q[4:7] - c0) / np.asarray(cp.sigma)
+        rc = rank_cost(G, k) + 0.3 * float(np.linalg.norm(z))
+        if out is None or rc < out[0]:
+            out = (rc, G, costs, k)
+    problem.prior_w = prior_w0
+    if out is None:
+        return None
+    return rank_cost(out[1], out[3]), out[1], out[2], out[3]
+
+
 def refine_homography(
     H: np.ndarray,
     pitch: PitchModel,
@@ -382,6 +540,7 @@ def refine_homography(
     k1_limit: float = 0.15,
     far_mask: np.ndarray | None = None,
     far_weight: float = FAR_WEIGHT,
+    camera: CameraPrior | bool | None = None,
 ) -> RefineResult:
     """Refine ``H`` (normalised image -> pitch m) against the white-line mask.
 
@@ -396,6 +555,11 @@ def refine_homography(
     pulling whichever model touchline projects highest to that strip, when it lands within ``FAR_MAX_DY_FRAC``
     of the image height of it; this is what fixes the depth/tilt of a high wide camera whose labels are all
     near the centre circle.
+    ``camera`` (a :class:`CameraPrior`, or True for the default one) replaces the free 8-DOF homography by a physical
+    pinhole camera (square pixels, centred principal point: 7 DOF) standing near the prior position; the 8-DOF winner
+    and a grid of look-at cameras fitted to the labels are the starts, and the best by the same rank cost wins.
+    A free homography can express cameras that cannot exist (unequal pixel scales), which is what a circle-only view
+    of a high wide camera drifts to; the pinhole model rules those out.
     ``max_shift_frac`` rejects a result that moved the in-view model further than
     this fraction of the image width from ``H`` (runaway; 90th percentile over samples in view under both).
     The returned ``H`` is the input when the result is rejected.
@@ -501,11 +665,6 @@ def refine_homography(
         c = rank_cost(G, k)
         if best is None or c < best[0]:
             best = (c, G, costs, k)
-    if best is None:
-        return RefineResult(H, False, "no usable start (degenerate or nothing on grass)", cost_in, None,
-                            len(idx_in), k1=k1)
-    c_best, G, costs, k_f = best
-    idx_f = np.flatnonzero(_valid_mask(G, samples, size, grass, k_f, aspect))
     # all-sample DT cost before/after (see rank_cost; label term excluded for reporting)
     def dt_only(Gx, kx):
         keep = problem.prior_xy, rank_label_weight
@@ -515,6 +674,25 @@ def refine_homography(
         finally:
             problem.prior_xy = keep[0]
 
+    if camera and best is not None and (dec0 := decompose_G(best[1], size)) is not None \
+            and PINHOLE_RATIO_OK[0] <= dec0[3] <= PINHOLE_RATIO_OK[1]:
+        camera = None  # the free homography is already a plausible camera: leave it alone
+    if camera:
+        cp = camera if isinstance(camera, CameraPrior) else CameraPrior()
+        pin = _pinhole_search(problem, pts, cp, best, stages, dts, samples, grass, size, scale, aspect, k1, fit_k1,
+                              k1_prior, k1_limit, rank_cost, _lm, _valid_mask)
+        # The principal point of a broadcast frame is not always the image centre (zoomed / cropped feeds), and
+        # then a square-pixel camera cannot fit; keep the free homography when the camera explains the lines
+        # clearly worse than it does.
+        if pin is not None and (best is None or dt_only(pin[1], pin[3]) <= dt_only(best[1], best[3])
+                                + PINHOLE_MAX_WORSE_PX * scale):
+            best = pin
+
+    if best is None:
+        return RefineResult(H, False, "no usable start (degenerate or nothing on grass)", cost_in, None,
+                            len(idx_in), k1=k1)
+    c_best, G, costs, k_f = best
+    idx_f = np.flatnonzero(_valid_mask(G, samples, size, grass, k_f, aspect))
     b, a = dt_only(G_in, k1), dt_only(G, k_f)
     both = np.intersect1d(idx_f, idx_in)  # in view under the input and the refined H
     shift = None
@@ -525,9 +703,15 @@ def refine_homography(
     if len(idx_f) < 30:
         return RefineResult(H, False, "too little of the refined model on grass in the image", b, a, len(idx_f),
                             costs, shift, k1)
-    if not c_best < cost_in - 1e-3:
+    if camera:
+        # A physical camera is a regularised fit: it need not beat an input homography that fits the labels
+        # exactly but cannot exist (that is the point), so only the line cost is compared, with some slack.
+        if not a <= b + CAMERA_SLACK_PX * scale:
+            return RefineResult(H, False, "pinhole camera fits the lines worse than the input", b, a, len(idx_f),
+                                costs, shift, k1)
+    elif not c_best < cost_in - 1e-3:
         return RefineResult(H, False, "cost did not improve", b, a, len(idx_f), costs, shift, k1)
-    if shift is not None and shift > max_shift_frac * w_img:
+    if not camera and shift is not None and shift > max_shift_frac * w_img:
         return RefineResult(H, False, f"max model shift {shift:.0f}px exceeds limit", b, a, len(idx_f), costs, shift,
                             k1)
     Hn = geo.orient_homography(np.linalg.inv(G) @ from_norm, np.array([[0.5, 0.5]]))

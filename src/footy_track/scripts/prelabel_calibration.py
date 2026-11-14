@@ -73,7 +73,7 @@ def _cmd_run(args) -> int:
         every=args.every, skip_gt=args.skip_gt, limit=args.limit,
         render_dir=Path(args.render_dir) if args.render_dir else None,
         verify=args.verify, run_id=args.run_id, refine=not args.no_refine,
-        k1=args.k1, fit_k1=args.fit_k1,
+        k1=args.k1, fit_k1=args.fit_k1, pinhole=args.pinhole,
     )
     s = run_prelabel(cfg, ident)
     print(f"run_id={s.run_id} frames={s.n_frames} proposed={s.n_proposed} failed={s.n_failed}")
@@ -88,7 +88,7 @@ def _cmd_rerefine(args) -> int:
     gt, clips = _dirs(args)
     dirs = [clips] + [Path(d) for d in (args.extra_clips_dir or [])]
     s = rerefine(gt, dirs, clips=args.clips, runs=args.runs, fit_k1=args.fit_k1, dry_run=args.dry_run,
-                 workers=args.workers)
+                 workers=args.workers, pinhole=args.pinhole)
     print(f"rerefined={s.rerefined} now_failed={s.now_failed} kept_previous={s.kept_previous} unchanged={s.unchanged} errors={len(s.errors)}"
           + (" (dry run: nothing written)" if args.dry_run else ""))
     for e in s.errors:
@@ -138,6 +138,8 @@ def main(argv: list[str] | None = None) -> int:
     r.add_argument("--k1", type=float, default=0.0,
                    help="lens distortion (division model) held fixed, e.g. a per-clip value; 0 = off (default)")
     r.add_argument("--fit-k1", action="store_true", help="estimate k1 per frame jointly with H (off by default)")
+    r.add_argument("--pinhole", action="store_true",
+                   help="fit a physical pinhole camera (square pixels) instead of a free homography (off by default)")
     r.add_argument("--limit", type=int, help="max frames processed in total")
     r.add_argument("--model", help="default: claude-opus-5-5 (claude) / opus alias (claude-cli)")
     r.add_argument("--timeout", type=float, default=300.0, help="claude-cli: seconds per call")
@@ -156,6 +158,7 @@ def main(argv: list[str] | None = None) -> int:
     rr.add_argument("--clips", nargs="+")
     rr.add_argument("--runs", nargs="+")
     rr.add_argument("--fit-k1", action=argparse.BooleanOptionalAction, default=True)
+    rr.add_argument("--pinhole", action="store_true", help="fit a physical pinhole camera (see run --pinhole)")
     rr.add_argument("--extra-clips-dir", nargs="+", help="more directories to search for videos")
     rr.add_argument("--dry-run", action="store_true")
     rr.add_argument("--workers", type=int, default=2)
