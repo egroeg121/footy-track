@@ -10,6 +10,7 @@ import json
 import numpy as np
 import pytest
 
+from footy_track.clip_id import canonical_clip_id
 from footy_track.calibration import geometry as geo
 from footy_track.calibration.pitch_model import PitchModel
 from footy_track.labeller import calibration as cal
@@ -96,7 +97,8 @@ def test_pitch_model_route(client, cal_env):
 
 def test_clips_meta_and_frame(client, cal_env):
     clips = client.get("/calibration/api/clips").json()["clips"]
-    assert clips == [{"name": "arsenal_mancity_20250925_seg010", "n_gt": 0}]
+    assert [(c["name"], c["n_gt"]) for c in clips] == [("arsenal_mancity_20250925_seg010", 0)]
+    assert clips[0]["canonical"] == canonical_clip_id("arsenal_mancity_20250925_seg010")
     m = client.get("/calibration/api/clips/arsenal_mancity_20250925_seg010/meta").json()
     assert m["frames"] == 50 and m["gt_frames"] == []
     r = client.get("/calibration/api/frame/arsenal_mancity_20250925_seg010/3.jpg")

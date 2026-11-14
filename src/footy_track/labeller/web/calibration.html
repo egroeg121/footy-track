@@ -388,7 +388,10 @@ async function loadClips() {
   }
   if (!r.clips.length) status("no clips found", true);
   const want = new URLSearchParams(location.search).get("clip");
-  if (want) sel.value = want;
+  if (want) {  // links may use the canonical id (arsenal_bournemouth_1st_seg005) instead of the video stem
+    const hit = r.clips.find(c => c.name === want) || r.clips.find(c => c.canonical === want);
+    if (hit) sel.value = hit.name; else status(`clip ${want} not found`, true);
+  }
   return r.clips.length;
 }
 async function selectClip() {
