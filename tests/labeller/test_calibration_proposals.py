@@ -332,6 +332,9 @@ def test_not_broadcast_409_over_gt_unless_overwrite(client, prop_env):
     r = _nb(client, RUN, 0, overwrite=True)
     assert r.status_code == 200 and r.json()["removed_gt"] is True
     assert "0" not in cal._read_gt(CLIP)["frames"] and "2" in cal._read_gt(CLIP)["frames"]
+    # ...but the GT is only set aside, never destroyed: undo puts the hand label back
+    assert client.delete(f"/calibration/api/frame_type/{CLIP}/0").status_code == 200
+    assert cal._read_gt(CLIP)["frames"]["0"]["note"] == "hand-labelled"
 
 
 def test_not_broadcast_flags_other_open_runs_and_undo_restores(client, prop_env):
