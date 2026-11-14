@@ -61,7 +61,8 @@ def main():
     for c, cl in clips.items():
         gt = {int(t): tuple(v) for t, v in cl["gt"].items()}
         b1 += score_clip({int(t): tuple(v) for t, v in cl["b1"].items()}, gt, set(cl["no_ball"]), cl["n_frames"], scored=set(cl["scored"]))
-    s = b1.summary()
+    b1s = b1.summary()
+    s = b1s
     print(f"B1: R@10 {s['recall@10']:.3f} P@10 {s['precision@10']:.3f} tp={s['tp@10']} fp={s['fp@10']}")
     print("| agree px | single-pass max (frames) | R@10 | P@10 | TP | FP | fills in gaps | fills wrong on GT frames |")
     print("|---|---|---|---|---|---|---|---|")
@@ -72,7 +73,7 @@ def main():
                          "tp": s["tp@10"], "fp": s["fp@10"], "fills": fills, "wrong_fills_on_gt": wrong})
             print(f"| {agree:g} | {single} | {s['recall@10']:.3f} | {s['precision@10']:.3f} | {s['tp@10']} | {s['fp@10']} | {fills} | {wrong} |")
     if a.out:
-        Path(a.out).write_text(json.dumps({"B1": {k: s[k] for k in ("recall@10", "precision@10", "tp@10", "fp@10")}, "rows": rows}, indent=1))
+        Path(a.out).write_text(json.dumps({"B1": {k: b1s[k] for k in ("recall@10", "precision@10", "tp@10", "fp@10")}, "rows": rows}, indent=1))
 
 
 if __name__ == "__main__":
