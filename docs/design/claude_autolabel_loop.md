@@ -418,7 +418,9 @@ Re-crop-and-re-detect (section 2, step 4) is **not** part of the labelling mode:
 `eval_clip_ids` is the union of every clip in the eval split file (held-out and seen), every
 clip with a GT sidecar or a Ball Check verdict log in the GT-marks folder, every video in the
 eval folders and every cached eval clip, as canonical ids (`footy_track.clip_id`, so every
-alias is caught). A missing or empty split file is an error. `pool`, `check`, `prepare` and
+alias is caught). A missing or empty split file is an error. Clips registered as new
+eval clips (12.11, `--eval-registry` / `$FOOTY_EVAL_REGISTRY`) are in the set too, from
+the moment they are registered. `pool`, `check`, `prepare` and
 `ingest` all call `assert_not_eval` and exit 4 (the jobs fail the step) on a match; random
 picks skip eval clips and the clips of earlier rounds. Not caught: footage overlap between
 a new clip and an eval clip under a different name (T-33, T-49 are still open), and clips the
@@ -500,9 +502,13 @@ as inconsistent and nothing is written for it.
    (confident detector candidates, objects Claude was unsure about), after the static filter.
 3. **Claude-uncertain tracker candidates**: queued objects made only of tracker candidates
    (conf below 0.95, or `not_ball` / `unsure` on the tracker's own candidate).
-4. The blind **audit** sample of auto-accepted objects (10%, at least one) and the
-   **control** sample of dropped objects (5%), mixed.
+4. The blind **gate audit** samples and the random no-candidate frames (12.10). They
+   are not kept in this slot: they are spread through the whole list.
 5. Spot-check cards.
+
+The audit-type cards (4) are mixed in at hash-random places through the whole list
+after this ordering, so a reviewer who stops early has still seen a share of every
+audit.
 
 Inside a priority the cards interleave the clips (hash order inside each clip, then
 round-robin). Each object is one card showing its most informative frame, never a run of
@@ -557,7 +563,13 @@ cards by role. After `ingest`: audit of the auto-accepted objects (ball, not bal
 precision by objects and by frames) and the controls (dropped objects a person found to be
 the ball), the labels written, inconsistent objects.
 
-**Circuit breaker.** The latest round with at least 5 audited objects decides: audit
+From the gate audits on (12.10) the report also has, per gate, the audited objects,
+precision with a Wilson 95% interval, ball rate for the drop gates, the gate's pass
+level and whether it passed, and the miss rate measured on the random no-candidate
+frames, in `round_report.json` (`gates`, `random`) and `.md`.
+
+**Circuit breaker.** It looks at the auto-accept gate only, as before; the other gates
+and the random frames are reported, never acted on. The latest round with at least 5 audited objects decides: audit
 precision (by frames) below 0.97 opens it, and the next round sends every would-be
 auto-accept to the queue (`would_auto` is still measured on those cards, so a later round
 can close it again). No audited round: closed. Thresholds are in `Thresholds`.
@@ -601,22 +613,113 @@ the real GT marks.
 
 - Sampling: every 5th frame (5 fps), the tracker's detection plus the top 2 others; budget
   60% tracker candidates. Not tuned.
-- The audit and control rates (10%, 5%) and the 0.97 breaker threshold are defaults, not
-  measured; with few auto-accepted objects per round the audit has too few samples to
-  trip the breaker (minimum 5 objects).
+- The gate audit rates and floors (12.10) and the 0.97 breaker threshold are defaults, not
+  measured. Round-001 was decided with the first scheme (10% audit with a floor of 1, 5%
+  controls): 1 audit and 4 control cards, too few to measure anything. Its report and cards
+  stay as they were (the report has no `scheme`, so `ingest` rebuilds it with that scheme).
 - Object linking is a heuristic; a wrong merge propagates one verdict to a different
   object, which the spot-check cards only partly catch.
 - The review UI was not changed beyond the list format; spot cards look like any other card.
-- **Next step, not built: sparse eval labelling mode.** For *new* held-out clips, about one
-  frame per second, one card per frame: tap the ball, or "no ball visible". This grows the
-  eval set (only 119 held-out ball frames today) and needs what is not there yet: the
-  tap-to-place card (LAB-1015; today a card shows a box to confirm or drag), a card list of
-  frames without any proposed box, a registry entry (T-49) that makes the clip held-out
-  before any other step touches it, and writing `labeller` marks to the GT-marks folder
-  and the split file (the reverse of the loop's rule: these clips must stay out of
-  training and out of auto-labelling, which `assert_not_eval` already enforces once they
-  are in the split file). The missed-ball cards of this section are the one-frame form of it.
+- Sparse eval labelling is built (12.11), minus the split file entry: a registered clip is
+  an eval clip for the loop and the export, and its marks go to the GT-marks folder, which
+  the evaluation harness reads as it does for any other labelled clip.
 - Not built: the API backend (`--backend api` still stops), crop-and-re-detect in the labelling
-  mode, the held-out registry (T-49), tap-to-place (LAB-1015), the retrain proposal.
+  mode, a checked-in held-out registry with footage-overlap checks (T-49; the registry of
+  12.11 only names clips), the retrain proposal.
+
+### 12.10 Gate audits and random frames (built, 2026-11)
+
+Every automatic decision of the loop is a **gate**, and each is checked on its own by a blind
+random sample (`Thresholds`, CLI `--audit-rate --audit-min --settled-rate --settled-min
+--settled-rounds --drop-precision --random-frames`, same parameters on the Prefect flows):
+
+| gate | what it decides | an audit card is | "correct" when the person says |
+|---|---|---|---|
+| `auto` | tracker candidate, `ball`, conf at least 0.95: accepted unseen | an auto-accepted object | ball (breaker input, pass level 0.97) |
+| `claude_drop` | non-tracker candidate, `not_ball`, conf at least 0.8: dropped | a dropped object | not a ball (pass level 0.95) |
+| `static_drop` | removed by the static filter, never asked | a filtered object | not a ball (pass level 0.95) |
+| `over_budget` | left unasked by the question budget (nothing decided it; the audit measures what the budget loses) | an unasked candidate | not a ball (report only, no pass level) |
+
+The gates a person already sees in full (second-tier tracker candidates, spare balls, Claude
+`unsure`, missed-ball cards) need no audit. Not audited: the missed-ball cards beyond the
+per-round cap (a hash-random subset already), and spot cards, which check object linking.
+
+**Sample size.** Per gate `max(ceil(rate x objects), min)`, never more than the gate has,
+drawn by a hash of round, gate and object. A "new" gate uses rate 0.20 and a floor of 6;
+a gate that has **passed 3 rounds in a row** (judged at least `settled_min` = 3 objects with
+precision at its pass level; a round that judged fewer is ignored, one that judged enough
+and missed the level ends the streak) is "settled": rate 0.05 and floor 3. `over_budget`
+has no pass level and stays new. Objects are grouped inside one gate (a static drop and a
+confident drop never share an object).
+
+**History.** `<rounds dir>/gate_state.json` (next to the round directories, because it spans
+rounds): per gate a list of `{round, decided, correct, precision, at}`. `ingest` writes a
+round's entry (keyed by round id, so a re-ingest replaces it); `decide` reads the others
+and stores the rates it used in the report (`gates_plan`). `ingest` rebuilds the cards from
+the round's own stored thresholds and plan, ignoring the command line, so the card ids
+cannot drift from the list the reviewer has. A report without `scheme` (round-001) is
+rebuilt with the first scheme.
+
+**Random no-candidate frames.** `prepare` (or `add-random` on a prepared run) draws
+`--random-frames` (default 8) sampled frames at random, spread over the clips, into
+`random_frames.json` with every cached detector candidate of the frame. Each becomes a card
+with **no box** (`"bbox": null, "place": true`) that asks "Tap the ball, or No ball"
+(LAB-1015). The tapped box is a tier 1 `labeller` label; "No ball" writes nothing. The
+report classes each tapped ball by the nearest candidate (25 px): `found_selected` (the loop
+asked about it), `found_not_selected` (cached, but the top-2 selection dropped it) or
+`missed` (no candidate), and gives the miss rate `missed / balls visible` and the
+never-examined rate `(missed + not selected) / balls visible`, each with a Wilson 95%
+interval, plus the share of random frames with a ball in view.
+
+**Blind and mixed.** Audit cards have the same fields and prompt as any review card; the
+role and gate live in `cards_meta.json`. The only visible difference is on the random
+frames, where there is no box to ask about. All audit-type cards are spread through the
+whole list (12.5), not left for the end.
+
+**Rehearsal on round-001's data** (copy in a temp dir, same answers, new sampling; round-001
+itself was not touched): the queue grows from 88 to 140 cards. The 6 missed-ball, 58 review
+and 25 spot cards are the same kind as before; the audit-type cards go from 5 to 51:
+
+| gate | objects (candidates) | cards |
+|---|---|---|
+| auto | 7 (54) | 6 (the floor; 20% would be 2) |
+| claude_drop | 68 (83) | 14 (20%) |
+| static_drop | 6 (9) | 6 (all) |
+| over_budget | 85 (97) | 17 (20%) |
+| random no-candidate frames | 8 | 8 |
+
+So a round like this costs about 50 more cards, which is 37% of the queue. The floors
+dominate for the small gates (auto, static) and the rate for the big ones; the cost falls
+to roughly 3 + 4 + 3 + 5 + 8 = 23 once the gates settle.
+
+Not verified: that 6 objects is enough to see a precision change (a Wilson interval of 6 of
+6 is 61-100%; the report says so instead of pretending), and that three passing rounds is
+the right bar for settling.
+
+### 12.11 Sparse eval labelling (built, 2026-11)
+
+To grow the evaluation set from new clips: about one frame per second, one tap-to-place card
+per frame (tap the ball, or "No ball"), the same card as the random frames.
+
+1. `autolabel_loop eval-register --registry R --clips-dir V --clips ...` registers clips
+   as new eval clips (`footy_track/eval_registry.py`, canonical ids, a small JSON file;
+   `$FOOTY_EVAL_REGISTRY` is the default location). **From that moment** the loop's `pool`,
+   `check`, `prepare` and `ingest` refuse them (exit 4) and `export_training_dataset`
+   (`--eval-registry` or the environment variable) leaves them out of both splits. A clip
+   an earlier round used (its `clips.json` under `--rounds-dir`) is refused at
+   registration: the loop may have labelled it.
+2. `eval-list --registry R --clips-dir V --out list.json [--stride-s 1.0]` writes one card per
+   `stride_s` seconds of every registered clip (frame 0, then every `round(fps x stride_s)`
+   frames), each a tap-to-place card, in clip and frame order.
+3. Serve it with `FOOTY_BALL_CHECK_LIST=list.json` and the **real** GT-marks folder (the reverse
+   of the loop's rule: these marks are the evaluation truth). A tapped ball is appended to the
+   clip's sidecar as `[in_play_ball, labeller]` by Ball Check as for any dragged box.
+4. `eval-finalise --list list.json --gt-dir G` writes a `no_ball` marker line to the sidecar
+   for every "No ball" verdict (idempotent), and prints the counts.
+
+Not done: the split file (`ball_eval_cache_split.json`) is not edited (the held-out versus seen
+assignment is a decision about the measurement, not about leakage); frames are not checked
+against footage overlap with other clips (T-33, T-49); 1 frame per second is a default, not a
+measured sample size.
 
 Related: [Architecture](../architecture.md), [Best pipeline and label needs](../pipeline-and-labels.md), [Tracking pipeline design](tracking-pipeline.md), [Ball tracking evaluation](../ball-tracking-eval.md), [TODO](../todo.md) T-44 to T-49.

@@ -8,6 +8,7 @@ import pytest
 import yaml
 from PIL import Image
 
+from footy_track import eval_registry
 from footy_track.feature_store import FeatureStore, import_labeller_json
 from footy_track.feature_store.ingest_gt import ingest_gt_jsonl
 from footy_track.scripts.export_training_dataset import (
@@ -231,6 +232,34 @@ def test_export_excludes_eval_clips(tmp_path) -> None:
     assert "eval_clip" not in all_split_clips
     assert "eval_clip" in manifest["excluded_eval_clips"]
     assert manifest["excluded_ball_boxes"] == 2  # eval_clip's two ball boxes
+
+
+def test_export_excludes_clips_of_the_new_eval_registry(tmp_path, monkeypatch) -> None:
+    """A clip registered for sparse eval labelling is an eval clip before it has any
+    sidecar: the export leaves it out, by canonical id, via the flag or the env var."""
+    images_dir = tmp_path / "imgs"
+    images_dir.mkdir()
+    store = FeatureStore.open(":memory:")
+    _seed_clip(store, tmp_path, "train_clip", images_dir, frames=(0, 1))
+    _seed_clip(store, tmp_path, "arsenal_mancity_20250925_seg044", images_dir, (0, 1))
+    eval_dir = tmp_path / "eval"
+    eval_dir.mkdir()
+    reg = tmp_path / "reg.json"
+    eval_registry.register_clips(reg, ["mancity_seg044"])  # another alias
+    kw = {"video_dir": tmp_path, "eval_dir": eval_dir, "extra_exclude": set()}
+    kw |= {"val_fraction": 0.5, "tag": "t"}
+    manifest = export(store, out_dir=tmp_path / "o1", eval_registry=reg, **kw)
+    got = set(manifest["train_clips"]) | set(manifest["val_clips"])
+    assert got == {"train_clip"} and manifest["excluded_ball_boxes"] == 2
+    monkeypatch.setenv("FOOTY_EVAL_REGISTRY", str(reg))
+    manifest = export(store, out_dir=tmp_path / "o2", **kw)
+    assert "arsenal_mancity_20250925_seg044" not in manifest["train_clips"]
+    monkeypatch.delenv("FOOTY_EVAL_REGISTRY")
+    manifest = export(
+        store, out_dir=tmp_path / "o3", **kw
+    )  # no registry: it is exported
+    got = set(manifest["train_clips"]) | set(manifest["val_clips"])
+    assert "arsenal_mancity_20250925_seg044" in got
 
 
 def _split_of(manifest: dict, clip: str) -> str:

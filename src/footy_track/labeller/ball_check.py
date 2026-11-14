@@ -87,6 +87,20 @@ _WINDOW_FRAC = 0.125
 _MIN_CONTEXT_PX = 160
 _DISPLAY_W = 640
 _MAX_PAD_FACTOR = 40.0
+#: ``pad`` at or above this shows the WHOLE frame (tap-to-place cards start there: the
+#: ball can be anywhere, so there is no box to centre a window on).
+_FULL_PAD = 100.0
+#: A tap-to-place box is this fraction of the frame width wide (11 px at 1280, the
+#: median hand-labelled ball); the page uses it for the box a tap places.
+PLACE_BOX_FRAC = 0.0086
+
+
+def _clamp_pad(pad: float) -> float:
+    pad = float(pad)
+    if pad == _FULL_PAD:  # exactly the sentinel; anything else is capped as before
+        return _FULL_PAD
+    return max(0.0, min(pad, _MAX_PAD_FACTOR))
+
 
 # LRU crop cache: key = (clip_stem, frame_idx, box_idx, pad), value = JPEG bytes
 _BC_CROP_CACHE: collections.OrderedDict[tuple, bytes] = collections.OrderedDict()
@@ -507,14 +521,35 @@ async def ball_check_stats() -> dict:
 # ---------------------------------------------------------------------------
 
 
+def _is_place_card(src: str, clip_stem: str, frame_idx: int, box_idx: int) -> bool:
+    """A tap-to-place list card: no box on it (``"bbox": null``, ``"place": true``)."""
+    if src != "list":
+        return False
+    it = _list_item(clip_stem, frame_idx, box_idx)
+    return bool(it and it.get("place") and it.get("bbox") is None)
+
+
+def _view_box(vx: float, vy: float) -> tuple[float, float, float, float]:
+    """A stand-in box at the view centre ``(vx, vy)`` (normalised): the window of a
+    tap-to-place card is centred on it, the page moves it with the placed box."""
+    vx, vy = max(0.0, min(1.0, float(vx))), max(0.0, min(1.0, float(vy)))
+    return vx - 0.005, vy - 0.005, 0.01, 0.01
+
+
 def _read_box(
-    src: str, clip_stem: str, frame_idx: int, box_idx: int
+    src: str,
+    clip_stem: str,
+    frame_idx: int,
+    box_idx: int,
+    view: tuple[float, float] = (0.5, 0.5),
 ) -> tuple[float, float, float, float] | None:
     """Resolve a box from whichever source the card came from."""
     if src == "cand":
         return cand.read_candidate_box(clip_stem, frame_idx, box_idx)
     if src == "list":
         it = _list_item(clip_stem, frame_idx, box_idx)
+        if it is not None and it.get("place") and it.get("bbox") is None:
+            return _view_box(*view)
         return _list_box(it) if it else None
     from footy_track.labeller.review import _read_frame_box  # noqa: PLC0415
 
@@ -529,6 +564,8 @@ def _crop_window(
     Floored to ``_MIN_CONTEXT_PX`` so an 11 px ball still lands in a crop the
     eye can judge, widened for outsized boxes, and edge-clamped.
     """
+    if pad >= _FULL_PAD:
+        return 0, 0, w_px, h_px
     cx = (bx + bw / 2) * w_px
     cy = (by + bh / 2) * h_px
     side = w_px * _WINDOW_FRAC * (pad / _PAD_FACTOR)
@@ -550,21 +587,26 @@ async def ball_check_crop_meta(
     box_idx: int,
     pad: float = _PAD_FACTOR,
     src: str = "sidecar",
+    vx: float = 0.5,
+    vy: float = 0.5,
 ) -> dict:
     """Geometry the page needs to overlay (and drag) the box on the crop.
 
     Without this the client cannot map normalized frame coordinates into the
     cropped, upscaled image it is actually showing.
     """
-    pad = max(0.0, min(float(pad), _MAX_PAD_FACTOR))
+    pad = _clamp_pad(pad)
     video_path = _find_video(clip_stem)
     if video_path is None:
         return {"ok": False, "error": "video not found"}
 
-    bbox_raw = await asyncio.to_thread(_read_box, src, clip_stem, frame_idx, box_idx)
+    bbox_raw = await asyncio.to_thread(
+        _read_box, src, clip_stem, frame_idx, box_idx, (vx, vy)
+    )
     if bbox_raw is None:
         return {"ok": False, "error": "box not found"}
     bx, by, bw, bh = bbox_raw
+    place = await asyncio.to_thread(_is_place_card, src, clip_stem, frame_idx, box_idx)
 
     size = await asyncio.to_thread(_clip_size, clip_stem, video_path)
     if size is None:
@@ -575,7 +617,8 @@ async def ball_check_crop_meta(
         "ok": True,
         "frame": {"w": w_px, "h": h_px},
         "window": {"x1": x1, "y1": y1, "x2": x2, "y2": y2},
-        "bbox": {"x": bx, "y": by, "w": bw, "h": bh},
+        "bbox": None if place else {"x": bx, "y": by, "w": bw, "h": bh},
+        "place": place,
     }
 
 
@@ -620,13 +663,15 @@ async def ball_check_crop(
     src: str = "sidecar",
     at: int = -1,
     blind: bool = True,
+    vx: float = 0.5,
+    vy: float = 0.5,
 ) -> Response:
     """Zoomed JPEG crop, with an optional reticle drawn on the claimed ball.
 
     The page passes ``reticle=false`` and draws its own draggable box overlay
     instead, so what you see is the live box you are about to correct.
     """
-    pad = max(0.0, min(float(pad), _MAX_PAD_FACTOR))
+    pad = _clamp_pad(pad)
     # ``at`` renders a neighbouring frame through THIS box's window, so
     # stepping moves the football, not the camera.
     at_frame = frame_idx if at < 0 else at
@@ -640,6 +685,9 @@ async def ball_check_crop(
         at_frame,
         bool(blind),
     )
+    place = _is_place_card(src, clip_stem, frame_idx, box_idx)
+    if place:  # the window of a place card also depends on its view centre
+        cache_key += (round(float(vx), 3), round(float(vy), 3))
     cached = _BC_CROP_CACHE.get(cache_key)
     if cached is not None:
         _BC_CROP_CACHE.move_to_end(cache_key)
@@ -649,10 +697,14 @@ async def ball_check_crop(
     if video_path is None:
         return Response(status_code=404)
 
-    bbox_raw = await asyncio.to_thread(_read_box, src, clip_stem, frame_idx, box_idx)
+    bbox_raw = await asyncio.to_thread(
+        _read_box, src, clip_stem, frame_idx, box_idx, (vx, vy)
+    )
     if bbox_raw is None:
         return Response(status_code=404)
     bx, by, bw, bh = bbox_raw
+    if place:
+        reticle = False  # there is no box to mark; the page draws the tapped one
 
     def _render() -> bytes | None:
         cap = cv2.VideoCapture(str(video_path))
@@ -867,7 +919,9 @@ def _other_box(
     return _list_box(it, "other_bbox") if it else None
 
 
-def _render_mp4(cap, clip_stem, src, frame_idx, box_idx, bbox, pad, blind=True):
+def _render_mp4(  # noqa: PLR0912
+    cap, clip_stem, src, frame_idx, box_idx, bbox, pad, blind=True, draw=True
+):
     """Frames -> ffmpeg. Returns (bytes, 'video/mp4', n_frames, ms) or None."""
     fps = float(cap.get(cv2.CAP_PROP_FPS) or 0.0)
     total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
@@ -909,7 +963,8 @@ def _render_mp4(cap, clip_stem, src, frame_idx, box_idx, bbox, pad, blind=True):
             reps = 1
             if idx == frame_idx:
                 # draw on the upscaled crop so the lines stay crisp
-                _draw_centre_boxes(crop, bbox, ob, (w_px, h_px), win, out_wh)
+                if draw:
+                    _draw_centre_boxes(crop, bbox, ob, (w_px, h_px), win, out_wh)
                 reps = max(1, int(round(_CLIP_HOLD_MS / 1000 * out_fps)))
             for _ in range(reps):
                 writer.write(crop)
@@ -926,7 +981,9 @@ def _render_mp4(cap, clip_stem, src, frame_idx, box_idx, bbox, pad, blind=True):
     return data, "video/mp4", n_out, int(round(n_out * 1000 / out_fps))
 
 
-def _render_gif(cap, clip_stem, src, frame_idx, box_idx, bbox, pad, blind=True):
+def _render_gif(
+    cap, clip_stem, src, frame_idx, box_idx, bbox, pad, blind=True, draw=True
+):
     """ffmpeg-less fallback: small play-once GIF (native crop, ~10 fps)."""
     bx, by, bw, bh = bbox
     fps = float(cap.get(cv2.CAP_PROP_FPS) or 0.0)
@@ -950,7 +1007,7 @@ def _render_gif(cap, clip_stem, src, frame_idx, box_idx, bbox, pad, blind=True):
             win = _crop_window(bx, by, bw, bh, w_px, h_px, pad)
         x1, y1, x2, y2 = win
         centre = idx == frame_idx
-        if centre:
+        if centre and draw:
             if ob is not None:
                 _draw_box(frame, *ob, w_px, h_px, (255, 0, 255), 2, bracket=False)
             _draw_box(frame, bx, by, bw, bh, w_px, h_px, (0, 255, 255))
@@ -982,6 +1039,7 @@ def _render_clip(
     bbox: tuple[float, float, float, float],
     pad: float,
     blind: bool = True,
+    draw: bool = True,
 ) -> tuple[bytes, str, int, int] | None:
     """Decode once (seek, then sequential reads) and encode.
 
@@ -992,7 +1050,7 @@ def _render_clip(
     render = _render_mp4 if _have_ffmpeg() else _render_gif
     cap = cv2.VideoCapture(str(video_path))
     try:
-        return render(cap, clip_stem, src, frame_idx, box_idx, bbox, pad, blind)
+        return render(cap, clip_stem, src, frame_idx, box_idx, bbox, pad, blind, draw)
     finally:
         cap.release()
 
@@ -1006,6 +1064,8 @@ async def ball_check_clip(
     pad: float = _PAD_FACTOR,
     src: str = "sidecar",
     blind: bool = True,
+    vx: float = 0.5,
+    vy: float = 0.5,
 ) -> Response:
     """~3 s context clip (H.264 MP4) centred on the card's frame.
 
@@ -1017,8 +1077,11 @@ async def ball_check_clip(
     frames would lie. Supports HTTP Range (iOS Safari needs 206 for <video>).
     Falls back to a small GIF (same URL, ``image/gif``) if ffmpeg is missing.
     """
-    pad = max(0.0, min(float(pad), _MAX_PAD_FACTOR))
+    pad = _clamp_pad(pad)
     cache_key = (src, clip_stem, frame_idx, box_idx, round(pad, 2), bool(blind))
+    place = _is_place_card(src, clip_stem, frame_idx, box_idx)
+    if place:
+        cache_key += (round(float(vx), 3), round(float(vy), 3))
     hit = _BC_CLIP_CACHE.get(cache_key)
     if hit is not None:
         _BC_CLIP_CACHE.move_to_end(cache_key)
@@ -1027,9 +1090,12 @@ async def ball_check_clip(
     video_path = _find_video(clip_stem)
     if video_path is None:
         return Response(status_code=404)
-    bbox_raw = await asyncio.to_thread(_read_box, src, clip_stem, frame_idx, box_idx)
+    bbox_raw = await asyncio.to_thread(
+        _read_box, src, clip_stem, frame_idx, box_idx, (vx, vy)
+    )
     if bbox_raw is None:
         return Response(status_code=404)
+    extra = {"draw": False} if place else {}  # no box on a place card's clip
     out = await asyncio.to_thread(
         _render_clip,
         video_path,
@@ -1040,6 +1106,7 @@ async def ball_check_clip(
         bbox_raw,
         pad,
         blind,
+        **extra,
     )
     if out is None:
         return Response(status_code=404)
@@ -1148,6 +1215,8 @@ async def ball_check_step(
     delta: int = 0,
     pad: float = _PAD_FACTOR,
     src: str = "sidecar",
+    vx: float = 0.5,
+    vy: float = 0.5,
 ) -> dict:
     """The neighbouring frame, viewed through this card's window.
 
@@ -1157,7 +1226,9 @@ async def ball_check_step(
     The verdict still belongs to the anchor frame.
     """
     target = max(0, frame_idx + int(delta))
-    anchor = await asyncio.to_thread(_read_box, src, clip_stem, frame_idx, box_idx)
+    anchor = await asyncio.to_thread(
+        _read_box, src, clip_stem, frame_idx, box_idx, (vx, vy)
+    )
     if anchor is None:
         return {"ok": False, "error": "anchor box not found"}
 
@@ -1202,7 +1273,7 @@ async def ball_check_step(
         "confidence": (near.get("confidence") if near else None),
         "image_url": (
             f"/ball_check/crop/{clip_stem}/{frame_idx}/{box_idx}.jpg"
-            f"?src={src}&at={target}&reticle=false"
+            f"?src={src}&at={target}&reticle=false&vx={vx}&vy={vy}"
         ),
     }
 

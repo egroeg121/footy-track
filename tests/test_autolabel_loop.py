@@ -7,6 +7,7 @@ import json
 
 import pytest
 
+from footy_track import eval_registry
 from footy_track.autolabel import loop
 from footy_track.autolabel.loop import StaticParams, Thresholds
 from footy_track.labeller.constants import card_box_index
@@ -592,7 +593,13 @@ def test_missed_ball_cards_come_first_one_per_gap_and_never_consecutive_frames()
     )
     assert b["counts"]["gap_frames"] == 5 and b["counts"]["gap_objects"] == 2
     prios = [b["meta"][c["id"]]["priority"] for c in b["cards"]]
-    assert prios == sorted(prios)  # missed balls, spare balls, tracker, audit, spot
+    # missed balls, spare balls, tracker, spot; the blind audit cards are mixed in
+    main = [
+        b["meta"][c["id"]]["priority"]
+        for c in b["cards"]
+        if b["meta"][c["id"]]["role"] not in loop.MIXED_ROLES
+    ]
+    assert main == sorted(main)
     first = [c for c in b["cards"] if b["meta"][c["id"]]["role"] == "gap"]
     assert len(first) == 2 and prios[:2] == [1, 1]
     # the middle frame of the run of three, not an edge
@@ -668,3 +675,670 @@ def test_ingest_missed_ball_cards_become_hard_positives_or_no_ball():
     assert len(lines) == 1 and lines[0]["bbox"] == drag
     assert [n["reason"] for n in p.negatives] == ["gap_no_ball"]
     assert p.counts["gap_hard_positives_tier1"] == 1
+
+
+# ======================================================================================
+# gate audits: floor, decay, state file, interleaving
+# ======================================================================================
+
+
+def _gate_items(n_auto=20, n_claude=10, n_static=8, n_over=9):
+    """One object per candidate (frames 100 apart): every gate has a known size."""
+    items, k = [], 0
+
+    def add(prefix, n, **kw):
+        nonlocal k
+        for i in range(n):
+            items.append(
+                _c(f"{prefix}{i}", 100 * k, 40 + 50 * (k % 30), 40 + 7 * k, **kw)
+            )
+            k += 1
+
+    add("a", n_auto, source="tracker", track=None, claude_conf=0.97)
+    for it in items:  # distinct tracker ids so nothing links
+        it["track_id"] = int(it["id"][1:]) + 1
+    add("c", n_claude, source="top", verdict="not_ball", claude_conf=0.95)
+    add("s", n_static, source="top", status="filtered", verdict=None)
+    add("o", n_over, source="top", status="over_budget", verdict=None)
+    return items
+
+
+def _gate_build(items=None, **kw):
+    return loop.build_round(
+        items or _gate_items(),
+        round_id="g1",
+        sizes={"clipA": SIZE},
+        stems={"clipA": "clipA_stem"},
+        **kw,
+    )
+
+
+def _cards_of(b, gate):
+    return [
+        c
+        for c, m in b["meta"].items()
+        if m.get("gate") == gate and m["role"] in ("audit", "control")
+    ]
+
+
+def test_gate_sample_size_rate_floor_and_cap():
+    assert loop.gate_sample_size(100, 0.20, 6) == 20
+    assert loop.gate_sample_size(10, 0.20, 6) == 6  # floor
+    assert loop.gate_sample_size(4, 0.20, 6) == 4  # never more than the gate has
+    assert loop.gate_sample_size(0, 0.20, 6) == 0
+    assert loop.gate_sample_size(100, 0.05, 3) == 5
+    assert loop.gate_sample_size(10, 0.05, 3) == 3
+
+
+def test_every_gate_is_sampled_with_the_floor_and_capped_at_its_size():
+    b = _gate_build()
+    g = b["counts"]["cards_by_gate"]
+    # 20 auto objects: 20% is 4, the floor is 6; 10 claude drops: floor; 8 static: floor;
+    # 9 never asked: floor
+    assert {k: v["objects"] for k, v in g.items()} == {
+        "auto": 20,
+        "claude_drop": 10,
+        "static_drop": 8,
+        "over_budget": 9,
+    }
+    assert {k: v["cards"] for k, v in g.items()} == dict.fromkeys(g, 6)
+    small = _gate_build(_gate_items(3, 2, 1, 4))
+    assert {k: v["cards"] for k, v in small["counts"]["cards_by_gate"].items()} == {
+        "auto": 3,
+        "claude_drop": 2,
+        "static_drop": 1,
+        "over_budget": 4,
+    }
+    big = _gate_build(_gate_items(60, 0, 0, 0))
+    assert big["counts"]["cards_by_gate"]["auto"]["cards"] == 12  # 20% of 60
+    assert big["counts"]["cards_by_role"]["audit"] == 12
+
+
+def test_settled_gates_use_the_lower_rate_and_floor_and_the_plan_is_configurable():
+    thr = Thresholds()
+    state = {"gates": {}}
+    plan = loop.gate_params(thr, state)
+    assert all(
+        not v["settled"] and v["rate"] == 0.20 and v["min"] == 6 for v in plan.values()
+    )
+    plan = {g: {"rate": 0.05, "min": 3} for g in loop.GATES}
+    b = _gate_build(_gate_items(60, 10, 8, 9), gate_plan=plan)
+    cards = {k: v["cards"] for k, v in b["counts"]["cards_by_gate"].items()}
+    assert cards == {"auto": 3, "claude_drop": 3, "static_drop": 3, "over_budget": 3}
+    b = _gate_build(
+        _gate_items(60, 10, 8, 9), thr=Thresholds(audit_rate=0.5, audit_min=1)
+    )
+    assert b["counts"]["cards_by_gate"]["auto"]["cards"] == 30
+
+
+def _hist(*rows):
+    return [
+        {"round": f"r{i}", "decided": d, "correct": c, "precision": c / d, "at": i}
+        for i, (d, c) in enumerate(rows)
+    ]
+
+
+def test_gate_decays_after_three_passing_rounds_and_a_miss_resets_it():
+    thr = Thresholds()  # auto passes at 0.97, the drops at 0.95
+    state = lambda h: {"gates": {"auto": {"history": h}, "claude_drop": {"history": h}}}  # noqa: E731
+    ok = _hist((6, 6), (6, 6))
+    assert not loop.gate_params(thr, state(ok))["auto"]["settled"]  # two rounds
+    ok3 = _hist((6, 6), (6, 6), (7, 7))
+    p = loop.gate_params(thr, state(ok3))
+    assert p["auto"]["settled"] and p["auto"]["rate"] == 0.05 and p["auto"]["min"] == 3
+    assert not p["static_drop"]["settled"]  # no history of its own
+    # a failing round (judged enough, below the threshold) ends the streak
+    bad = _hist((6, 6), (6, 5), (6, 6), (6, 6))
+    assert loop.gate_params(thr, state(bad))["auto"]["streak"] == 2
+    # a round that judged too few objects is no evidence either way
+    thin = _hist((6, 6), (6, 6), (2, 0), (6, 6))
+    assert loop.gate_params(thr, state(thin))["auto"]["settled"]
+    # re-deciding a round ignores that round's own earlier ingest
+    p = loop.gate_params(thr, state(ok3), exclude_round="r2")
+    assert not p["auto"]["settled"]
+    # a gate with no pass level (never asked) is never settled
+    allg = {"gates": {"over_budget": {"history": _hist((6, 6), (6, 6), (6, 6))}}}
+    assert not loop.gate_params(thr, allg)["over_budget"]["settled"]
+
+
+def test_gate_state_file_replaces_a_round_and_orders_by_time(tmp_path):
+    path = tmp_path / "runs" / "gate_state.json"
+    g = {"decided": 6, "correct": 6, "precision": 1.0}
+    loop.update_gate_state(path, "r1", {"auto": g, "claude_drop": {"decided": 0}}, 10.0)
+    loop.update_gate_state(
+        path, "r2", {"auto": {**g, "correct": 5, "precision": 5 / 6}}, 20.0
+    )
+    loop.update_gate_state(
+        path, "r1", {"auto": {**g, "decided": 8, "correct": 8}}, 10.0
+    )
+    st = loop.load_gate_state(path)
+    assert [h["round"] for h in st["gates"]["auto"]["history"]] == ["r1", "r2"]
+    assert (
+        st["gates"]["auto"]["history"][0]["decided"] == 8
+    )  # r1 replaced, not appended
+    assert "claude_drop" not in st["gates"]  # nothing decided: not recorded
+    assert loop.load_gate_state(tmp_path / "none.json") == {"version": 1, "gates": {}}
+
+
+def test_audit_cards_are_blind_and_mixed_through_the_whole_queue():
+    items = _gate_items() + [
+        _c(f"r{i}", 5000 + 100 * i, 800, 100 + 9 * i, "top", claude_conf=0.9)
+        for i in range(30)
+    ]
+    b = _gate_build(items)
+    keys = {frozenset(c) for c in b["cards"] if c["bbox"] is not None}
+    assert keys == {
+        frozenset(
+            {"id", "clip", "run_clip", "frame_index", "frame_size", "bbox", "label"}
+            | {"provenance", "confidence"}
+        )
+    }
+    n = len(b["cards"])
+    pos = [
+        i
+        for i, c in enumerate(b["cards"])
+        if b["meta"][c["id"]]["role"] in loop.MIXED_ROLES
+    ]
+    assert len(pos) == 24
+    # spread over the list: some in the first quarter, some in the last quarter
+    assert min(pos) < n / 4 and max(pos) > 3 * n / 4
+    assert sum(p < n / 2 for p in pos) not in (0, len(pos))
+    # the rest keeps its priority order
+    main = [
+        b["meta"][c["id"]]["priority"]
+        for c in b["cards"]
+        if b["meta"][c["id"]]["role"] not in loop.MIXED_ROLES
+    ]
+    assert main == sorted(main)
+    # deterministic
+    assert [c["id"] for c in _gate_build(items)["cards"]] == [
+        c["id"] for c in b["cards"]
+    ]
+
+
+def test_gate_objects_are_not_mixed_between_static_and_claude_drops():
+    items = [
+        _c("c0", 0, 100, 100, "top", verdict="not_ball", claude_conf=0.95),
+        _c("s0", 5, 104, 100, "top", status="filtered", verdict=None),  # same place
+    ]
+    b = _gate_build(items)
+    assert sorted(o["gate"] for o in b["objects"].values()) == [
+        "claude_drop",
+        "static_drop",
+    ]
+    assert b["decisions"]["s0"]["reason"] == "static"
+
+
+def test_over_budget_candidates_are_decided_only_in_the_new_scheme():
+    items = [_c("o0", 0, 100, 100, "top", status="over_budget", verdict=None)]
+    new = _gate_build(items)
+    assert new["decisions"]["o0"]["class"] == "unasked"
+    assert new["counts"]["over_budget"] == 1 and new["counts"]["cards"] == 1
+    old = _gate_build(items, thr=Thresholds(scheme=1))
+    assert "o0" not in old["decisions"] and old["counts"]["cards"] == 0
+
+
+def test_scheme_one_reproduces_the_first_rounds_sampling():
+    b = _gate_build(
+        _gate_items(20, 10, 8, 9),
+        thr=Thresholds(scheme=1, audit_rate=0.10, control_rate=0.0),
+    )
+    assert b["counts"]["cards_by_role"] == {"audit": 2}  # 10% of 20, no controls at 5%
+    assert all("gate" not in m for m in b["meta"].values())
+
+
+# ------------------------------------------------------------------ gate ingest numbers
+
+
+def _verdict_map(b, by_gate, extra=None):
+    out = {}
+    for cid, m in b["meta"].items():
+        v = by_gate.get(m.get("gate")) if m["role"] in ("audit", "control") else None
+        if callable(v):
+            v = v(cid)
+        if v:
+            out[cid] = {"verdict": v}
+    return {**out, **(extra or {})}
+
+
+def test_wilson_interval():
+    lo, hi = loop.wilson(9, 10)
+    assert 0.59 < lo < 0.60 and 0.97 < hi < 0.99
+    assert loop.wilson(0, 0) is None
+    lo, hi = loop.wilson(6, 6)
+    assert 0.60 < lo < 0.62 and hi == pytest.approx(1.0)
+
+
+def test_ingest_reports_precision_per_gate_with_counts_and_interval():
+    items = _gate_items()
+    b = _gate_build(items)
+    auto_cards = sorted(_cards_of(b, "auto"))
+    wrong = auto_cards[0]
+    v = _verdict_map(
+        b,
+        {
+            "auto": lambda cid: "not_ball" if cid == wrong else "ball",
+            "claude_drop": "not_ball",
+            "static_drop": lambda cid: "ball"
+            if cid == sorted(_cards_of(b, "static_drop"))[0]
+            else "not_ball",
+            "over_budget": "unsure",
+        },
+    )
+    p = loop.plan_ingest(items, b, v, sizes={"clipA": SIZE}, eval_ids=set())
+    a = p.gates["auto"]
+    assert (a["audited"], a["ball"], a["not_ball"], a["decided"]) == (6, 5, 1, 6)
+    assert a["precision"] == pytest.approx(5 / 6) and a["passed"] is False
+    assert a["ci95"][0] < 5 / 6 < a["ci95"][1] and a["threshold"] == 0.97
+    c = p.gates["claude_drop"]
+    assert c["precision"] == 1.0 and c["passed"] is True and c["ball_rate"] == 0.0
+    s = p.gates["static_drop"]
+    assert (s["correct"], s["decided"]) == (5, 6) and s["ball_rate"] == pytest.approx(
+        1 / 6
+    )
+    o = p.gates["over_budget"]
+    assert o["decided"] == 0 and o["unsure"] == 6 and o["precision"] is None
+    assert o["threshold"] is None and o["passed"] is None
+    # the breaker still reads the auto-accept audit only
+    assert p.audit["ball"] == 5 and p.audit["not_ball"] == 1
+
+
+# ------------------------------------------------------------- random no-candidate frames
+
+
+def _random_frames():
+    return [
+        {"id": f"clipA_{f:06d}_r", "clip": "clipA", "frame": f, "cands": cands}
+        for f, cands in (
+            (1000, [[960.0, 540.0, 0.4]]),  # a cached candidate at the centre
+            (1005, []),
+            (1010, [[100.0, 100.0, 0.2]]),
+            (1015, []),
+        )
+    ]
+
+
+def test_random_frames_become_blind_place_cards_without_a_box():
+    b = _gate_build(random_frames=_random_frames())
+    rc = [c for c in b["cards"] if b["meta"][c["id"]]["role"] == "random"]
+    assert len(rc) == 4 and b["counts"]["random_cards"] == 4
+    for c in rc:
+        assert c["bbox"] is None and c["place"] is True
+        assert c["provenance"] == "list" and c["clip"] == "clipA_stem"
+        assert "note" not in c and "role" not in c and "source" not in c
+    assert {c["frame_index"] for c in rc} == {1000, 1005, 1010, 1015}
+    assert len({card_box_index(c["id"]) for c in b["cards"]}) == len(b["cards"])
+    # they sit among the other cards, not at the end
+    pos = [i for i, c in enumerate(b["cards"]) if c in rc]
+    assert min(pos) < len(b["cards"]) / 2
+
+
+def test_random_frames_measure_the_miss_rate_and_write_tapped_balls():
+    items = _gate_items() + [
+        # the loop asked about a candidate on frame 1005 (the tapped one)
+        _c("q1", 1005, 300, 300, "top", claude_conf=0.9),
+    ]
+    rf = _random_frames()
+    b = _gate_build(items, random_frames=rf)
+    by_frame = {
+        m["frame"]: cid for cid, m in b["meta"].items() if m["role"] == "random"
+    }
+
+    def tap(cx, cy):
+        return {
+            "verdict": "corrected",
+            "corrected_bbox": {
+                "x": cx / 1920 - 0.005,
+                "y": cy / 1080 - 0.005,
+                "w": 0.01,
+                "h": 0.01,
+            },
+        }
+
+    v = {
+        by_frame[1000]: tap(962, 541),  # cached candidate (never selected): not asked
+        by_frame[1005]: tap(305, 300),  # a candidate the loop asked about
+        by_frame[1010]: tap(1500, 900),  # nothing near: missed
+        by_frame[1015]: {"verdict": "not_ball"},  # no ball visible
+    }
+    p = loop.plan_ingest(
+        items, b, v, sizes={"clipA": SIZE}, eval_ids=set(), random_frames=rf
+    )
+    r = p.random
+    assert (r["frames"], r["ball_visible"], r["no_ball"]) == (4, 3, 1)
+    assert (r["found_selected"], r["found_not_selected"], r["missed"]) == (1, 1, 1)
+    assert r["miss_rate"] == pytest.approx(1 / 3)
+    assert r["unexamined_rate"] == pytest.approx(2 / 3)
+    assert r["miss_ci95"][0] < 1 / 3 < r["miss_ci95"][1]
+    assert r["ball_visible_rate"] == pytest.approx(3 / 4)
+    # the three tapped balls are tier 1 labels (the person drew them), the empty one nothing
+    tier1 = [ln for ln in p.labels["clipA"] if "labeller" in ln["tags"]]
+    assert sorted(ln["frame_index"] for ln in tier1) == [1000, 1005, 1010]
+    assert p.counts["random_hard_positives_tier1"] == 3
+    # not answered yet: pending, never a miss
+    p0 = loop.plan_ingest(
+        items, b, {}, sizes={"clipA": SIZE}, eval_ids=set(), random_frames=rf
+    )
+    assert p0.random["pending"] == 4 and p0.random["miss_rate"] is None
+
+
+def test_pick_random_frames_spreads_over_clips_and_is_deterministic():
+    frames = {"a": list(range(0, 100, 5)), "b": [0, 5], "c": []}
+    got = loop.pick_random_frames(frames, 6, round_id="r1", seed=1)
+    assert len(got) == 6 and got == loop.pick_random_frames(
+        frames, 6, round_id="r1", seed=1
+    )
+    assert {c for c, _ in got[:2]} == {"a", "b"}  # round-robin, not all from one clip
+    assert got != loop.pick_random_frames(frames, 6, round_id="r2", seed=1)
+    assert len(loop.pick_random_frames(frames, 99, round_id="r1")) == 22
+
+
+# ------------------------------------------------------------------- CLI round trip
+
+
+def test_cli_decide_and_ingest_write_gate_state_report_and_use_stored_plan(tmp_path):
+    run = _make_run(tmp_path)
+    rf = {
+        "frames": [{"id": "clipA_000100_r", "clip": "clipA", "frame": 100, "cands": []}]
+    }
+    (run / "random_frames.json").write_text(json.dumps(rf))
+    assert (
+        cli.main(["decide", "--run", str(run), "--answers", str(run / "answers.json")])
+        == 0
+    )
+    rep = json.loads((run / "round_report.json").read_text())
+    assert rep["thresholds"]["scheme"] == 2 and rep["random_frames"] == 1
+    assert set(rep["gates_plan"]) == set(loop.GATES)
+    cards = json.loads((run / "review_list.json").read_text())["items"]
+    meta = json.loads((run / "cards_meta.json").read_text())
+    assert sum(m["role"] == "random" for m in meta.values()) == 1
+    place = [c for c in cards if c.get("place")]
+    assert len(place) == 1 and place[0]["bbox"] is None
+    md = (run / "round_report.md").read_text()
+    assert "Gate audits" in md and "claude_drop" in md
+    vdir = tmp_path / "gt" / "ball_checks"
+    tapped = {"x": 0.5, "y": 0.5, "w": 0.01, "h": 0.01}
+    vdir.mkdir(parents=True)
+    with (vdir / "clipA_stem.jsonl").open("w") as fh:
+        for c in cards:
+            m = meta[c["id"]]
+            v = {"audit": "ball", "control": "not_ball", "random": "corrected"}.get(
+                m["role"]
+            )
+            if v:
+                fh.write(
+                    json.dumps(
+                        {
+                            "clip": c["clip"],
+                            "frame_index": c["frame_index"],
+                            "box_index": card_box_index(c["id"]),
+                            "source": "list",
+                            "verdict": v,
+                            "corrected_bbox": tapped if v == "corrected" else None,
+                        }
+                    )
+                    + "\n"
+                )
+    sp = _split(tmp_path)
+    args = [
+        "ingest",
+        "--run",
+        str(run),
+        "--split",
+        str(sp),
+        "--verdicts-dir",
+        str(vdir),
+    ]
+    args += [
+        "--answers",
+        str(run / "answers.json"),
+        "--labels-dir",
+        str(tmp_path / "labels"),
+    ]
+    args += ["--audit-rate", "0.9"]  # ignored: the round's own thresholds decide
+    assert cli.main(args) == 0
+    rep = json.loads((run / "round_report.json").read_text())
+    assert rep["gates"]["auto"]["precision"] == 1.0
+    assert rep["gates"]["claude_drop"]["precision"] == 1.0
+    assert rep["random"]["missed"] == 1 and rep["random"]["miss_rate"] == 1.0
+    md = (run / "round_report.md").read_text()
+    assert "Wilson 95%" in md and "Random no-candidate frames" in md
+    state = loop.load_gate_state(run.parent / "gate_state.json")
+    assert state["gates"]["auto"]["history"][0]["round"] == "r1"
+    assert state["gates"]["auto"]["history"][0]["precision"] == 1.0
+    assert cli.main(args) == 0  # idempotent: the history still has one entry for r1
+    assert (
+        len(
+            loop.load_gate_state(run.parent / "gate_state.json")["gates"]["auto"][
+                "history"
+            ]
+        )
+        == 1
+    )
+    # three more passing rounds in the history: the next decide samples at the settled rate
+    st = loop.load_gate_state(run.parent / "gate_state.json")
+    hist = _hist((6, 6), (6, 6), (6, 6))
+    for i, h in enumerate(hist):
+        h["round"] = f"old{i}"
+    st["gates"]["auto"]["history"] = hist
+    (run.parent / "gate_state.json").write_text(json.dumps(st))
+    run2 = tmp_path / "runs" / "r2"
+    run2.mkdir()
+    for f in ("items.json", "clips.json", "sizes.json", "prepare.done.json"):
+        (run2 / f).write_text((run / f).read_text())
+    assert (
+        cli.main(["decide", "--run", str(run2), "--answers", str(run / "answers.json")])
+        == 0
+    )
+    plan2 = json.loads((run2 / "round_report.json").read_text())["gates_plan"]
+    assert plan2["auto"]["settled"] and plan2["auto"]["rate"] == 0.05
+    assert not plan2["claude_drop"]["settled"]
+
+
+def test_ingest_of_a_round_decided_before_the_gate_audits_still_works(tmp_path):
+    """A report without ``scheme`` is a round of the first scheme: ingest rebuilds the
+    cards with that sampling (10% audit, 5% controls), so its stored ids still match."""
+    run = _make_run(tmp_path)
+    thr = Thresholds(scheme=1)
+    old = loop.build_round(
+        _round_items(),
+        round_id=run.name,
+        sizes={"clipA": SIZE},
+        stems={"clipA": "clipA_stem"},
+        thr=thr,
+    )
+    (run / "cards_meta.json").write_text(json.dumps(old["meta"]))
+    stored = {
+        k: v
+        for k, v in loop.asdict_thr(thr).items()
+        if k
+        not in (
+            "scheme",
+            "audit_min",
+            "settled_rate",
+            "settled_min",
+            "settled_rounds",
+            "drop_precision",
+            "random_frames",
+        )
+    }
+    stored["audit_rate"] = 0.10
+    (run / "round_report.json").write_text(
+        json.dumps(
+            {
+                "round": "r1",
+                "created_at": 1.0,
+                "thresholds": stored,
+                "breaker": {"open": False, "why": "x"},
+                "counts": old["counts"],
+                "clips": 1,
+                "frames": 40,
+            }
+        )
+    )
+    assert (
+        cli._round_thr(json.loads((run / "round_report.json").read_text()), None).scheme
+        == 1
+    )
+    sp = _split(tmp_path)
+    args = [
+        "ingest",
+        "--run",
+        str(run),
+        "--split",
+        str(sp),
+        "--answers",
+        str(run / "answers.json"),
+    ]
+    args += ["--verdicts-dir", str(tmp_path / "v"), "--labels-dir", str(tmp_path / "l")]
+    assert cli.main(args) == 0
+    assert not (
+        run.parent / "gate_state.json"
+    ).exists()  # legacy rounds leave no gate history
+
+
+# ------------------------------------------------------------ eval registry, sparse eval
+
+
+def test_registered_eval_clips_are_refused_by_the_loop_guard(tmp_path):
+    reg = tmp_path / "reg.json"
+    eval_registry.register_clips(reg, ["arsenal_mancity_20250925_seg044"])
+    ids = loop.eval_clip_ids(_split(tmp_path), registry=reg)
+    assert "arsenal_mancity_seg044" in ids
+    for alias in ("arsenal_mancity_seg044", "mancity_seg044.mp4"):
+        with pytest.raises(loop.EvalClipError):
+            loop.assert_not_eval([alias], ids)
+    d = _videos(tmp_path, ["arsenal_mancity_20250925_seg044", "x_seg001", "x_seg002"])
+    assert loop.pick_clips(d, ids, n_random=2) == ["x_seg001", "x_seg002"]
+    with pytest.raises(loop.EvalClipError):
+        loop.pick_clips(d, ids, names=["arsenal_mancity_seg044"])
+    # through the CLI (exit code 4) and through $FOOTY_EVAL_REGISTRY
+    sp = _split(tmp_path)
+    run = tmp_path / "run"
+    rc = cli.main(
+        ["pool", "--run", str(run), "--split", str(sp), "--clips-dir", str(d)]
+        + ["--clips", "arsenal_mancity_seg044", "--eval-registry", str(reg)]
+    )
+    assert rc == 4
+    assert (
+        cli.main(
+            [
+                "check",
+                "--split",
+                str(sp),
+                "--clips",
+                "mancity_seg044",
+                "--eval-registry",
+                str(reg),
+            ]
+        )
+        == 4
+    )
+    assert (
+        cli.main(
+            [
+                "check",
+                "--split",
+                str(sp),
+                "--clips",
+                "x_seg001",
+                "--eval-registry",
+                str(reg),
+            ]
+        )
+        == 0
+    )
+
+
+def test_registry_from_environment(tmp_path, monkeypatch):
+    reg = tmp_path / "reg.json"
+    eval_registry.register_clips(reg, ["x_seg009"])
+    monkeypatch.setenv("FOOTY_EVAL_REGISTRY", str(reg))
+    assert "x_seg009" in loop.eval_clip_ids(_split(tmp_path))
+    assert eval_registry.register_clips(reg, ["x_seg009"]) == []  # idempotent
+    assert eval_registry.read_registry(None) == {}
+
+
+def test_eval_register_refuses_a_clip_an_earlier_round_used(tmp_path, capsys):
+    d = _videos(tmp_path, ["a_seg001", "a_seg002"])
+    runs = tmp_path / "runs"
+    (runs / "r1").mkdir(parents=True)
+    (runs / "r1" / "clips.json").write_text(json.dumps({"clips": ["a_seg001"]}))
+    reg = tmp_path / "reg.json"
+    base = ["eval-register", "--registry", str(reg), "--clips-dir", str(d)]
+    assert cli.main([*base, "--clips", "a_seg001", "--rounds-dir", str(runs)]) == 5
+    assert not reg.exists()
+    assert cli.main([*base, "--clips", "nosuch"]) == 2
+    assert cli.main([*base, "--clips", "a_seg002", "--rounds-dir", str(runs)]) == 0
+    assert set(eval_registry.read_registry(reg)) == {"a_seg002"}
+
+
+def test_eval_list_makes_one_place_card_per_second_and_finalise_writes_no_ball(
+    tmp_path, monkeypatch
+):
+    d = _videos(tmp_path, ["a_seg002"])
+    reg = tmp_path / "reg.json"
+    eval_registry.register_clips(reg, ["a_seg002"])
+    monkeypatch.setattr(cli, "_video_info", lambda p: (25.0, 100, (640, 360)))
+    out = tmp_path / "list.json"
+    rc = cli.main(
+        ["eval-list", "--registry", str(reg), "--clips-dir", str(d), "--out", str(out)]
+    )
+    assert rc == 0
+    cards = json.loads(out.read_text())["items"]
+    assert [c["frame_index"] for c in cards] == [0, 25, 50, 75]
+    assert all(
+        c["bbox"] is None and c["place"] and c["clip"] == "a_seg002" for c in cards
+    )
+    assert len({c["id"] for c in cards}) == 4
+    # a clip that is not registered is refused
+    assert (
+        cli.main(
+            [
+                "eval-list",
+                "--registry",
+                str(reg),
+                "--clips-dir",
+                str(d),
+                "--clips",
+                "zzz",
+                "--out",
+                str(out),
+            ]
+        )
+        == 5
+    )
+    gt = tmp_path / "gt"
+    (gt / "ball_checks").mkdir(parents=True)
+    with (gt / "ball_checks" / "a_seg002.jsonl").open("w") as fh:
+        for c, v in zip(cards, ("not_ball", "corrected", "unsure", None), strict=True):
+            if v:
+                fh.write(
+                    json.dumps(
+                        {
+                            "clip": "a_seg002",
+                            "frame_index": c["frame_index"],
+                            "box_index": card_box_index(c["id"]),
+                            "source": "list",
+                            "verdict": v,
+                        }
+                    )
+                    + "\n"
+                )
+    (gt / "a_seg002.jsonl").write_text(
+        json.dumps(
+            {
+                "frame_index": 25,
+                "bbox": {"x": 0.1, "y": 0.1, "w": 0.01, "h": 0.01},
+                "tags": ["in_play_ball", "labeller"],
+            }
+        )
+        + "\n"
+    )
+    args = ["eval-finalise", "--list", str(out), "--gt-dir", str(gt)]
+    assert cli.main(args) == 0
+    lines = [json.loads(x) for x in (gt / "a_seg002.jsonl").read_text().splitlines()]
+    assert [ln["frame_index"] for ln in lines] == [25, 0]
+    assert lines[1]["tags"] == ["no_ball"] and lines[1]["bbox"] is None
+    assert cli.main(args) == 0  # idempotent
+    assert len((gt / "a_seg002.jsonl").read_text().splitlines()) == 2

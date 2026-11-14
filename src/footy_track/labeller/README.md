@@ -860,11 +860,45 @@ reads `<gt dir>/ball_checks/` (`--ball-checks-dir`) into the feature store's
   Nothing is written until the person acts, except the tier 3 `claude_auto`
   labels, which are machine output and are tagged as such.
   - Tests: `tests/test_autolabel_loop.py::test_decide_then_ingest_roundtrip_and_breaker_next_round`
-- **LAB-1015** (PLANNED, MUST; not built) Tap-to-place: on a card where the ball is visible
-  but no box is on it (a Claude "cell" answer, or a miss), tapping the ball
-  writes a new box as `[label, labeller]` (tier 1), the same result as a drag.
-  The Claude cell is a hint shown on the card, never a box.
-  - Tests: none yet
+- **LAB-1015** (MUST; built 2026-11, the page is not covered by automated tests)
+  Tap-to-place: on a card where the ball may be visible but no box is on it, tapping
+  the ball places a small box centred on the tap; the verdict is then the same
+  `corrected` as a drag. A list card with `"bbox": null` and `"place": true` is such a
+  card (`/ball_check/queue` passes both through). `crop_meta` answers `place: true,
+  bbox: null`; the crop, step and clip endpoints take `vx`, `vy` (the window centre,
+  normalised) and `pad=100`, which means the WHOLE frame (any other pad is capped at 40
+  as before); no reticle or box is drawn on a place card's still or clip.
+  Page behaviour on a place card: it opens on the whole frame with the prompt "Tap the
+  ball, or No ball" (the one place a card differs; there is no box to ask about) and no
+  clip autoplay (Replay plays it); a quick tap (under 10 px of movement, under 0.6 s)
+  puts a box of 0.86% of the frame width (11 px at 1280) centred on the tap and
+  turns Ball into **Save ball**; a tap away from the box moves it, a press on it
+  drags it, pinch and +/- resize it, as on any card. **Save ball** calls `save_box`
+  (an `appended` `[label, labeller]` sidecar line) and records `corrected` with
+  `corrected_bbox`; **No ball** (the Not a ball button, left swipe) records `not_ball`
+  = no ball visible; Ball with no tap says so and records nothing; Box off is hidden.
+  Zoom steps through whole frame, then windows centred on the placed box (the box is
+  kept: it lives in frame pixels); the frame stepper and Home keep it aside while off
+  the card's own frame. Ordinary cards behave as before (a tap that is not on the box
+  does nothing there).
+  Used by the labelling loop's random no-candidate frames and by sparse eval
+  labelling (`docs/design/claude_autolabel_loop.md`, 12.9).
+  - Tests: `test_ball_check.py::test_place_card_queue_is_blind_and_has_no_box`,
+    `test_place_card_crop_meta_full_frame_then_window_centred_on_the_view`,
+    `test_place_card_crop_step_clip_and_verdict_flow`,
+    `test_place_card_not_a_ball_is_no_ball_visible`; the page itself was driven once
+    by hand against a test server (tap, zoom, step, home, save, no ball, and the drag
+    of an ordinary card) and has no automated test
+- **LAB-1016** (MUST, built 2026-11) Blind gate audits and random frames in the loop's
+  review list. Every automatic decision of the loop gets its own blind random sample
+  of cards (`max(rate x size, min)` objects per gate, capped at the gate's size) and
+  a few random sampled frames are shown with no box (LAB-1015). These cards are
+  mixed through the whole list at hash-random places and look like any other card
+  (same prompt, no source or role on the card), so the reviewer cannot tell an audit
+  from a real review card. Design page, section 12.10.
+  - Tests: `tests/test_autolabel_loop.py::test_audit_cards_are_blind_and_mixed_through_the_whole_queue`,
+    `test_every_gate_is_sampled_with_the_floor_and_capped_at_its_size`,
+    `test_random_frames_become_blind_place_cards_without_a_box`
 
 ## 12. Confidence sampling — candidates (LAB-11xx)
 

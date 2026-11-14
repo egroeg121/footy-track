@@ -14,6 +14,10 @@ data and every output is JSON. The pieces, in order of a round:
    person answers once per object; :func:`build_round` makes the blind review cards.
 5. ingest: :func:`plan_ingest` turns a person's verdicts into label lines, hard
    negatives and the audit numbers; :func:`breaker_state` is the circuit breaker.
+6. gate audits: every automatic decision (auto-accept, confident drop, static drop,
+   never asked) gets a blind random sample (:func:`gate_params`, floor and decay from
+   the per-gate history in :func:`load_gate_state`), and a few random frames are shown
+   with no box at all (tap the ball, or no ball) to measure what the loop misses.
 
 Geometry is native frame pixels; the cards carry normalised boxes.
 """
@@ -29,6 +33,7 @@ from collections.abc import Iterable, Sequence
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
+from footy_track import eval_registry
 from footy_track.clip_id import canonical_clip_id
 
 VIDEO_SUFFIXES = {".mp4", ".mov", ".avi", ".mkv"}
@@ -67,13 +72,16 @@ def eval_clip_ids(
     gt_dir: Path | None = None,
     eval_dirs: Iterable[Path] = (),
     cache_dir: Path | None = None,
+    registry: Path | None = None,
 ) -> set[str]:
     """Canonical ids of every clip the loop must never touch.
 
     The union of: every clip in the split file (``held_out`` and ``seen`` both: the
     seen eval clips are still evaluation clips), every clip with a GT sidecar or a Ball
     Check verdict log under ``gt_dir``, every video under the eval directories and every
-    cached eval clip. A missing split file is an error, never an empty set.
+    cached eval clip, and every clip of the new-eval registry (``registry``, defaults to
+    ``$FOOTY_EVAL_REGISTRY``: clips registered for sparse eval labelling, which have no
+    sidecar yet). A missing split file is an error, never an empty set.
     """
     split_file = Path(split_file)
     if not split_file.is_file():
@@ -87,6 +95,7 @@ def eval_clip_ids(
     for d in eval_dirs:
         ids |= _stems(d, [f"*{s}" for s in sorted(VIDEO_SUFFIXES)])
     ids |= _stems(cache_dir, ["*.jsonl"])
+    ids |= eval_registry.registry_ids(registry or eval_registry.default_path())
     return ids
 
 
@@ -217,8 +226,24 @@ class Thresholds:
 
     auto_conf: float = 0.95  # tracker candidate + ball + conf >= this: auto-accept
     drop_conf: float = 0.8  # non-tracker candidate + not_ball + conf >= this: dropped
-    audit_rate: float = 0.10  # share of auto-accepted objects a person re-checks
-    control_rate: float = 0.05  # share of dropped objects a person re-checks
+    # Gate audits (scheme 2). Per gate a blind random sample of
+    # ``max(ceil(rate * size), min)`` objects, capped at the gate's size: the "new" rate
+    # and floor until a gate has passed ``settled_rounds`` rounds in a row with audit
+    # precision at its threshold, then the "settled" ones.
+    audit_rate: float = 0.20
+    audit_min: int = 6
+    settled_rate: float = 0.05
+    settled_min: int = 3
+    settled_rounds: int = 3
+    drop_precision: float = (
+        0.95  # pass level of the two drop gates (not_ball precision)
+    )
+    random_frames: int = (
+        8  # no-candidate frames per round ("does the system miss balls?")
+    )
+    scheme: int = 2  # 1: the first round's audit (10%, min 1) and 5% controls, kept so
+    # that a round decided with it can still be ingested
+    control_rate: float = 0.05  # scheme 1 only: share of dropped objects re-checked
     breaker_precision: float = 0.97
     min_audit_objects: int = 5  # fewer audited objects: the breaker keeps its state
     spot_min_members: int = 5  # objects this big get spot-check cards
@@ -255,6 +280,149 @@ def classify(
     if verdict == "not_ball" and conf >= thr.drop_conf:
         return "drop", False
     return "review", False
+
+
+# ---------------------------------------------------------------------------------
+# 3b. gates: audit sampling, history, statistics
+# ---------------------------------------------------------------------------------
+
+#: Every automatic decision of the loop, each audited on its own. ``auto``: a tracker
+#: candidate Claude is sure is the ball, accepted unseen. ``claude_drop``: a non-tracker
+#: candidate Claude is sure is not a ball. ``static_drop``: removed by the static filter,
+#: never asked. ``over_budget``: a candidate the question budget left unasked (nothing
+#: decided it; the audit measures what the budget loses).
+GATES = ("auto", "claude_drop", "static_drop", "over_budget")
+
+
+def gate_threshold(gate: str, thr: Thresholds) -> float | None:
+    """The audit precision a gate must reach to count as passed; None: report only."""
+    if gate == "auto":
+        return thr.breaker_precision
+    if gate in ("claude_drop", "static_drop"):
+        return thr.drop_precision
+    return None
+
+
+def wilson(k: int, n: int, z: float = 1.96) -> tuple[float, float] | None:
+    """Wilson score interval (95% by default) of ``k`` successes in ``n``."""
+    if n <= 0:
+        return None
+    p = k / n
+    d = 1 + z * z / n
+    c = (p + z * z / (2 * n)) / d
+    h = z * math.sqrt(p * (1 - p) / n + z * z / (4 * n * n)) / d
+    return max(0.0, c - h), min(1.0, c + h)
+
+
+def gate_sample_size(size: int, rate: float, min_cards: int) -> int:
+    """``max(ceil(rate * size), min_cards)``, never more than the gate has."""
+    return min(size, max(math.ceil(rate * size - 1e-9), min_cards))
+
+
+def load_gate_state(path: Path | None) -> dict:
+    """The per-gate audit history, ``{"version": 1, "gates": {gate: {"history": [...]}}}``.
+
+    Lives next to the round directories (``<rounds dir>/gate_state.json``): it spans
+    rounds, so it belongs to none of them. A missing file is an empty history."""
+    if path is None or not Path(path).is_file():
+        return {"version": 1, "gates": {}}
+    data = json.loads(Path(path).read_text())
+    data.setdefault("gates", {})
+    return data
+
+
+def update_gate_state(
+    path: Path, round_id: str, gates: dict[str, dict], at: float
+) -> dict:
+    """Record a round's audit result per gate (keyed by round id: a re-ingest replaces
+    its own entry). Only gates with at least one decided object are recorded."""
+    state = load_gate_state(path)
+    for gate, g in gates.items():
+        if not g.get("decided"):
+            continue
+        hist = list(state["gates"].setdefault(gate, {}).get("history", []))
+        hist = [h for h in hist if h["round"] != round_id]
+        hist.append(
+            {
+                "round": round_id,
+                "decided": g["decided"],
+                "correct": g["correct"],
+                "precision": g["precision"],
+                "at": at,
+            }
+        )
+        state["gates"][gate]["history"] = sorted(hist, key=lambda h: h["at"])
+    p = Path(path)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    tmp = p.with_name(p.name + ".tmp")
+    tmp.write_text(json.dumps(state, indent=1))
+    tmp.replace(p)
+    return state
+
+
+def gate_streak(
+    history: Sequence[dict], threshold: float | None, min_decided: int
+) -> int:
+    """Rounds passed in a row, newest first. A round passes when it judged at least
+    ``min_decided`` objects with precision at the threshold; one that judged enough and
+    missed it ends the streak; one that judged too few is ignored (no evidence)."""
+    if threshold is None:
+        return 0
+    streak = 0
+    for h in sorted(history, key=lambda h: h["at"], reverse=True):
+        if h["decided"] < min_decided:
+            continue
+        if h["precision"] is not None and h["precision"] >= threshold:
+            streak += 1
+        else:
+            break
+    return streak
+
+
+def gate_params(
+    thr: Thresholds, state: dict | None = None, *, exclude_round: str | None = None
+) -> dict[str, dict]:
+    """Sampling rate and floor per gate for a round: ``{gate: {"rate", "min",
+    "settled", "streak"}}``. A gate is settled (the lower rate and floor) after
+    ``settled_rounds`` consecutive passing rounds; ``exclude_round`` leaves a round's own
+    earlier ingest out, so re-deciding a round does not change its sample."""
+    state = state or {"gates": {}}
+    out = {}
+    for gate in GATES:
+        hist = [
+            h
+            for h in state.get("gates", {}).get(gate, {}).get("history", [])
+            if h["round"] != exclude_round
+        ]
+        streak = gate_streak(hist, gate_threshold(gate, thr), thr.settled_min)
+        settled = streak >= thr.settled_rounds
+        out[gate] = {
+            "rate": thr.settled_rate if settled else thr.audit_rate,
+            "min": thr.settled_min if settled else thr.audit_min,
+            "settled": settled,
+            "streak": streak,
+        }
+    return out
+
+
+def pick_random_frames(
+    frames: dict[str, Sequence[int]], n: int, *, round_id: str, seed: int = 7
+) -> list[tuple[str, int]]:
+    """``n`` random ``(clip, frame)`` pairs from the sampled frames, spread over the clips
+    (a hash order inside each clip, then round-robin), deterministic in the round id and
+    seed. Fewer when there are fewer frames."""
+    order = {
+        c: sorted(set(fs), key=lambda f, c=c: _h(f"{round_id}|{seed}|rand|{c}|{f}"))
+        for c, fs in sorted(frames.items())
+    }
+    out: list[tuple[str, int]] = []
+    k = 0
+    while len(out) < n and any(k < len(v) for v in order.values()):
+        for c, v in order.items():
+            if k < len(v) and len(out) < n:
+                out.append((c, v[k]))
+        k += 1
+    return out
 
 
 # ---------------------------------------------------------------------------------
@@ -325,6 +493,17 @@ def object_id(clip: str, members: Sequence[dict]) -> str:
     return _h(f"{clip}|{m['frame']}|{round(m['cx'])}|{round(m['cy'])}")[:12]
 
 
+def _gate_of(cls: str, reason: str) -> str | None:
+    """The gate an automatic decision belongs to (None: a person sees every object)."""
+    if cls == "auto":
+        return "auto"
+    if cls == "drop":
+        return "static_drop" if reason == "static" else "claude_drop"
+    if cls == "unasked":
+        return "over_budget"
+    return None
+
+
 def _frac(key: str) -> float:
     """Deterministic pseudo-random number in [0, 1) from a key."""
     return int(_h(key)[:8], 16) / 0x100000000
@@ -364,20 +543,35 @@ def _rep(members: Sequence[dict], cls: str = "review") -> dict:
 
 #: queue priority of a card, highest first (lower number): missed balls, then spare balls
 #: and false starts, then Claude-uncertain tracker candidates, then the blind audit
-#: and controls, then the spot checks.
-PRIORITY = {"gap": 1, "other": 2, "tracker": 3, "audit": 4, "control": 4, "spot": 5}
+#: samples, then the spot checks. The audit-type roles (``MIXED_ROLES``) are not kept in
+#: their priority slot: :func:`order_cards` spreads them through the whole queue.
+PRIORITY = {
+    "gap": 1,
+    "other": 2,
+    "tracker": 3,
+    "audit": 4,
+    "control": 4,
+    "random": 4,
+    "spot": 5,
+}
+
+#: Roles that are blind samples of a decision (gate audits, random no-candidate frames).
+MIXED_ROLES = frozenset({"audit", "control", "random"})
 
 
 def order_cards(cards: list[dict], meta: dict[str, dict], round_id: str) -> list[dict]:
     """By priority, and inside a priority round-robin over the clips (a hash order inside
-    each clip), so no clip floods the front of the queue."""
+    each clip), so no clip floods the front of the queue. The blind audit samples
+    (``MIXED_ROLES``) are then spread evenly, at hash-random places, through the whole
+    list: a reviewer who stops early has still seen a share of every audit, and a card
+    in the audit sample sits among the others with nothing to tell it apart."""
     rank: dict[tuple, int] = {}
     seq: dict[tuple, int] = defaultdict(int)
     for c in sorted(cards, key=lambda c: _h(f"{round_id}|shuffle|{c['id']}")):
         k = (meta[c["id"]]["priority"], c["run_clip"])
         rank[c["id"]] = seq[k]
         seq[k] += 1
-    return sorted(
+    ordered = sorted(
         cards,
         key=lambda c: (
             meta[c["id"]]["priority"],
@@ -386,6 +580,18 @@ def order_cards(cards: list[dict], meta: dict[str, dict], round_id: str) -> list
             c["id"],
         ),
     )
+    mixed = [c for c in ordered if meta[c["id"]]["role"] in MIXED_ROLES]
+    main = [c for c in ordered if meta[c["id"]]["role"] not in MIXED_ROLES]
+    if not mixed or not main:
+        return main + mixed if not mixed else mixed + main
+    spread = sorted(mixed, key=lambda c: _h(f"{round_id}|mix|{c['id']}"))
+    keyed = [
+        ((k + _frac(f"{round_id}|mixpos|{c['id']}")) / len(spread), 0, c)
+        for k, c in enumerate(spread)
+    ]
+    keyed += [((i + 0.5) / len(main), 1, c) for i, c in enumerate(main)]
+    keyed.sort(key=lambda e: (e[0], e[1], e[2]["id"]))
+    return [e[2] for e in keyed]
 
 
 def build_round(  # noqa: PLR0912, PLR0915
@@ -396,6 +602,8 @@ def build_round(  # noqa: PLR0912, PLR0915
     stems: dict[str, str],
     thr: Thresholds | None = None,
     breaker_open: bool = False,
+    gate_plan: dict[str, dict] | None = None,
+    random_frames: Sequence[dict] = (),
 ) -> dict:
     """Decide every answered candidate, group into objects, build the blind cards.
 
@@ -406,8 +614,16 @@ def build_round(  # noqa: PLR0912, PLR0915
     serves it under. Returns ``{"decisions", "objects", "cards", "meta", "counts"}``:
     ``cards`` is the shuffled blind list (no source, role or hint on a card), ``meta``
     holds card id to role/object/members and is never shown to the reviewer.
+
+    ``gate_plan`` (``{gate: {"rate", "min"}}``, from :func:`gate_params`; default: every
+    gate at the "new" rate) sets the blind audit sample of each gate. ``random_frames``
+    are the round's no-candidate frames (``id``, ``clip``, ``frame``, ...): one card
+    each with no box (``bbox`` None, ``place`` True: the page asks to tap the ball).
+    With ``thr.scheme == 1`` the first round's sampling is reproduced exactly.
     """
     thr = thr or Thresholds()
+    legacy = thr.scheme == 1
+    plan = gate_plan or gate_params(thr)
     decisions: dict[str, dict] = {}
     groups: dict[tuple[str, str], list[dict]] = defaultdict(list)
     for it in items:
@@ -417,6 +633,9 @@ def build_round(  # noqa: PLR0912, PLR0915
         elif it["status"] == "gap":
             cls, would = "gap", False
             reason = "tracker_gap"
+        elif it["status"] == "over_budget" and not legacy:
+            cls, would = "unasked", False
+            reason = "over_budget"
         elif it.get("verdict") is None:
             continue  # not answered yet (budget stop): not decided this round
         else:
@@ -435,11 +654,13 @@ def build_round(  # noqa: PLR0912, PLR0915
             "verdict": it.get("verdict"),
             "claude_conf": it.get("claude_conf"),
             "source": it["source"],
+            "gate": None if legacy else _gate_of(cls, reason),
         }
-        groups[(it["clip"], cls)].append(it)
+        gkey = decisions[it["id"]]["gate"] if cls in ("drop", "unasked") else None
+        groups[(it["clip"], cls, gkey or "")].append(it)
 
     objects: dict[str, dict] = {}
-    for (clip, cls), members in sorted(groups.items()):
+    for (clip, cls, _gk), members in sorted(groups.items()):
         gap = cls == "gap"
         linked = (
             link_objects(members, max_gap=15, base_px=80.0, per_frame_px=30.0)
@@ -459,6 +680,7 @@ def build_round(  # noqa: PLR0912, PLR0915
                 "would_auto": any(decisions[m["id"]]["would_auto"] for m in ms),
                 "reason": decisions[ms[0]["id"]]["reason"],
                 "sources": sorted({m["source"] for m in ms}),
+                "gate": decisions[ms[0]["id"]]["gate"],
             }
 
     byq = {it["id"]: it for it in items}
@@ -493,6 +715,8 @@ def build_round(  # noqa: PLR0912, PLR0915
             "would_auto": obj["would_auto"],
             "priority": PRIORITY[prio],
         }
+        if obj.get("gate") and role != "spot":
+            meta[cid]["gate"] = obj["gate"]
 
     def spots(obj: dict) -> list[str]:
         if len(obj["members"]) < thr.spot_min_members:
@@ -501,11 +725,24 @@ def build_round(  # noqa: PLR0912, PLR0915
         ends = [obj["members"][0], obj["members"][-1]]
         return [m for m in dict.fromkeys(ends) if m != obj["rep"]][: thr.spot_cards]
 
-    auto_objs = sorted(
-        (o for o in objects.values() if o["class"] == "auto"), key=lambda o: _h(o["id"])
-    )
-    n_audit = min(len(auto_objs), max(1, round(thr.audit_rate * len(auto_objs))))
-    audit_ids = {o["id"] for o in auto_objs[:n_audit]} if auto_objs else set()
+    audit_ids: set[str] = set()
+    if legacy:
+        auto_objs = sorted(
+            (o for o in objects.values() if o["class"] == "auto"),
+            key=lambda o: _h(o["id"]),
+        )
+        n_audit = min(len(auto_objs), max(1, round(thr.audit_rate * len(auto_objs))))
+        audit_ids = {o["id"] for o in auto_objs[:n_audit]} if auto_objs else set()
+    else:
+        # one blind random sample per gate, by a hash of the round, gate and object
+        for gate in GATES:
+            members = sorted(
+                (o for o in objects.values() if o.get("gate") == gate),
+                key=lambda o, g=gate: _h(f"{round_id}|audit|{g}|{o['id']}"),
+            )
+            g = plan.get(gate) or {"rate": thr.audit_rate, "min": thr.audit_min}
+            n = gate_sample_size(len(members), g["rate"], g["min"])
+            audit_ids |= {o["id"] for o in members[:n]}
     for o in objects.values():
         if o["class"] == "gap":
             continue  # chosen below, capped
@@ -519,12 +756,40 @@ def build_round(  # noqa: PLR0912, PLR0915
             add_card("audit", o, o["rep"], "rep")
             for m in spots(o):
                 add_card("spot", o, m, f"s{m}")
-        elif (
-            o["class"] == "drop"
-            and _frac(f"{round_id}|ctl|{o['id']}") < thr.control_rate
+        elif o["class"] in ("drop", "unasked") and (
+            o["id"] in audit_ids
+            if not legacy
+            else _frac(f"{round_id}|ctl|{o['id']}") < thr.control_rate
         ):
             o["control"] = True
             add_card("control", o, o["rep"], "rep")
+    for r in sorted(random_frames, key=lambda r: r["id"]):
+        cid = _h(f"{round_id}|random|{r['id']}")[:16]
+        cards.append(
+            {
+                "id": cid,
+                "clip": stems[r["clip"]],
+                "run_clip": r["clip"],
+                "frame_index": r["frame"],
+                "frame_size": list(sizes[r["clip"]]),
+                "bbox": None,
+                "place": True,
+                "label": BALL_LABEL,
+                "provenance": "list",
+                "confidence": None,
+            }
+        )
+        meta[cid] = {
+            "role": "random",
+            "object": None,
+            "member": None,
+            "frame": r["frame"],
+            "clip": r["clip"],
+            "n_members": 0,
+            "would_auto": False,
+            "priority": PRIORITY["random"],
+            "gate": "random",
+        }
     gaps = sorted(
         (o for o in objects.values() if o["class"] == "gap"), key=lambda o: _h(o["id"])
     )
@@ -533,7 +798,7 @@ def build_round(  # noqa: PLR0912, PLR0915
     for o in gaps[thr.max_gap_cards :]:
         o["capped"] = True
     cards = order_cards(cards, meta, round_id)
-    counts = round_counts(items, decisions, objects, meta)
+    counts = round_counts(items, decisions, objects, meta, plan)
     return {
         "decisions": decisions,
         "objects": objects,
@@ -543,13 +808,28 @@ def build_round(  # noqa: PLR0912, PLR0915
     }
 
 
-def round_counts(items, decisions, objects, meta) -> dict:
+def round_counts(items, decisions, objects, meta, plan=None) -> dict:
     cls = defaultdict(int)
     for d in decisions.values():
         cls[d["class"]] += 1
     roles = defaultdict(int)
     for m in meta.values():
         roles[m["role"]] += 1
+    gates = {}
+    for g in GATES:
+        objs = [o for o in objects.values() if o.get("gate") == g]
+        if not objs:
+            continue
+        gates[g] = {
+            "objects": len(objs),
+            "candidates": sum(len(o["members"]) for o in objs),
+            "cards": sum(
+                1
+                for m in meta.values()
+                if m.get("gate") == g and m["role"] in ("audit", "control")
+            ),
+            **{k: (plan or {}).get(g, {}).get(k) for k in ("rate", "min", "settled")},
+        }
     return {
         "candidates": sum(1 for i in items if i["status"] != "gap"),
         "gap_frames": sum(1 for i in items if i["status"] == "gap"),
@@ -559,18 +839,22 @@ def round_counts(items, decisions, objects, meta) -> dict:
             for p in sorted(set(PRIORITY.values()))
         },
         "filtered_static": sum(1 for i in items if i["status"] == "filtered"),
+        "over_budget": sum(1 for i in items if i["status"] == "over_budget"),
         "asked": sum(1 for i in items if i["status"] == "asked"),
         "answered": sum(1 for i in items if i.get("verdict") is not None),
         "auto_candidates": cls["auto"],
         "review_candidates": cls["review"],
         "dropped_candidates": cls["drop"],
+        "unasked_candidates": cls["unasked"],
         "objects": len(objects),
         "objects_by_class": {
             c: sum(1 for o in objects.values() if o["class"] == c)
-            for c in ("auto", "review", "drop", "gap")
+            for c in ("auto", "review", "drop", "gap", "unasked")
         },
         "cards": len(meta),
         "cards_by_role": dict(roles),
+        "cards_by_gate": gates,
+        "random_cards": roles.get("random", 0),
         "would_auto_objects": sum(1 for o in objects.values() if o["would_auto"]),
     }
 
@@ -592,6 +876,8 @@ class IngestPlan:
     counts: dict = field(default_factory=dict)
     audit: dict = field(default_factory=dict)
     controls: dict = field(default_factory=dict)
+    gates: dict = field(default_factory=dict)  # gate -> audit numbers (scheme 2)
+    random: dict = field(default_factory=dict)  # no-candidate frames: the miss rate
 
 
 def _line(frame: int, bbox: dict, tags: list[str]) -> dict:
@@ -615,6 +901,7 @@ def plan_ingest(  # noqa: PLR0912, PLR0915
     sizes: dict[str, Sequence[int]],
     eval_ids: set[str],
     thr: Thresholds | None = None,
+    random_frames: Sequence[dict] = (),
 ) -> IngestPlan:
     """Turn a person's verdicts on the round's cards into label lines and numbers.
 
@@ -632,6 +919,10 @@ def plan_ingest(  # noqa: PLR0912, PLR0915
     * a missed-ball (gap) object: ``corrected`` writes the dragged box as ``labeller`` (a
       hard positive the detector missed), ``ball`` the predicted box as ``claude`` +
       ``human_checked``, ``not_ball`` (no ball visible) a negative;
+    * a random no-candidate frame (no box shown): ``corrected`` (the person tapped the
+      ball) writes the box as ``labeller`` and counts as a ball the loop would have missed
+      when no candidate lay within 25 px of the tap; ``not_ball`` (no ball visible)
+      writes nothing; the numbers go to ``plan.random``;
     * spot-check cards that contradict the object card (``ball`` against ``not_ball``)
       mark the object inconsistent: nothing is written for it, and it is reported.
 
@@ -645,6 +936,8 @@ def plan_ingest(  # noqa: PLR0912, PLR0915
     main_card: dict[str, str] = {}
     spot_cards: dict[str, list[str]] = defaultdict(list)
     for cid, m in meta.items():
+        if m["role"] == "random":
+            continue
         if m["role"] == "spot":
             spot_cards[m["object"]].append(cid)
         else:
@@ -669,6 +962,23 @@ def plan_ingest(  # noqa: PLR0912, PLR0915
         "frames_not": 0,
     }
     ctl = {"ball": 0, "not_ball": 0, "unsure": 0}
+    tally: dict[str, dict[str, int]] = {}
+
+    def count_gate(gate: str, v: str | None, n_frames: int) -> None:
+        t = tally.setdefault(
+            gate,
+            {"ball": 0, "not_ball": 0, "unsure": 0, "pending": 0, "frames_ball": 0}
+            | {"frames_not": 0},
+        )
+        key = (
+            "ball" if v in PRESENT else v if v in ("not_ball", "unsure") else "pending"
+        )
+        t[key] += 1
+        if key == "ball":
+            t["frames_ball"] += n_frames
+        elif key == "not_ball":
+            t["frames_not"] += n_frames
+
     for oid in sorted(objects):
         o = objects[oid]
         clip = o["clip"]
@@ -689,6 +999,8 @@ def plan_ingest(  # noqa: PLR0912, PLR0915
             c["objects_inconsistent"] += 1
             continue
         role = meta[cid]["role"] if cid else None
+        if o.get("gate") and role in ("audit", "control"):
+            count_gate(o["gate"], v, len(members))
         if o["class"] == "auto":
             if role == "audit":
                 if v in PRESENT:
@@ -739,6 +1051,7 @@ def plan_ingest(  # noqa: PLR0912, PLR0915
             continue
         shadow = o["would_auto"] and role == "review"
         if shadow:  # breaker open: a would-be auto object a person judged
+            count_gate("auto", v, len(members))
             key = (
                 "ball" if v in PRESENT else "not_ball" if v == "not_ball" else "unsure"
             )
@@ -771,7 +1084,12 @@ def plan_ingest(  # noqa: PLR0912, PLR0915
             for m in members:
                 plan.negatives.append(_neg(m, clip, sizes, role + "_not_ball"))
             c["negative_frames"] += len(members)
+    plan.gates = _gate_summaries(built, tally, thr)
+    plan.random = _random_summary(built, verdicts, items, random_frames, sizes, emit)
     plan.counts = dict(c)
+    for k, v in plan.random.items():
+        if k == "labels_tier1":
+            plan.counts["random_hard_positives_tier1"] = v
     dec = audit_n["ball"] + audit_n["not_ball"]
     fr = audit_n["frames_ball"] + audit_n["frames_not"]
     plan.audit = {
@@ -786,6 +1104,123 @@ def plan_ingest(  # noqa: PLR0912, PLR0915
         "dropped_objects_checked": sum(ctl.values()),
     }
     return plan
+
+
+RANDOM_NEAR_PX = 25.0  # a tap this close to a candidate: the loop had found the ball
+
+
+def _gate_summaries(built: dict, tally: dict, thr: Thresholds) -> dict:
+    """Per gate: audited objects, precision of the gate's decision with a Wilson 95%
+    interval, and whether it passed its threshold. For ``auto`` the decision is "this is
+    the ball", so ``correct`` counts ``ball``; for the others it is "this is not the ball",
+    so ``correct`` counts ``not_ball`` and ``ball_rate`` is what the gate wrongly lost."""
+    out = {}
+    for gate in GATES:
+        objs = [o for o in built["objects"].values() if o.get("gate") == gate]
+        t = tally.get(gate)
+        if not objs and not t:
+            continue
+        t = t or dict.fromkeys(
+            ("ball", "not_ball", "unsure", "pending", "frames_ball", "frames_not"), 0
+        )
+        dec = t["ball"] + t["not_ball"]
+        correct = t["ball"] if gate == "auto" else t["not_ball"]
+        ci = wilson(correct, dec)
+        thr_g = gate_threshold(gate, thr)
+        prec = correct / dec if dec else None
+        out[gate] = {
+            "objects": len(objs),
+            "audited": sum(t[k] for k in ("ball", "not_ball", "unsure", "pending")),
+            **{k: t[k] for k in ("ball", "not_ball", "unsure", "pending")},
+            "decided": dec,
+            "correct": correct,
+            "precision": prec,
+            "ci95": None if ci is None else [round(ci[0], 4), round(ci[1], 4)],
+            "ball_rate": (t["ball"] / dec if dec else None) if gate != "auto" else None,
+            "threshold": thr_g,
+            "passed": None if thr_g is None or prec is None else prec >= thr_g,
+        }
+    return out
+
+
+def _random_summary(built, verdicts, items, random_frames, sizes, emit) -> dict:
+    """What the random no-candidate frames say about misses: of the frames where the
+    person tapped a ball, how many had a candidate on the tap (``found_selected``: the
+    loop asked about it), a cached detector candidate that the loop never selected
+    (``found_not_selected``) or none at all (``missed``)."""
+    cards = [(cid, m) for cid, m in built["meta"].items() if m["role"] == "random"]
+    if not cards:
+        return {}
+    frames = {(r["clip"], r["frame"]): r for r in random_frames}
+    pos: dict[tuple, list[tuple[float, float]]] = defaultdict(list)
+    for it in items:
+        if it["status"] in ("asked", "filtered", "over_budget"):
+            pos[(it["clip"], it["frame"])].append((it["cx"], it["cy"]))
+    r = {
+        "frames": len(cards),
+        "ball_visible": 0,
+        "no_ball": 0,
+        "unsure": 0,
+        "pending": 0,
+        "found_selected": 0,
+        "found_not_selected": 0,
+        "missed": 0,
+        "labels_tier1": 0,
+    }
+    for cid, m in sorted(cards):
+        rec = verdicts.get(cid)
+        v = None if rec is None else rec.get("verdict")
+        if v == "not_ball":
+            r["no_ball"] += 1
+            continue
+        if v == "unsure":
+            r["unsure"] += 1
+            continue
+        if v not in PRESENT:
+            r["pending"] += 1
+            continue
+        r["ball_visible"] += 1
+        cb = rec.get("corrected_bbox")
+        clip, f = m["clip"], m["frame"]
+        if not isinstance(cb, dict):
+            continue  # a bare "ball" has no position: it cannot be classed
+        w, h = sizes[clip]
+        tx, ty = (
+            (float(cb["x"]) + float(cb["w"]) / 2) * w,
+            (float(cb["y"]) + float(cb["h"]) / 2) * h,
+        )
+        emit(
+            clip,
+            {"frame": f},
+            [BALL_LABEL, TAG_LABELLER],
+            {k: float(cb[k]) for k in "xywh"},
+        )
+        r["labels_tier1"] += 1
+
+        def near(pts, tx=tx, ty=ty):
+            return any(math.hypot(tx - x, ty - y) <= RANDOM_NEAR_PX for x, y in pts)
+
+        cached = [(c[0], c[1]) for c in (frames.get((clip, f)) or {}).get("cands", [])]
+        if near(pos.get((clip, f), [])):
+            r["found_selected"] += 1
+        elif near(cached):
+            r["found_not_selected"] += 1
+        else:
+            r["missed"] += 1
+    n, k = r["ball_visible"], r["missed"]
+    k2 = r["missed"] + r["found_not_selected"]
+    r["miss_rate"] = k / n if n else None
+    r["miss_ci95"] = _ci(k, n)
+    r["unexamined_rate"] = k2 / n if n else None  # no candidate, or never selected
+    r["unexamined_ci95"] = _ci(k2, n)
+    r["ball_visible_rate"] = n / (n + r["no_ball"]) if n + r["no_ball"] else None
+    r["ball_visible_ci95"] = _ci(n, n + r["no_ball"])
+    return r
+
+
+def _ci(k: int, n: int) -> list[float] | None:
+    ci = wilson(k, n)
+    return None if ci is None else [round(ci[0], 4), round(ci[1], 4)]
 
 
 def _neg(m: dict, clip: str, sizes, reason: str) -> dict:

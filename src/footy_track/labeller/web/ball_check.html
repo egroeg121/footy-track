@@ -122,6 +122,12 @@
 
 <script>
 const PADS = [6, 14, 30];      // context steps for the "Zoom out" button
+// Tap-to-place cards (no box on the card): start on the WHOLE frame (100 = full), then
+// zoom in around the box that was placed.
+const PLACE_PADS = [100, 30, 14, 6];
+const PLACE_FRAC = 0.0086;     // placed box width as a share of the frame width
+const PLACE_PROMPT = 'Tap the ball, or No ball';
+const TAP_PX = 10;             // a press that moves less than this is a tap
 const REFILL_AT = 12;          // fetch more cards when the buffer runs low
 const RESAMPLE_EVERY = 15;     // re-fetch so the boundary estimate can steer
 const PREFETCH = 4;            // crops to warm ahead of the current card
@@ -137,6 +143,12 @@ let offset = 0;                // frames stepped away from the card's frame
 let meta = null;               // crop geometry for the current card
 let box = null;                // live box in frame pixels {x1,y1,x2,y2}
 let edited = false;
+let placeIdx = 0;              // zoom step of a tap-to-place card
+let view = { vx: 0.5, vy: 0.5 };   // centre of a tap-to-place card's window (normalised)
+let stash = null;              // the placed box, kept while stepping off the card's frame
+let keepNext = false;          // next render() keeps the placed box (zoom / home)
+let lastItem = null;
+let tap = null;                // a press that may become a tap {id, x, y, t}
 
 const $ = (id) => document.getElementById(id);
 // ?source=list|candidates|sidecar and ?clip=... steer the queue (default: auto).
@@ -156,19 +168,22 @@ const blindQs = (item) =>
   (srcOf(item) === 'list' && item.blind === false ? '&blind=false' : '');
 // Clip stems carry a date that eats the width the confidence needs.
 const shortClip = (c) => c.replace(/_20\d{6}/, '');
-const cropUrl = (item, pad) => {
+// Zoom steps of a card: the context pads, or the whole-frame ladder of a place card.
+const padOf = (item) => (item && item.place ? PLACE_PADS[placeIdx] : PADS[padIdx]);
+const viewQs = (item, v = view) => (item && item.place ? `&vx=${v.vx}&vy=${v.vy}` : '');
+const cropUrl = (item, pad, v = view) => {
   const join = item.image_url.includes('?') ? '&' : '?';
-  return `${item.image_url}${join}pad=${pad}&reticle=false`;
+  return `${item.image_url}${join}pad=${pad}&reticle=false${viewQs(item, v)}`;
 };
 const metaUrl = (item, pad) =>
   `/ball_check/crop_meta/${item.clip}/${item.frame_index}/${item.box_index}` +
-  `?pad=${pad}&src=${srcOf(item)}`;
+  `?pad=${pad}&src=${srcOf(item)}${viewQs(item)}`;
 
 // ---- context clip: ~3 s MP4 centred on the card's frame, then the still ----
 
 const clipUrl = (item, pad) =>
   `/ball_check/clip/${item.clip}/${item.frame_index}/${item.box_index}.mp4` +
-  `?pad=${pad}&src=${srcOf(item)}${blindQs(item)}`;
+  `?pad=${pad}&src=${srcOf(item)}${blindQs(item)}${viewQs(item)}`;
 const CLIP_PREFETCH = 2;       // clips are ~0.2 MB and ~1 s to render: stay shallow
 const clipCache = new Map();   // url -> Promise<Blob|null>
 let clipTimer = null, clipObjUrl = null, clipToken = 0;
@@ -201,7 +216,7 @@ function stopClip() {
 async function playClip(item) {
   stopClip();
   const token = clipToken;
-  const blob = await fetchClip(clipUrl(item, PADS[padIdx]));
+  const blob = await fetchClip(clipUrl(item, padOf(item)));
   if (!blob || token !== clipToken || queue[0] !== item || offset !== 0) return;
   clipObjUrl = URL.createObjectURL(blob);
   const v = $('clip');
@@ -224,9 +239,12 @@ async function playClip(item) {
 function prefetch() {
   for (const item of queue.slice(1, 1 + PREFETCH)) {
     const img = new Image();
-    img.src = cropUrl(item, PADS[padIdx]);
+    // a place card opens on the whole frame, whatever the zoom of the card before
+    img.src = cropUrl(item, item.place ? PLACE_PADS[0] : PADS[padIdx], { vx: 0.5, vy: 0.5 });
   }
-  for (const item of queue.slice(1, 1 + CLIP_PREFETCH)) fetchClip(clipUrl(item, PADS[padIdx]));
+  for (const item of queue.slice(1, 1 + CLIP_PREFETCH)) {
+    if (!item.place) fetchClip(clipUrl(item, PADS[padIdx]));
+  }
 }
 
 // ---- geometry: frame pixels <-> displayed image pixels ---------------------
@@ -295,17 +313,30 @@ function drawBox() {
     ${dot(x1, y1)}${dot(x2, y1)}${dot(x1, y2)}${dot(x2, y2)}`;
 }
 
-async function loadMeta(item) {
+function syncYes() {
+  $('btnYes').textContent = edited ? 'Save ball' : 'Ball';
+  $('btnYes').classList.toggle('save', edited);
+}
+
+async function loadMeta(item, keep) {
+  // zoom / home on a place card keep the box that was tapped (frame pixels, so it
+  // survives a change of window)
+  const saved = keep && item.place ? (stash || { box, edited }) : null;
+  stash = null;
   meta = null; box = null; edited = false; offset = 0;
   $('btnHome').classList.remove('active');
-  $('btnYes').textContent = 'Ball';
-  $('btnYes').classList.remove('save');
+  syncYes();
   drawBox();
-  const data = await (await fetch(metaUrl(item, PADS[padIdx]))).json();
+  const data = await (await fetch(metaUrl(item, padOf(item)))).json();
   if (!data.ok || queue[0] !== item) return;
   meta = data;
   const f = data.frame, b = data.bbox;
-  box = { x1: b.x * f.w, y1: b.y * f.h, x2: (b.x + b.w) * f.w, y2: (b.y + b.h) * f.h };
+  if (data.place) {
+    if (saved && saved.box) { box = saved.box; edited = saved.edited; }
+  } else {
+    box = { x1: b.x * f.w, y1: b.y * f.h, x2: (b.x + b.w) * f.w, y2: (b.y + b.h) * f.h };
+  }
+  syncYes();
   drawBox();
 }
 
@@ -319,16 +350,28 @@ function render() {
   }
   $('card').style.display = 'flex';
   $('empty').style.display = 'none';
-  $('shot').src = cropUrl(item, PADS[padIdx]);
+  if (item !== lastItem) {            // a new card: a place card starts on the whole frame
+    lastItem = item;
+    placeIdx = 0; view = { vx: 0.5, vy: 0.5 }; stash = null; keepNext = false; tap = null;
+    $('status').textContent = item.place ? 'Tap the ball, or No ball.' : '';
+  }
+  $('btnNo').textContent = item.place ? 'No ball' : 'Not a ball';
+  $('btnBoxOff').classList.toggle('hidden', !!item.place);
+  $('btnZoom').textContent = item.place
+    ? (placeIdx === PLACE_PADS.length - 1 ? 'Full' : 'Zoom')
+    : (padIdx === PADS.length - 1 ? 'Zoom in' : 'Zoom');
+  $('shot').src = cropUrl(item, padOf(item));
   $('clipName').textContent = `${shortClip(item.clip)} · f${item.frame_index}`;
   $('provName').textContent = isBlind(item) ? ''
     : item.confidence === null || item.confidence === undefined
       ? `${item.label} · ${item.provenance}`
       : `${item.label} · conf ${item.confidence.toFixed(2)}`;
-  $('note').textContent = isBlind(item) ? BLIND_PROMPT : (item.note || '');
+  $('note').textContent = item.place ? PLACE_PROMPT
+    : isBlind(item) ? BLIND_PROMPT : (item.note || '');
   $('progress').textContent = `${judged} checked · ${remaining} left`;
-  loadMeta(item);
-  playClip(item);
+  const keep = keepNext; keepNext = false;
+  loadMeta(item, keep);
+  if (!item.place) playClip(item);    // a place card waits for the tap; Replay plays it
   prefetch();
 }
 
@@ -366,6 +409,11 @@ function flash(verdict) {
 async function judge(verdict, extra) {
   const item = queue[0];
   if (!item || busy) return;
+  if (item.place && verdict === 'box_off') return;   // there is no box to be off
+  if (item.place && verdict === 'ball') {            // a ball needs a tap: Save ball
+    $('status').textContent = 'Tap the ball first (or No ball).';
+    return;
+  }
   busy = true;
   flash(verdict);
   queue.shift();
@@ -476,8 +524,7 @@ const pinchDist = () => {
 function markEdited() {
   if (edited) return;
   edited = true;
-  $('btnYes').textContent = 'Save ball';
-  $('btnYes').classList.add('save');
+  syncYes();
   $('status').textContent = 'Box edited — "Save ball" stores it as ground truth.';
 }
 
@@ -508,8 +555,31 @@ function cornerAt(vx, vy) {
   return null;
 }
 
+// Tap-to-place (LAB-1015): on a card with no box, a tap puts a small box centred on the
+// tap (a press that moves is a swipe, left to the card). With a box already placed, a tap
+// away from it moves it; a press on it drags it as on any card.
+function placeAt(vx, vy) {
+  if (!meta || !meta.place || offset !== 0) return;
+  const f = meta.frame;
+  let [fx, fy] = toFrame(vx, vy);
+  fx = Math.max(0, Math.min(f.w, fx)); fy = Math.max(0, Math.min(f.h, fy));
+  const half = Math.max(3, f.w * PLACE_FRAC / 2);
+  box = { x1: fx - half, y1: fy - half, x2: fx + half, y2: fy + half };
+  markEdited();
+  drawBox();
+  $('status').textContent = 'Placed. "Save ball" stores it; tap again to move it; "No ball" if there is none.';
+}
+
 $('overlay').addEventListener('pointerdown', (e) => {
-  if (!box || !meta || offset !== 0) return;   // off-anchor view is read-only
+  if (!meta || offset !== 0) return;           // off-anchor view is read-only
+  if (!box) {                                  // nothing to drag: maybe a tap-to-place
+    if (meta.place) {
+      const r0 = $('overlay').getBoundingClientRect();
+      tap = { id: e.pointerId, x: e.clientX, y: e.clientY, t: Date.now(),
+              vx: e.clientX - r0.left, vy: e.clientY - r0.top };
+    }
+    return;
+  }
   const r = $('overlay').getBoundingClientRect();
   const vx = e.clientX - r.left, vy = e.clientY - r.top;
   pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
@@ -523,7 +593,13 @@ $('overlay').addEventListener('pointerdown', (e) => {
   const [x1, y1] = toView(box.x1, box.y1);
   const [x2, y2] = toView(box.x2, box.y2);
   const inside = vx >= x1 - HANDLE && vx <= x2 + HANDLE && vy >= y1 - HANDLE && vy <= y2 + HANDLE;
-  if (!corner && !inside) return;       // let the card handle the swipe
+  if (!corner && !inside) {             // away from the box: a tap moves a placed box,
+    if (meta.place) {                   // anything else is the card's swipe
+      pointers.delete(e.pointerId);
+      tap = { id: e.pointerId, x: e.clientX, y: e.clientY, t: Date.now(), vx, vy };
+    }
+    return;
+  }
   e.preventDefault();
   $('overlay').setPointerCapture(e.pointerId);
   drag = { corner, startX: vx, startY: vy, orig: { ...box } };
@@ -561,6 +637,13 @@ $('overlay').addEventListener('pointermove', (e) => {
 });
 
 const endDrag = (e) => {
+  if (tap && e && e.pointerId === tap.id) {
+    const moved = Math.hypot(e.clientX - tap.x, e.clientY - tap.y);
+    const quick = Date.now() - tap.t < 600;
+    const t = tap;
+    tap = null;
+    if (e.type === 'pointerup' && moved < TAP_PX && quick && !busy) placeAt(t.vx, t.vy);
+  }
   if (e && e.pointerId !== undefined) pointers.delete(e.pointerId);
   drag = null;
   if (pointers.size < 2) pinch = null;
@@ -571,7 +654,7 @@ $('overlay').addEventListener('pointercancel', endDrag);
 // ---- controls -------------------------------------------------------------
 
 // Edited box => the tap that accepts it also saves the new geometry as GT.
-$('btnYes').onclick = () => (edited ? saveBox() : judge('ball'));
+$('btnYes').onclick = () => (edited ? saveBox() : judge('ball'));   // place card: needs a tap
 $('btnSmaller').onclick = () => scaleBox(0.8);
 
 // Stepping shows the neighbouring frame through THIS card's window, with that
@@ -585,15 +668,20 @@ async function step(delta) {
   const target = delta === 0 ? 0 : offset + delta;
   const res = await (await fetch(
     `/ball_check/step/${item.clip}/${item.frame_index}/${item.box_index}` +
-    `?delta=${target}&src=${srcOf(item)}&pad=${PADS[padIdx]}`)).json();
+    `?delta=${target}&src=${srcOf(item)}&pad=${padOf(item)}${viewQs(item)}`)).json();
   if (!res.ok) return;
+  // a placed box belongs to the card's own frame: kept aside while stepping away
+  if (item.place && offset === 0 && box) stash = { box, edited };
   offset = res.delta;
-  $('shot').src = res.image_url + `&pad=${PADS[padIdx]}`;
+  $('shot').src = res.image_url + `&pad=${padOf(item)}`;
   const f = meta.frame;
   box = res.bbox
     ? { x1: res.bbox.x * f.w, y1: res.bbox.y * f.h,
         x2: (res.bbox.x + res.bbox.w) * f.w, y2: (res.bbox.y + res.bbox.h) * f.h }
     : null;
+  if (item.place && offset === 0 && stash) {
+    box = stash.box; edited = stash.edited; stash = null; syncYes();
+  }
   drawBox();
   $('btnHome').classList.toggle('active', offset !== 0);
   $('clipName').textContent =
@@ -607,7 +695,7 @@ async function step(delta) {
 
 $('btnPrev').onclick = () => step(-1);
 $('btnNext').onclick = () => step(1);
-$('btnHome').onclick = () => { if (queue[0]) { loadMeta(queue[0]); render(); } };
+$('btnHome').onclick = () => { if (queue[0]) { keepNext = true; render(); } };
 $('btnBigger').onclick = () => scaleBox(1.25);
 $('btnNo').onclick = () => judge('not_ball');
 $('btnBoxOff').onclick = () => judge('box_off');
@@ -616,8 +704,18 @@ $('btnUndo').onclick = undo;
 $('btnReplay').onclick = () => { if (queue[0]) { if (offset) $('btnHome').onclick(); else playClip(queue[0]); } };
 $('btnReset').onclick = () => { if (queue[0]) loadMeta(queue[0]); $('status').textContent = ''; };
 $('btnZoom').onclick = () => {
+  const item = queue[0];
+  if (item && item.place) {
+    // whole frame -> zoomed around the placed box (the window follows the box) -> back
+    placeIdx = (placeIdx + 1) % PLACE_PADS.length;
+    const f = meta && meta.frame;
+    const b = (stash && stash.box) || box;
+    if (b && f) view = { vx: ((b.x1 + b.x2) / 2 / f.w).toFixed(4), vy: ((b.y1 + b.y2) / 2 / f.h).toFixed(4) };
+    keepNext = true;
+    render();
+    return;
+  }
   padIdx = (padIdx + 1) % PADS.length;
-  $('btnZoom').textContent = padIdx === PADS.length - 1 ? 'Zoom in' : 'Zoom';
   render();
 };
 
@@ -638,14 +736,16 @@ card.addEventListener('touchmove', (e) => {
 card.addEventListener('touchend', () => {
   card.style.transform = '';
   if (startX !== null && !drag && Math.abs(dx) > 70 && !edited) {
-    judge(dx > 0 ? 'ball' : 'not_ball');
+    judge(dx > 0 ? 'ball' : 'not_ball');   // place card: right needs a tap first (judge says so)
   }
   startX = null;
 });
 
 // Keyboard, for the same queue on a desktop.
 window.addEventListener('keydown', (e) => {
-  if (e.key === 'ArrowRight' || e.key === 'y') judge('ball');
+  if (e.key === 'ArrowRight' || e.key === 'y') {
+    if (queue[0] && queue[0].place && edited) saveBox(); else judge('ball');
+  }
   else if (e.key === 'ArrowLeft' || e.key === 'n') judge('not_ball');
   else if (e.key === 'ArrowUp' || e.key === 'b') judge('box_off');
   else if (e.key === 'ArrowDown' || e.key === 'u') judge('unsure');

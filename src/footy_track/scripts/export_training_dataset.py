@@ -76,6 +76,7 @@ from pathlib import Path
 
 import yaml
 
+from footy_track import eval_registry as eval_registry_mod
 from footy_track.clip_id import canonical_clip_id
 from footy_track.feature_store.store import FeatureStore
 
@@ -496,6 +497,7 @@ def export(
     test_fraction: float = 0.0,
     include_rejected: bool = False,
     include_auto: bool = False,
+    eval_registry: Path | None = None,
 ) -> dict:
     """Export a leakage-free YOLO dataset.
 
@@ -544,7 +546,11 @@ def export(
             include_rejected=include_rejected,
             include_auto=include_auto,
         )
-    eval_clips = _eval_clip_stems(eval_dir)
+    # Clips registered as NEW evaluation clips (sparse eval labelling) are eval clips
+    # before they have a sidecar: excluded like the sidecar ones.
+    eval_clips = _eval_clip_stems(eval_dir) | eval_registry_mod.registry_ids(
+        eval_registry or eval_registry_mod.default_path()
+    )
     # Compare canonical ids, so an eval clip stored under another alias is
     # still excluded (T-03).
     excluded_ids = {canonical_clip_id(c) for c in eval_clips | extra_exclude}
@@ -630,6 +636,12 @@ def main(argv: list[str] | None = None) -> None:
     )
     parser.add_argument("--eval-dir", type=Path, default=Path("eval_data/clips"))
     parser.add_argument(
+        "--eval-registry",
+        type=Path,
+        default=None,
+        help="registry of new eval clips to exclude (default $FOOTY_EVAL_REGISTRY)",
+    )
+    parser.add_argument(
         "--exclude-clip", action="append", default=[], dest="exclude_clip"
     )
     parser.add_argument("--val-fraction", type=float, default=0.2)
@@ -707,6 +719,7 @@ def main(argv: list[str] | None = None) -> None:
         sources=sources,
         include_rejected=args.include_rejected,
         include_auto=args.include_auto,
+        eval_registry=args.eval_registry,
     )
 
     print("=== export_training_dataset manifest ===")

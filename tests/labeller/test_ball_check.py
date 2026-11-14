@@ -1016,3 +1016,120 @@ def test_positional_cards_unchanged_and_duplicate_ids_skipped(
     assert [i["frame_index"] for i in items] == [9, 3]
     assert items[0]["box_index"] == 0  # no id: the list position, as before
     assert items[1]["box_index"] == ball_check.card_box_index("x")
+
+
+# ---------------------------------------------------------------------------
+# tap-to-place cards (LAB-1015): a list card with no box
+# ---------------------------------------------------------------------------
+
+
+def _place_card(clip, frame, **kw):
+    return {
+        "clip": clip,
+        "frame_index": frame,
+        "bbox": None,
+        "place": True,
+        "id": f"place-{frame}",
+        **kw,
+    }
+
+
+def test_place_card_queue_is_blind_and_has_no_box(
+    client, clips_dir, tmp_path, monkeypatch
+):
+    (clips_dir / "clip.mp4").touch()
+    _write_list(
+        tmp_path, monkeypatch, [_place_card("clip", 4), _card("clip", 9, id="c")]
+    )
+    items = client.get("/ball_check/queue?source=list").json()["items"]
+    place = next(i for i in items if i["frame_index"] == 4)
+    assert place["bbox"] is None and place["place"] is True and place["blind"] is True
+    assert "note" not in place and "other_bbox" not in place
+    assert place["image_url"].endswith(f"/{place['box_index']}.jpg?src=list")
+
+
+@pytest.mark.usefixtures("bc_cache")
+def test_place_card_crop_meta_full_frame_then_window_centred_on_the_view(
+    client, clips_dir, tmp_path, monkeypatch, fake_cv2
+):
+    (clips_dir / "clip.mp4").touch()
+    _write_list(tmp_path, monkeypatch, [_place_card("clip", 4)])
+    bi = ball_check.card_box_index("place-4")
+    base = f"/ball_check/crop_meta/clip/4/{bi}?src=list"
+    full = client.get(f"{base}&pad=100").json()
+    assert full["ok"] and full["place"] is True and full["bbox"] is None
+    assert full["window"] == {"x1": 0, "y1": 0, "x2": 640, "y2": 360}
+    zoom = client.get(f"{base}&pad=14&vx=0.25&vy=0.5").json()
+    w = zoom["window"]
+    assert w["x2"] - w["x1"] < 640 and w["x1"] < 0.25 * 640 < w["x2"]
+    assert w["y1"] < 0.5 * 360 < w["y2"]
+    # an ordinary card is untouched: it still reports its box and is not a place card
+    _write_list(tmp_path, monkeypatch, [_card("clip", 9, id="c")])
+    cb = ball_check.card_box_index("c")
+    ordinary = client.get(f"/ball_check/crop_meta/clip/9/{cb}?src=list").json()
+    assert ordinary["place"] is False and ordinary["bbox"]["x"] == 0.4
+    # a pad beyond the usual cap still means "whole frame" only at the sentinel
+    clamped = client.get(f"/ball_check/crop_meta/clip/9/{cb}?src=list&pad=99").json()
+    assert clamped["window"] != {"x1": 0, "y1": 0, "x2": 640, "y2": 360}
+
+
+@pytest.mark.usefixtures("bc_cache", "clip_cache")
+def test_place_card_crop_step_clip_and_verdict_flow(
+    client, clips_dir, gt_marks_dir, tmp_path, monkeypatch, fake_cv2
+):
+    (clips_dir / "clip.mp4").touch()
+    monkeypatch.setattr(ball_check, "_have_ffmpeg", lambda: False)
+    monkeypatch.setattr(ball_check, "_gif_bytes", lambda f, d: b"GIF89a")
+    _write_list(tmp_path, monkeypatch, [_place_card("clip", 4)])
+    bi = ball_check.card_box_index("place-4")
+    crop = client.get(f"/ball_check/crop/clip/4/{bi}.jpg?src=list&pad=100")
+    assert crop.status_code == 200 and crop.content == FAKE_JPEG
+    step = client.get(f"/ball_check/step/clip/4/{bi}?src=list&delta=1&pad=100").json()
+    assert step["ok"] and step["bbox"] is None and step["frame_index"] == 5
+    assert "vx=0.5" in step["image_url"]
+    assert client.get(f"/ball_check/clip/clip/4/{bi}.mp4?src=list").status_code == 200
+    # tap -> "Ball": the same corrected path as a drag (sidecar line + verdict)
+    tapped = {"x": 0.3, "y": 0.4, "w": 0.0086, "h": 0.0086}
+    saved = client.post(
+        "/ball_check/save_box",
+        json={
+            "clip": "clip", "frame_index": 4, "box_index": bi, "source": "list",
+            "label": "in_play_ball", "bbox": tapped,
+        },
+    ).json()  # fmt: skip
+    assert saved["ok"] and saved["written"] == "appended"
+    line = json.loads((gt_marks_dir / "clip.jsonl").read_text().splitlines()[-1])
+    assert line["tags"] == ["in_play_ball", "labeller"] and line["bbox"] == tapped
+    r = client.post(
+        "/ball_check/verdict",
+        json={
+            "clip": "clip", "frame_index": 4, "box_index": bi, "source": "list",
+            "bbox": None, "verdict": "corrected", "corrected_bbox": tapped,
+        },
+    ).json()  # fmt: skip
+    assert r["ok"]
+    rec = json.loads(
+        (gt_marks_dir / "ball_checks" / "clip.jsonl").read_text().splitlines()[-1]
+    )
+    assert rec["card_id"] == "place-4" and rec["corrected_bbox"] == tapped
+    assert client.get("/ball_check/queue?source=list").json()["remaining"] == 0
+
+
+def test_place_card_not_a_ball_is_no_ball_visible(
+    client, clips_dir, gt_marks_dir, tmp_path, monkeypatch
+):
+    (clips_dir / "clip.mp4").touch()
+    _write_list(tmp_path, monkeypatch, [_place_card("clip", 4)])
+    bi = ball_check.card_box_index("place-4")
+    assert _verdict_list(client, "clip", 4, bi, "not_ball")["ok"]
+    assert client.get("/ball_check/queue?source=list").json()["remaining"] == 0
+
+
+def _verdict_list(client, clip, frame, box_index, verdict):
+    return client.post(
+        "/ball_check/verdict",
+        json={
+            "clip": clip, "frame_index": frame, "box_index": box_index,
+            "source": "list", "verdict": verdict,
+        },
+    ).json()  # fmt: skip
