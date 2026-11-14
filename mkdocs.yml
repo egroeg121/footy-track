@@ -14,6 +14,8 @@ nav:
       - Training: training.md
       - Notable Training Runs: training/notable_runs.md
   - Inference: inference.md
+  - Experiments:
+      - Offline ball tracking baseline: experiments/offline_ball_baseline.md
   - Feature store: design/feature_store.md
   - Design:
       - Pipeline Overview: design/pipeline_overview.md
