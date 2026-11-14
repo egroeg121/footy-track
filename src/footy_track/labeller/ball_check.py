@@ -211,8 +211,8 @@ def _list_path() -> Path | None:
     return Path(raw).expanduser() if raw else None
 
 
-def _list_items() -> list[dict]:
-    """Cards of the review list, in file order.
+def _file_items() -> list[dict]:
+    """Cards of the review list file, in file order.
 
     The file is ``{"items": [{"id"?, "clip", "frame_index", "bbox": {x,y,w,h},
     "label", "note", "other_bbox"?, ...}]}`` with normalised boxes. ``box_index`` is
@@ -252,6 +252,50 @@ def _list_items() -> list[dict]:
         return []
     _LIST_CACHE[str(path)] = (mtime, out)
     return out
+
+
+_RETRACK: dict[tuple, object] = {}
+
+
+def _retrack():
+    """The re-tracking service of this server (None: off). One per (list, cache, GT dir)."""
+    from footy_track.labeller import server  # noqa: PLC0415 — avoid import cycle
+
+    cache, raw = server._RETRACK_CACHE, server._BALL_CHECK_LIST
+    if not cache or not raw:
+        return None
+    key = (
+        raw,
+        cache,
+        str(_gt_marks_dir()),
+        server._RETRACK_META,
+        server._RETRACK_AUTO_DONE,
+    )
+    svc = _RETRACK.get(key)
+    if svc is None:
+        from footy_track.labeller.retrack_service import RetrackService  # noqa: PLC0415
+
+        meta = server._RETRACK_META
+        auto = server._RETRACK_AUTO_DONE
+        svc = RetrackService(
+            cache_dir=Path(cache).expanduser(),
+            state_dir=_gt_marks_dir() / "retrack",
+            round_id=Path(raw).expanduser().resolve().parent.name,
+            meta_path=Path(meta).expanduser() if meta else None,
+            auto_done=float(auto) if auto else None,
+        )
+        _RETRACK[key] = svc
+    return svc
+
+
+def _list_items() -> list[dict]:
+    """The list's cards plus the cards the re-tracker added (``retrack_service``)."""
+    items = _file_items()
+    svc = _retrack()
+    if svc is None:
+        return items
+    have = {it.get("id") for it in items}
+    return items + [c for c in svc.dynamic_cards() if c["id"] not in have]
 
 
 def _list_item(clip: str, frame_index: int, box_index: int) -> dict | None:
@@ -383,10 +427,19 @@ async def ball_check_queue(
             for it in all_items
             if ("list", it["clip"], it["frame_index"], it["box_index"]) not in judged
         ]
+        extra: dict = {}
+        svc = _retrack() if clip is None else None
+        if svc is not None:
+            todo, auto_done = svc.arrange(todo)
+            extra = {
+                "retrack": {"pending": svc.pending(), "version": svc.version},
+                "auto_done": auto_done,
+            }
         return {
+            **extra,
             "source": "list",
             "remaining": len(todo),
-            "judged": len(all_items) - len(todo),
+            "judged": len(all_items) - len(todo) - extra.get("auto_done", 0),
             "items": [
                 {
                     **{
@@ -1437,7 +1490,29 @@ async def ball_check_verdict(body: dict) -> dict:
         "ts": round(time.time(), 3),
     }
     await asyncio.to_thread(_append_verdict, rec)
+    _retrack_notify(rec)
     return {"ok": True}
+
+
+def _retrack_notify(rec: dict) -> None:
+    """Tell the re-tracker a list card was judged (or un-judged); it works in the background."""
+    if (rec.get("source") or "sidecar") != "list":
+        return
+    svc = _retrack()
+    if svc is None:
+        return
+    it = _list_item(rec["clip"], int(rec["frame_index"]), int(rec["box_index"]))
+    if it is not None:
+        svc.on_verdict(
+            it.get("run_clip"), it.get("id"), undo=rec.get("verdict") is None
+        )
+
+
+@router.get("/ball_check/retrack/status")
+async def ball_check_retrack_status() -> dict:
+    """Re-tracking state: per clip solve time, constraints, frames changed, pinned cards."""
+    svc = _retrack()
+    return {"enabled": False} if svc is None else svc.status()
 
 
 @router.post("/ball_check/undo")
@@ -1461,5 +1536,13 @@ async def ball_check_undo(body: dict) -> dict:
             "verdict": None,
             "ts": round(time.time(), 3),
         },
+    )
+    _retrack_notify(
+        {
+            "clip": clip,
+            "frame_index": frame_index,
+            "box_index": box_index,
+            "source": body.get("source") or "sidecar",
+        }
     )
     return {"ok": True}

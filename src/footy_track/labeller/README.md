@@ -900,6 +900,25 @@ reads `<gt dir>/ball_checks/` (`--ball-checks-dir`) into the feature store's
     `test_every_gate_is_sampled_with_the_floor_and_capped_at_its_size`,
     `test_random_frames_become_blind_place_cards_without_a_box`
 
+- **LAB-1017** (SHOULD, built 2026-11) Re-tracking after each verdict in a `source=list`
+  review. With `FOOTY_RETRACK_CACHE` (the round's detector candidate cache; optional
+  `FOOTY_RETRACK_META` = the round's `cards_meta.json`, server side only, and
+  `FOOTY_RETRACK_AUTO_DONE` = a track confidence, off by default) the server re-tracks the
+  clip of every judged card in a background thread (whole-clip constrained Viterbi:
+  `ball` / `box_off` / `corrected` anchor, `not_ball` forbids) and pins up to two follow-up
+  cards (unjudged cards moved up, or new blind id-keyed cards, persisted in
+  `<GT dir>/retrack/cards.json`) to the top of the queue; the verdict POST never waits, the
+  next card is the queue as it was, audit / control / random cards are never moved or
+  hidden and a base-order card comes after every two follow-ups. `GET
+  /ball_check/queue?source=list` adds `retrack: {pending, version}` and `auto_done`; `GET
+  /ball_check/retrack/status` shows per-clip solve time. The page re-fetches the queue after
+  each verdict and swaps everything behind the current and two prefetched cards. Design page,
+  section 12.12.
+  - Tests: `tests/test_autolabel_retrack.py`,
+    `tests/labeller/test_ball_check_retrack.py` (queue unchanged until the re-track lands,
+    audits all served, new cards blind and id-keyed, auto-done, off by default); the page
+    JS has no automated test
+
 ## 12. Confidence sampling — candidates (LAB-11xx)
 
 `candidates.py`. The GT sidecars cannot drive confidence-aware review (they

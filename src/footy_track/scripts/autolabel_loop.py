@@ -763,6 +763,110 @@ def read_card_verdicts(verdicts_dir: Path, cards: list[dict]) -> dict[str, dict]
     return out
 
 
+def retrack_ingest(
+    verdicts_dir: Path,
+    retrack_dir: Path | None,
+    cache_dir: Path | None,
+    built: dict,
+    plan,
+    sizes,
+) -> dict | None:
+    """Labels of the review's re-tracking (``labeller/retrack_service.py``), added to ``plan``.
+
+    Only when the review server ran with re-tracking (``<GT dir>/retrack/state.json``) and
+    the round's candidate cache is given. The clip's constrained path is recomputed from
+    the cache and the verdicts (the same function the server used), then:
+
+    * the path's other detected boxes on a chain a person anchored are machine labels,
+      tier 3: ``[label, claude_auto, retrack]``. A person confirmed that ball at one frame
+      and the tracker followed it, but nobody looked at these frames, so they get no
+      ``human_checked`` and (like every ``claude_auto`` box) stay out of the training export
+      unless it is asked to include them;
+    * a follow-up card the re-tracker added: ``ball`` is tier 2 (``claude`` +
+      ``human_checked`` + ``retrack``: a machine box a person confirmed), ``corrected``
+      tier 1 (the dragged box), ``not_ball`` a hard negative, ``box_off`` / ``unsure``
+      nothing.
+    """
+    rdir = retrack_dir or verdicts_dir.parent / "retrack"
+    if not (rdir / "state.json").exists() or cache_dir is None:
+        return None
+    from footy_track.autolabel import retrack as rt  # noqa: PLC0415
+    from footy_track.ball_eval.detection_replay import read_cache  # noqa: PLC0415
+
+    dyn_path = rdir / "cards.json"
+    dyn = json.loads(dyn_path.read_text()) if dyn_path.exists() else []
+    cards = [*built["cards"], *dyn]
+    verdicts = read_card_verdicts(verdicts_dir, cards)
+    keyed = {
+        ("list", *rt.card_id_key(c)): verdicts[c["id"]]
+        for c in cards
+        if c["id"] in verdicts
+    }
+    cons = rt.collect_constraints(cards, keyed)
+    out = {
+        "clips_retracked": 0,
+        "constraints": sum(len(v) for v in cons.values()),
+        "dynamic_cards": len(dyn),
+        "dynamic_verdicts": 0,
+        "labels_tier3_retrack": 0,
+        "labels_dynamic_tier2": 0,
+        "labels_dynamic_tier1": 0,
+        "negatives_dynamic": 0,
+    }
+    for clip, cs in sorted(cons.items()):
+        path = cache_dir / f"{clip}.jsonl"
+        if not any(c.kind == "anchor" for c in cs) or not path.exists():
+            continue
+        cache = read_cache(path)
+        sol, _ = rt.solve(cache, cs)
+        lines = rt.chain_label_lines(
+            sol, cache.frame_size, loop.BALL_LABEL, [loop.TAG_AUTO, rt.TAG_RETRACK]
+        )
+        plan.labels.setdefault(clip, []).extend(lines)
+        out["clips_retracked"] += 1
+        out["labels_tier3_retrack"] += len(lines)
+    for c in dyn:
+        rec = verdicts.get(c["id"])
+        if rec is None:
+            continue
+        v = rec.get("verdict")
+        out["dynamic_verdicts"] += 1
+        clip = c["run_clip"]
+        if v == "ball":
+            plan.labels.setdefault(clip, []).append(
+                loop._line(
+                    c["frame_index"],
+                    c["bbox"],
+                    [
+                        loop.BALL_LABEL,
+                        loop.TAG_CLAUDE,
+                        loop.TAG_CHECKED,
+                        rt.TAG_RETRACK,
+                    ],
+                )
+            )
+            out["labels_dynamic_tier2"] += 1
+        elif v == "corrected" and isinstance(rec.get("corrected_bbox"), dict):
+            cb = {k: float(rec["corrected_bbox"][k]) for k in "xywh"}
+            plan.labels.setdefault(clip, []).append(
+                loop._line(c["frame_index"], cb, [loop.BALL_LABEL, loop.TAG_LABELLER])
+            )
+            out["labels_dynamic_tier1"] += 1
+        elif v == "not_ball":
+            plan.negatives.append(
+                {
+                    "clip": clip,
+                    "frame_index": c["frame_index"],
+                    "bbox": c["bbox"],
+                    "source": "retrack",
+                    "reason": "retrack_not_ball",
+                    "qid": c["id"],
+                }
+            )
+            out["negatives_dynamic"] += 1
+    return out
+
+
 def _write_jsonl(path: Path, rows: list[dict]) -> None:
     _atomic_text(path, "".join(json.dumps(r) + "\n" for r in rows))
 
@@ -858,6 +962,9 @@ def cmd_ingest(args) -> int:
         thr=thr,
         random_frames=random_frames,
     )
+    retrack = retrack_ingest(
+        args.verdicts_dir, args.retrack_dir, args.cache, built, plan, sizes
+    )
     for clip in spec["clips"]:
         _write_jsonl(run / "labels" / f"{clip}.jsonl", plan.labels.get(clip, []))
     bc: dict[str, list[dict]] = defaultdict(list)
@@ -901,6 +1008,9 @@ def cmd_ingest(args) -> int:
     rep["controls"] = plan.controls
     rep["gates"] = plan.gates
     rep["random"] = plan.random
+    if retrack is not None:
+        rep["retrack"] = retrack
+        print("retrack:", json.dumps(retrack))
     if thr.scheme >= 2:  # noqa: PLR2004 - the gate history belongs to the new sampling
         loop.update_gate_state(
             _state_path(args.rounds_dir, run), run.name, plan.gates, rep["created_at"]
@@ -1403,6 +1513,19 @@ def main(  # noqa: PLR0915
     p.add_argument("--verdicts-dir", type=Path, required=True)
     p.add_argument("--labels-dir", type=Path, required=True)
     p.add_argument("--rounds-dir", type=Path, default=None)
+    p.add_argument(
+        "--cache",
+        type=Path,
+        default=None,
+        help="the round's detector candidate cache: with the review server's retrack/ "
+        "folder, the re-tracked labels are written (see retrack_ingest)",
+    )
+    p.add_argument(
+        "--retrack-dir",
+        type=Path,
+        default=None,
+        help="default: <verdicts dir>/../retrack",
+    )
     _thr_args(p)
     p.set_defaults(fn=cmd_ingest)
 

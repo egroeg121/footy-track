@@ -395,6 +395,36 @@ async function loadQueue(reset) {
 
 const keyOf = (i) => `${srcOf(i)}|${i.clip}|${i.frame_index}|${i.box_index}`;
 
+// ---- follow-up cards (source=list with re-tracking on the server) -----------
+// A verdict never waits for the re-track: the next card comes from the queue as it is.
+// The server re-tracks the clip in the background and puts the cards it wants asked next
+// at the TOP of its queue, so a little later we re-fetch and swap the tail of our buffer
+// (everything after the current card and the few already prefetched) without touching
+// the card on screen.
+const KEEP_AHEAD = 3;          // current card + the two already prefetched stay as they are
+const judgedKeys = new Set();  // judged this session: a late fetch must not bring them back
+let topTimer = null;
+function refreshTop(tries) {
+  if (QS.get('source') !== 'list' || tries > 6) return;
+  clearTimeout(topTimer);
+  topTimer = setTimeout(async () => {
+    let data;
+    try { data = await (await fetch(queueUrl())).json(); } catch (e) { return; }
+    if (!data.retrack) return;               // re-tracking is off on this server
+    const keep = queue.slice(0, KEEP_AHEAD);
+    const seen = new Set(keep.map(keyOf));
+    queue = keep.concat(data.items.filter((i) => {
+      const k = keyOf(i);
+      return !seen.has(k) && !judgedKeys.has(k);
+    }));
+    remaining = data.remaining;
+    judged = data.judged;
+    $('progress').textContent = queue[0] ? `${judged} checked · ${remaining} left` : `${judged} checked`;
+    prefetch();
+    if (data.retrack.pending) refreshTop(tries + 1);   // a re-track is still running
+  }, tries ? 1200 : 900);
+}
+
 function flash(verdict) {
   const marks = { ball: '✔', not_ball: '✖', box_off: '□', corrected: '✎', unsure: '?' };
   const colours = { ball: '#3fb950', not_ball: '#f85149', box_off: '#d29922',
@@ -418,6 +448,7 @@ async function judge(verdict, extra) {
   flash(verdict);
   queue.shift();
   history.push(item);
+  judgedKeys.add(keyOf(item));
   judged += 1;
   remaining = Math.max(0, remaining - 1);
   render();
@@ -443,6 +474,7 @@ async function judge(verdict, extra) {
     render();
   }
   busy = false;
+  refreshTop(0);
   sinceRefresh += 1;
   if (sinceRefresh >= RESAMPLE_EVERY) {
     // Drop the buffered tail and re-ask: verdicts just moved the boundary, so
@@ -496,6 +528,7 @@ async function undo() {
     }),
   });
   queue.unshift(item);
+  judgedKeys.delete(keyOf(item));
   judged = Math.max(0, judged - 1);
   remaining += 1;
   $('status').textContent = 'Undone.';
