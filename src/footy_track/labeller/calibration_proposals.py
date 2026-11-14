@@ -89,6 +89,18 @@ async def list_proposals(
     return {"items": sel[:limit], "total": len(sel), "runs": sorted(runs.values(), key=lambda r: r["created"] or "")}
 
 
+def _finite(o):
+    """``o`` with NaN/inf floats -> ``None`` (stored fit stats of degenerate failed proposals are
+    NaN, which JSON responses refuse: the page could not load such an item)."""
+    if isinstance(o, float):
+        return o if np.isfinite(o) else None
+    if isinstance(o, dict):
+        return {k: _finite(v) for k, v in o.items()}
+    if isinstance(o, list):
+        return [_finite(v) for v in o]
+    return o
+
+
 def _get(clip: str, run_id: str, idx: int) -> tuple[dict, dict] | None:
     run = read_proposals(_gt_marks_dir(), clip)["runs"].get(run_id)
     if run is None or str(idx) not in run["frames"]:
@@ -110,7 +122,7 @@ async def get_proposal(clip: str, run_id: str, idx: int):
             n: [r.tolist() for r in runs]
             for n, runs in geo.project_pitch_model(np.array(rec["H"]), pitch, distortion=rec.get("distortion")).items()
         }
-    return out
+    return _finite(out)
 
 
 def _existing_gt(clip: str, idx: int) -> dict | None:
@@ -167,6 +179,9 @@ async def accept_proposal(clip: str, run_id: str, idx: int, body: dict | None = 
     got = await asyncio.to_thread(_get, clip, run_id, idx)
     if got is None:
         return cal._err(404, "no such proposal")
+    if got[1]["status"] == "not_broadcast" or idx in await asyncio.to_thread(cal._not_broadcast, clip):
+        return cal._err(409, "this frame is marked not broadcast; clear the mark (editor: Not broadcast, "
+                             "Undo) before accepting a proposal for it")
     existing = await asyncio.to_thread(_existing_gt, clip, idx)
     if existing is not None and not body.get("overwrite"):
         human = not existing.get("origin")
@@ -244,3 +259,23 @@ async def reject_proposal(clip: str, run_id: str, idx: int, body: dict | None = 
 
     await asyncio.to_thread(update_proposals, _gt_marks_dir(), clip, _flip)
     return {"ok": True, "status": "rejected"}
+
+
+@router.post("/calibration/api/proposals/{clip}/{run_id}/{idx}/not_broadcast")
+async def not_broadcast_proposal(clip: str, run_id: str, idx: int, body: dict | None = None):
+    """Mark the frame as not a broadcast pitch view (replay, close-up, crowd, graphic...).
+
+    Works on ``proposed`` and ``failed`` items alike. Sets this proposal's status to
+    ``not_broadcast`` (with ``reviewed_at``; reject records no reviewer) and writes the
+    frame-level flag (``frame_type/<clip>.json``) that outlives the proposal; the frame's
+    other still-open proposals follow. A frame with calibration GT -> 409 unless
+    ``overwrite`` (which deletes that GT).
+    """
+    if await asyncio.to_thread(_get, clip, run_id, idx) is None:
+        return cal._err(404, "no such proposal")
+    res = await asyncio.to_thread(
+        lambda: cal.mark_not_broadcast(clip, idx, overwrite=bool((body or {}).get("overwrite")), run_id=run_id)
+    )
+    if "conflict" in res:
+        return cal._not_broadcast_conflict(res["conflict"])
+    return {"ok": True, "status": "not_broadcast", "removed_gt": res["removed_gt"]}

@@ -11,6 +11,9 @@ Reads, under ``--gt-dir``:
   (``source=hand_label``, ``review_status=hand``, run ``calibration_gt_import``)
 * ``calibration_proposals/<canonical clip id>.json`` -> machine proposals
   (``source`` = the run's source, ``review_status`` = the frame's status)
+* ``frame_type/<canonical clip id>.json``            -> not-broadcast frame flags
+  (``source=hand_label``, ``review_status=not_broadcast``, no H, run ``frame_type_import``);
+  such a frame (like any proposal with that status) drops out of ``frame_calibration_best``
 
 into ``calibration`` + ``pitch_keypoint`` (one ``run`` row per proposal run,
 ``stage=calibration``). The file format is the shared contract described in
@@ -64,8 +67,12 @@ PROPOSALS_DATASET_TAG = "calibration_proposals"
 #: run_id of every human-GT import (like ``gt_import_*`` for ball GT).
 GT_RUN_ID = "calibration_gt_import"
 GT_SOURCE = "hand_label"
+FRAME_TYPE_DATASET_TAG = "frame_type"
+FRAME_TYPE_RUN_ID = "frame_type_import"
 _H_CONVENTIONS = {H_CONVENTION, "norm_image->pitch_m"}
-_PROPOSAL_STATUSES = ("proposed", "accepted", "rejected", "failed")
+_PROPOSAL_STATUSES = ("proposed", "accepted", "rejected", "failed", "not_broadcast")
+#: statuses whose record has no (usable) H
+_NO_H_STATUSES = ("failed", "not_broadcast")
 
 
 @dataclass
@@ -140,7 +147,7 @@ def _parse_frame(
 ) -> tuple[CalibrationRow, list[PitchKeypointRow]]:
     """One sidecar frame record -> rows. Raises ValueError when unusable."""
     is_gt = source == GT_SOURCE
-    failed = status == "failed"
+    failed = status in _NO_H_STATUSES
     H: list[float] | None = None
     if not failed:
         H = _parse_h(rec.get("H"))
@@ -220,11 +227,11 @@ def _parse_frame(
         image_height=int(h) if h else None,
         method=rec.get("method"),
         review_status=status,
-        reviewed=is_gt or status in ("accepted", "rejected"),
+        reviewed=is_gt or status in ("accepted", "rejected", "not_broadcast"),
         origin_source=origin.get("source"),
         origin_run_id=origin.get("run_id"),
         origin_status=origin.get("proposal_status"),
-        failure=rec.get("failure") if failed else None,
+        failure=rec.get("failure") if status == "failed" else None,
         view_end=view.get("end"),
         camera_side=view.get("camera_side"),
         created_at=_parse_ts(rec.get("ts")) or created_default,
@@ -313,6 +320,50 @@ def parse_gt_file(
                 stage=Stage.CALIBRATION,
                 source=GT_SOURCE,
                 model_name="manual_dlt",
+                params_json=json.dumps({"importer": "ingest_calibration"}),
+            )
+        )
+    return out
+
+
+def parse_frame_type_file(
+    path: Path, game_id: str, report: CalibrationImportReport
+) -> _Parsed | None:
+    data = _load_json(path, report)
+    if data is None:
+        return None
+    out = _Parsed()
+    frames = data.get("frames")
+    if not isinstance(frames, dict):
+        report.warn(f"{path.name}: no 'frames' object")
+        return out
+    for key, rec in frames.items():
+        try:
+            if not isinstance(rec, dict):
+                raise ValueError("frame record is not an object")
+            if rec.get("type") != "not_broadcast":
+                continue  # only flag type there is; unknown future types are not rows
+            out.calib.append(
+                CalibrationRow(
+                    game_id=game_id,
+                    source=GT_SOURCE,
+                    run_id=FRAME_TYPE_RUN_ID,
+                    frame_index=_frame_index(key),
+                    review_status="not_broadcast",
+                    reviewed=True,
+                    created_at=_parse_ts(rec.get("ts")),
+                    dataset_tag=FRAME_TYPE_DATASET_TAG,
+                )
+            )
+        except (ValueError, TypeError, KeyError) as e:
+            report.warn(f"{path.name} frame {key}: {e}; skipped")
+    if out.calib:
+        out.runs.append(
+            RunRow(
+                run_id=FRAME_TYPE_RUN_ID,
+                stage=Stage.CALIBRATION,
+                source=GT_SOURCE,
+                model_name="frame_type_flag",
                 params_json=json.dumps({"importer": "ingest_calibration"}),
             )
         )
@@ -466,7 +517,7 @@ def ingest_calibration_dir(
     dry_run: bool = False,
     replace: bool = True,
 ) -> CalibrationImportReport:
-    """Import ``calibration_gt/`` and ``calibration_proposals/`` under *gt_dir*.
+    """Import ``calibration_gt/``, ``calibration_proposals/`` and ``frame_type/`` under *gt_dir*.
 
     With ``dry_run`` nothing is written (parse + report only).
     """
@@ -487,6 +538,16 @@ def ingest_calibration_dir(
         gt_dir / "calibration_proposals",
         parse_proposals_file,
         PROPOSALS_DATASET_TAG,
+        gt_dir,
+        report,
+        is_gt=False,
+        **common,
+    )
+    _import_dir(
+        store,
+        gt_dir / "frame_type",
+        parse_frame_type_file,
+        FRAME_TYPE_DATASET_TAG,
         gt_dir,
         report,
         is_gt=False,

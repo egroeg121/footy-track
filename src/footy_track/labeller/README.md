@@ -1052,6 +1052,25 @@ becomes GT without a human accepting it; accepted GT carries
   `sweep` command measures the success rate (mean GT reprojection error <= 5 / <= 10 px)
   before and after refinement per label-noise level with the noisy `MockIdentifier`.
   - Tests: `tests/calibration/test_refine.py` (all), `tests/calibration/test_prelabel.py::test_fit_*`
+- **LAB-1222** (MUST) A frame that is not a main-camera pitch view can be marked
+  `not_broadcast` with one tap, separately from `rejected`. `POST
+  /calibration/api/proposals/{clip}/{run_id}/{idx}/not_broadcast` (proposed or failed items)
+  sets the proposal status `not_broadcast` (`prev_status`, `reviewed_at`) and writes the
+  frame-level flag `<gt dir>/frame_type/<canonical clip>.json` (atomic, mode kept; also
+  `PUT/DELETE /calibration/api/frame_type/{clip}/{idx}`, list in `GET .../gt/{clip}` and
+  `.../clips/{clip}/meta`). A frame with calibration GT answers 409 and writes nothing unless
+  `overwrite: true` (which deletes that GT); accept and GT-save on a flagged frame are 409 until
+  the flag is cleared (DELETE restores the proposals' status). The pre-label run skips flagged
+  frames (`--skip-gt`), the feature store drops them from `frame_calibration_best` /
+  `detections_on_pitch`. The review page has a "Not broadcast" button (key `n`, also "Clear" in the
+  not-broadcast filter), a "to review + failed" and a "not broadcast" filter, errors in the red
+  banner, and a "Claude: not main camera" badge when `view.main_camera_wide` is false (never
+  auto-marks); the editor has a Not broadcast button, a marked banner and Undo.
+  - Tests: `test_calibration_proposals.py::test_not_broadcast_*`,
+    `::test_review_page_has_not_broadcast_button_hint_and_filter` (markers; flow UNTESTED-FRONTEND),
+    `tests/calibration/test_prelabel.py::test_pipeline_skips_not_broadcast_frames`,
+    `tests/feature_store/test_calibration_store.py::test_not_broadcast_frame_has_no_calibration_and_no_projection`,
+    `tests/feature_store/test_ingest_calibration.py::test_frame_type_flags_and_not_broadcast_proposals_are_ingested`
 - **LAB-1219** (SHOULD) Frames are read through `footy_track.calibration.video.read_frame`
   (cv2, falling back to the ffmpeg CLI when cv2 fails or returns an all-black frame,
   frame-accurate, reader cached per video); `/calibration/api/frame` and `/warp` use it.
@@ -1073,8 +1092,8 @@ becomes GT without a human accepting it; accepted GT carries
 | 10. Review UI (LAB-9xx) | 7 | 0 | 0 | 7 |
 | 11. Ball Check (LAB-10xx) | 12 | 11 | 0 | 1 |
 | 12. Confidence sampling (LAB-11xx) | 5 | 5 | 0 | 0 |
-| 16. Pitch calibration (LAB-12xx) | 21 | 16 | 0 | 5 |
-| **Total** | **122** | **87** | **8** | **27** |
+| 16. Pitch calibration (LAB-12xx) | 22 | 17 | 0 | 5 |
+| **Total** | **123** | **88** | **8** | **27** |
 
 Open items: 4 (OPEN-1..4) + 1 fixed on main (undo provenance, `95b60cc`).
 Test suite: 138 tests in `tests/labeller/` (all green), plus the

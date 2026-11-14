@@ -56,6 +56,12 @@
   button:disabled { opacity:.35; }
   button.no { background:var(--red); color:#fff; }
   button.yes { background:var(--green); }
+  button.nb { background:var(--amber); color:#1c1300; flex:2; padding:12px 8px; font-size:15px; }
+  button.mid { flex:1; padding:12px 8px; font-size:15px; }
+  button.mid.skip { background:transparent; color:var(--muted); border:1px solid var(--border); font-weight:600; }
+  #hint { display:none; align-self:flex-start; background:#3b2e0a; border:1px solid var(--amber); color:#ffd479;
+          border-radius:999px; padding:2px 10px; font-size:12px; font-weight:600; }
+  #hint.show { display:inline-block; }
   button.small, a.small { flex:1; padding:11px 6px; font-size:13px; font-weight:600; text-align:center;
            background:transparent; color:var(--muted); border:1px solid var(--border);
            border-radius:14px; text-decoration:none; min-height:44px; display:flex; align-items:center; justify-content:center; }
@@ -86,7 +92,9 @@
     <label>Run <select id="runSel"></select></label>
     <label>Status <select id="statusSel">
       <option value="proposed">to review</option><option value="failed">failed</option>
+      <option value="proposed,failed">to review + failed</option>
       <option value="accepted,edited">accepted</option><option value="rejected">rejected</option>
+      <option value="not_broadcast">not broadcast</option>
       <option value="all">all</option></select></label>
     <label>Order <select id="sortSel"><option value="score_asc">worst first</option>
       <option value="score_desc">best first</option></select></label>
@@ -102,6 +110,7 @@
       </div>
       <div id="info">
         <div id="line1"><span id="score"></span><span id="clipName"></span></div>
+        <div id="hint" role="note">Claude: not main camera</div>
         <div id="note"></div>
         <div id="conf"></div>
       </div>
@@ -123,12 +132,15 @@
       <button class="yes" id="btnAccept">Accept</button>
     </div>
     <div class="row">
-      <button class="small" id="btnSkip">Skip</button>
+      <button class="nb" id="btnNotBroadcast" title="Not a broadcast pitch view (n)">Not broadcast</button>
+      <button class="mid skip" id="btnSkip">Skip</button>
+    </div>
+    <div class="row">
       <button class="small" id="btnOverlay">Overlay</button>
       <button class="small on" id="btnWarp">Warp</button>
       <a class="small" id="editLink" href="/calibration">Open in editor</a>
     </div>
-    <div id="status">Swipe right = accept, left = reject. Opens in the bird&rsquo;s-eye warp; hold the image for the camera view.</div>
+    <div id="status">Swipe right = accept, left = reject. Not broadcast (n) = replay, close-up, crowd, graphic. Opens in the bird&rsquo;s-eye warp; hold the image for the camera view.</div>
   </footer>
 
 <script>
@@ -251,7 +263,10 @@ async function show() {
   const sc = it.score == null ? 0 : it.score;
   $("score").textContent = it.status === "failed" ? "failed" : `score ${sc.toFixed(2)}`;
   $("score").className = it.status === "failed" ? "bad" : scoreClass(sc);
-  $("btnAccept").disabled = it.status === "failed";  // no H: fix the points in the editor first
+  $("btnAccept").disabled = it.status === "failed" || it.status === "not_broadcast";  // no H: fix the points in the editor first
+  const nbDone = it.status === "not_broadcast";   // the button then undoes the mark
+  $("btnNotBroadcast").textContent = nbDone ? "Clear not broadcast" : "Not broadcast";
+  $("hint").classList.toggle("show", !nbDone && !!it.view && it.view.main_camera_wide === false);  // Claude's hint only; never auto-marks
   $("note").textContent = ""; $("conf").textContent = "";
   $("editLink").href = `/calibration?clip=${encodeURIComponent(it.clip)}&frame=${it.frame_index}&proposal=${encodeURIComponent(it.run_id)}`;
   warpUrl = null; shotIsWarp = false; warpMode = true; showWarp = true; syncToggles();  // every item opens in warp view
@@ -315,33 +330,40 @@ async function act(kind, overwrite) {
   try {
     const base = `${API}/proposals/${encodeURIComponent(it.clip)}/${encodeURIComponent(it.run_id)}/${it.frame_index}`;
     if (kind === "accept") await post(`${base}/accept`, overwrite ? { overwrite: true } : {});
-    else await post(`${base}/reject`);
-    flash(kind === "accept" ? "✔" : "✖", kind === "accept" ? "#3fb950" : "#f85149");
+    else if (kind === "not_broadcast") {
+      if (it.status === "not_broadcast") await getJSON(`${API}/frame_type/${encodeURIComponent(it.clip)}/${it.frame_index}`, { method: "DELETE" });
+      else await post(`${base}/not_broadcast`, overwrite ? { overwrite: true } : {});
+    } else await post(`${base}/reject`);
+    const fl = { accept: ["✔", "#3fb950"], reject: ["✖", "#f85149"], not_broadcast: ["⊘", "#d29922"] }[kind];
+    flash(fl[0], fl[1]);
     items.splice(items.indexOf(it), 1); reviewed++; setStatus("");
     await show();
   } catch (e) {
-    if (e.status === 409 && kind === "accept" && /already has/.test(e.message)) {
+    if (e.status === 409 && (kind === "accept" || kind === "not_broadcast") && /already has/.test(e.message)) {
       // never replace GT silently: say what is there and make Replace an explicit action
       busy = false;
-      showConflict(it, e.body && e.body.existing_gt === "human");
+      showConflict(it, e.body && e.body.existing_gt === "human", kind);
       return;
     }
     // item stays in place; say what the server said
-    showError(`${kind === "accept" ? "Accept" : "Reject"} failed${e.status ? ` (${e.status})` : ""}: ${e.message}`);
+    showError(`${{ accept: "Accept", reject: "Reject", not_broadcast: "Not broadcast" }[kind]} failed${e.status ? ` (${e.status})` : ""}: ${e.message}`);
   }
   busy = false;
 }
-function showConflict(it, human) {
-  $("conflictMsg").textContent = human
+function showConflict(it, human, kind) {
+  $("conflictMsg").textContent = kind === "not_broadcast"
+    ? `This frame already has ${human ? "hand-labelled" : "accepted machine"} calibration GT. Marking it not broadcast deletes that GT.`
+    : human
     ? "This frame already has hand GT (labelled by a person). Replacing it throws that label away."
     : "This frame already has machine-proposed GT from an earlier run. Replace it with this proposal?";
   $("conflict").classList.add("show");
-  $("btnReplace").onclick = () => { $("conflict").classList.remove("show"); act("accept", true); };
+  $("btnReplace").onclick = () => { $("conflict").classList.remove("show"); act(kind || "accept", true); };
   $("btnKeep").onclick = () => { $("conflict").classList.remove("show"); skip(); };
 }
 function skip() { if (items.length > 1) { idx = (idx + 1) % items.length; show(); } }
 function back() { if (items.length > 1) { idx = (idx - 1 + items.length) % items.length; show(); } }
 $("btnAccept").onclick = () => act("accept"); $("btnReject").onclick = () => act("reject"); $("btnSkip").onclick = skip;
+$("btnNotBroadcast").onclick = () => act("not_broadcast");
 
 // swipe: right = accept, left = reject; long-press on the image = flip to the other view while held
 (() => {
@@ -374,7 +396,7 @@ $("btnAccept").onclick = () => act("accept"); $("btnReject").onclick = () => act
 // keyboard extras (never the only way to do anything)
 document.addEventListener("keydown", (e) => {
   if (["INPUT", "SELECT", "TEXTAREA"].includes(document.activeElement.tagName)) return;
-  if (e.key === "a") act("accept"); else if (e.key === "r") act("reject");
+  if (e.key === "a") act("accept"); else if (e.key === "r") act("reject"); else if (e.key === "n") act("not_broadcast");
   else if (e.key === "j") skip(); else if (e.key === "k") back();
   else if (e.key === "e" && cur) location.href = $("editLink").href;
   else if (e.key === "o") { showOverlay = !showOverlay; syncToggles(); } else if (e.key === "w") { warpMode = !warpMode; setWarp(warpMode); }

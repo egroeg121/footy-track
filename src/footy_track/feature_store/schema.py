@@ -215,7 +215,9 @@ class TrackMetaRow(_Row):
 #: (including accepted/edited proposals copied into GT); the rest are machine.
 CALIBRATION_SOURCES = ("hand_label", "claude", "classical", "model")
 #: ``calibration.review_status`` values.
-CALIBRATION_STATUSES = ("hand", "proposed", "accepted", "rejected", "failed")
+#: ``not_broadcast``: the frame is not a main-camera pitch view (replay, close-up...);
+#: one such row for a (game, frame) removes the frame from ``frame_calibration_best``.
+CALIBRATION_STATUSES = ("hand", "proposed", "accepted", "rejected", "failed", "not_broadcast")
 #: The only H convention the SQL views understand.
 H_CONVENTION = "normalised_image_to_pitch_m"
 
@@ -594,9 +596,14 @@ VIEWS: tuple[str, ...] = (
                        ELSE 3
                    END AS tier_rank
             FROM calibration c
-            -- failed/rejected rows (and anything without an H) never win.
+            -- failed/rejected rows (and anything without an H) never win; a frame
+            -- flagged not_broadcast (by any row) has no calibration at all.
             WHERE c.H IS NOT NULL
-              AND c.review_status NOT IN ('failed', 'rejected')
+              AND c.review_status NOT IN ('failed', 'rejected', 'not_broadcast')
+              AND NOT EXISTS (
+                  SELECT 1 FROM calibration nb
+                  WHERE nb.game_id = c.game_id AND nb.frame_index = c.frame_index
+                    AND nb.review_status = 'not_broadcast')
         ),
         ranked AS (
             SELECT u.*,

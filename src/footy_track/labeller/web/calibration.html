@@ -78,8 +78,11 @@
   <button id="loadBtn">Load GT</button>
   <button id="delGtBtn" class="danger">Delete GT</button>
   <button id="clearBtn">Clear points</button>
+  <button id="nbBtn" title="This frame is not the main broadcast pitch view (replay, close-up, crowd, graphic). Key: n">Not broadcast</button>
   <span id="status"></span>
   <span id="propBanner" style="display:none;color:var(--amber)"></span>
+  <span id="nbBanner" style="display:none;color:var(--amber);font-weight:600">not a broadcast frame
+    <button id="nbUndo">Undo</button></span>
 </header>
 <div id="frameRow">
   <button id="prevBtn" title="previous frame (Left, Shift+Left = 10)">&lsaquo;</button>
@@ -391,7 +394,7 @@ async function loadClips() {
 async function selectClip() {
   state.clip = $("clipSel").value; if (!state.clip) return;
   state.meta = await (await api(`/clips/${encodeURIComponent(state.clip)}/meta`)).json();
-  state.gtFrames = state.meta.gt_frames;
+  state.gtFrames = state.meta.gt_frames; state.notBroadcast = state.meta.not_broadcast || [];
   $("frameSlider").max = $("frameNum").max = Math.max(0, state.meta.frames - 1);
   $("frameTotal").textContent = `/ ${state.meta.frames - 1}`;
   const qp = new URLSearchParams(location.search);
@@ -439,7 +442,7 @@ async function gotoFrame(idx, force) {
   await new Promise((res, rej) => { img.onload = res; img.onerror = () => rej(new Error("frame failed to load"));
     img.src = `${API}/frame/${encodeURIComponent(state.clip)}/${idx}.jpg`; }).catch(e => status(e.message, true));
   state.frameImg = img.naturalWidth ? img : null; status("");
-  drawChips(); redraw();
+  drawChips(); redraw(); syncNb();
   if (state.gtFrames.includes(idx)) await loadGt(true);
 }
 async function loadGt(quiet) {
@@ -471,6 +474,28 @@ async function saveGt() {
     status(`saved (mean err ${r.record.mean_err_m.toFixed(2)} m)`);
   } catch (e) { status("save failed: " + e.message, true); }
 }
+function syncNb() {
+  const on = (state.notBroadcast || []).includes(state.frame);
+  $("nbBanner").style.display = on ? "" : "none"; $("nbBtn").style.display = on ? "none" : "";
+}
+async function markNotBroadcast(overwrite) {
+  if (!state.clip) return;
+  try {
+    const r = await api(`/frame_type/${encodeURIComponent(state.clip)}/${state.frame}`, jsonOpts("PUT", overwrite ? { overwrite: true } : {}));
+    const j = await r.json();
+    state.notBroadcast = [...new Set([...(state.notBroadcast || []), state.frame])]; state.gtFrames = j.gt_frames; drawChips(); syncNb();
+    status("marked not a broadcast frame (Undo to clear)");
+  } catch (e) {
+    if (/already has/.test(e.message) && !overwrite && confirm(e.message + ". Delete the GT and mark it?")) return markNotBroadcast(true);
+    status("not broadcast failed: " + e.message, true);
+  }
+}
+async function clearNotBroadcast() {
+  try {
+    const j = await (await api(`/frame_type/${encodeURIComponent(state.clip)}/${state.frame}`, { method: "DELETE" })).json();
+    state.notBroadcast = j.not_broadcast; syncNb(); status("not-broadcast mark cleared");
+  } catch (e) { status("undo failed: " + e.message, true); }
+}
 async function deleteGt() {
   if (!state.gtFrames.includes(state.frame)) { status("no GT on this frame"); return; }
   if (!confirm("Delete saved GT for this frame?")) return;
@@ -487,6 +512,7 @@ $("frameNum").onchange = e => gotoFrame(parseInt(e.target.value) || 0);
 $("prevBtn").onclick = () => gotoFrame(state.frame - 1);
 $("nextBtn").onclick = () => gotoFrame(state.frame + 1);
 $("saveBtn").onclick = saveGt; $("loadBtn").onclick = () => loadGt(false); $("delGtBtn").onclick = deleteGt;
+$("nbBtn").onclick = () => markNotBroadcast(false); $("nbUndo").onclick = clearNotBroadcast;
 $("clearBtn").onclick = () => { state.imgPts = []; state.pitchPts = []; state.dirty = true; refit(); };
 $("showOverlay").onchange = redraw;
 $("showWarp").onchange = () => { if ($("showWarp").checked) updateWarp(); else drawRight(); };
@@ -498,6 +524,7 @@ document.addEventListener("keydown", e => {
   const step = e.shiftKey ? 10 : 1;
   if (e.key === "ArrowLeft") gotoFrame(state.frame - step);
   else if (e.key === "ArrowRight") gotoFrame(state.frame + step);
+  else if (e.key === "n") markNotBroadcast(false);
 });
 new ResizeObserver(() => {
   for (const [S, id] of [[L, "leftStage"], [R, "rightStage"]]) S.stage.size({ width: $(id).clientWidth, height: $(id).clientHeight });

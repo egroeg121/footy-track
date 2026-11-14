@@ -17,7 +17,7 @@ from pathlib import Path
 from footy_track.clip_id import canonical_clip_id
 
 _NEW_FILE_MODE = 0o664
-STATUSES = ("proposed", "accepted", "edited", "rejected", "failed")
+STATUSES = ("proposed", "accepted", "edited", "rejected", "failed", "not_broadcast")
 _lock = threading.Lock()
 
 

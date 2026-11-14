@@ -275,3 +275,104 @@ def test_proposal_with_distortion_overlays_and_accepts_with_its_lens(client, pro
     gt = json.loads((prop_env / "calibration_gt" / f"{CLIP}.json").read_text())["frames"]["5"]
     assert gt["distortion"]["k1"] == -0.03 and max(gt["err_px"]) < 0.05
     assert np.allclose(np.array(gt["H"]) / np.linalg.norm(gt["H"]), _camera_h() / np.linalg.norm(_camera_h()), atol=1e-5)
+
+
+# --- not a broadcast frame (LAB-1222) ---------------------------------------------------------
+
+RUN = "claude-x-p1-20260101T000000"
+
+
+def _nb(client, run, idx, **body):
+    return client.post(f"/calibration/api/proposals/{CLIP}/{run}/{idx}/not_broadcast", json=body)
+
+
+def test_not_broadcast_sets_status_flag_and_leaves_queue(client, prop_env):
+    r = _nb(client, RUN, 1)
+    assert r.status_code == 200 and r.json()["status"] == "not_broadcast"
+    f = read_proposals(prop_env, CLIP)["runs"][RUN]["frames"]["1"]
+    assert f["status"] == "not_broadcast" and f["prev_status"] == "proposed" and f["reviewed_at"]
+    # frame-level flag in its own sidecar, mode 0664, canonical clip name
+    p = prop_env / "frame_type" / f"{CLIP}.json"
+    assert json.loads(p.read_text())["frames"]["1"]["type"] == "not_broadcast"
+    assert p.stat().st_mode & 0o777 == 0o664
+    assert not (prop_env / "calibration_gt" / f"{CLIP}.json").exists()  # no GT written
+    # filters / counters
+    assert 0.2 not in [i["score"] for i in client.get("/calibration/api/proposals").json()["items"]]
+    d = client.get("/calibration/api/proposals?status=not_broadcast").json()
+    assert [i["frame_index"] for i in d["items"]] == [1]
+    run = next(x for x in client.get("/calibration/api/proposals").json()["runs"] if x["run_id"] == RUN)
+    assert run["counts"]["not_broadcast"] == 1 and run["counts"]["proposed"] == 2
+    # the editor sees the flag
+    assert client.get(f"/calibration/api/gt/{CLIP}").json()["not_broadcast"] == [1]
+    # re-marking is idempotent and keeps the original prev_status
+    assert _nb(client, RUN, 1).status_code == 200
+    assert read_proposals(prop_env, CLIP)["runs"][RUN]["frames"]["1"]["prev_status"] == "proposed"
+
+
+def test_not_broadcast_works_on_failed_items(client, prop_env):
+    assert _nb(client, RUN, 3).status_code == 200
+    f = read_proposals(prop_env, CLIP)["runs"][RUN]["frames"]["3"]
+    assert f["status"] == "not_broadcast" and f["prev_status"] == "failed"
+    assert client.get("/calibration/api/proposals?status=failed").json()["total"] == 0
+    assert _nb(client, RUN, 99).status_code == 404 and _nb(client, "nope", 1).status_code == 404
+
+
+def test_not_broadcast_409_over_gt_unless_overwrite(client, prop_env):
+    _human_gt(0, "hand-labelled")
+    r = _nb(client, RUN, 0)
+    assert r.status_code == 409 and r.json()["existing_gt"] == "human" and "overwrite=true" in r.json()["error"]
+    assert cal._read_gt(CLIP)["frames"]["0"]["note"] == "hand-labelled"      # untouched
+    assert not (prop_env / "frame_type").exists()                           # nothing flagged
+    assert read_proposals(prop_env, CLIP)["runs"][RUN]["frames"]["0"]["status"] == "proposed"
+    # accepted machine GT is protected the same way
+    assert client.post(f"/calibration/api/proposals/{CLIP}/{RUN}/2/accept").status_code == 200
+    r = client.put(f"/calibration/api/frame_type/{CLIP}/2")
+    assert r.status_code == 409 and r.json()["existing_gt"] == "machine"
+    # explicit overwrite flags the frame and drops that GT
+    r = _nb(client, RUN, 0, overwrite=True)
+    assert r.status_code == 200 and r.json()["removed_gt"] is True
+    assert "0" not in cal._read_gt(CLIP)["frames"] and "2" in cal._read_gt(CLIP)["frames"]
+
+
+def test_not_broadcast_flags_other_open_runs_and_undo_restores(client, prop_env):
+    doc = read_proposals(prop_env, CLIP)
+    doc["runs"]["mock-20260102T000000"]["frames"]["1"] = _record(0.6)
+    write_proposals(prop_env, CLIP, doc)
+    assert _nb(client, RUN, 1).status_code == 200
+    runs = read_proposals(prop_env, CLIP)["runs"]
+    assert runs["mock-20260102T000000"]["frames"]["1"]["status"] == "not_broadcast"
+    # a flagged frame cannot be accepted or saved as GT until cleared
+    assert client.post(f"/calibration/api/proposals/{CLIP}/{RUN}/1/accept").status_code == 409
+    assert client.put(f"/calibration/api/gt/{CLIP}/1", json={"correspondences": _record(0.9)["correspondences"],
+                                                            "image_size": [W, H]}).status_code == 409
+    assert client.delete(f"/calibration/api/frame_type/{CLIP}/5").status_code == 404
+    assert client.delete(f"/calibration/api/frame_type/{CLIP}/1").json()["not_broadcast"] == []
+    runs = read_proposals(prop_env, CLIP)["runs"]
+    assert runs[RUN]["frames"]["1"]["status"] == "proposed" and "prev_status" not in runs[RUN]["frames"]["1"]
+    assert runs["mock-20260102T000000"]["frames"]["1"]["status"] == "proposed"
+    assert client.post(f"/calibration/api/proposals/{CLIP}/{RUN}/1/accept").status_code == 200
+
+
+def test_review_page_has_not_broadcast_button_hint_and_filter(client):
+    html = client.get("/calibration/review").text
+    assert 'id="btnNotBroadcast"' in html and ">Not broadcast<" in html
+    assert 'e.key === "n"' in html and "/not_broadcast" in html
+    assert '<option value="not_broadcast">' in html and 'value="proposed,failed"' in html
+    assert "Claude: not main camera" in html and "main_camera_wide === false" in html
+    assert "showError(`${{ accept" in html           # errors go to the red banner
+    ed = client.get("/calibration").text
+    assert 'id="nbBtn"' in ed and 'id="nbUndo"' in ed and "/frame_type/" in ed
+
+
+def test_pipeline_skips_not_broadcast_frames(client, prop_env):
+    from footy_track.calibration.frame_type import not_broadcast_frames
+    assert _nb(client, RUN, 1).status_code == 200
+    assert not_broadcast_frames(prop_env, "mancity_seg010") == {1}   # alias -> same file
+
+
+def test_get_proposal_with_nan_stats_is_valid_json(client, prop_env):
+    doc = read_proposals(prop_env, CLIP)
+    doc["runs"][RUN]["frames"]["3"].update(mean_err_m=float("nan"), err_px=[None, float("nan")])
+    write_proposals(prop_env, CLIP, doc)
+    r = client.get(f"/calibration/api/proposals/{CLIP}/{RUN}/3")
+    assert r.status_code == 200 and r.json()["mean_err_m"] is None
