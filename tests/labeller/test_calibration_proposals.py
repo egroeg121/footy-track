@@ -379,3 +379,29 @@ def test_get_proposal_with_nan_stats_is_valid_json(client, prop_env):
     write_proposals(prop_env, CLIP, doc)
     r = client.get(f"/calibration/api/proposals/{CLIP}/{RUN}/3")
     assert r.status_code == 200 and r.json()["mean_err_m"] is None
+
+
+def test_list_filters_by_clip_alias_and_run(client, prop_env):
+    """The editor asks per clip (any alias, here the date-infixed video stem) for one run's frames."""
+    run = "claude-x-p1-20260101T000000"
+    other = "arsenal_astonvilla_seg020"
+    write_proposals(prop_env, other, {"clip": other, "runs": {run: {"source": "claude", "created": "c", "params": {},
+                                                                    "frames": {"7": _record(0.6)}}}})
+    for alias in (CLIP, "mancity_seg010", "arsenal_mancity_20250925_seg010"):
+        d = client.get(f"/calibration/api/proposals?run={run}&clip={alias}&status=all&sort=score_desc").json()
+        assert [(i["clip"], i["frame_index"], i["status"]) for i in d["items"]] == [
+            (CLIP, 0, "proposed"), (CLIP, 2, "proposed"), (CLIP, 1, "proposed"), (CLIP, 3, "failed")]
+        assert d["items"][0]["score"] == 0.9 and d["items"][3]["failure"]
+    d = client.get(f"/calibration/api/proposals?run={run}&clip=astonvilla_seg020&status=all").json()
+    assert [(i["clip"], i["frame_index"]) for i in d["items"]] == [(other, 7)]
+    assert client.get("/calibration/api/proposals?clip=no_such_clip&status=all").json()["items"] == []
+    # without clip the scan still covers every clip
+    assert client.get(f"/calibration/api/proposals?run={run}&status=all").json()["total"] == 5
+
+
+def test_reject_then_list_shows_rejected_for_the_editor_chips(client, prop_env):
+    run = "claude-x-p1-20260101T000000"
+    assert client.post(f"/calibration/api/proposals/{CLIP}/{run}/0/reject").json()["status"] == "rejected"
+    d = client.get(f"/calibration/api/proposals?run={run}&clip={CLIP}&status=all&sort=score_desc").json()
+    assert {i["frame_index"]: i["status"] for i in d["items"]}[0] == "rejected"
+    assert [i["frame_index"] for i in client.get(f"/calibration/api/proposals?run={run}&clip={CLIP}").json()["items"]] == [1, 2]
