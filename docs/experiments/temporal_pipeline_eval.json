@@ -1327,5 +1327,749 @@
   "test (9 clips, harness exclusions)": 172,
   "arsenal_example, harness-clean frames": 9,
   "arsenal_example, all labelled frames (NOT harness-clean)": 176
+ },
+ "union_test": {
+  "merge_px": 6.0,
+  "bonus_logit": 0.5,
+  "val_isotonic": {
+   "B_s0": {
+    "n_images": 53,
+    "n_candidates": 44,
+    "n_correct": 40,
+    "n_knots": 4,
+    "knots_p_range": [
+     0.5,
+     0.999
+    ]
+   },
+   "B_s1": {
+    "n_images": 53,
+    "n_candidates": 43,
+    "n_correct": 37,
+    "n_knots": 5,
+    "knots_p_range": [
+     0.001,
+     0.999
+    ]
+   }
+  },
+  "tables": {
+   "test (9 clips, harness exclusions)": {
+    "RT-DETR alone|B0": {
+     "n_gt": 170,
+     "recall10": 0.7411764705882353,
+     "precision10": 0.9473684210526315,
+     "ceiling10": 0.8294117647058824,
+     "tp": 126,
+     "fp": 7,
+     "no_ball_frames": 2,
+     "no_ball_emitted": 0,
+     "emitted_frames": 7118,
+     "all_frames": 8315
+    },
+    "RT-DETR alone|B1": {
+     "n_gt": 170,
+     "recall10": 0.7588235294117647,
+     "precision10": 0.9847328244274809,
+     "ceiling10": 0.8294117647058824,
+     "tp": 129,
+     "fp": 2,
+     "no_ball_frames": 2,
+     "no_ball_emitted": 0,
+     "emitted_frames": 7102,
+     "all_frames": 8315
+    },
+    "5ch B_s0 alone (val-iso p)|B0": {
+     "n_gt": 170,
+     "recall10": 0.7588235294117647,
+     "precision10": 0.9347826086956522,
+     "ceiling10": 0.7647058823529411,
+     "tp": 129,
+     "fp": 9,
+     "no_ball_frames": 2,
+     "no_ball_emitted": 0,
+     "emitted_frames": 6671,
+     "all_frames": 8315
+    },
+    "5ch B_s0 alone (val-iso p)|B1": {
+     "n_gt": 170,
+     "recall10": 0.7705882352941177,
+     "precision10": 0.9424460431654677,
+     "ceiling10": 0.7647058823529411,
+     "tp": 131,
+     "fp": 8,
+     "no_ball_frames": 2,
+     "no_ball_emitted": 0,
+     "emitted_frames": 6789,
+     "all_frames": 8315
+    },
+    "union RT + B_s0|B0": {
+     "n_gt": 170,
+     "recall10": 0.7764705882352941,
+     "precision10": 0.9166666666666666,
+     "ceiling10": 0.8411764705882353,
+     "tp": 132,
+     "fp": 12,
+     "no_ball_frames": 2,
+     "no_ball_emitted": 0,
+     "emitted_frames": 7349,
+     "all_frames": 8315
+    },
+    "union RT + B_s0|B1": {
+     "n_gt": 170,
+     "recall10": 0.788235294117647,
+     "precision10": 0.950354609929078,
+     "ceiling10": 0.8411764705882353,
+     "tp": 134,
+     "fp": 7,
+     "no_ball_frames": 2,
+     "no_ball_emitted": 0,
+     "emitted_frames": 7278,
+     "all_frames": 8315
+    },
+    "union RT + B_s0, agreement bonus|B0": {
+     "n_gt": 170,
+     "recall10": 0.7764705882352941,
+     "precision10": 0.9166666666666666,
+     "ceiling10": 0.8411764705882353,
+     "tp": 132,
+     "fp": 12,
+     "no_ball_frames": 2,
+     "no_ball_emitted": 0,
+     "emitted_frames": 7349,
+     "all_frames": 8315
+    },
+    "union RT + B_s0, agreement bonus|B1": {
+     "n_gt": 170,
+     "recall10": 0.788235294117647,
+     "precision10": 0.9436619718309859,
+     "ceiling10": 0.8411764705882353,
+     "tp": 134,
+     "fp": 8,
+     "no_ball_frames": 2,
+     "no_ball_emitted": 0,
+     "emitted_frames": 7311,
+     "all_frames": 8315
+    },
+    "5ch B_s1 alone (val-iso p)|B0": {
+     "n_gt": 170,
+     "recall10": 0.7470588235294118,
+     "precision10": 1.0,
+     "ceiling10": 0.7470588235294118,
+     "tp": 127,
+     "fp": 0,
+     "no_ball_frames": 2,
+     "no_ball_emitted": 0,
+     "emitted_frames": 6518,
+     "all_frames": 8315
+    },
+    "5ch B_s1 alone (val-iso p)|B1": {
+     "n_gt": 170,
+     "recall10": 0.788235294117647,
+     "precision10": 0.9571428571428572,
+     "ceiling10": 0.7470588235294118,
+     "tp": 134,
+     "fp": 6,
+     "no_ball_frames": 2,
+     "no_ball_emitted": 0,
+     "emitted_frames": 7081,
+     "all_frames": 8315
+    },
+    "union RT + B_s1|B0": {
+     "n_gt": 170,
+     "recall10": 0.7705882352941177,
+     "precision10": 0.9562043795620438,
+     "ceiling10": 0.8352941176470589,
+     "tp": 131,
+     "fp": 6,
+     "no_ball_frames": 2,
+     "no_ball_emitted": 0,
+     "emitted_frames": 7316,
+     "all_frames": 8315
+    },
+    "union RT + B_s1|B1": {
+     "n_gt": 170,
+     "recall10": 0.8,
+     "precision10": 0.9855072463768116,
+     "ceiling10": 0.8352941176470589,
+     "tp": 136,
+     "fp": 2,
+     "no_ball_frames": 2,
+     "no_ball_emitted": 0,
+     "emitted_frames": 7393,
+     "all_frames": 8315
+    },
+    "union RT + B_s1, agreement bonus|B0": {
+     "n_gt": 170,
+     "recall10": 0.7705882352941177,
+     "precision10": 0.9562043795620438,
+     "ceiling10": 0.8352941176470589,
+     "tp": 131,
+     "fp": 6,
+     "no_ball_frames": 2,
+     "no_ball_emitted": 0,
+     "emitted_frames": 7321,
+     "all_frames": 8315
+    },
+    "union RT + B_s1, agreement bonus|B1": {
+     "n_gt": 170,
+     "recall10": 0.8,
+     "precision10": 0.9855072463768116,
+     "ceiling10": 0.8352941176470589,
+     "tp": 136,
+     "fp": 2,
+     "no_ball_frames": 2,
+     "no_ball_emitted": 0,
+     "emitted_frames": 7392,
+     "all_frames": 8315
+    }
+   },
+   "arsenal_example, all labelled frames (NOT harness-clean)": {
+    "RT-DETR alone|B0": {
+     "n_gt": 176,
+     "recall10": 0.5397727272727273,
+     "precision10": 0.8558558558558559,
+     "ceiling10": 0.6306818181818182,
+     "tp": 95,
+     "fp": 16,
+     "no_ball_frames": 0,
+     "no_ball_emitted": 0,
+     "emitted_frames": 171,
+     "all_frames": 250
+    },
+    "RT-DETR alone|B1": {
+     "n_gt": 176,
+     "recall10": 0.5397727272727273,
+     "precision10": 0.9134615384615384,
+     "ceiling10": 0.6306818181818182,
+     "tp": 95,
+     "fp": 9,
+     "no_ball_frames": 0,
+     "no_ball_emitted": 0,
+     "emitted_frames": 164,
+     "all_frames": 250
+    },
+    "5ch B_s0 alone (val-iso p)|B0": {
+     "n_gt": 176,
+     "recall10": 0.4715909090909091,
+     "precision10": 0.9651162790697675,
+     "ceiling10": 0.4772727272727273,
+     "tp": 83,
+     "fp": 3,
+     "no_ball_frames": 0,
+     "no_ball_emitted": 0,
+     "emitted_frames": 133,
+     "all_frames": 250
+    },
+    "5ch B_s0 alone (val-iso p)|B1": {
+     "n_gt": 176,
+     "recall10": 0.5113636363636364,
+     "precision10": 1.0,
+     "ceiling10": 0.4772727272727273,
+     "tp": 90,
+     "fp": 0,
+     "no_ball_frames": 0,
+     "no_ball_emitted": 0,
+     "emitted_frames": 133,
+     "all_frames": 250
+    },
+    "union RT + B_s0|B0": {
+     "n_gt": 176,
+     "recall10": 0.5568181818181818,
+     "precision10": 0.8521739130434782,
+     "ceiling10": 0.6363636363636364,
+     "tp": 98,
+     "fp": 17,
+     "no_ball_frames": 0,
+     "no_ball_emitted": 0,
+     "emitted_frames": 176,
+     "all_frames": 250
+    },
+    "union RT + B_s0|B1": {
+     "n_gt": 176,
+     "recall10": 0.6022727272727273,
+     "precision10": 0.9217391304347826,
+     "ceiling10": 0.6363636363636364,
+     "tp": 106,
+     "fp": 9,
+     "no_ball_frames": 0,
+     "no_ball_emitted": 0,
+     "emitted_frames": 176,
+     "all_frames": 250
+    },
+    "union RT + B_s0, agreement bonus|B0": {
+     "n_gt": 176,
+     "recall10": 0.5568181818181818,
+     "precision10": 0.8521739130434782,
+     "ceiling10": 0.6363636363636364,
+     "tp": 98,
+     "fp": 17,
+     "no_ball_frames": 0,
+     "no_ball_emitted": 0,
+     "emitted_frames": 176,
+     "all_frames": 250
+    },
+    "union RT + B_s0, agreement bonus|B1": {
+     "n_gt": 176,
+     "recall10": 0.6022727272727273,
+     "precision10": 0.9217391304347826,
+     "ceiling10": 0.6363636363636364,
+     "tp": 106,
+     "fp": 9,
+     "no_ball_frames": 0,
+     "no_ball_emitted": 0,
+     "emitted_frames": 176,
+     "all_frames": 250
+    },
+    "5ch B_s1 alone (val-iso p)|B0": {
+     "n_gt": 176,
+     "recall10": 0.3693181818181818,
+     "precision10": 0.9154929577464789,
+     "ceiling10": 0.3806818181818182,
+     "tp": 65,
+     "fp": 6,
+     "no_ball_frames": 0,
+     "no_ball_emitted": 0,
+     "emitted_frames": 113,
+     "all_frames": 250
+    },
+    "5ch B_s1 alone (val-iso p)|B1": {
+     "n_gt": 176,
+     "recall10": 0.3806818181818182,
+     "precision10": 0.7976190476190477,
+     "ceiling10": 0.3806818181818182,
+     "tp": 67,
+     "fp": 17,
+     "no_ball_frames": 0,
+     "no_ball_emitted": 0,
+     "emitted_frames": 126,
+     "all_frames": 250
+    },
+    "union RT + B_s1|B0": {
+     "n_gt": 176,
+     "recall10": 0.5568181818181818,
+     "precision10": 0.8376068376068376,
+     "ceiling10": 0.6420454545454546,
+     "tp": 98,
+     "fp": 19,
+     "no_ball_frames": 0,
+     "no_ball_emitted": 0,
+     "emitted_frames": 177,
+     "all_frames": 250
+    },
+    "union RT + B_s1|B1": {
+     "n_gt": 176,
+     "recall10": 0.5625,
+     "precision10": 0.8839285714285714,
+     "ceiling10": 0.6420454545454546,
+     "tp": 99,
+     "fp": 13,
+     "no_ball_frames": 0,
+     "no_ball_emitted": 0,
+     "emitted_frames": 171,
+     "all_frames": 250
+    },
+    "union RT + B_s1, agreement bonus|B0": {
+     "n_gt": 176,
+     "recall10": 0.5568181818181818,
+     "precision10": 0.8376068376068376,
+     "ceiling10": 0.6420454545454546,
+     "tp": 98,
+     "fp": 19,
+     "no_ball_frames": 0,
+     "no_ball_emitted": 0,
+     "emitted_frames": 178,
+     "all_frames": 250
+    },
+    "union RT + B_s1, agreement bonus|B1": {
+     "n_gt": 176,
+     "recall10": 0.5625,
+     "precision10": 0.8918918918918919,
+     "ceiling10": 0.6420454545454546,
+     "tp": 99,
+     "fp": 12,
+     "no_ball_frames": 0,
+     "no_ball_emitted": 0,
+     "emitted_frames": 170,
+     "all_frames": 250
+    }
+   }
+  },
+  "paired_vs_rtdetr": {
+   "test (9 clips, harness exclusions)": {
+    "5ch B_s0 alone (val-iso p)|B1": {
+     "recall10": {
+      "diff": 0.01176470588235301,
+      "ci_frames": [
+       -0.017857142857142794,
+       0.04678362573099415
+      ],
+      "ci_clips": [
+       -0.0267857142857143,
+       0.09090909090909083
+      ]
+     },
+     "precision10": {
+      "diff": -0.04228678126201324,
+      "ci_frames": [
+       -0.08266980813183193,
+       -0.0065125649496439566
+      ],
+      "ci_clips": [
+       -0.08874458874458879,
+       0.0
+      ]
+     },
+     "ceiling10": {
+      "diff": -0.06470588235294128,
+      "ci_frames": [
+       -0.11111111111111105,
+       -0.0235294117647058
+      ],
+      "ci_clips": [
+       -0.0982142857142857,
+       0.0
+      ]
+     }
+    },
+    "union RT + B_s0|B1": {
+     "recall10": {
+      "diff": 0.02941176470588236,
+      "ci_frames": [
+       0.00588235294117645,
+       0.05847953216374269
+      ],
+      "ci_clips": [
+       0.0,
+       0.09090909090909083
+      ]
+     },
+     "precision10": {
+      "diff": -0.03437821449840284,
+      "ci_frames": [
+       -0.06794871794871804,
+       -0.006665263328859718
+      ],
+      "ci_clips": [
+       -0.1092513759600035,
+       0.0
+      ]
+     },
+     "ceiling10": {
+      "diff": 0.0117647058823529,
+      "ci_frames": [
+       0.0,
+       0.029585798816567976
+      ],
+      "ci_clips": [
+       0.0,
+       0.036363636363636376
+      ]
+     }
+    },
+    "union RT + B_s0, agreement bonus|B1": {
+     "recall10": {
+      "diff": 0.02941176470588236,
+      "ci_frames": [
+       0.005917159763313529,
+       0.05847953216374269
+      ],
+      "ci_clips": [
+       0.0,
+       0.09090909090909083
+      ]
+     },
+     "precision10": {
+      "diff": -0.04107085259649501,
+      "ci_frames": [
+       -0.07692460317460312,
+       -0.012824412003244134
+      ],
+      "ci_clips": [
+       -0.12878787878787878,
+       0.0
+      ]
+     },
+     "ceiling10": {
+      "diff": 0.0117647058823529,
+      "ci_frames": [
+       0.0,
+       0.029585798816567976
+      ],
+      "ci_clips": [
+       0.0,
+       0.036363636363636376
+      ]
+     }
+    },
+    "5ch B_s1 alone (val-iso p)|B1": {
+     "recall10": {
+      "diff": 0.02941176470588236,
+      "ci_frames": [
+       -0.005813953488372103,
+       0.0650887573964497
+      ],
+      "ci_clips": [
+       0.0,
+       0.07272727272727264
+      ]
+     },
+     "precision10": {
+      "diff": -0.027589967284623707,
+      "ci_frames": [
+       -0.06338028169014087,
+       0.0019234013718331536
+      ],
+      "ci_clips": [
+       -0.03908828382838292,
+       0.003276003276003303
+      ]
+     },
+     "ceiling10": {
+      "diff": -0.08235294117647063,
+      "ci_frames": [
+       -0.12941176470588234,
+       -0.040935672514619825
+      ],
+      "ci_clips": [
+       -0.0892857142857143,
+       0.0
+      ]
+     }
+    },
+    "union RT + B_s1|B1": {
+     "recall10": {
+      "diff": 0.04117647058823537,
+      "ci_frames": [
+       0.011904761904761973,
+       0.07143926432848581
+      ],
+      "ci_clips": [
+       0.0,
+       0.07079646017699115
+      ]
+     },
+     "precision10": {
+      "diff": 0.0007744219493307503,
+      "ci_frames": [
+       0.0,
+       0.0023809965053478706
+      ],
+      "ci_clips": [
+       0.0,
+       0.003276003276003303
+      ]
+     },
+     "ceiling10": {
+      "diff": 0.00588235294117645,
+      "ci_frames": [
+       0.0,
+       0.017857142857142794
+      ],
+      "ci_clips": [
+       0.0,
+       0.008928571428571397
+      ]
+     }
+    },
+    "union RT + B_s1, agreement bonus|B1": {
+     "recall10": {
+      "diff": 0.04117647058823537,
+      "ci_frames": [
+       0.011834319526627168,
+       0.07185628742514971
+      ],
+      "ci_clips": [
+       0.0,
+       0.07272727272727264
+      ]
+     },
+     "precision10": {
+      "diff": 0.0007744219493307503,
+      "ci_frames": [
+       0.0,
+       0.0023827173567723126
+      ],
+      "ci_clips": [
+       0.0,
+       0.003276003276003303
+      ]
+     },
+     "ceiling10": {
+      "diff": 0.00588235294117645,
+      "ci_frames": [
+       0.0,
+       0.017857142857142794
+      ],
+      "ci_clips": [
+       0.0,
+       0.008928571428571397
+      ]
+     }
+    }
+   },
+   "arsenal_example, all labelled frames (NOT harness-clean)": {
+    "5ch B_s0 alone (val-iso p)|B1": {
+     "recall10": {
+      "diff": -0.02840909090909094,
+      "ci_frames": [
+       -0.08522727272727271,
+       0.02840909090909094
+      ]
+     },
+     "precision10": {
+      "diff": 0.08653846153846156,
+      "ci_frames": [
+       0.03738317757009346,
+       0.1453030303030303
+      ]
+     },
+     "ceiling10": {
+      "diff": -0.15340909090909094,
+      "ci_frames": [
+       -0.21022727272727276,
+       -0.10227272727272718
+      ]
+     }
+    },
+    "union RT + B_s0|B1": {
+     "recall10": {
+      "diff": 0.0625,
+      "ci_frames": [
+       0.02840909090909094,
+       0.10227272727272724
+      ]
+     },
+     "precision10": {
+      "diff": 0.00827759197324418,
+      "ci_frames": [
+       -0.016721658612412038,
+       0.03539799528301886
+      ]
+     },
+     "ceiling10": {
+      "diff": 0.005681818181818121,
+      "ci_frames": [
+       0.0,
+       0.017045454545454586
+      ]
+     }
+    },
+    "union RT + B_s0, agreement bonus|B1": {
+     "recall10": {
+      "diff": 0.0625,
+      "ci_frames": [
+       0.02840909090909094,
+       0.10227272727272729
+      ]
+     },
+     "precision10": {
+      "diff": 0.00827759197324418,
+      "ci_frames": [
+       -0.01569796765758266,
+       0.03456525381318225
+      ]
+     },
+     "ceiling10": {
+      "diff": 0.005681818181818121,
+      "ci_frames": [
+       0.0,
+       0.017045454545454586
+      ]
+     }
+    },
+    "5ch B_s1 alone (val-iso p)|B1": {
+     "recall10": {
+      "diff": -0.15909090909090912,
+      "ci_frames": [
+       -0.22159090909090912,
+       -0.09659090909090912
+      ]
+     },
+     "precision10": {
+      "diff": -0.11584249084249076,
+      "ci_frames": [
+       -0.2119511339724106,
+       -0.02378356966750708
+      ]
+     },
+     "ceiling10": {
+      "diff": -0.25000000000000006,
+      "ci_frames": [
+       -0.3181818181818182,
+       -0.18181818181818182
+      ]
+     }
+    },
+    "union RT + B_s1|B1": {
+     "recall10": {
+      "diff": 0.022727272727272707,
+      "ci_frames": [
+       0.005681818181818121,
+       0.045454545454545525
+      ]
+     },
+     "precision10": {
+      "diff": -0.02953296703296704,
+      "ci_frames": [
+       -0.0776516192141192,
+       0.013405725926734264
+      ]
+     },
+     "ceiling10": {
+      "diff": 0.011363636363636354,
+      "ci_frames": [
+       0.0,
+       0.02840909090909094
+      ]
+     }
+    },
+    "union RT + B_s1, agreement bonus|B1": {
+     "recall10": {
+      "diff": 0.022727272727272707,
+      "ci_frames": [
+       0.0,
+       0.051136363636363646
+      ]
+     },
+     "precision10": {
+      "diff": -0.02156964656964655,
+      "ci_frames": [
+       -0.07271579381942218,
+       0.027703373015873
+      ]
+     },
+     "ceiling10": {
+      "diff": 0.011363636363636354,
+      "ci_frames": [
+       0.0,
+       0.02840909090909094
+      ]
+     }
+    }
+   }
+  },
+  "merge_candidate_counts": {
+   "test (9 clips, harness exclusions)|B_s0": {
+    "agree": 6575,
+    "yolo_only": 975,
+    "rt_only": 24658
+   },
+   "test (9 clips, harness exclusions)|B_s1": {
+    "agree": 6561,
+    "yolo_only": 1209,
+    "rt_only": 24672
+   },
+   "arsenal_example, all labelled frames (NOT harness-clean)|B_s0": {
+    "agree": 127,
+    "yolo_only": 41,
+    "rt_only": 915
+   },
+   "arsenal_example, all labelled frames (NOT harness-clean)|B_s1": {
+    "agree": 115,
+    "yolo_only": 54,
+    "rt_only": 927
+   }
+  }
  }
 }

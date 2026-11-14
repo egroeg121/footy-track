@@ -158,3 +158,59 @@ Paired bootstrap (10,000 resamples of scored frames; seed-mean per-frame outcome
 - Isotonic maps (fitted on v11 train candidates within 10 px of a labelled ball): A_s0: 1009/1102 correct, min_conf 0.10, B0 tau 0.10; A_s1: 1002/1072 correct, min_conf 0.11, B0 tau 0.14; B_s0: 992/1034 correct, min_conf 0.10, B0 tau 0.10; B_s1: 999/1054 correct, min_conf 0.10, B0 tau 0.16.
 
 Solver parameters (harness `camera_on`): `{"min_conf": 0.3, "bias": 1.0, "emit_scale": 1.0, "kappa": 1.5, "lam_pos": 0.5, "lam_vel": 0.0, "vmax": 40.0, "r0": 12.0, "dmax": 2.0, "mu": 0.02, "static_px": 3.0, "max_gap": 25, "camera": true, "fill_gap": 10, "fill_min_p": 0.8, "fill_mode": "kalman"}`, B0 tau 0.4.
+
+## Union test: do the 5ch candidates add to RT-DETR-L?
+
+Per frame the candidates of RT-DETR-L (harness knots -> p) and of a 5ch YOLO arm (isotonic map fitted on v11 *valid* without arsenal_example -> p) are merged: cross-source duplicates within 6 px collapse to one candidate (higher-p position, p = max), optionally with a +0.5 logit bonus when both agree. The merged p is fed to the harness' B0 (tau 0.4) / B1 (camera-on parameters) unchanged, through the inverse of the harness knots (RT-DETR alone is reproduced exactly). Ceiling of a union row = any candidate of either source (conf >= 0.1) within 10 px. 5ch YOLO = arm B of v1, seeds 0 and 1 reported separately.
+
+Val isotonic maps (n small: B_s0: 44 candidates (40 correct) from 53 images, 4 knots, p in [0.50, 1.00]; B_s1: 43 candidates (37 correct) from 53 images, 5 knots, p in [0.00, 1.00]).
+
+### test (9 clips, harness exclusions)
+
+| candidate set | B0 recall / prec | B1 recall / prec | ceiling | B1 emitted on no_ball frames |
+|---|---|---|---|---|
+| RT-DETR alone | 0.741 / 0.947 | 0.759 / 0.985 | 0.829 | 0 / 2 (B0: 0) |
+| 5ch B_s0 alone (val-iso p) | 0.759 / 0.935 | 0.771 / 0.942 | 0.765 | 0 / 2 (B0: 0) |
+| union RT + B_s0 | 0.776 / 0.917 | 0.788 / 0.950 | 0.841 | 0 / 2 (B0: 0) |
+| union RT + B_s0, agreement bonus | 0.776 / 0.917 | 0.788 / 0.944 | 0.841 | 0 / 2 (B0: 0) |
+| 5ch B_s1 alone (val-iso p) | 0.747 / 1.000 | 0.788 / 0.957 | 0.747 | 0 / 2 (B0: 0) |
+| union RT + B_s1 | 0.771 / 0.956 | 0.800 / 0.986 | 0.835 | 0 / 2 (B0: 0) |
+| union RT + B_s1, agreement bonus | 0.771 / 0.956 | 0.800 / 0.986 | 0.835 | 0 / 2 (B0: 0) |
+
+Paired bootstrap vs RT-DETR alone, B1 (95% CI over frames; over clips in brackets, test only): 
+
+| candidate set | recall@10 diff | precision diff | ceiling diff |
+|---|---|---|---|
+| 5ch B_s0 alone (val-iso p) | +0.012 [-0.018, 0.047] (-0.027, 0.091) | -0.042 [-0.083, -0.007] (-0.089, 0.000) | -0.065 [-0.111, -0.024] (-0.098, 0.000) |
+| union RT + B_s0 | +0.029 [0.006, 0.058] (0.000, 0.091) | -0.034 [-0.068, -0.007] (-0.109, 0.000) | +0.012 [0.000, 0.030] (0.000, 0.036) |
+| union RT + B_s0, agreement bonus | +0.029 [0.006, 0.058] (0.000, 0.091) | -0.041 [-0.077, -0.013] (-0.129, 0.000) | +0.012 [0.000, 0.030] (0.000, 0.036) |
+| 5ch B_s1 alone (val-iso p) | +0.029 [-0.006, 0.065] (0.000, 0.073) | -0.028 [-0.063, 0.002] (-0.039, 0.003) | -0.082 [-0.129, -0.041] (-0.089, 0.000) |
+| union RT + B_s1 | +0.041 [0.012, 0.071] (0.000, 0.071) | +0.001 [0.000, 0.002] (0.000, 0.003) | +0.006 [0.000, 0.018] (0.000, 0.009) |
+| union RT + B_s1, agreement bonus | +0.041 [0.012, 0.072] (0.000, 0.073) | +0.001 [0.000, 0.002] (0.000, 0.003) | +0.006 [0.000, 0.018] (0.000, 0.009) |
+
+### arsenal_example, all labelled frames (NOT harness-clean)
+
+| candidate set | B0 recall / prec | B1 recall / prec | ceiling | B1 emitted on no_ball frames |
+|---|---|---|---|---|
+| RT-DETR alone | 0.540 / 0.856 | 0.540 / 0.913 | 0.631 | 0 / 0 (B0: 0) |
+| 5ch B_s0 alone (val-iso p) | 0.472 / 0.965 | 0.511 / 1.000 | 0.477 | 0 / 0 (B0: 0) |
+| union RT + B_s0 | 0.557 / 0.852 | 0.602 / 0.922 | 0.636 | 0 / 0 (B0: 0) |
+| union RT + B_s0, agreement bonus | 0.557 / 0.852 | 0.602 / 0.922 | 0.636 | 0 / 0 (B0: 0) |
+| 5ch B_s1 alone (val-iso p) | 0.369 / 0.915 | 0.381 / 0.798 | 0.381 | 0 / 0 (B0: 0) |
+| union RT + B_s1 | 0.557 / 0.838 | 0.562 / 0.884 | 0.642 | 0 / 0 (B0: 0) |
+| union RT + B_s1, agreement bonus | 0.557 / 0.838 | 0.562 / 0.892 | 0.642 | 0 / 0 (B0: 0) |
+
+Paired bootstrap vs RT-DETR alone, B1 (95% CI over frames; over clips in brackets, test only): 
+
+| candidate set | recall@10 diff | precision diff | ceiling diff |
+|---|---|---|---|
+| 5ch B_s0 alone (val-iso p) | -0.028 [-0.085, 0.028] | +0.087 [0.037, 0.145] | -0.153 [-0.210, -0.102] |
+| union RT + B_s0 | +0.062 [0.028, 0.102] | +0.008 [-0.017, 0.035] | +0.006 [0.000, 0.017] |
+| union RT + B_s0, agreement bonus | +0.062 [0.028, 0.102] | +0.008 [-0.016, 0.035] | +0.006 [0.000, 0.017] |
+| 5ch B_s1 alone (val-iso p) | -0.159 [-0.222, -0.097] | -0.116 [-0.212, -0.024] | -0.250 [-0.318, -0.182] |
+| union RT + B_s1 | +0.023 [0.006, 0.045] | -0.030 [-0.078, 0.013] | +0.011 [0.000, 0.028] |
+| union RT + B_s1, agreement bonus | +0.023 [0.000, 0.051] | -0.022 [-0.073, 0.028] | +0.011 [0.000, 0.028] |
+
+Reading: the 5ch candidates add to, rather than replace, the production detector, but modestly. The ceiling rises only a little (test +0.012 / +0.006 for seeds 0 / 1, arsenal_example +0.006 / +0.011) because most 5ch candidates duplicate RT-DETR's (about 6.5k agreeing candidates against about 1k YOLO-only on the test clips). B1 recall rises +0.029 / +0.041 on the test clips (frame CI excludes 0; the clip-level CI touches 0 because 7 of the 9 clips have a single GT frame and seg010 carries 65% of the frames) and +0.062 / +0.023 on arsenal_example; precision is -0.034 (seed 0) / +0.001 (seed 1) on test, so seed 0 also adds some wrong candidates. The agreement bonus changes almost nothing. On the 2 harness no_ball frames of the test clips no configuration emits a point (n = 2: uninformative). The val isotonic maps rest on 43-44 candidates (4-5 knots): too small to trust, so the union numbers are indicative; they do show that the gain over RT-DETR alone does not depend on a well-calibrated YOLO map.
+
+Merged candidate counts (all frames): test (9 clips, harness exclusions)|B_s0: agree 6575, RT-DETR only 24658, YOLO only 975; test (9 clips, harness exclusions)|B_s1: agree 6561, RT-DETR only 24672, YOLO only 1209; arsenal_example, all labelled frames (NOT harness-clean)|B_s0: agree 127, RT-DETR only 915, YOLO only 41; arsenal_example, all labelled frames (NOT harness-clean)|B_s1: agree 115, RT-DETR only 927, YOLO only 54.
