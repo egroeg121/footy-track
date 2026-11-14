@@ -25,6 +25,8 @@
   button { cursor:pointer; }
   button:hover { border-color:var(--accent); }
   button.primary { background:var(--accent); border-color:var(--accent); color:#fff; }
+  #undoBtn { min-height:36px; padding:6px 16px; }   /* big enough to tap on a phone */
+  #undoBtn:disabled { opacity:.4; cursor:default; }
   button.danger:hover { border-color:var(--red); color:var(--red); }
   input[type=number] { width:64px; }
   input[type=range] { padding:0; }
@@ -77,6 +79,7 @@
   <button id="saveBtn" class="primary">Save GT</button>
   <button id="loadBtn">Load GT</button>
   <button id="delGtBtn" class="danger">Delete GT</button>
+  <button id="undoBtn" title="Undo the last point edit (Ctrl/Cmd+Z)" disabled>Undo</button>
   <button id="clearBtn">Clear points</button>
   <button id="nbBtn" title="This frame is not the main broadcast pitch view (replay, close-up, crowd, graphic). Key: n">Not broadcast</button>
   <span id="status"></span>
@@ -129,6 +132,23 @@ const state = {
   distortion: null,            // lens model of the loaded GT/proposal ({k1,...}); null = plain homography
   proposal: null,              // {run_id} while editing a machine proposal: Save accepts it as edited
 };
+
+// Undo: snapshot() before each user edit of the points; reset on frame/GT/proposal load.
+const UNDO_MAX = 100;
+let undoStack = [];
+function syncUndo() { $("undoBtn").disabled = !undoStack.length; }
+function snapshot() {
+  undoStack.push(JSON.stringify({ imgPts: state.imgPts, pitchPts: state.pitchPts }));
+  if (undoStack.length > UNDO_MAX) undoStack.shift();
+  syncUndo();
+}
+function resetUndo() { undoStack = []; syncUndo(); }
+function undo() {
+  if (!undoStack.length) return;
+  const s = JSON.parse(undoStack.pop());
+  state.imgPts = s.imgPts; state.pitchPts = s.pitchPts; state.dirty = true;
+  syncUndo(); refit();
+}
 
 function status(msg, isErr) { const s = $("status"); s.textContent = msg || ""; s.className = isErr ? "error" : ""; }
 async function api(path, opts) {
@@ -186,7 +206,18 @@ const nPairs = () => Math.min(state.imgPts.length, state.pitchPts.length);
 // ---------------------------------------------------------------- drawing
 function marker(layer, x, y, n, colour, draggable) {
   const g = new Konva.Group({ x, y, draggable: !!draggable });
-  g.add(new Konva.Circle({ radius: 7, stroke: colour, strokeWidth: 2, fill: "#00000055" }));
+  // Thin X with a small gap at the centre so the exact pixel stays visible; dark
+  // outline underneath for contrast on grass and white lines. Transparent 14 px
+  // circle is the touch/drag hit area.
+  g.add(new Konva.Circle({ radius: 14, fill: "transparent" }));
+  g.add(new Konva.Shape({ listening: false, sceneFunc: ctx => {
+    const arm = () => { ctx.beginPath();
+      for (const [sx, sy] of [[1, 1], [1, -1], [-1, 1], [-1, -1]]) { ctx.moveTo(2 * sx, 2 * sy); ctx.lineTo(7 * sx, 7 * sy); }
+    };
+    ctx.lineCap = "round";
+    arm(); ctx.strokeStyle = "rgba(0,0,0,0.85)"; ctx.lineWidth = 3.5; ctx.stroke();
+    arm(); ctx.strokeStyle = colour; ctx.lineWidth = 1.5; ctx.stroke();
+  } }));
   g.add(new Konva.Text({ text: String(n), x: 9, y: -16, fontSize: 13, fontStyle: "bold", fill: colour,
                          stroke: "#000", strokeWidth: 0.4 }));
   layer.add(g); return g;
@@ -212,6 +243,7 @@ function drawLeft() {
   state.imgPts.forEach((p, i) => {
     const paired = i < state.pitchPts.length;
     const g = marker(L.pts, ...lPt(p.u, p.v), i + 1, paired ? errColour(i) : "#d29922", true);
+    g.on("dragstart", snapshot);
     g.on("dragend", () => {
       const [u, v] = lInv(g.x(), g.y()); p.u = u; p.v = v; state.dirty = true; refit();
     });
@@ -270,7 +302,7 @@ function drawPairs() {
     }
     row.innerHTML = `<span class="n">${i + 1}</span><span class="name" title="${name}">${name}</span>` +
       `<span class="${cls}" style="font-size:11px">${err}</span><button class="del danger" title="delete pair">&times;</button>`;
-    row.querySelector(".del").onclick = () => { state.imgPts.splice(i, 1); state.pitchPts.splice(i, 1); state.dirty = true; refit(); };
+    row.querySelector(".del").onclick = () => { snapshot(); state.imgPts.splice(i, 1); state.pitchPts.splice(i, 1); state.dirty = true; refit(); };
     box.appendChild(row);
   }
   $("pairSummary").textContent = `${nPairs()} complete`;
@@ -344,7 +376,7 @@ L.stage.on("click tap", () => {
   const p = L.stage.getPointerPosition(); if (!p) return;
   const [u, v] = lInv(p.x, p.y);
   if (u < 0 || u > 1 || v < 0 || v > 1) return;
-  state.imgPts.push({ u, v }); state.dirty = true; refit();
+  snapshot(); state.imgPts.push({ u, v }); state.dirty = true; refit();
 });
 function nearestKp(x, y) {
   let best = null, bd = 1e9;
@@ -369,7 +401,7 @@ R.stage.on("click tap", e => {
     if (n.d > 60) { status("no keypoint nearby (shift+click for a free point)"); return; }
     const [x, y] = state.pitch.keypoints[n.id]; pt = { id: n.id, x, y };
   }
-  state.pitchPts.push(pt); state.dirty = true; refit();
+  snapshot(); state.pitchPts.push(pt); state.dirty = true; refit();
 });
 
 // ---------------------------------------------------------------- data
@@ -417,7 +449,7 @@ async function loadProposal(run, idx) {
     state.imgPts = keep.map(c => ({ u: c.image[0], v: c.image[1] }));
     state.pitchPts = keep.map(c => ({ id: c.pitch_id, x: c.pitch_xy[0], y: c.pitch_xy[1] }));
     state.distortion = rec.distortion || null;
-    state.proposal = { run_id: run }; state.dirty = false;
+    state.proposal = { run_id: run }; state.dirty = false; resetUndo();
     const b = $("propBanner"); b.style.display = ""; b.textContent = `editing proposal ${run}: Save accepts it as edited`;
     refit();
   } catch (e) { status("proposal: " + e.message, true); }
@@ -439,7 +471,7 @@ async function gotoFrame(idx, force) {
   state.proposal = null; $("propBanner").style.display = "none";
   state.frame = idx; $("frameSlider").value = $("frameNum").value = idx;
   state.imgPts = []; state.pitchPts = []; state.fit = null; state.warpImg = null; state.fitError = null; state.dirty = false;
-  state.distortion = null;
+  state.distortion = null; resetUndo();
   status("loading frame…");
   const img = new Image();
   await new Promise((res, rej) => { img.onload = res; img.onerror = () => rej(new Error("frame failed to load"));
@@ -456,7 +488,7 @@ async function loadGt(quiet) {
     state.distortion = rec.distortion || null;
     state.imgPts = rec.correspondences.map(c => ({ u: c.image[0], v: c.image[1] }));
     state.pitchPts = rec.correspondences.map(c => ({ id: c.pitch_id, x: c.pitch_xy[0], y: c.pitch_xy[1] }));
-    state.dirty = false; if (!quiet) status("GT loaded");
+    state.dirty = false; resetUndo(); if (!quiet) status("GT loaded");
     refit();
   } catch (e) { status("load: " + e.message, true); }
 }
@@ -516,7 +548,8 @@ $("prevBtn").onclick = () => gotoFrame(state.frame - 1);
 $("nextBtn").onclick = () => gotoFrame(state.frame + 1);
 $("saveBtn").onclick = saveGt; $("loadBtn").onclick = () => loadGt(false); $("delGtBtn").onclick = deleteGt;
 $("nbBtn").onclick = () => markNotBroadcast(false); $("nbUndo").onclick = clearNotBroadcast;
-$("clearBtn").onclick = () => { state.imgPts = []; state.pitchPts = []; state.dirty = true; refit(); };
+$("undoBtn").onclick = undo;
+$("clearBtn").onclick = () => { snapshot(); state.imgPts = []; state.pitchPts = []; state.dirty = true; refit(); };
 $("showOverlay").onchange = redraw;
 $("showWarp").onchange = () => { if ($("showWarp").checked) updateWarp(); else drawRight(); };
 $("warpOpacity").oninput = drawRight;
@@ -524,6 +557,7 @@ $("method").onchange = refit;
 for (const id of ["pitchL", "pitchW"]) $(id).onchange = async () => { await loadPitch(); refit(); };
 document.addEventListener("keydown", e => {
   if (["INPUT", "SELECT", "TEXTAREA"].includes(document.activeElement.tagName)) return;
+  if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === "z") { e.preventDefault(); undo(); return; }
   const step = e.shiftKey ? 10 : 1;
   if (e.key === "ArrowLeft") gotoFrame(state.frame - step);
   else if (e.key === "ArrowRight") gotoFrame(state.frame + step);
