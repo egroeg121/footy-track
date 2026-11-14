@@ -39,6 +39,8 @@ def main():
     ap.add_argument("--dataset", type=Path, required=True)
     ap.add_argument("--out", type=Path, required=True)
     ap.add_argument("--meta", default="")
+    ap.add_argument("--append-md", type=Path, default=None, help="markdown appended after the tables (e.g. round-2 pipeline eval)")
+    ap.add_argument("--json-extra", nargs="*", default=[], help="key=path.json entries merged into the output json")
     a = ap.parse_args()
     runs = {**R.load_runs(a.v1, a.dataset), **R.load_runs(a.r2, a.dataset)}
     models = {m: t for m, t in MODELS.items() if all(x in runs for x in t)}
@@ -115,8 +117,14 @@ def main():
                                                      "best": max(ap_)}
     res = {"models": models, "table": table, "paired": paired, "fp_ball_free": fp, "n_ball_free": len(free),
            "confident_wrong_top1_on_ball_frames_conf>=0.5": wrong, "curves": curves}
+    for kv in a.json_extra:
+        k, v = kv.split("=", 1)
+        res[k] = json.loads(Path(v).read_text())
     Path(str(a.out) + ".json").write_text(json.dumps(res, indent=1, default=lambda o: None if o != o else float(o)))
     write_md(res, a)
+    if a.append_md:
+        with open(str(a.out) + ".md", "a") as f:
+            f.write("\n" + a.append_md.read_text())
     print("wrote", str(a.out) + ".md")
 
 
