@@ -44,13 +44,16 @@ def load_meta(root: Path) -> dict[str, dict]:
     return out
 
 
-def write_data_yaml(root: Path, dst: Path, channels: int, images_subdir: str = "images") -> Path:
-    """Local-path data.yaml (the dataset's own yaml names the mini's absolute path)."""
+def write_data_yaml(root: Path, dst: Path, channels: int, images_subdir: str = "images", extra_train: list[str] | None = None) -> Path:
+    """Local-path data.yaml (the dataset's own yaml names the mini's absolute path).
+
+    ``extra_train``: absolute image directories added to the train list (round 2: pseudo-labelled images)."""
     dst.parent.mkdir(parents=True, exist_ok=True)
     names = ", ".join(f'"{k}": {v}' for k, v in NAMES.items())
+    train = f"{images_subdir}/train" if not extra_train else json.dumps([f"{images_subdir}/train", *extra_train])
     dst.write_text(
         f'path: "{root}"\nnames: {{{names}}}\nnc: 7\nchannels: {channels}\n'
-        f"train: {images_subdir}/train\nval: {images_subdir}/val\ntest: {images_subdir}/test\n"
+        f"train: {train}\nval: {images_subdir}/val\ntest: {images_subdir}/test\n"
         f"heldout: {images_subdir}/heldout\n"
     )
     return dst

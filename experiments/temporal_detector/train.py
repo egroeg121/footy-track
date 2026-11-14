@@ -34,6 +34,7 @@ def build_args():
     ap.add_argument("--fraction", type=float, default=1.0)
     ap.add_argument("--data-root", type=Path, required=True, help="dir containing k2/ and k2_rgb/")
     ap.add_argument("--weights-dir", type=Path, required=True, help="dir with <model>.pt")
+    ap.add_argument("--pseudo", action="store_true", help="round 2: add <data-root>/pseudo (5ch) or pseudo_rgb (3ch) to the train set")
     ap.add_argument("--project", type=Path, required=True)
     ap.add_argument("--name", required=True)
     return ap.parse_args()
@@ -51,7 +52,10 @@ def main():
         return
     channels = 3 if a.arm == "A" else 5
     root = a.data_root / ("k2_rgb" if a.arm == "A" else "k2")
-    data_yaml = write_data_yaml(root, run / "data_local.yaml", channels, "images")
+    extra = [str(a.data_root / ("pseudo_rgb" if a.arm == "A" else "pseudo") / "images" / "train")] if a.pseudo else None
+    if extra:
+        assert Path(extra[0]).is_dir(), extra
+    data_yaml = write_data_yaml(root, run / "data_local.yaml", channels, "images", extra)
     stock = a.weights_dir / f"{a.model}.pt"
     if a.arm == "A":
         pretrained = stock
