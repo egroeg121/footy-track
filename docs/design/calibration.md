@@ -176,14 +176,15 @@ Full spec: [`feature_store.md`](feature_store.md) §3.7.
   `stage=calibration` and `params_json` (model, prompt_version, …).
 - **Best calibration.** View `frame_calibration_best`: hand GT (incl.
   accepted/edited proposals copied into GT) > accepted machine > proposed by
-  highest score; failed/rejected never win; it reports the winning
-  source/run.
+  highest score; failed/rejected never win; a frame with any
+  `not_broadcast` row (see below) has no best calibration at all; it reports the
+  winning source/run.
 - **Projection.** View `detections_on_pitch` projects every detection in SQL
   (same anchors and 0.3 quality gate as `PitchProjector`; NaN when low quality,
   NULL when uncalibrated).
 - **Import.** `python -m footy_track.feature_store.ingest_calibration
   --gt-dir <ball_gt_marks> --db <store> [--dry-run]` loads
-  `calibration_gt/*.json` and `calibration_proposals/*.json`. Re-import
+  `calibration_gt/*.json`, `calibration_proposals/*.json` and `frame_type/*.json`. Re-import
   replaces; each clip file lands on every `game_id` alias of that clip that has
   ball GT, so calibration and ball marks share `game_id` + `frame_index`.
 - **Inline columns.** `frame.homography` / `calibration_quality` /
@@ -235,8 +236,28 @@ that a human accepts on a phone (`/calibration/review`).
    labeller README §16); accepting writes `calibration_gt` with an `origin`. Accepting
    over a frame that already has GT is a 409; for human GT (no `origin`) it needs an
    explicit `overwrite=true` and the review page asks first. The pipeline skips frames
-   with human GT by default (`--no-skip-gt` to include them).
-7. `prelabel_calibration eval` compares a run with human GT; `prelabel_calibration sweep`
+   with human GT (or flagged not-broadcast, step 8) by default (`--no-skip-gt` to include them).
+8. **Not a broadcast frame.** Sampled frames that are not the main pitch view (replay, close-up,
+   crowd/bench, graphic, goal-line camera) cannot be calibrated; they are marked with one tap
+   (review page "Not broadcast" / key `n`, editor button) and are distinct from `rejected`
+   (= the fit is wrong). Claude's `view.main_camera_wide == false` only shows a badge on the
+   card; nothing is auto-marked. Two records: the proposal's `status` becomes `not_broadcast`
+   (`prev_status`, `reviewed_at` kept; works for `proposed` and `failed`), and a frame-level flag
+   in `<gt dir>/frame_type/<canonical clip>.json` (`{"clip", "frames": {"<idx>": {"type":
+   "not_broadcast", "ts", "run_id"?}}}`, atomic write, mode kept) that outlives the proposal. It
+   is a sidecar of its own rather than a section of `calibration_gt` so that file keeps meaning
+   "frames with a calibration" for every existing reader (pre-label skip, feature-store GT import,
+   GT list) and deleting a GT frame never drops the flag. Marking a frame that has GT (hand or
+   accepted) is a 409 unless `overwrite=true`, which deletes that GT; accept / GT-save on a flagged
+   frame are 409 until the mark is cleared (`DELETE /calibration/api/frame_type/{clip}/{idx}`
+   restores the proposals' previous status). Consumers: the pipeline skips flagged frames with
+   `--skip-gt`; the feature-store import turns the file into `calibration` rows
+   (`review_status=not_broadcast`, no `H`, run `frame_type_import`) and the views drop such frames
+   (`frame_calibration_best` none, `detections_on_pitch` `no_calibration`); the Ball Check
+   labeller and training export can read `calibration.frame_type.not_broadcast_frames`.
+   `GET /calibration/api/proposals/...` also returns NaN stats as null (a failed proposal with a
+   degenerate `H` used to 500 and could not be shown).
+9. `prelabel_calibration eval` compares a run with human GT; `prelabel_calibration sweep`
    is the noise sweep (success rate at <= 5 / <= 10 px before and after refinement per
    label-noise sigma): it answers how precise Claude has to be.
 

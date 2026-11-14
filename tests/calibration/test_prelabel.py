@@ -498,3 +498,13 @@ def test_far_edge_line_finds_a_faint_strip_but_not_a_bright_board_base():
     assert len(xs) > 300 and 92 <= np.median(ys) <= 104 and xs.max() - xs.min() > 400
     bright = _faint_far_edge_frame(bright_base=True)
     assert not far_edge_line(bright, grass_mask(bright)).any()
+
+
+def test_pipeline_skips_not_broadcast_frames(run_env):
+    from footy_track.calibration.frame_type import update_frame_types
+    gt, clips = run_env
+    update_frame_types(gt, "arsenal_mancity_seg010", lambda d: d["frames"].update({"1": {"type": "not_broadcast"}}))
+    cfg = pl.RunConfig(gt_dir=gt, clips_dir=clips, clips=["mancity_seg010"], every=1, limit=3)
+    s = pl.run_prelabel(cfg, idf.MockIdentifier(gt), log=lambda *_: None)
+    frames = set(read_proposals(gt, "mancity_seg010")["runs"][s.run_id]["frames"])
+    assert frames == {"0", "2", "3"}

@@ -12,6 +12,7 @@ import cv2
 import numpy as np
 
 from footy_track.calibration import geometry as geo
+from footy_track.calibration.frame_type import not_broadcast_frames
 from footy_track.calibration.pitch_model import DEFAULT_LENGTH, DEFAULT_WIDTH, PitchModel
 from footy_track.calibration.prelabel.candidates import find_candidates
 from footy_track.calibration.prelabel.fit import fit_and_score, label_xy
@@ -189,7 +190,7 @@ class RunConfig:
     clips: list[str]
     frames: list[int] | None = None  # explicit frames (applied to every clip)
     every: int = 25
-    skip_gt: bool = True  # never propose over a frame that already has human GT
+    skip_gt: bool = True  # never propose over a frame with human GT or flagged not_broadcast
     limit: int | None = None  # max frames processed in total
     pitch_dims: tuple[float, float] = (DEFAULT_LENGTH, DEFAULT_WIDTH)
     render_dir: Path | None = None
@@ -237,7 +238,7 @@ def run_prelabel(cfg: RunConfig, identifier: Identifier, log=print) -> RunSummar
         if video is None:
             log(f"[{clip}] video not found in {cfg.clips_dir}; skipped")
             continue
-        skip = gt_frames(cfg.gt_dir, clip) if cfg.skip_gt else set()
+        skip = (gt_frames(cfg.gt_dir, clip) | not_broadcast_frames(cfg.gt_dir, clip)) if cfg.skip_gt else set()
         frames = select_frames(video_frame_count(video), cfg.every, cfg.frames, skip)
         if remaining is not None:
             frames = frames[:remaining]

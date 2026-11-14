@@ -39,6 +39,12 @@ from footy_track.calibration.pitch_model import (
     DEFAULT_WIDTH,
     PitchModel,
 )
+from footy_track.calibration.frame_type import (
+    NOT_BROADCAST,
+    not_broadcast_frames,
+    update_frame_types,
+)
+from footy_track.calibration.prelabel.proposals import read_proposals, update_proposals
 from footy_track.calibration.video import read_frame
 from footy_track.clip_id import canonical_clip_id
 from footy_track.labeller.review import _clips_dir, _gt_marks_dir
@@ -132,6 +138,121 @@ def _gt_frames(clip: str) -> list[int]:
         return sorted(int(k) for k in _read_gt(clip)["frames"])
     except (OSError, ValueError, KeyError):
         return []
+
+
+# ---------------------------------------------------------------------------
+# Frame type flag (not a broadcast pitch view; see calibration/frame_type.py)
+# ---------------------------------------------------------------------------
+
+
+def _not_broadcast(clip: str) -> list[int]:
+    try:
+        return sorted(not_broadcast_frames(_gt_marks_dir(), clip))
+    except OSError:
+        return []
+
+
+def mark_not_broadcast(clip: str, idx: int, *, overwrite: bool = False, run_id: str | None = None) -> dict:
+    """Flag frame ``idx`` as not a broadcast pitch view.
+
+    Writes the frame-type sidecar and sets the frame's proposals to ``not_broadcast``
+    (the named ``run_id``'s whatever its status; other runs' only while still
+    ``proposed``/``failed``). A frame that already has calibration GT (hand or accepted)
+    is refused with ``{"conflict": <existing GT record>}`` and nothing is written, unless
+    ``overwrite``, which also removes that GT record.
+    """
+    existing = _read_gt(clip)["frames"].get(str(idx))
+    if existing is not None and not overwrite:
+        return {"conflict": existing}
+    ts = time.strftime("%Y-%m-%dT%H:%M:%S%z")
+
+    def _flag(doc: dict) -> None:
+        rec = {"type": NOT_BROADCAST, "ts": ts}
+        if run_id:
+            rec["run_id"] = run_id
+        doc["frames"][str(idx)] = rec
+
+    update_frame_types(_gt_marks_dir(), clip, _flag)
+    removed_gt = False
+    if existing is not None:
+        doc = _read_gt(clip)
+        removed_gt = doc["frames"].pop(str(idx), None) is not None
+        _write_gt(clip, doc)
+
+    def _props(doc: dict) -> None:
+        for rid, run in doc["runs"].items():
+            f = run["frames"].get(str(idx))
+            if f is None or f["status"] == NOT_BROADCAST:
+                continue
+            if rid == run_id or f["status"] in ("proposed", "failed"):
+                f["prev_status"] = f["status"]
+                f["status"] = NOT_BROADCAST
+                f["reviewed_at"] = ts
+
+    if read_proposals(_gt_marks_dir(), clip)["runs"]:
+        update_proposals(_gt_marks_dir(), clip, _props)
+    return {"ok": True, "frame_index": idx, "removed_gt": removed_gt, "gt_frames": _gt_frames(clip)}
+
+
+def clear_not_broadcast(clip: str, idx: int) -> bool:
+    """Undo ``mark_not_broadcast``; proposals go back to their previous status. ``False``
+    when the frame was not flagged."""
+    gone: list[bool] = []
+
+    def _unflag(doc: dict) -> None:
+        gone.append(doc["frames"].pop(str(idx), None) is not None)
+
+    update_frame_types(_gt_marks_dir(), clip, _unflag)
+
+    def _props(doc: dict) -> None:
+        for run in doc["runs"].values():
+            f = run["frames"].get(str(idx))
+            if f is not None and f["status"] == NOT_BROADCAST:
+                f["status"] = f.pop("prev_status", None) or ("proposed" if f.get("H") is not None else "failed")
+                f.pop("reviewed_at", None)
+
+    if read_proposals(_gt_marks_dir(), clip)["runs"]:
+        update_proposals(_gt_marks_dir(), clip, _props)
+    return gone[0]
+
+
+@router.get("/calibration/api/frame_type/{clip}")
+async def frame_type_list(clip: str) -> dict:
+    return {"clip": clip, "not_broadcast": await asyncio.to_thread(_not_broadcast, clip)}
+
+
+@router.put("/calibration/api/frame_type/{clip}/{idx}")
+async def frame_type_set(clip: str, idx: int, body: dict | None = None):
+    """Flag the frame ``not_broadcast`` (body ``{overwrite?, run_id?}``); 409 over existing GT."""
+    body = body or {}
+    if idx < 0:
+        return _err(400, "frame_index must be >= 0")
+    if body.get("type", NOT_BROADCAST) != NOT_BROADCAST:
+        return _err(400, f"type must be {NOT_BROADCAST!r}")
+    res = await asyncio.to_thread(
+        lambda: mark_not_broadcast(clip, idx, overwrite=bool(body.get("overwrite")), run_id=body.get("run_id"))
+    )
+    if "conflict" in res:
+        return _not_broadcast_conflict(res["conflict"])
+    return res
+
+
+@router.delete("/calibration/api/frame_type/{clip}/{idx}")
+async def frame_type_clear(clip: str, idx: int):
+    if not await asyncio.to_thread(clear_not_broadcast, clip, idx):
+        return _err(404, "this frame is not marked not_broadcast")
+    return {"ok": True, "not_broadcast": await asyncio.to_thread(_not_broadcast, clip)}
+
+
+def _not_broadcast_conflict(existing: dict) -> JSONResponse:
+    human = not existing.get("origin")
+    what = "hand-labelled" if human else "accepted machine"
+    return JSONResponse(
+        {"ok": False, "existing_gt": "human" if human else "machine",
+         "error": f"this frame already has {what} calibration GT; marking it not broadcast "
+                  "would delete that GT. Resend with overwrite=true to do so"},
+        status_code=409,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -329,7 +450,7 @@ async def clip_meta(clip: str):
     meta = await asyncio.to_thread(_video_meta, video)
     if meta is None:
         return _err(404, f"cannot open video for {clip}")
-    return {**meta, "name": clip, "gt_frames": _gt_frames(clip)}
+    return {**meta, "name": clip, "gt_frames": _gt_frames(clip), "not_broadcast": _not_broadcast(clip)}
 
 
 @router.get("/calibration/api/frame/{clip}/{idx}.jpg")
@@ -398,6 +519,7 @@ async def gt_list(clip: str) -> dict:
     doc = await asyncio.to_thread(_read_gt, clip)
     return {
         "clip": doc["clip"],
+        "not_broadcast": await asyncio.to_thread(_not_broadcast, clip),
         "frames": [
             {
                 "frame_index": int(k),
@@ -451,6 +573,8 @@ async def gt_save(clip: str, idx: int, body: dict):
     """
     if idx < 0:
         return _err(400, "frame_index must be >= 0")
+    if idx in await asyncio.to_thread(_not_broadcast, clip):
+        return _err(409, "this frame is marked not broadcast; clear the mark before saving GT")
     try:
         res = _fit(body)
     except _BadRequest as exc:

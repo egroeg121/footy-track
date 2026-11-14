@@ -257,3 +257,20 @@ def test_store_created_before_distortion_gets_the_k1_column(tmp_path):
     with FeatureStore.open(path) as s:
         row = s.query("SELECT distortion_k1 FROM frame_calibration_best").iloc[0]
         assert row["distortion_k1"] is None or math.isnan(row["distortion_k1"])
+
+
+def test_not_broadcast_frame_has_no_calibration_and_no_projection(store):
+    store.upsert_calibrations([
+        _cal("claude", "r1", fi=0, q=0.9),
+        _cal("hand_label", "calibration_gt_import", fi=0, q=1.0, status="hand"),
+        _cal("claude", "r1", fi=1, q=0.9),
+        # a flag row (no H), from a different run than the proposal it vetoes
+        _cal("hand_label", "frame_type_import", fi=1, status="not_broadcast", H=None, q=None),
+        # a proposal itself marked not_broadcast (with an H) never wins either
+        _cal("claude", "r2", fi=2, q=0.99, status="not_broadcast"),
+    ])
+    assert _best(store, 0)["tier"] == "hand"
+    assert _best(store, 1) is None and _best(store, 2) is None
+    store.upsert_detections([_det(0, "player", 0, 0.4, 0.3, 0.05, 0.1), _det(1, "player", 1, 0.4, 0.3, 0.05, 0.1)])
+    d = store.query("SELECT frame_index, projection_status, x_pitch FROM detections_on_pitch ORDER BY frame_index")
+    assert list(d["projection_status"]) == ["ok", "no_calibration"] and d["x_pitch"].isna()[1]

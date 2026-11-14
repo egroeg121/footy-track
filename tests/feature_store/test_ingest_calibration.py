@@ -266,3 +266,26 @@ def test_off_centre_distortion_is_refused_not_silently_misprojected(store, tmp_p
     with caplog.at_level(logging.WARNING):
         r = ingest_calibration_dir(store, tmp_path)
     assert r.gt_frames == 0
+
+
+def test_frame_type_flags_and_not_broadcast_proposals_are_ingested(store, tmp_path):
+    clip = "arsenal_mancity_seg010"
+    _write(tmp_path / "calibration_proposals" / f"{clip}.json", _proposals(clip, frames={
+        "0": _frame(status="proposed", score=0.7, failure=None, view=None),
+        "1": _frame(status="proposed", score=0.7, failure=None, view=None),
+        "2": {"status": "not_broadcast", "H": None, "correspondences": [], "score": 0.0, "failure": "close-up"},
+    }))
+    _write(tmp_path / "frame_type" / f"{clip}.json",
+           {"clip": clip, "frames": {"1": {"type": "not_broadcast", "ts": "2026-11-12T10:00:00+0000"}}})
+    r = ingest_calibration_dir(store, tmp_path)
+    assert r.by_status["not_broadcast"] == 2 and not r.skipped
+    row = store.query("SELECT * FROM calibration WHERE run_id='frame_type_import'").iloc[0]
+    assert (row["frame_index"], row["review_status"], row["source"]) == (1, "not_broadcast", "hand_label")
+    assert row["reviewed"] and store.query("SELECT count(*) n FROM calibration WHERE run_id='frame_type_import' AND H IS NULL")["n"][0] == 1
+    # frame 1 has a usable proposal H but the flag vetoes it; frame 2's proposal is flagged itself
+    assert list(_best(store)["frame_index"]) == [0]
+    # re-import is idempotent and a cleared flag disappears
+    (tmp_path / "frame_type" / f"{clip}.json").write_text(json.dumps({"clip": clip, "frames": {}}))
+    ingest_calibration_dir(store, tmp_path)
+    assert store.query("SELECT count(*) n FROM calibration WHERE run_id='frame_type_import'")["n"][0] == 0
+    assert list(_best(store)["frame_index"]) == [0, 1]
