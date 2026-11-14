@@ -116,6 +116,14 @@ _CANDIDATES_DIR = _env_dir(
 #: Optional review list for Ball Check's ``source=list`` pool (explicit cards,
 #: served in file order). Unset means the pool is empty. See README section 11.
 _BALL_CHECK_LIST = os.environ.get("FOOTY_BALL_CHECK_LIST") or None
+#: Re-tracking after each verdict of a ``source=list`` review (see
+#: ``labeller/retrack_service.py``): the round's detector candidate cache folder turns it
+#: on; the round's ``cards_meta.json`` (server side only, never sent to the page) tells
+#: which cards are blind audit samples (never moved); ``..._AUTO_DONE`` is an optional
+#: track confidence (e.g. 0.8) above which a confidently tracked card is not asked.
+_RETRACK_CACHE = os.environ.get("FOOTY_RETRACK_CACHE") or None
+_RETRACK_META = os.environ.get("FOOTY_RETRACK_META") or None
+_RETRACK_AUTO_DONE = os.environ.get("FOOTY_RETRACK_AUTO_DONE") or None
 
 
 from footy_track.labeller import identity_routes  # noqa: E402

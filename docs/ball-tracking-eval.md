@@ -220,3 +220,82 @@ bidirectional's early WRONG predictions.
 Related: [Inference](inference.md), the research note on
 [bidirectional tracking for autolabelling](design/bidirectional_tracking_research.md)
 (a different problem: pixel trackers seeded from human marks), [TODO](todo.md) T-10, T-20, T-34.
+
+## Re-tracking after each review verdict (simulation)
+
+Question: if the whole-clip tracker is re-run after every human verdict, does it
+take fewer review taps to get correct ball tracks? Simulated offline on the cached
+candidates (`ball_trackers/constrained.py`, `scripts/retrack_sim.py`), with the
+human GT marks as a perfect reviewer. One tap answers one card: a frame plus the
+tracker answer there. The reviewer says "ball" (the path is anchored there),
+"not a ball" (that candidate is forbidden in that frame) or, when the answer is
+wrong or missing, drags to the true position (anchor). A frame that was tapped
+counts as right. Accuracy is per GT frame (HIT within 25 px, or no answer on a
+no-ball frame). Cards can only be asked on frames that have GT.
+
+Constraints are anchors, forbidden spots and forbidden-everywhere spots in the
+Viterbi tracker (same model as `viterbi`, identical output with no constraints).
+The next card is the frame with the smallest *margin*: the score gap between the
+best whole-clip path and the best path that uses a different object at that frame
+(forward and backward pass, no per-frame re-runs), with frames changed by the last
+re-track asked first. Strategies: A spot-check order (first, last, biggest jump,
+middle frame of each track, interleaved), B random order (8 seeds), M margin order
+computed once and never re-tracked (control), C re-track + margin order, D = C plus
+"not a ball" also forbids that image position (5 px) in every frame.
+
+![accuracy vs taps](img/retrack_sim_accuracy_vs_taps.png)
+
+Taps per clip needed to reach a pooled accuracy (taps as a fraction of the GT
+frames in brackets). Held-out: 5 clips, 125 GT frames (corrected truth); seen: 15
+clips, 543 GT frames. Clips with fewer than 5 GT frames (1 held-out, 2 seen) are
+left out.
+
+| set | strategy | acc at 0 taps | acc at 10 taps/clip | to 90% | to 95% |
+|---|---|---|---|---|---|
+| held-out | A spot-check | 0.50 | 0.65 | 22.4 (90%) | 23.8 (95%) |
+| held-out | B random | 0.50 | 0.68 | 20.4 (82%) | 22.4 (90%) |
+| held-out | M margin, no re-track | 0.50 | 0.74 | 15.2 (61%) | 23.2 (93%) |
+| held-out | C re-track | 0.50 | 0.75 | 13.2 (53%) | 14.0 (56%) |
+| held-out | D C + parked | 0.50 | 0.75 | 13.2 (53%) | 14.0 (56%) |
+| seen | A spot-check | 0.84 | 0.85 | 26.9 (74%) | 32.1 (89%) |
+| seen | B random | 0.84 | 0.86 | 19.9 (55%) | 28.1 (78%) |
+| seen | M margin, no re-track | 0.84 | 0.88 | 18.9 (52%) | 30.7 (85%) |
+| seen | C re-track | 0.84 | 0.88 | 13.2 (36%) | 22.0 (61%) |
+| seen | D C + parked | 0.84 | 0.88 | 13.2 (36%) | 22.0 (61%) |
+
+- Re-tracking helps once a clip has had some taps. C reaches 90% in about 35-40%
+  fewer taps than random order and 40-50% fewer than the spot-check order, and
+  needs about 40% (held-out) and 28% (seen) fewer taps than margin order alone to
+  reach 95%. The first 5 taps are the same for every strategy. Spot-check order
+  without re-tracking is worse than random on these GT frames.
+- Most of the remaining loss is the detector: on held-out clips about half the GT
+  frames have no candidate near the ball, so only a tap (drag) fixes them, whatever
+  the tracker does.
+- D equals C to the last frame: parked-spot forbids were issued 11 times (held-out)
+  and 5 times (seen) and never changed the answer on a GT frame. The confidently
+  wrong held-out frames (6 of 56 at margin 3 or more, all in one clip) sit on a
+  ball that moves with the camera pan, so an image-position rule does not catch
+  them. Not worth building as specified.
+- Auto-marking frames "done" without a tap is the risk. Margin 3 or more marks 56
+  held-out frames done, 6 of them wrong (11%); confidence 0.7 or more gives the same
+  56 and 6, so the margin adds nothing over confidence. Confidence 0.8 or more is
+  clean on held-out (41 done, 0 wrong). On seen clips, margin 3 or more: 332 done,
+  0 wrong. The error did not grow after 10 re-tracked taps (47 done, 6 wrong held-out).
+- Chaining consecutive segments (E): in the one adjacent eval pair (`seg030`,
+  `seg031`), solving the two together with the real 96-frame gap is identical to
+  solving them apart; treating the join as contiguous (not true) moved the count of
+  correct frames by at most 3 of 86 either way, no net gain. Across all 161 joins of
+  the 162-segment match the gap between consecutive segments is at least 26 source
+  frames (median 156, about 6 s): segments are cut around non-broadcast footage,
+  never back to back. Zero joins were judged continuous (rule: gap of at most 2
+  frames, histogram correlation 0.85 or more, mean abs difference at most 25); 36 of
+  161 look alike (same wide shot, correlation 0.9 or more) but the match clock shows
+  seconds elapsed, so the ball cannot be followed across. Chaining is not worth
+  building.
+
+Caveats: perfect reviewer; GT is sparse and only GT frames can be asked or scored,
+so effects on other frames are not measured; held-out is 5 clips and 79% of its
+frames come from two of them; the margin is a proxy (dropping the ball is
+approximated by the candidate's own emission); seen clips were used to tune the
+tracker. Reproduce with `python -m footy_track.scripts.retrack_sim sim --cache C
+--gt G --split S --truth T --out O`, then `plot`; `joins` runs the join test.

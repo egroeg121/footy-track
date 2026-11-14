@@ -623,6 +623,8 @@ the real GT marks.
 - Sparse eval labelling is built (12.11), minus the split file entry: a registered clip is
   an eval clip for the loop and the export, and its marks go to the GT-marks folder, which
   the evaluation harness reads as it does for any other labelled clip.
+- Re-tracking after each verdict is built (12.12); the parked-object forbid and segment chaining
+  of the simulation are not.
 - Not built: the API backend (`--backend api` still stops), crop-and-re-detect in the labelling
   mode, a checked-in held-out registry with footage-overlap checks (T-49; the registry of
   12.11 only names clips), the retrain proposal.
@@ -721,5 +723,87 @@ Not done: the split file (`ball_eval_cache_split.json`) is not edited (the held-
 assignment is a decision about the measurement, not about leakage); frames are not checked
 against footage overlap with other clips (T-33, T-49); 1 frame per second is a default, not a
 measured sample size.
+
+### 12.12 Re-tracking during the review (built, 2026-11)
+
+Evidence: an offline simulation (`scripts/retrack_sim.py`, `docs/ball-tracking-eval.md`,
+re-tracking after each verdict) with the human marks as a perfect reviewer. Re-running a
+whole-clip constrained Viterbi tracker after each verdict (a "ball" anchors the path through
+that box, a "not a ball" forbids that candidate in that frame) and asking the most uncertain
+frame (smallest Viterbi margin) next reached 90% frame accuracy in about 13 taps per clip,
+against about 20 for random order and 22 to 27 for the spot-check order. Two things from
+that work are **not** built: forbidding a parked object at every frame (it never changed an
+answer) and chaining consecutive segments (the segments are not contiguous).
+
+**What the server does** (`labeller/retrack_service.py`, logic in `autolabel/retrack.py`,
+`ball_trackers/constrained.py`). It is on when `FOOTY_RETRACK_CACHE` (the round's detector
+candidate cache) is set together with `FOOTY_BALL_CHECK_LIST`; `FOOTY_RETRACK_META` (the
+round's `cards_meta.json`, read by the server only, never sent to the page) says which
+cards are blind samples.
+
+1. A verdict POST appends to the verdict log and returns at once. The card after it is the
+   next one of the queue as it stood: nothing waits for, or reacts to, the re-track.
+2. In a background thread the card's clip is re-tracked from the cache and *all* its
+   verdicts (`ball` / `box_off` anchor at the card's box, `corrected` at the dragged box,
+   `not_ball` forbids the card's box in that frame; `unsure` and "no ball" on a tap-to-place
+   card constrain nothing). Measured on round-001 data (clips of 95 to 480 frames, up to 38
+   constraints): 30 to 145 ms per re-track, well under the 1 s target.
+3. When it finishes, up to two **follow-up cards** are pinned to the top of the queue: the
+   frames of that clip where the path sits on a detected box and its margin is below 3,
+   most uncertain first, frames whose answer the re-track changed ahead of the rest. A
+   follow-up is an unjudged card of the list (moved up) or, where the list has none within
+   2 frames, a new blind, id-keyed card with the path's box (persisted under
+   `<GT dir>/retrack/cards.json`, so it survives a restart; the verdict log keys it like
+   any list card). No frame is queued twice (cards within 2 frames are one question);
+   at most 6 pinned cards wait at once and at most 10 new cards are made per clip, so a
+   round stays finite.
+4. The page re-fetches the queue after each verdict (and again while a re-track is
+   pending) and replaces everything after the current card and the two already prefetched
+   ones; the card on screen is never touched.
+
+**Audits and controls are never starved, never moved, never hidden.** Cards with the
+`audit`, `control` and `random` roles keep their places in the list's own order, which is
+never reordered (only delayed by follow-ups). The server counts follow-up cards judged in a
+row and, after two, puts a card of the base order first, so a reviewer who always takes the
+top card meets a base card after at most two follow-ups (the page's two prefetched cards can
+stretch that to about five). Without the meta file every existing card is treated as a blind
+sample and none is moved; only new cards are pinned.
+
+**Auto-done (off by default).** `FOOTY_RETRACK_AUTO_DONE=<conf>` hides an unjudged
+non-audit card whose frame the path answers with a detected box, on that very box, at
+detector confidence >= conf (suggested 0.8). The margin is *not* an auto-done rule. A hidden
+card writes nothing by itself; the path's labels below cover it.
+
+**Write-back at ingest** (`autolabel_loop ingest --cache <candidate cache>`; the review
+server's `retrack/` folder next to `ball_checks/` marks a round that was reviewed with
+re-tracking, others are unchanged). The final path is recomputed from the cache and the
+verdict log (the same function the server used, so nothing in memory has to be exact):
+
+- the path's other *detected* boxes on a chain a person anchored are written as **tier 3**,
+  `[label, claude_auto, retrack]`: a person confirmed that ball at one frame and the
+  tracker followed it, but nobody looked at these frames, so no `human_checked`, and like
+  every `claude_auto` box they stay out of the training export unless `--include-auto` is
+  given. Chains nobody touched (the detector's own tracker) and interpolated positions are
+  not written. `retrack` is a marker tag: the feature store keeps the provenance
+  `claude_auto` and ignores the marker, the sidecar keeps it;
+- a follow-up card the server added: `ball` is tier 2 (`claude` + `human_checked` +
+  `retrack`: a machine box a person confirmed), `corrected` tier 1 (the dragged box),
+  `not_ball` a hard negative, `box_off` / `unsure` nothing;
+- the round report gets a `retrack` block (clips re-tracked, constraints, labels by tier).
+
+Not verified: the gain on real reviews (the 13-tap figure is simulated on the labelled
+clips; follow-up cards add taps while the round's 90% mark gets closer, and whether the
+net is fewer cards per correct frame has to be measured on a round reviewed this way);
+the margin threshold of 3, the pin sizes and the base-card ratio are defaults.
+
+### 12.13 Continuous mode (jobs, 2026-11)
+
+The Prefect jobs repo runs rounds back to back so the reviewer never waits: `autolabel-round`
+(a round, then the review server on it), a top-up flow every 15 minutes that starts the next
+round when the current one has fewer than 20 cards left, a daily cap on Claude questions
+(counted from the rounds' call logs), ingest of a finished round before the review server is
+switched to the next, and a weekly summary. A server with unanswered cards is never replaced,
+a stop on an auth or usage limit stops the queue and notifies instead of retrying, and one
+variable pauses everything. See the jobs repo README for the flows, variables and schedules.
 
 Related: [Architecture](../architecture.md), [Best pipeline and label needs](../pipeline-and-labels.md), [Tracking pipeline design](tracking-pipeline.md), [Ball tracking evaluation](../ball-tracking-eval.md), [TODO](../todo.md) T-44 to T-49.
