@@ -1,0 +1,1506 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Tracking players, actions, and events in football matches.">
+      
+      
+      
+        <link rel="canonical" href="https://egroeg121.github.io/footy-track/design/calibration/">
+      
+      
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.6.20">
+    
+    
+      
+        <title>Calibration (camera → pitch) — Implementation & Inspection Plan - Footy Scan</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.e53b48f4.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+    
+  </head>
+  
+  
+    <body dir="ltr">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#calibration-camera-pitch-implementation-inspection-plan" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="Footy Scan" class="md-header__button md-logo" aria-label="Footy Scan" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Footy Scan
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Calibration (camera → pitch) — Implementation &amp; Inspection Plan
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="Footy Scan" class="md-nav__button md-logo" aria-label="Footy Scan" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Footy Scan
+  </label>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Overview
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Architecture
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../pipeline-and-labels/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Pipeline and labels
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../data/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Data
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    Training
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            Training
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../training/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Training
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../training/notable_runs/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Notable Training Runs
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../inference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Inference
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../inference-web/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Inference web app
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../ball-tracking-eval/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Ball tracking evaluation
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../feature_store/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Feature store
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_10" >
+        
+          
+          <label class="md-nav__link" for="__nav_10" id="__nav_10_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    Design
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_10_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_10">
+            <span class="md-nav__icon md-icon"></span>
+            Design
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../pipeline_overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Pipeline Overview
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../player_reid/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Player Re-ID
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tracking-pipeline/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Tracking Pipeline Design
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../claude_autolabel_loop/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Claude-assisted Ball Labelling
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../system_design/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    System Design
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../system_overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    System Overview
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../pipeline_architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Pipeline Architecture
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../timings/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Time Formats
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../data_formats/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Data Formats
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_11" >
+        
+          
+          <label class="md-nav__link" for="__nav_11" id="__nav_11_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    Development
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_11_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_11">
+            <span class="md-nav__icon md-icon"></span>
+            Development
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Getting Started
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../agent_guidelines/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Agent Guidelines
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../contributing-docs/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    How to contribute to the docs
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../todo/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    TODO
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#0-what-already-exists-and-what-doesnt" class="md-nav__link">
+    <span class="md-ellipsis">
+      0. What already exists (and what doesn't)
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#1-approach" class="md-nav__link">
+    <span class="md-ellipsis">
+      1. Approach
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="1. Approach">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#feature-detector-pretrained-first-own-training-only-if-needed" class="md-nav__link">
+    <span class="md-ellipsis">
+      Feature detector: pretrained first, own training only if needed
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-module-layout" class="md-nav__link">
+    <span class="md-ellipsis">
+      2. Module layout
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-milestones" class="md-nav__link">
+    <span class="md-ellipsis">
+      3. Milestones
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-inspection-plan-how-you-check-each-step" class="md-nav__link">
+    <span class="md-ellipsis">
+      4. Inspection plan — how you check each step
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="4. Inspection plan — how you check each step">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#checkpoints" class="md-nav__link">
+    <span class="md-ellipsis">
+      Checkpoints
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-risks-open-questions" class="md-nav__link">
+    <span class="md-ellipsis">
+      5. Risks / open questions
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-feature-store" class="md-nav__link">
+    <span class="md-ellipsis">
+      6. Feature store
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-pre-labelling-with-claude-proposal-review" class="md-nav__link">
+    <span class="md-ellipsis">
+      7. Pre-labelling with Claude + proposal review
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-lens-distortion-division-model" class="md-nav__link">
+    <span class="md-ellipsis">
+      8. Lens distortion (division model)
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#9-the-far-touchline-on-a-high-wide-camera-bournemouth" class="md-nav__link">
+    <span class="md-ellipsis">
+      9. The far touchline on a high wide camera (Bournemouth)
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#10-hard-views-aston-villa-and-bournemouth-pinhole-camera-mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      10. Hard views: Aston Villa and Bournemouth (pinhole camera mode)
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+
+<h1 id="calibration-camera-pitch-implementation-inspection-plan">Calibration (camera → pitch) — Implementation &amp; Inspection Plan<a class="headerlink" href="#calibration-camera-pitch-implementation-inspection-plan" title="Permanent link">&para;</a></h1>
+<p>Status: <strong>PLAN</strong> · Stage §2.3 of <a href="../../system_design/"><code>system_design.md</code></a> ·
+Feeds §2.6 <a href="../projection/"><code>projection.md</code></a> · KB bead <code>ft-wn9</code></p>
+<p>Goal: for every broadcast frame, estimate the image→pitch mapping so that
+detection boxes become <code>(x, y)</code> in pitch metres. Output lands in the feature store's
+source-tagged <code>calibration</code> table (see "Feature store" below; the old inline
+<code>frame.homography</code> columns are deprecated), and the existing <code>PitchProjector</code>
+logic consumes it.</p>
+<hr />
+<h2 id="0-what-already-exists-and-what-doesnt">0. What already exists (and what doesn't)<a class="headerlink" href="#0-what-already-exists-and-what-doesnt" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Piece</th>
+<th>State</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>projection/projector.py</code> — <code>PitchProjector</code> (anchor = bottom-centre for players, centroid for ball; NaN on low quality)</td>
+<td>Written + unit-tested, never fed a real <code>H</code></td>
+</tr>
+<tr>
+<td>Feature store <code>calibration</code> / <code>pitch_keypoint</code> tables, <code>frame_calibration_best</code> and <code>detections_on_pitch</code> views, GT/proposal importer</td>
+<td>Implemented (see below)</td>
+</tr>
+<tr>
+<td>Broadcast classifier (<code>classifier.py</code>) — gates which frames are main-camera views</td>
+<td>Implemented</td>
+</tr>
+<tr>
+<td>Pitch model, line/keypoint detector, calibrator, any inspection UI</td>
+<td><strong>Nothing</strong></td>
+</tr>
+</tbody>
+</table>
+<p>Two conventions to fix up front (both currently unspecified):</p>
+<ol>
+<li><strong>Image coordinates of H.</strong> Detections are <em>normalised</em> top-left xywh and
+   <code>PitchProjector</code> applies <code>H</code> straight to normalised anchors. So we define
+   <code>H</code> as <strong>normalised image coords → pitch metres</strong> (origin centre spot, +x
+   along the long axis, per <code>projection.md</code> §2). Internally the calibrator
+   works in pixels and converts with <code>H_norm = H_px · diag(W, H_img, 1)</code>.</li>
+<li><strong>Pitch dimensions</strong> per game (<code>game</code> table / match metadata), default
+   105 × 68. The pitch model is parameterised by them.</li>
+</ol>
+<hr />
+<h2 id="1-approach">1. Approach<a class="headerlink" href="#1-approach" title="Permanent link">&para;</a></h2>
+<p>Broadcast main camera = <strong>fixed position, pan/tilt/zoom only</strong>. That gives
+a clear progression:</p>
+<ol>
+<li><strong>Per-frame homography (8 DOF)</strong> from detected pitch features. Enough for
+   ground-plane projection; simplest to get working.</li>
+<li><strong>Temporal propagation:</strong> calibrate keyframes robustly, carry <code>H</code> between
+   them with frame-to-frame motion (feature tracking on pitch pixels,
+   masking out players), reset on scene cuts (broadcast classifier / shot
+   boundary). Smooth.</li>
+<li><strong>Constrained camera model (later):</strong> solve the camera position once per
+   game, then per frame only pan/tilt/roll/focal (≤4 DOF). Much more stable
+   on close-ups with few visible lines, and it is what later enables ball
+   <em>height</em> (not just ground shadow).</li>
+</ol>
+<h3 id="feature-detector-pretrained-first-own-training-only-if-needed">Feature detector: pretrained first, own training only if needed<a class="headerlink" href="#feature-detector-pretrained-first-own-training-only-if-needed" title="Permanent link">&para;</a></h3>
+<p>Broadcast pitch calibration is a well-studied task (SoccerNet camera
+calibration challenge), with public models trained on exactly this kind of
+footage. Options, to be evaluated in M1:</p>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>What it outputs</th>
+<th>Fit</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Pitch-keypoint pose model</strong> (YOLO-pose style, ~30 named pitch keypoints)</td>
+<td>Keypoints with ids → direct DLT/RANSAC homography</td>
+<td>Easiest to integrate (ultralytics already a dep); weak when few named keypoints are visible</td>
+</tr>
+<tr>
+<td><strong>Keypoints + line heatmaps</strong> (SoccerNet-calibration-style HRNet models, e.g. "No Bells Just Whistles", PnLCalib)</td>
+<td>Keypoints <em>and</em> line intersections/tangent points → H or full camera</td>
+<td>Best reported accuracy; heavier, needs GPU for full-clip runs</td>
+</tr>
+<tr>
+<td><strong>Classical, known-size features</strong>: white-pixel mask inside pitch → line segments + ellipse fits → identify features (penalty box, goal area, centre circle r=9.15 m, halfway line) by their geometry → solve</td>
+<td>Named lines/conics → H, and via plane-based calibration (Zhang) focal length + camera pose</td>
+<td>No training data and fully inspectable; the hard part is <em>identifying</em> which line is which (partial views, symmetric halves, occlusion). Contender for M1 and always used as the <strong>refinement</strong> step</td>
+</tr>
+</tbody>
+</table>
+<p>The pitch model's known dimensions are what make calibration possible in
+every option above. The options only differ in how features in the image
+get matched to their counterparts in that model: hand-written geometric
+rules or a learned detector.</p>
+<p>Plan: wrap whichever pretrained model wins behind a <code>PitchFeatureDetector</code>
+interface; add classical line-snapping refinement on top. Licences and
+weights availability are checked before adopting any of them. Fine-tune on
+our own frames only if M1 numbers say so (lesson from ball detection:
+measure before assuming more data helps).</p>
+<hr />
+<h2 id="2-module-layout">2. Module layout<a class="headerlink" href="#2-module-layout" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code>src/footy_track/calibration/
+  pitch_model.py      # canonical pitch: lines, arcs, named keypoints (metres), param&#39;d by dims
+  geometry.py         # DLT/RANSAC homography, px&lt;-&gt;norm, reprojection error, warp helpers
+  detectors/          # PitchFeatureDetector protocol + pretrained impl(s)
+  calibrator.py       # single-frame: features -&gt; H + quality (inliers, reproj err)
+  refine.py           # snap model lines to observed white pixels
+  temporal.py         # keyframes + frame-to-frame propagation + cut reset + smoothing
+  camera.py           # (M4) fixed-position PTZ camera model
+  store.py            # write calibration / pitch_keypoint / run rows
+scripts/calibrate_clip.py   # CLI: clip -&gt; calibration run in the feature store
+labeller/calibration.py + web/calibration.html   # inspection page (§4)
+</code></pre></div>
+<p><code>calibration_quality</code> ∈ [0,1] is derived from inlier count + mean
+reprojection error so the projector's existing <code>H_quality &lt; 0.3 → NaN</code> gate
+works unchanged; raw numbers are kept in run diagnostics.</p>
+<hr />
+<h2 id="3-milestones">3. Milestones<a class="headerlink" href="#3-milestones" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>Deliverable</th>
+<th>Done when</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>M0</strong></td>
+<td>Pitch model + geometry utils + <strong>manual calibration</strong> in the inspection page (click ≥4 pitch points → H). Saves clicks as <strong>calibration GT</strong>.</td>
+<td>Overlay of reprojected pitch lines sits on the real lines for hand-clicked frames; ~50–100 GT frames across the <code>eval_data/clips</code></td>
+</tr>
+<tr>
+<td><strong>M1</strong></td>
+<td>Single-frame automatic calibrator (pretrained detector + RANSAC + refinement), run on sampled frames</td>
+<td>Scored against M0 GT: reprojection error (px), % frames calibrated, % within 5 px; ≥2 detector options compared</td>
+</tr>
+<tr>
+<td><strong>M2</strong></td>
+<td>Temporal: keyframes + propagation + cut reset + smoothing; <code>calibrate_clip.py</code> writes to the store</td>
+<td>Whole clips calibrated; jitter metric low; failures flagged rather than silently wrong</td>
+</tr>
+<tr>
+<td><strong>M3</strong></td>
+<td>Projection end-to-end: store <code>H</code> → <code>PitchProjector</code> → pitch positions; minimap in the page</td>
+<td>Players project inside pitch bounds; plausible speeds (&lt; ~10 m/s); formation shapes look right</td>
+</tr>
+<tr>
+<td><strong>M4</strong></td>
+<td>Fixed-position camera model; optional fine-tune on own GT</td>
+<td>Better accuracy on hard frames (close-ups, few lines) vs M2</td>
+</tr>
+</tbody>
+</table>
+<p>Each milestone is its own PR, with tests, against <code>main</code>.</p>
+<hr />
+<h2 id="4-inspection-plan-how-you-check-each-step">4. Inspection plan — how you check each step<a class="headerlink" href="#4-inspection-plan-how-you-check-each-step" title="Permanent link">&para;</a></h2>
+<p>One page, <code>/calibration</code> in the existing labeller FastAPI app (same hub,
+same Konva frontend patterns; per the KB, keep overlays as siblings of the
+Konva stage container). It grows panel by panel with the milestones:</p>
+<table>
+<thead>
+<tr>
+<th>Panel</th>
+<th>Shows</th>
+<th>Catches</th>
+<th>From</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>A. Frame + model overlay</strong></td>
+<td>Video frame with the canonical pitch lines reprojected through <code>H⁻¹</code>, toggled on/off</td>
+<td>The main check. Misalignment shows straight away, e.g. a penalty box drawn in the wrong place</td>
+<td>M0</td>
+</tr>
+<tr>
+<td><strong>B. Feature overlay</strong></td>
+<td>Detected keypoints/lines with ids, green = RANSAC inlier, red = outlier</td>
+<td>Detector errors vs fitting errors</td>
+<td>M1</td>
+</tr>
+<tr>
+<td><strong>C. Bird's-eye warp</strong></td>
+<td>Frame warped to top-down and alpha-blended over a pitch template</td>
+<td>Global distortion, wrong-half flips</td>
+<td>M0</td>
+</tr>
+<tr>
+<td><strong>D. Minimap</strong></td>
+<td>Top-down pitch with projected players/ball/refs. Hovering a box highlights its dot, and the other way round</td>
+<td>Projection/anchor bugs, out-of-bounds players</td>
+<td>M3</td>
+</tr>
+<tr>
+<td><strong>E. Timeline strip</strong></td>
+<td>Per-frame quality/reproj-error/keyframe/cut markers under the scrubber, with "jump to worst N"</td>
+<td>Temporal drift, bad stretches, missed cuts</td>
+<td>M2</td>
+</tr>
+<tr>
+<td><strong>F. Camera-param plots</strong></td>
+<td>Pan/tilt/focal (or H-derived proxies) over time</td>
+<td>Jitter and jumps that look fine frame by frame</td>
+<td>M2/M4</td>
+</tr>
+<tr>
+<td><strong>G. Manual edit</strong></td>
+<td>Drag points / click correspondences → re-fit, save as GT</td>
+<td>Produces GT and fixes bad keyframes</td>
+<td>M0</td>
+</tr>
+</tbody>
+</table>
+<p>Plus a <strong>run comparison</strong> selector (two calibration <code>run_id</code>s, overlays in
+different colours) and a non-interactive <strong>contact-sheet report</strong> (grid of
+worst/median/best overlay thumbnails + metric table per run) generated by
+<code>calibrate_clip.py --report</code>, so a batch run can be judged in 30 seconds.</p>
+<h3 id="checkpoints">Checkpoints<a class="headerlink" href="#checkpoints" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>After M0:</strong> open a frame, click 4–6 points (corners of the penalty box,
+  centre spot…), confirm panel A lines up across the whole visible pitch and
+  panel C looks like a flat pitch. <em>This validates the pitch model, the
+  coordinate conventions and the maths before any ML.</em> Then label the GT set.</li>
+<li><strong>After M1:</strong> contact sheet of worst-10 frames per detector + metric table
+  vs GT. Decide which detector to adopt and whether fine-tuning is needed.</li>
+<li><strong>After M2:</strong> scrub 2–3 full clips with overlay on; watch timeline strip
+  for red stretches; check params plot is smooth across pans and resets at
+  cuts.</li>
+<li><strong>After M3:</strong> play a clip with the minimap; players should stay in the
+  pitch and move smoothly; sanity metrics (out-of-bounds %, max speed) in the
+  report.</li>
+<li><strong>After M4:</strong> same metrics as M1/M2 re-run; must improve on hard frames
+  without regressing easy ones.</li>
+</ul>
+<hr />
+<h2 id="5-risks-open-questions">5. Risks / open questions<a class="headerlink" href="#5-risks-open-questions" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>Few visible lines</strong> (midfield close-ups): single-frame fails. Mitigated
+  by temporal propagation (M2) and the camera model (M4); until then such
+  frames get NaN + flagged, never a guessed <code>H</code>.</li>
+<li><strong>Left/right ambiguity</strong>: symmetric pitch, so a half-pitch view can map to
+  the wrong end. Use temporal continuity from wider shots, and confirm it
+  in panel C.</li>
+<li><strong>Player anchor</strong> is bottom-centre of the box; occluded feet bias <code>y</code>.
+  Acceptable for v1; panel D will show how bad it is.</li>
+<li><strong>Compute</strong>: laptop has no GPU. HRNet-class detectors on keyframes only
+  are OK on CPU; full-clip runs go to the WSL GPU box.</li>
+<li><strong>Pretrained weights licensing</strong>: confirm before adopting.</li>
+</ul>
+<hr />
+<h2 id="6-feature-store">6. Feature store<a class="headerlink" href="#6-feature-store" title="Permanent link">&para;</a></h2>
+<p>Full spec: <a href="../feature_store/"><code>feature_store.md</code></a> §3.7.</p>
+<ul>
+<li><strong>Tables.</strong> <code>calibration</code> (one row per game, source, run, frame: <code>H</code> as
+  <code>DOUBLE[9]</code>, normalised image → pitch m, quality, errors, <code>review_status</code>,
+  <code>origin_*</code>) and <code>pitch_keypoint</code> (one row per correspondence). <code>source</code> ∈
+  <code>hand_label</code> | <code>claude</code> | <code>classical</code> | model. Runs are <code>run</code> rows with
+  <code>stage=calibration</code> and <code>params_json</code> (model, prompt_version, …).</li>
+<li><strong>Best calibration.</strong> View <code>frame_calibration_best</code>: hand GT (incl.
+  accepted/edited proposals copied into GT) &gt; accepted machine &gt; proposed by
+  highest score; failed/rejected never win; a frame with any
+  <code>not_broadcast</code> row (see below) has no best calibration at all; it reports the
+  winning source/run.</li>
+<li><strong>Projection.</strong> View <code>detections_on_pitch</code> projects every detection in SQL
+  (same anchors and 0.3 quality gate as <code>PitchProjector</code>; NaN when low quality,
+  NULL when uncalibrated).</li>
+<li><strong>Import.</strong> <code>python -m footy_track.feature_store.ingest_calibration
+  --gt-dir &lt;ball_gt_marks&gt; --db &lt;store&gt; [--dry-run]</code> loads
+  <code>calibration_gt/*.json</code>, <code>calibration_proposals/*.json</code> and <code>frame_type/*.json</code>. Re-import
+  replaces; each clip file lands on every <code>game_id</code> alias of that clip that has
+  ball GT, so calibration and ball marks share <code>game_id</code> + <code>frame_index</code>.</li>
+<li><strong>Inline columns.</strong> <code>frame.homography</code> / <code>calibration_quality</code> /
+  <code>calibration_model_version</code> are deprecated and unused.</li>
+</ul>
+<h2 id="7-pre-labelling-with-claude-proposal-review">7. Pre-labelling with Claude + proposal review<a class="headerlink" href="#7-pre-labelling-with-claude-proposal-review" title="Permanent link">&para;</a></h2>
+<p>To cut the manual GT effort, <code>footy_track.calibration.prelabel</code> proposes calibrations
+that a human accepts on a phone (<code>/calibration/review</code>).</p>
+<ol>
+<li><strong>Mask + hints (classical, no ML):</strong> HSV grass mask -&gt; white-line mask (top-hat,
+   low saturation, blobs removed) -&gt; Hough segments merged into long lines -&gt;
+   numbered candidate points (line/line intersections, line ends, ellipse/line
+   intersections, spots). The mask is good; the candidate <em>points</em> are sparse
+   (iteration 1 measured only 1-3 of 5-6 GT points per frame within reach), so
+   candidates are only optional hints.</li>
+<li><strong>Localise (Claude, iteration 2):</strong> <code>ClaudeIdentifier</code> gets a stable, cached prefix
+   (system prompt, schema, reference diagram with keypoint ids and straight-line
+   ids) and per frame one image: the frame with a light labelled pixel grid (ticks
+   every 100 px of the <em>sent</em> image). Claude returns <code>points</code> - any clearly visible
+   keypoint from the enum with an approximate x, y (it may cite a hint's
+   <code>candidate_id</code> to take its exact position) - and <code>lines</code>: visible lines by name
+   (e.g. <code>R_PEN_BOX_FRONT</code>, <code>HALFWAY_LINE</code>) with two points on each, plus view info
+   and an unusable flag. <code>MockIdentifier</code> takes the human GT, optionally adds Gaussian
+   noise (sigma in px @1920), drops or mislabels points, and emits noisy line labels:
+   this simulates Claude's imprecise localisation. Prompt is versioned
+   (<code>PROMPT_VERSION</code>, now <code>p2</code>); token usage incl. cache read/write is logged in run params.</li>
+<li><strong>Coarse fit:</strong> RANSAC DLT over the point labels (a points+lines DLT when fewer than
+   4 points). No fit -&gt; <code>failed</code> with a reason, never a guessed <code>H</code>.</li>
+<li><strong>Line refinement</strong> (<code>calibration/refine.py</code>, numpy LM, no scipy): all 8 DOF of <code>H</code>
+   are optimised so that pitch-model lines and arcs, sampled where they project
+   into the image and onto grass, land on the white-line mask. Cost = Cauchy of a
+   distance transform of the mask, coarse-to-fine (40 px truncated+blurred -&gt;
+   20 -&gt; 8 px sharp). The labels stay in as a weak prior and, because a DLT from a few
+   noisy clustered points can be arbitrarily poor, the refinement is multi-start (the
+   DLT over every 4-subset of the labels plus the all-label fit); the winner is the
+   lowest all-sample DT cost (off-image samples count as a miss, so hiding the model
+   cannot win) plus a small term for label error beyond ~45 px. It is rejected - the
+   coarse <code>H</code> is kept - if the cost does not improve, <code>H</code> is degenerate (singular / horizon
+   across the bottom of the image), too little of the model stays on grass, or the in-view
+   model moved more than 35 % of the image width.</li>
+<li><strong>Score</strong> = fraction of reprojected model-line samples within a few px of the mask
+   (after refinement) and the final DT residual; both are stored. The proposal keeps
+   <code>pre_refine</code> (coarse <code>H</code>, score, errors) and <code>refine</code> (applied, reason, costs) for the
+   eval. When refinement is applied, correspondences are re-expressed through the refined
+   <code>H</code> (<code>image_label</code> keeps the as-labelled position) so that accept's re-fit of <code>H</code> from
+   the points reproduces it.</li>
+<li><strong>Proposals</strong> go to <code>&lt;gt dir&gt;/calibration_proposals/&lt;clip&gt;.json</code> (format: see the
+   labeller README §16); accepting writes <code>calibration_gt</code> with an <code>origin</code>. Accepting
+   over a frame that already has GT is a 409; for human GT (no <code>origin</code>) it needs an
+   explicit <code>overwrite=true</code> and the review page asks first. The pipeline skips frames
+   with human GT (or flagged not-broadcast, step 8) by default (<code>--no-skip-gt</code> to include them).</li>
+<li><strong>Not a broadcast frame.</strong> Sampled frames that are not the main pitch view (replay, close-up,
+   crowd/bench, graphic, goal-line camera) cannot be calibrated; they are marked with one tap
+   (review page "Not broadcast" / key <code>n</code>, editor button) and are distinct from <code>rejected</code>
+   (= the fit is wrong). Claude's <code>view.main_camera_wide == false</code> only shows a badge on the
+   card; nothing is auto-marked. Two records: the proposal's <code>status</code> becomes <code>not_broadcast</code>
+   (<code>prev_status</code>, <code>reviewed_at</code> kept; works for <code>proposed</code> and <code>failed</code>), and a frame-level flag
+   in <code>&lt;gt dir&gt;/frame_type/&lt;canonical clip&gt;.json</code> (<code>{"clip", "frames": {"&lt;idx&gt;": {"type":
+   "not_broadcast", "ts", "run_id"?}}}</code>, atomic write, mode kept) that outlives the proposal. It
+   is a sidecar of its own rather than a section of <code>calibration_gt</code> so that file keeps meaning
+   "frames with a calibration" for every existing reader (pre-label skip, feature-store GT import,
+   GT list) and deleting a GT frame never drops the flag. Marking a frame that has GT (hand or
+   accepted) is a 409 unless <code>overwrite=true</code>, which deletes that GT; accept / GT-save on a flagged
+   frame are 409 until the mark is cleared (<code>DELETE /calibration/api/frame_type/{clip}/{idx}</code>
+   restores the proposals' previous status). Consumers: the pipeline skips flagged frames with
+   <code>--skip-gt</code>; the feature-store import turns the file into <code>calibration</code> rows
+   (<code>review_status=not_broadcast</code>, no <code>H</code>, run <code>frame_type_import</code>) and the views drop such frames
+   (<code>frame_calibration_best</code> none, <code>detections_on_pitch</code> <code>no_calibration</code>); the Ball Check
+   labeller and training export can read <code>calibration.frame_type.not_broadcast_frames</code>.
+   <code>GET /calibration/api/proposals/...</code> also returns NaN stats as null (a failed proposal with a
+   degenerate <code>H</code> used to 500 and could not be shown).</li>
+<li><code>prelabel_calibration eval</code> compares a run with human GT; <code>prelabel_calibration sweep</code>
+   is the noise sweep (success rate at &lt;= 5 / &lt;= 10 px before and after refinement per
+   label-noise sigma): it answers how precise Claude has to be.</li>
+</ol>
+<p>Frames are read by <code>calibration.video.read_frame</code>: OpenCV 5.0 decodes some clips as
+all-black frames ("Cannot convert interlaced to progressive frames"), so it
+falls back to the ffmpeg CLI.</p>
+<h2 id="8-lens-distortion-division-model">8. Lens distortion (division model)<a class="headerlink" href="#8-lens-distortion-division-model" title="Permanent link">&para;</a></h2>
+<p>A homography maps straight pitch lines to straight image lines; broadcast lenses do not. On wide
+shots the far touchline (long, near the top of the frame) visibly bows, and in the bird's-eye
+warp that shows as a curved edge and a real line sitting a metre or two off the drawn one
+(far-field depth is foreshortened: ~1 px of image error at the far touchline is ~0.25 m on the pitch).</p>
+<p><strong>Model.</strong> One-parameter division model about the image centre,
+<code>x_u = c + (x_d - c) / (1 + k1 r^2)</code>, <code>r^2 = |((x_d - c) * 2) / (1, aspect)|^2</code> (r = 1 at the middle
+of the left/right edge, vertical axis aspect-corrected; code in <code>calibration/geometry.py</code>).
+<code>H</code> maps the <em>undistorted</em> normalised point to pitch metres, so everything observed in the image
+(labels, detection anchors, drawn lines) is in distorted coordinates. Measured k1 on this footage is
+<strong>positive</strong> (about +0.01 to +0.03): the far touchline sags in the middle, pincushion in this
+convention, so the model's line bows the same way.</p>
+<p><strong>Storage / back-compat.</strong> A record carries <code>distortion: {"model": "division", "k1": ..,
+"centre": [0.5, 0.5], "aspect": 1.7778}</code> next to <code>H</code>. Missing, <code>null</code> or <code>k1 == 0</code> is exactly the
+old behaviour (the old <code>cv2.warpPerspective</code> path, byte-identical). <code>calibration</code> rows get
+<code>distortion_k1 DOUBLE</code> (added by <code>ALTER ... IF NOT EXISTS</code> on existing stores; only a centred lens
+is accepted by the importer), and <code>frame_calibration_best</code> exposes it.</p>
+<p><strong>Where it is applied.</strong> <code>geometry.project_pitch_model/project_polyline_to_image</code> (camera overlay),
+<code>geometry.warp_to_pitch</code> (per-pixel remap when k1 != 0), <code>reprojection_errors</code>, the labeller
+<code>/fit</code>, <code>/warp</code>, GT save and proposal accept (points are undistorted before the DLT, the stored
+<code>H</code> and points reproduce each other), the review/manual pages (they pass <code>distortion</code> through),
+<code>PitchProjector.project_frame(distortion=...)</code> and the SQL view <code>detections_on_pitch</code>. The SQL
+direction is image -&gt; pitch, which is closed form (<code>x_u = c + (x - c) / (1 + k1 r^2)</code>), so the view
+undistorts the anchor itself from <code>distortion_k1</code> and the stored <code>image_width/height</code>; the
+difficult inverse (pitch -&gt; image) is only needed for drawing and lives in Python.</p>
+<p><strong>Estimation.</strong> <code>refine_homography(..., fit_k1=True)</code> adds k1 as a 9th LM parameter in the two finer
+stages (the coarse capture stage keeps it fixed), with a quadratic (non-robust) prior pulling it to
+0 (<code>K1_PRIOR_PX</code>, scaled by <code>k1_prior</code>) and a clamp at +-0.15. <code>k1=&lt;value&gt;</code> without <code>fit_k1</code> holds a
+given value (per clip / zoom level) and the coarse fit then undistorts the labels first.
+<code>prelabel_calibration run --fit-k1</code> / <code>--k1 0.012</code>; the default stays <strong>off</strong>. k1 trades off against
+H (focal length / tilt) on frames with few lines, so a per-clip value is the safe way to use it.</p>
+<h2 id="9-the-far-touchline-on-a-high-wide-camera-bournemouth">9. The far touchline on a high wide camera (Bournemouth)<a class="headerlink" href="#9-the-far-touchline-on-a-high-wide-camera-bournemouth" title="Permanent link">&para;</a></h2>
+<p>Failure seen on <code>arsenal_bournemouth_1st_*</code>: the fitted far touchline landed in the stands / on the hoarding
+(median 30-100 px off the real line at 1568 wide), most visibly at the HALFWAY_TOP junction. Diagnosed from the
+masks, not the labels (Claude's centre-circle / halfway points were right):</p>
+<ol>
+<li><strong>Grass mask leaked.</strong> The hue-only test also accepts the dark green-tinted stands and the apron, so "grass" ran
+   up past the hoardings and the line mask filled with hoarding lettering and crowd texture. <code>grass_mask</code> now redoes
+   the mask with a saturation (0.58x) / brightness (0.5x) gate relative to the pitch's own median colour
+   (<code>pitch_colour</code>) when that changes the result; frames it does not change keep the old mask byte-for-byte.</li>
+<li><strong>The far touchline was not in the mask at all.</strong> From this camera it is 1-3 px, <em>not brighter than the grass</em>
+   (a saturation dip, V ~ grass) so the V top-hat misses it. <code>far_edge_line</code> finds it as a long, thin, pale strip
+   hugging the top edge of the pitch (opening with +-30 deg line kernels so players' legs drop out); it is ORed
+   into <code>lines_mask</code> and also returned as <code>Detection.far_line</code>. It is suppressed if the strip is much brighter than
+   the grass (<code>FAR_MAX_V_RATIO</code>; that is a white board base, which on Arsenal-Man City sits a few metres <em>behind</em>
+   the real white touchline and must not attract the fit) or in the lower 40 % of the frame.</li>
+<li><strong>Capture range.</strong> With labels only on the centre circle the coarse H puts the far line 70-200 px away, outside
+   the 40 px capture of the DT. <code>refine_homography(far_mask=...)</code> adds a term (wide capture, weight
+   <code>FAR_WEIGHT</code> = 2) pulling whichever model touchline projects highest to the strip, active only when it lands
+   within <code>FAR_MAX_DY_FRAC</code> of the image height of it. <code>fit_and_score</code> passes <code>det.far_line</code>; other callers are
+   unchanged. "On grass" is also tested with a few px margin, because the touchline is the pitch's edge.</li>
+</ol>
+<p>k1 helps further (the circle and the far line cannot both fit a plain homography): <code>--fit-k1</code> gave +0.05..+0.15 in
+score on the affected frames, but stays opt-in. Not fixed: frames where Claude gives &lt; 4 usable points, and panned
+shots where the far line is out of view.</p>
+<h2 id="10-hard-views-aston-villa-and-bournemouth-pinhole-camera-mode">10. Hard views: Aston Villa and Bournemouth (pinhole camera mode)<a class="headerlink" href="#10-hard-views-aston-villa-and-bournemouth-pinhole-camera-mode" title="Permanent link">&para;</a></h2>
+<p><strong>What the verdicts looked like.</strong> Arsenal-Man City 32/14/15 accepted/rejected/failed, Aston Villa 12/23/4, Bournemouth 0/12/37.
+Most Villa verdicts and all but a few Bournemouth ones were given on fits made <em>before</em> the lens-k1 and far-touchline changes
+(<code>rerefined</code>/<code>previous</code> is only set on 5 Villa and 3 Bournemouth records; proposals carry no review timestamp). Findings, from
+rendering camera view + warp for every rejected frame and decomposing each stored <code>H</code> into a camera
+(<code>refine.decompose_G</code>: square pixels, centred principal point):</p>
+<ol>
+<li><strong>Non-physical homographies.</strong> The three Arsenal matches' stored fits put the camera at about (0, -65, 15) m (x along the pitch,
+   y behind the near touchline, z up; Villa accepted median (0, -64, 15), Man City accepted (0, -66, 15)). The Bournemouth rejects
+   have |r1|/|r2| of 1.2 to 5.7 (a real pinhole is 1) and cameras at 7-45 m height. A free 8-DOF <code>H</code> can express such cameras; a
+   centre-circle + halfway-line view (4-5 collinear/near-collinear labels) does not pin it down.</li>
+<li><strong>The far-edge strip is the hoarding, not the touchline.</strong> On circle-only views the strip term of §9 pulls the model touchline
+   onto the advertising-board base 1-3 m behind the real line; the whole pitch shrinks (Villa seg110 f45: model circle smaller than
+   the visible ring and than Claude's own CC_LEFT/RIGHT labels; removing the term made it match).</li>
+<li><strong>Claude's labels on Bournemouth failures are often wrong, not just imprecise</strong> (seg030 f154, seg009 f87: points floating on the
+   grass or on the hoarding, 0/9 RANSAC inliers; seg035 f320: the circle's right extreme labelled as a penalty-box point).
+   Not fixable offline; needs a prompt change / relabel (not attempted: &lt;= 10 live calls budget, no evidence for a specific prompt fix).</li>
+<li><strong>Villa corner/penalty-box views (seg020, seg140): no visible defect.</strong> Overlays sit on the visible lines at full resolution and
+   the rejected frames differ from the accepted f36 by 4-17 px mean, so those verdicts are not explained by fit error that we can see.</li>
+</ol>
+<p><strong>Fix (opt-in <code>--pinhole</code> on <code>run</code> / <code>rerefine</code>).</strong> <code>refine_homography(camera=True)</code> replaces the free <code>H</code> by a 7-DOF pinhole camera
+(log f, rotation, camera centre) with the same cost; starts are the 8-DOF winner and a look-at grid fitted to the labels;
+<code>CameraPrior</code> can add a per-match camera-position prior (default weight 0: it did not help on the frames tried). It is skipped when
+the free fit already decomposes to ratio 0.8-1.25. <code>fit_and_score(camera=...)</code> also refits without the far-edge strip and keeps that
+fit when it lowers the median label error by &gt; 4 px.</p>
+<p><strong>Measured (offline, stored labels, 1 process).</strong> 51 frames: see the task report; summary: Bournemouth wide circle frames
+(f805, f161, f251, f826, f229) go from ratio 1.2-5.7 to exactly 1 with far line on the grass edge and no boards in the warp; Villa
+rejected frames change by 4-29 px mean; accepted frames change by 2-12 px mean except Man City seg031 f328 (23 px, one regression:
+the camera fit disagrees with a box line the old fit followed). Not solved: circle-only frames where the model circle is still
+smaller than the ring (Bournemouth seg015 f586, f251), frames whose far touchline is out of view, and wrong labels (item 3).</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      <script id="__config" type="application/json">{"base": "../..", "features": [], "search": "../../assets/javascripts/workers/search.973d3a69.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.f55a23d4.min.js"></script>
+      
+    
+  </body>
+</html>

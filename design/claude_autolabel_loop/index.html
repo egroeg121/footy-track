@@ -729,6 +729,15 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#re-checking-the-disagreements" class="md-nav__link">
+    <span class="md-ellipsis">
+      Re-checking the disagreements
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -1155,6 +1164,15 @@
   <a href="#method-v2-results-2026-11" class="md-nav__link">
     <span class="md-ellipsis">
       Method v2 results (2026-11)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#re-checking-the-disagreements" class="md-nav__link">
+    <span class="md-ellipsis">
+      Re-checking the disagreements
     </span>
   </a>
   
@@ -1803,6 +1821,16 @@
 <li>The 0.95 agreement target looks out of reach for per-candidate verdicts alone. A frame-level step (accept a <code>ball</code> only when it agrees with the tracker's chosen detection, take the highest-confidence <code>ball</code> when several are returned, and send everything else to a person) would use the observed structure: <code>ball</code> verdicts at confidence at least 0.95 were all correct. That combination was not scored here and is not tuned on seen clips; treat it as the next experiment, not as a result.</li>
 <li>Caveats: held-out is 6 clips and 126 frames, so every rate has a wide interval (61 of 75 has a 95% interval of roughly 0.71 to 0.89); the seen tuning set is a stratified sample with half of its ball frames unanswerable, so its rates are not comparable with held-out rates; prompt versions differ by one or two frames; the marks are mostly frames a person looked at because the detector proposed something.</li>
 </ul>
+<h3 id="re-checking-the-disagreements">Re-checking the disagreements<a class="headerlink" href="#re-checking-the-disagreements" title="Permanent link">&para;</a></h3>
+<p>The held-out marks have no second human pass, and the 36 disagreements (7 false "not ball" including one <code>unsure</code>, 30 false "ball") include many that look like mark problems: a clear ball at a player's feet while the mark sits elsewhere, a spare ball near the hoardings, a mark on a ball in the crowd, a mark on a blurred smudge. A person re-checks each one, and the metrics are then re-computed against the marks as corrected. No new schema:</p>
+<ol>
+<li><code>claude_verify_v2 disagreements --run R --answers A --videos V</code> lists every disagreement (<code>disagreements.csv</code> and <code>.json</code>: clip, frame, mark position, Claude's box, confidence, type) and writes <code>review_list.json</code>, one Ball Check card per human mark ("is the mark the in-play match ball?") and one per disagreeing Claude box (same question), grouped by frame, mark first. A card shows its own box; the other box of the pair is drawn in magenta, so one card shows both.</li>
+<li>Start the labeller with <code>FOOTY_BALL_CHECK_LIST=R/review_list.json</code> (and <code>FOOTY_CLIPS_DIR</code> set to the folder the videos are in) and open <code>/ball_check?source=list</code>. This is the smallest piece of T-47's pool: explicit cards served in file order, no sampling. It is not the <code>claude</code> candidate pool (tier 3, <code>human_checked</code> write) that T-47 plans.</li>
+<li>Verdicts go to the normal log (<code>&lt;gt dir&gt;/ball_checks/&lt;clip&gt;.jsonl</code>, <code>source: "list"</code>), so the feature store import sees them like any others. They are left out of the <code>/ball_check/stats</code> precision and of the confidence bands (the cards are hand-picked, not a sample).</li>
+<li><code>score ... --decisions &lt;gt dir&gt;/ball_checks</code> re-scores with the marks changed by those verdicts and writes <code>summary_&lt;label&gt;_rechecked.json</code> and <code>truth_&lt;label&gt;_rechecked.json</code>.</li>
+</ol>
+<p>Mapping of answers (nothing new is added): on a mark card, <code>not_ball</code> removes the mark, <code>corrected</code> (drag the box) moves it, <code>ball</code>, <code>box_off</code>, <code>unsure</code> or no answer keep it. On a Claude card, <code>ball</code> adds that box as a mark, <code>corrected</code> adds the dragged box, <code>not_ball</code>, <code>unsure</code> or no answer add nothing. So "GT right" is mark <code>ball</code> plus Claude <code>not_ball</code>; "Claude right" is mark <code>not_ball</code> plus Claude <code>ball</code>; "both wrong" is both <code>not_ball</code> (the frame becomes a no-ball frame); and a spare or crowd ball is <code>not_ball</code> for the question asked (the in-play ball). That last case cannot be told apart from "not a ball at all" in the log; if the split matters later, a distinct verdict (for example <code>not_in_play</code>) would be a schema change and is proposed here, not made.</p>
+<p>Limits: the list holds only disagreements, so it cannot find a wrong mark on a frame where Claude and the mark agree, or on the 44 frames with no candidate near the mark. A dragged <code>corrected</code> box is appended to the sidecar as new <code>labeller</code> GT (the existing <code>save_box</code> behaviour) and does not delete the old mark, so a corrected mark leaves two lines for the frame until the old one is removed. The mark cards use a 12 px square because the run stores mark centres only.</p>
 <h2 id="9-what-the-code-does-with-verdicts-today">9. What the code does with verdicts today<a class="headerlink" href="#9-what-the-code-does-with-verdicts-today" title="Permanent link">&para;</a></h2>
 <p>This corrects a claim older pages still make. T-02 is merged: Ball Check verdicts reach the feature store.</p>
 <ul>

@@ -598,6 +598,15 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#37-calibration-pitch_keypoint-and-the-calibration-views" class="md-nav__link">
+    <span class="md-ellipsis">
+      3.7 calibration, pitch_keypoint and the calibration views
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -1311,6 +1320,15 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#37-calibration-pitch_keypoint-and-the-calibration-views" class="md-nav__link">
+    <span class="md-ellipsis">
+      3.7 calibration, pitch_keypoint and the calibration views
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -1624,13 +1642,14 @@ frame_features</code>); the storage stays sane.</p>
 </div>
 <hr />
 <h2 id="3-schema-overview">3. Schema overview<a class="headerlink" href="#3-schema-overview" title="Permanent link">&para;</a></h2>
-<p>Five tables plus three convenience views. All timestamps <code>ContinuousTime</code>
+<p>Seven tables plus five convenience views. All timestamps <code>ContinuousTime</code>
 (seconds, <code>float64</code>) per <a href="../../timings/"><code>../timings.md</code></a>. All boxes
 normalised top-left xywh in <code>[0,1]</code>.</p>
 <div class="highlight"><pre><span></span><code>game ──1:N── frame ──1:N── detection
   │             │              │
   │             │              └── source/run carried per row (see §6)
-  │             └── pitch_segmentation, calibration: inlined on frame (§5.3)
+  │             ├── pitch_segmentation: inlined on frame (§5.3)
+  │             └── calibration ──1:N── pitch_keypoint (source/run per row, §3.7)
   └── run (provenance for every produced artifact, §7)
 
 track / track_meta: derived from detection, see §8
@@ -1877,17 +1896,17 @@ view (non-broadcast frames are recorded, not dropped — invariant #5).</p>
 <tr>
 <td><code>homography</code></td>
 <td><code>LIST&lt;DOUBLE&gt;</code> (len 9)</td>
-<td>flattened 3×3 image→pitch H; nullable</td>
+<td><strong>DEPRECATED</strong> — see §3.7; flattened 3×3 H; nullable</td>
 </tr>
 <tr>
 <td><code>calibration_quality</code></td>
 <td><code>FLOAT</code></td>
-<td>inlier ratio / quality metric; nullable</td>
+<td><strong>DEPRECATED</strong> — see §3.7; nullable</td>
 </tr>
 <tr>
 <td><code>calibration_model_version</code></td>
 <td><code>VARCHAR</code></td>
-<td>FK → <code>run.run_id</code></td>
+<td><strong>DEPRECATED</strong> — see §3.7</td>
 </tr>
 </tbody>
 </table>
@@ -1895,13 +1914,15 @@ view (non-broadcast frames are recorded, not dropped — invariant #5).</p>
 (<code>ocr_clock.parquet</code> is absorbed here); time-mapping fills <code>half</code> /
 <code>continuous_time_s</code> via <code>game.half2_start_continuous_s</code>.</p>
 <blockquote>
-<p><strong>Design note — why pitch/calibration are inlined on <code>frame</code>, not a
-separate table.</strong> They are strictly per-frame (one polygon, one homography
-per frame) and almost always read alongside the frame. Inlining avoids a
-join for the common case. We keep only <strong>one</strong> "final" segmentation/
-calibration per frame in this table; if we ever need to compare <em>multiple</em>
-segmentation runs per frame, segmentation graduates to its own
-source-tagged table exactly like detections (§6). Flagged in §11.</p>
+<p><strong>Design note — pitch segmentation is inlined on <code>frame</code>; calibration is
+not (any more).</strong> Segmentation is strictly per-frame and read alongside the
+frame, so it stays inlined with <strong>one</strong> "final" polygon per frame; if we ever
+need to compare <em>multiple</em> segmentation runs it graduates to a source-tagged
+table (§11). Calibration already has that need (human GT, Claude proposals,
+classical runs over the same frames), so it graduated: see §3.7. The three
+inline <code>homography</code> / <code>calibration_quality</code> / <code>calibration_model_version</code>
+columns are <strong>deprecated</strong> (kept so old DBs and <code>FrameRow</code> stay valid; nothing
+writes or reads them, none of the views use them). Use <code>frame_calibration_best</code>.</p>
 </blockquote>
 <h3 id="33-detection-one-row-per-game-frame-source-object">3.3 <code>detection</code> — one row per (game, frame, source, object)<a class="headerlink" href="#33-detection-one-row-per-game-frame-source-object" title="Permanent link">&para;</a></h3>
 <p>The high-volume table. Every detected object from every source/run is a row.</p>
@@ -2136,9 +2157,156 @@ YOLO runs with different weights coexist (§6).</p>
   its frame's time/broadcast context and its run's model metadata.</li>
 <li><code>tracks_enriched</code> — <code>detection</code> ⨝ <code>track_meta</code>: tracked detections with
   per-track identity.</li>
+<li><code>frame_calibration_best</code> — one calibration per (game, frame) chosen from the
+  <code>calibration</code> table by the precedence in §3.7.</li>
+<li><code>detections_on_pitch</code> — <code>detection</code> ⨝ <code>frame_calibration_best</code>, projected to
+  pitch metres in SQL (§3.7).</li>
 </ul>
 <p>Views cost nothing on disk and can be <code>CREATE TABLE AS</code> materialised if a
 consumer wants a frozen flat export.</p>
+<h3 id="37-calibration-pitch_keypoint-and-the-calibration-views">3.7 <code>calibration</code>, <code>pitch_keypoint</code> and the calibration views<a class="headerlink" href="#37-calibration-pitch_keypoint-and-the-calibration-views" title="Permanent link">&para;</a></h3>
+<p><code>calibration</code> — one row per <strong>(game_id, source, run_id, frame_index)</strong>
+(source-tagged like <code>detection</code>, so human GT, Claude proposals and classical
+runs coexist):</p>
+<table>
+<thead>
+<tr>
+<th>Column</th>
+<th>Type</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>game_id</code>, <code>source</code>, <code>run_id</code>, <code>frame_index</code></td>
+<td></td>
+<td>PK. <code>source</code> ∈ <code>hand_label</code> | <code>claude</code> | <code>classical</code> | (future) <code>model</code>; <code>run_id</code> FK → <code>run</code> (stage <code>calibration</code>, <code>params_json</code> = model / prompt_version / effort …)</td>
+</tr>
+<tr>
+<td><code>H</code></td>
+<td><code>DOUBLE[9]</code></td>
+<td>row-major 3×3, <strong>normalised image → pitch metres</strong> (origin centre spot, +x long axis), exactly what <code>PitchProjector</code> applies. NULL only for <code>failed</code> rows</td>
+</tr>
+<tr>
+<td><code>h_convention</code></td>
+<td><code>VARCHAR</code></td>
+<td><code>normalised_image_to_pitch_m</code> (the only one the views understand; the importer rejects others)</td>
+</tr>
+<tr>
+<td><code>quality</code></td>
+<td><code>DOUBLE</code></td>
+<td>[0,1] projector gate. Machine rows: the proposal <code>score</code>. Human rows: 1.0</td>
+</tr>
+<tr>
+<td><code>mean_err_px</code>, <code>mean_err_m</code>, <code>n_points</code>, <code>n_inliers</code></td>
+<td></td>
+<td>fit diagnostics (<code>mean_err_px</code> = mean of per-point <code>err_px</code>)</td>
+</tr>
+<tr>
+<td><code>pitch_length</code>, <code>pitch_width</code>, <code>image_width</code>, <code>image_height</code></td>
+<td></td>
+<td>dims the H was solved for</td>
+</tr>
+<tr>
+<td><code>method</code></td>
+<td><code>VARCHAR</code></td>
+<td><code>dlt</code> | <code>ransac</code> | …</td>
+</tr>
+<tr>
+<td><code>review_status</code></td>
+<td><code>VARCHAR</code></td>
+<td><code>hand</code> | <code>proposed</code> | <code>accepted</code> | <code>rejected</code> | <code>failed</code></td>
+</tr>
+<tr>
+<td><code>reviewed</code></td>
+<td><code>BOOLEAN</code></td>
+<td>a human looked (true for GT, accepted, rejected)</td>
+</tr>
+<tr>
+<td><code>origin_source</code>, <code>origin_run_id</code>, <code>origin_status</code></td>
+<td></td>
+<td>for GT rows that began as an accepted/edited proposal: which proposal (<code>origin_status</code> ∈ accepted/edited)</td>
+</tr>
+<tr>
+<td><code>failure</code></td>
+<td><code>VARCHAR</code></td>
+<td>reason when <code>failed</code></td>
+</tr>
+<tr>
+<td><code>view_end</code>, <code>camera_side</code></td>
+<td><code>VARCHAR</code></td>
+<td>machine view hints (L/R end, camera side)</td>
+</tr>
+<tr>
+<td><code>created_at</code></td>
+<td><code>TIMESTAMP</code></td>
+<td>record time (UTC)</td>
+</tr>
+<tr>
+<td><code>dataset_tag</code></td>
+<td><code>VARCHAR</code></td>
+<td>importer that wrote the row (<code>calibration_gt</code> | <code>calibration_proposals</code>); scopes replace-on-reimport</td>
+</tr>
+</tbody>
+</table>
+<p><code>pitch_keypoint</code> — one row per correspondence behind a calibration row, PK
+<code>(game_id, source, run_id, frame_index, point_idx)</code>: <code>keypoint_id</code> (nullable —
+free clicks have none), <code>u</code>, <code>v</code> (normalised image), <code>pitch_x</code>, <code>pitch_y</code>
+(metres), <code>is_inlier</code>, <code>err_px</code>, <code>dataset_tag</code>.</p>
+<p>Both are Parquet-partitioned by <code>game_id, source</code> like <code>detection</code>.</p>
+<p><strong><code>frame_calibration_best</code></strong> — one row per <code>(game_id, frame_index)</code>, carrying
+the winner's <code>source</code>, <code>run_id</code> and <code>tier</code>. Precedence:</p>
+<ol>
+<li><code>hand_label</code> rows (this includes accepted/edited proposals that were
+   copied into GT; their <code>origin_*</code> columns say where they came from),</li>
+<li>machine rows with <code>review_status='accepted'</code>,</li>
+<li><code>proposed</code> machine rows, highest <code>quality</code> first,</li>
+<li><code>failed</code> / <code>rejected</code> rows (and any row without an <code>H</code>) are never chosen.</li>
+</ol>
+<p>Ties break on newest <code>created_at</code>, then <code>run_id</code> DESC, so the view is
+deterministic.</p>
+<p><strong><code>detections_on_pitch</code></strong> — every <code>detection</code> row left-joined to its frame's
+best calibration and projected in SQL: <code>x_pitch</code>/<code>y_pitch</code> (metres) and
+<code>x_pitch_norm</code>/<code>y_pitch_norm</code> ([0,1], using the calibration's pitch dims,
+default 105×68), plus <code>projection_status</code>, <code>calibration_source/_run_id/_tier</code>.
+Anchor: centroid for ball labels, bottom-centre of the box for everything
+else. Gate: <code>quality IS NULL OR quality &lt; 0.3</code> (<code>H_QUALITY_THRESHOLD</code> in the
+projector) → <code>NaN</code> with status <code>low_quality</code>; no calibration at all → <code>NULL</code>
+with status <code>no_calibration</code>. A test pins the SQL to <code>PitchProjector.project_frame</code>.
+Note the view covers <em>all</em> detection rows; join <code>detections_enriched</code> on
+<code>(game_id, frame_index, source, run_id, detection_id)</code> and filter <code>canonical</code>
+for one batch per frame. <code>PitchProjector</code> itself only treats the exact label
+<code>ball</code> as a ball; the view also treats the GT labels <code>in_play_ball</code> /
+<code>out_of_play_ball</code> as balls (otherwise GT balls would be anchored at the
+box bottom).</p>
+<p><strong>Inline <code>frame.homography</code> columns — decision.</strong> Deprecated, not removed:
+nothing in the repo wrote or read them (grep: schema/store only), but dropping
+columns would break <code>from_parquet</code> of existing exports. The views ignore them.
+Do not fall back to them: an unattributed H with no run, score or review status
+is exactly what the <code>calibration</code> table exists to avoid.</p>
+<p><strong>Importer</strong> (<code>feature_store/ingest_calibration.py</code>):
+<code>python -m footy_track.feature_store.ingest_calibration --gt-dir &lt;ball_gt_marks&gt; --db &lt;store&gt; [--dry-run] [--clip X]</code>
+reads <code>calibration_gt/*.json</code> (run <code>calibration_gt_import</code>, source
+<code>hand_label</code>) and <code>calibration_proposals/*.json</code> (one run per <code>runs</code> key) per
+the sidecar contract in <a href="../calibration/"><code>calibration.md</code></a>.</p>
+<ul>
+<li><em>Replace semantics</em> (as T-04): per game, the file is the truth. One
+  transaction deletes the game's <code>calibration</code>/<code>pitch_keypoint</code> rows with that
+  importer's <code>dataset_tag</code>, then inserts; other writers' rows are untouched. A
+  file whose frames are <em>all</em> malformed keeps the earlier import.</li>
+<li><em>game_id mapping</em>: <code>ingest_gt</code> keys ball GT by the <strong>sidecar stem</strong> (not
+  canonicalised, §3.1a) while calibration files are keyed by
+  <code>canonical_clip_id</code>. A file is written to <strong>every</strong> game_id whose canonical
+  id matches — each <code>&lt;stem&gt;.jsonl</code> in <code>--gt-dir</code> plus existing <code>game</code> rows —
+  falling back to the canonical id if none. E.g. <code>arsenal_mancity_seg010.json</code>
+  lands on <code>arsenal_mancity_seg010</code>, <code>arsenal_mancity_20250925_seg010</code> and
+  <code>mancity_seg010</code>, so <code>detections_on_pitch</code> projects the ball GT of each
+  alias at the same <code>frame_index</code> (same video, same frame numbering). The cost
+  is duplicate rows per alias; if the aliases are ever collapsed (§3.1a
+  migration) the duplicates collapse with them.</li>
+<li>Malformed frames/points (bad key, non-3×3 or non-finite <code>H</code>, unknown
+  convention or status) are skipped with a warning, never a crash.</li>
+</ul>
 <hr />
 <h2 id="4-embeddings-live-outside-the-hot-path">4. Embeddings live outside the hot path<a class="headerlink" href="#4-embeddings-live-outside-the-hot-path" title="Permanent link">&para;</a></h2>
 <p>Frame/instance embedding vectors (<code>embeddings.parquet</code> in the old model) are
@@ -2164,8 +2332,9 @@ native, explodes cleanly); a WKB/GEOMETRY column is an alternative if we
 adopt DuckDB's <code>spatial</code> extension for point-in-polygon "is this player on
 the pitch" queries — recommended once we need geometric predicates. (§3.2)</p>
 <h3 id="54-calibration-homography">5.4 Calibration / homography<a class="headerlink" href="#54-calibration-homography" title="Permanent link">&para;</a></h3>
-<p>→ <code>frame.homography</code> (flattened 3×3), <code>calibration_quality</code>. Absorbs
-<code>geometry.parquet</code>. (§3.2)</p>
+<p>→ <code>calibration</code> + <code>pitch_keypoint</code> tables and the <code>frame_calibration_best</code> /
+<code>detections_on_pitch</code> views (§3.7); the inline <code>frame.homography</code> columns are
+deprecated. Absorbs <code>geometry.parquet</code>.</p>
 <h3 id="55-object-detections-from-multiple-sources">5.5 Object detections from multiple sources<a class="headerlink" href="#55-object-detections-from-multiple-sources" title="Permanent link">&para;</a></h3>
 <p>→ <code>detection</code> table, one row per object, tagged by <code>source</code> + <code>run_id</code>.
 Hand labels, SAM 3, and YOLO predictions over the same frame are distinct
@@ -2211,6 +2380,8 @@ confidences." The pattern:</p>
   detection/game_id=&lt;id&gt;/source=&lt;src&gt;/run_id=&lt;rid&gt;/part.parquet
   track_meta/game_id=&lt;id&gt;/source=&lt;src&gt;/run_id=&lt;rid&gt;/part.parquet
   detection_review/game_id=&lt;id&gt;/part.parquet   # Ball Check verdicts, see 6.2
+  calibration/game_id=&lt;id&gt;/source=&lt;src&gt;/part.parquet     # §3.7
+  pitch_keypoint/game_id=&lt;id&gt;/source=&lt;src&gt;/part.parquet  # §3.7
   frame_embedding/game_id=&lt;id&gt;/part.parquet
   masks/game_id=&lt;id&gt;/&lt;frame&gt;__&lt;detection_id&gt;.png   # mask_ref targets
 </code></pre></div>
@@ -2296,6 +2467,8 @@ intended behaviour.</p>
 <li><code>detection(game_id, source, run_id, frame_index, detection_id)</code></li>
 <li><code>track_meta(game_id, source, run_id, track_id)</code></li>
 <li><code>detection_review(game_id, vsource, frame_index, box_index)</code> (§6.2)</li>
+<li><code>calibration(game_id, source, run_id, frame_index)</code>;
+    <code>pitch_keypoint(game_id, source, run_id, frame_index, point_idx)</code> (§3.7)</li>
 <li><code>run(run_id)</code></li>
 <li><strong>Upsert semantics</strong>: ingestion is <code>INSERT … ON CONFLICT DO UPDATE</code>
   (DuckDB) / partition-replace (Parquet). Re-ingesting an identical run is a
@@ -2460,7 +2633,7 @@ intended behaviour.</p>
 </tr>
 <tr>
 <td><code>geometry.parquet</code></td>
-<td>→ <code>frame.homography</code> / <code>calibration_quality</code></td>
+<td>→ <code>calibration</code> table (§3.7)</td>
 </tr>
 <tr>
 <td><code>embeddings.parquet</code></td>
@@ -2532,10 +2705,10 @@ semantics</strong> spec; this doc is the <strong>physical storage</strong> spec 
 <li><strong>Streaming producers.</strong> This is batch-on-completion. A live feed wants
   append-friendly chunk Parquet compacted at end-of-game (same open question
   as <code>player_tracking_format.md</code> §6). Pick before building a live path.</li>
-<li><strong>Multiple segmentation/calibration runs per frame.</strong> Currently "one final
-  per frame" inlined on <code>frame</code>. If we need to compare segmentation runs,
-  promote pitch_seg/calibration to source-tagged tables like <code>detection</code>.
-  Decide when a second segmentation model appears.</li>
+<li><strong>Multiple segmentation runs per frame.</strong> Segmentation is still "one final
+  per frame" inlined on <code>frame</code>; promote it to a source-tagged table like
+  <code>detection</code> when a second segmentation model appears. (Calibration already
+  graduated: §3.7.)</li>
 <li><strong>Geometry predicates.</strong> Adopt DuckDB <code>spatial</code> (WKB <code>GEOMETRY</code> for
   <code>pitch_polygon</code>) so "is this player inside the pitch" is a SQL
   <code>ST_Contains</code>? Recommended but pulls in the extension.</li>
@@ -2569,9 +2742,10 @@ semantics</strong> spec; this doc is the <strong>physical storage</strong> spec 
 <li><strong>Multiple detection sources</strong> (hand label / SAM 3 / YOLO / trackers)
   coexist as <code>source</code> + <code>run_id</code>-tagged rows; none overwrites another, eval
   is a self-join, re-runs are idempotent partition swaps.</li>
-<li><strong>Pitch segmentation</strong> (final polygon + thresholds), <strong>broadcast</strong> flags,
-  and <strong>calibration</strong> are inlined per-frame with their own model-version
-  provenance; <strong>tracking</strong> plugs into <code>detection</code>/<code>track_meta</code> per the
+<li><strong>Pitch segmentation</strong> (final polygon + thresholds) and <strong>broadcast</strong> flags
+  are inlined per-frame with their own model-version provenance;
+  <strong>calibration</strong> is a source-tagged table (<code>calibration</code> + <code>pitch_keypoint</code>)
+  resolved by the <code>frame_calibration_best</code> view; <strong>tracking</strong> plugs into <code>detection</code>/<code>track_meta</code> per the
   existing lifecycle spec.</li>
 <li>Folds together every previously-scattered Parquet artifact; honours the
   ContinuousTime / bbox / class-label / track-ID invariants; stays
