@@ -35,6 +35,7 @@ def build_args():
     ap.add_argument("--data-root", type=Path, required=True, help="dir containing k2/ and k2_rgb/")
     ap.add_argument("--weights-dir", type=Path, required=True, help="dir with <model>.pt")
     ap.add_argument("--pseudo", action="store_true", help="round 2: add <data-root>/pseudo (5ch) or pseudo_rgb (3ch) to the train set")
+    ap.add_argument("--extra-train", nargs="*", default=[], help="round 3: more image dirs (<dir>/images/train) added to the train list")
     ap.add_argument("--project", type=Path, required=True)
     ap.add_argument("--name", required=True)
     return ap.parse_args()
@@ -53,8 +54,10 @@ def main():
     channels = 3 if a.arm == "A" else 5
     root = a.data_root / ("k2_rgb" if a.arm == "A" else "k2")
     extra = [str(a.data_root / ("pseudo_rgb" if a.arm == "A" else "pseudo") / "images" / "train")] if a.pseudo else None
-    if extra:
-        assert Path(extra[0]).is_dir(), extra
+    extra = (extra or []) + [str(Path(d) / "images" / "train") for d in a.extra_train]
+    extra = extra or None
+    for d in extra or []:
+        assert Path(d).is_dir(), d
     data_yaml = write_data_yaml(root, run / "data_local.yaml", channels, "images", extra)
     stock = a.weights_dir / f"{a.model}.pt"
     if a.arm == "A":

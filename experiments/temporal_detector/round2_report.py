@@ -39,11 +39,18 @@ def main():
     ap.add_argument("--dataset", type=Path, required=True)
     ap.add_argument("--out", type=Path, required=True)
     ap.add_argument("--meta", default="")
+    ap.add_argument("--models", nargs="*", default=[], help="name=tag1,tag2 (replaces the built-in round-2 model list)")
+    ap.add_argument("--pairs", nargs="*", default=[], help="label|model_a|model_b (paired B-A differences)")
+    ap.add_argument("--title", default="")
     ap.add_argument("--append-md", type=Path, default=None, help="markdown appended after the tables (e.g. round-2 pipeline eval)")
     ap.add_argument("--json-extra", nargs="*", default=[], help="key=path.json entries merged into the output json")
     a = ap.parse_args()
+    global PAIRS
     runs = {**R.load_runs(a.v1, a.dataset), **R.load_runs(a.r2, a.dataset)}
-    models = {m: t for m, t in MODELS.items() if all(x in runs for x in t)}
+    mods = {kv.split("=", 1)[0]: kv.split("=", 1)[1].split(",") for kv in a.models} if a.models else MODELS
+    if a.pairs:
+        PAIRS = [tuple(x.split("|")) for x in a.pairs]
+    models = {m: t for m, t in mods.items() if all(x in runs for x in t)}
     first = "A_s0"
     base = [v for k, v in runs[first].items() if k != "__meta__"]
     ms = np.array([max(i["motion_prev"], i["motion_next"]) for i in base if i["split"] in ("test", "heldout") and i["gt"]
@@ -133,7 +140,7 @@ def fmt(x, d=3):
 
 
 def write_md(res, a):
-    L = ["# Round 2: does pseudo-labelled data (v11 train + filtered pseudo) change the 3ch / 5ch comparison?\n"]
+    L = [a.title or "# Round 2: does pseudo-labelled data (v11 train + filtered pseudo) change the 3ch / 5ch comparison?\n"]
     if a.meta:
         L.append(a.meta + "\n")
     for metric, title in (("hit10", "Top-1 recall@10 px (hit@10), mean of 2 seeds [seed range]"), ("any10", "Candidate recall any@10"),
@@ -152,7 +159,7 @@ def write_md(res, a):
             L.append(f"| {m} | " + " | ".join(cells) + " |")
         L.append("")
     L.append("## Paired differences in hit@10 (bootstrap over images; seed-mean outcomes; clip bootstrap in brackets)\n")
-    names = [p[0] for p in PAIRS] + ["DiD (B+ - A+) - (B - A)"]
+    names = [p[0] for p in PAIRS] + (["DiD (B+ - A+) - (B - A)"] if any("DiD (B+ - A+) - (B - A)" in v for v in res["paired"].values()) else [])
     L.append("| subset | n | " + " | ".join(names) + " |")
     L.append("|---|---|" + "---|" * len(names))
     for s, pr in res["paired"].items():

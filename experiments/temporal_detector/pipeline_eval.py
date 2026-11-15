@@ -31,6 +31,7 @@ N_BOOT = 10_000
 CAMERA_ON = dict(min_conf=0.3, bias=1.0, emit_scale=1.0, kappa=1.5, lam_pos=0.5, lam_vel=0.0, vmax=40.0, r0=12.0, dmax=2.0,
                  mu=0.02, static_px=3.0, max_gap=25, camera=True, fill_gap=10, fill_min_p=0.8, fill_mode="kalman")
 B0_TAU = 0.4
+LABELS = {"A": "A 3ch", "B": "B 5ch"}
 ARM_TAGS = {"A": ["A_s0", "A_s1"], "B": ["B_s0", "B_s1"]}  # round 2: Ap_s0 ... via --a-tags / --b-tags
 
 
@@ -162,10 +163,13 @@ def main():
     ap.add_argument("--meta", default="")
     ap.add_argument("--a-tags", nargs="+", default=ARM_TAGS["A"])
     ap.add_argument("--b-tags", nargs="+", default=ARM_TAGS["B"])
+    ap.add_argument("--label-a", default="A 3ch")
+    ap.add_argument("--label-b", default="B 5ch")
     ap.add_argument("--title", default="# Temporal candidates through the trajectory solver: does 5-channel input help once a solver ranks?\n")
     ap.add_argument("--data-root", type=Path, default=Path("/mnt/storage/footy_data"))
     a = ap.parse_args()
     ARM_TAGS["A"], ARM_TAGS["B"] = a.a_tags, a.b_tags
+    LABELS["A"], LABELS["B"] = a.label_a, a.label_b
     bl, hd, he, hs = load_harness(a.harness_src)
     SolverParams = hs.SolverParams
     orig_cal = hs.calibrated_p
@@ -364,8 +368,8 @@ def write_md(out, a, groups):
     if a.meta:
         L.append(a.meta + "\n")
     labels = [("RT-DETR (production)", "RT-DETR-L production (frame t)"), ("RT-DETR (rerun)", "RT-DETR-L rerun by this pipeline"),
-              *[(t, f"A 3ch {t}") for t in ARM_TAGS["A"]], ("A (mean of seeds)", "A 3ch mean of seeds"),
-              *[(t, f"B 5ch {t}") for t in ARM_TAGS["B"]], ("B (mean of seeds)", "B 5ch mean of seeds")]
+              *[(t, f"{LABELS['A']} {t}") for t in ARM_TAGS["A"]], ("A (mean of seeds)", f"{LABELS['A']} mean of seeds"),
+              *[(t, f"{LABELS['B']} {t}") for t in ARM_TAGS["B"]], ("B (mean of seeds)", f"{LABELS['B']} mean of seeds")]
     for gname in groups:
         n = out["n_frames_per_group"][gname]
         tb = out["table"][gname]
@@ -384,7 +388,7 @@ def write_md(out, a, groups):
         L.append("| comparison | calibration | recall@10 diff [95% CI] | precision diff [95% CI] | ceiling diff [95% CI] | per-seed recall diff |")
         L.append("|---|---|---|---|---|---|")
         pr = out["paired"][gname]
-        for cmp_, nm in (("5ch-3ch", "B1(5ch) - B1(3ch)"), ("5ch-RT-DETR", "B1(5ch) - B1(RT-DETR)")):
+        for cmp_, nm in (("5ch-3ch", f"B1({LABELS['B']}) - B1({LABELS['A']})"), ("5ch-RT-DETR", f"B1({LABELS['B']}) - B1(RT-DETR)")):
             for variant in ("raw", "iso"):
                 cells = []
                 for w in ("recall10", "precision10", "ceiling10"):
