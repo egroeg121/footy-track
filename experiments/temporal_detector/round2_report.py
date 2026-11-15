@@ -26,7 +26,8 @@ MODELS = {
     "B  5ch, v1": ["B_s0", "B_s1"],
     "B+ 5ch, + pseudo": ["Bp_s0", "Bp_s1"],
 }
-SUBS = ["val", "val / clip arsenal_example (74% of val balls)", "val / all other clips", "test", "heldout", "heldout_strict", "test+heldout",
+SUBS = ["heldout / Bournemouth", "heldout / Bournemouth strict", "heldout / Man City", "heldout / Man City minus arsenal_example",
+        "heldout / arsenal_example frames", "val", "val / clip arsenal_example (74% of val balls)", "val / all other clips", "test", "heldout", "heldout_strict", "test+heldout",
         "test+heldout / ball motion low", "test+heldout / ball motion mid", "test+heldout / ball motion high"]
 PAIRS = [("A+ - A (v1)", "A  3ch, v1", "A+ 3ch, + pseudo"), ("B+ - B (v1)", "B  5ch, v1", "B+ 5ch, + pseudo"),
          ("B+ - A+ (round 2)", "A+ 3ch, + pseudo", "B+ 5ch, + pseudo"), ("B - A (v1)", "A  3ch, v1", "B  5ch, v1")]
@@ -42,11 +43,14 @@ def main():
     ap.add_argument("--models", nargs="*", default=[], help="name=tag1,tag2 (replaces the built-in round-2 model list)")
     ap.add_argument("--pairs", nargs="*", default=[], help="label|model_a|model_b (paired B-A differences)")
     ap.add_argument("--title", default="")
+    ap.add_argument("--extra-runs", type=Path, nargs="*", default=[], help="more run dirs (round 3)")
     ap.add_argument("--append-md", type=Path, default=None, help="markdown appended after the tables (e.g. round-2 pipeline eval)")
     ap.add_argument("--json-extra", nargs="*", default=[], help="key=path.json entries merged into the output json")
     a = ap.parse_args()
     global PAIRS
     runs = {**R.load_runs(a.v1, a.dataset), **R.load_runs(a.r2, a.dataset)}
+    for d_ in a.extra_runs:
+        runs.update(R.load_runs(d_, a.dataset))
     mods = {kv.split("=", 1)[0]: kv.split("=", 1)[1].split(",") for kv in a.models} if a.models else MODELS
     if a.pairs:
         PAIRS = [tuple(x.split("|")) for x in a.pairs]
@@ -57,6 +61,13 @@ def main():
                    and i["prev_status"] == "ok" and i["next_status"] == "ok"])
     S = R.subsets(base, (float(np.percentile(ms, 100 / 3)), float(np.percentile(ms, 200 / 3))))
     by_key = {k: v for k, v in runs[first].items() if k != "__meta__"}
+    hk = [k for k in S["heldout"] if by_key[k]["gt"]]
+    cid = lambda k: by_key[k]["clip_id"] or ""  # noqa: E731
+    S["heldout / Bournemouth"] = [k for k in hk if "bournemouth" in cid(k)]
+    S["heldout / Bournemouth strict"] = [k for k in hk if "bournemouth" in cid(k) and by_key[k]["strict_heldout"]]
+    S["heldout / Man City"] = [k for k in hk if "mancity" in cid(k) or cid(k) == "arsenal_example"]
+    S["heldout / Man City minus arsenal_example"] = [k for k in hk if "mancity" in cid(k)]
+    S["heldout / arsenal_example frames"] = [k for k in hk if cid(k) == "arsenal_example"]
     S["ball-free (val+test+heldout)"] = [k for k in S["val+test+heldout"] if not by_key[k]["gt"]]
     pim = {t: {k: R.per_image(v) for k, v in recs.items() if k != "__meta__"} for t, recs in runs.items()}
     rng = np.random.default_rng(0)
@@ -112,7 +123,7 @@ def main():
             paired[s]["DiD (B+ - A+) - (B - A)"] = {"hit10": R.bootstrap_diff(d1, d2, None, rng), "hit10_clip": R.bootstrap_diff(d1, d2, clips, rng)}
     # training curves
     curves = {}
-    for d in (a.v1, a.r2):
+    for d in (a.v1, a.r2, *a.extra_runs):
         for p in sorted(d.glob("curve_*.jsonl")):
             rows = [json.loads(line) for line in p.read_text().splitlines() if line.strip()]
             first_row = {}
