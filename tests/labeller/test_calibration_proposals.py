@@ -191,9 +191,9 @@ def test_review_page_has_an_explicit_replace_flow(client):
 
 def test_review_page_defaults_to_warp_view(client):
     html = client.get("/calibration/review").text
-    assert "showWarp = true, warpMode = true" in html            # warp on at load
-    assert "warpMode = true; showWarp = true" in html            # and reset to warp on every item
-    assert "setWarp(!warpMode)" in html and "setWarp(warpMode)" in html   # hold flips, release restores
+    assert "warpMode = true, peek = false" in html                # warp on at load
+    assert "warpMode = true; peek = false" in html                # and reset to warp on every item
+    assert "peek = true; requestView()" in html and "peek = false; requestView()" in html   # hold flips, release restores
     assert 'class="small on" id="btnWarp"' in html
 
 
