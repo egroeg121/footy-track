@@ -1144,6 +1144,50 @@ becomes GT without a human accepting it; accepted GT carries
   frame-accurate, reader cached per video); `/calibration/api/frame` and `/warp` use it.
   - Tests: `tests/calibration/test_video.py`
 
+## 17. Labelling site (informative)
+
+**One site, always main.** Open `http://mac-mini-i7:8011/` (calib) on the tailnet;
+Norwich held-out is `:8012`. The home page is a **task board**: a "To do now" list
+(from `GET /api/tasks`, each with title, one-line why, link, device hint and an
+optional live remaining count), then the tool cards, then a "Servers" panel (name,
+port, git sha, branch, uptime from each service's `GET /api/server_info`).
+
+**Posting a task.** The board is one shared JSON file, `$FOOTY_TASKS_FILE` (default
+`/mnt/storage/footy_data/labelling_tasks.json`), re-read on every request, so no
+redeploy is needed. It is created from a built-in seed the first time it is read.
+Edit it only through the CLI (atomic write, stable ids):
+
+```bash
+python -m footy_track.scripts.labelling_tasks add "Recheck X" --url http://mac-mini-i7:8011/ball_check \
+    --why "one line" --device phone --priority 1 \
+    --count-url 'http://mac-mini-i7:8011/ball_check/queue?source=list&limit=1' --count-label left
+python -m footy_track.scripts.labelling_tasks list
+python -m footy_track.scripts.labelling_tasks done <id>      # remove it when finished
+```
+
+`--device` is `phone|laptop|either`; lower `--priority` sorts first. A count URL
+returns JSON with `total`, `count` or `remaining` (optional `count_path` in the file
+for a dotted path). A malformed file never breaks the page: `/api/tasks` answers 200
+with `error` set and the CLI refuses to overwrite it.
+
+**Deploying.** Live servers run **only** from `/home/george/footy-track-main`, on
+main. After a merge to main:
+
+```bash
+scripts/labeller_deploy.sh status          # tmux session, PID, health, served sha vs origin/main
+scripts/labeller_deploy.sh deploy          # ff-only to origin/main (refuses if dirty), restart, wait for sha
+scripts/labeller_deploy.sh restart norwich # one service;  logs <svc> [-f]
+```
+
+`--dry-run` prints the mutating commands; `--force` lets `restart` kill a non-tmux
+process still holding the port (otherwise it prints the PID and stops); `--no-warm`
+skips the background Ball Check cache warm-up (`footy_track.scripts.warm_ball_check`)
+that runs after restarting `norwich`. Services are tmux sessions `footy-<svc>` on
+`tmux -L footy`, logging to `~/.cache/footy-labeller/<svc>.log`. The service table
+(ports and `FOOTY_*` dirs) is at the top of `scripts/labeller_deploy.sh`; keep the
+`SERVICES` list in `web/main.html` in step with it. Feature branches are tested in
+their own worktree on another port, never in the serving checkout.
+
 ## 15. Traceability summary
 
 | Section | Requirements | Tested | UNTESTED | UNTESTED-FRONTEND |

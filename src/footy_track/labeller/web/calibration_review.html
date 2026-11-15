@@ -225,6 +225,9 @@ async function loadRuns() {
   }
   const want = new URLSearchParams(location.search).get("run");
   if (want) sel.value = want; else if (q.runs.length) sel.value = q.runs[q.runs.length - 1].run_id;
+  // ?status=failed opens pre-filtered (a value the select does not offer is ignored).
+  const st = new URLSearchParams(location.search).get("status");
+  if (st) { const sS = $("statusSel"); sS.value = st; if (sS.value !== st) sS.selectedIndex = 0; }
 }
 async function loadQueue() {
   const p = new URLSearchParams({ status: $("statusSel").value, sort: $("sortSel").value });

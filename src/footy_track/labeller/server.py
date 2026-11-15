@@ -47,6 +47,7 @@ from footy_track.labeller.constants import (  # noqa: E402
 )
 from footy_track.labeller.ingest import router as ingest_router  # noqa: E402
 from footy_track.labeller.review import router as review_router  # noqa: E402
+from footy_track.labeller.tasks import router as tasks_router  # noqa: E402
 from footy_track.labeller.run_stream import stream_frames  # noqa: E402
 from footy_track.labeller.session import (  # noqa: E402
     Session,
@@ -136,10 +137,27 @@ SESSION = Session()
 # ----------------------------------------------------------------------------
 
 
+@app.middleware("http")
+async def _cors_for_read_only_api(request, call_next):
+    """Let the home page of one labeller server read ``/api/...`` GETs of another.
+
+    The home page lists every service's ``/api/server_info`` and task counts
+    cross-origin (:8011 <-> :8012). Read-only GETs only; no auth exists anyway.
+    """
+    response = await call_next(request)
+    if request.method == "GET" and "/api/" in request.url.path:
+        response.headers["Access-Control-Allow-Origin"] = "*"
+    return response
+
+
 @app.get("/", response_class=HTMLResponse)
 @app.get("/main", response_class=HTMLResponse)
 async def root() -> HTMLResponse:
-    return HTMLResponse((_STATIC_DIR / "main.html").read_text())
+    # no-store: the task board must never be a cached copy on a phone.
+    return HTMLResponse(
+        (_STATIC_DIR / "main.html").read_text(),
+        headers={"Cache-Control": "no-store, max-age=0"},
+    )
 
 
 @app.get("/labeller", response_class=HTMLResponse)
@@ -614,6 +632,7 @@ app.include_router(ball_check_router)
 app.include_router(calibration_router)
 app.include_router(calibration_proposals_router)
 app.include_router(ingest_router)
+app.include_router(tasks_router)
 
 # Mount static assets (JS/CSS) if any beyond index.html.
 if _STATIC_DIR.exists():
