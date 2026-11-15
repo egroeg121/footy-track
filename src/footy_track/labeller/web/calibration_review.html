@@ -66,6 +66,8 @@
            background:transparent; color:var(--muted); border:1px solid var(--border);
            border-radius:14px; text-decoration:none; min-height:44px; display:flex; align-items:center; justify-content:center; }
   button.small.on { color:var(--ink); border-color:var(--accent); background:#16314d; }
+  button.small.loading { color:var(--muted); border-style:dashed; animation:pulse 1s ease-in-out infinite; }
+  @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:.45; } }
   #conflict { display:none; background:#3b1d1d; border:1px solid var(--red); border-radius:14px; padding:10px 12px;
               font-size:13px; line-height:1.35; }
   #conflict.show { display:block; }
@@ -148,7 +150,10 @@
 const $ = (id) => document.getElementById(id);
 const API = "/calibration/api";
 let items = [], idx = 0, reviewed = 0, cur = null, busy = false;
-let showOverlay = true, showWarp = true, warpMode = true, warpUrl = null, shotIsWarp = false;
+// One source of truth for the view: warpMode is what the user asked for (tap / `w`); `peek` flips it
+// while the image is held. shotIsWarp is only what is on screen right now (the warp may still be
+// loading, in which case the camera view with its lines stays up and the Warp button pulses).
+let showOverlay = true, warpMode = true, peek = false, shotIsWarp = false, loadingKey = null;
 const CACHE = new Map();   // key -> proposal record
 
 const keyOf = (i) => `${i.clip}|${i.run_id}|${i.frame_index}`;
@@ -167,6 +172,48 @@ async function getJSON(url, opts) {
 }
 const post = (url, body) => getJSON(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) });
 
+// ---- warp helpers (pure logic; run under node by tests/labeller/test_calibration_review_js.py)
+const wantWarp = (warpMode, peek) => !!warpMode !== !!peek;
+// Warp raster cache + strictly sequential fetch queue (the server is CPU-bound: one request at a time).
+// request(it, urgent) -> Promise<url>; urgent jumps ahead of queued prefetches; retain(keys) cancels
+// queued entries outside `keys` and revokes the cached object URLs outside it.
+function makeWarpStore(fetchOne, revoke, keyOf) {
+  const urls = new Map(), flight = new Map(); let queue = [], running = false;
+  function pump() {
+    if (running) return; running = true;
+    (async () => {
+      while (queue.length) {
+        const e = queue.shift(); e.started = true;
+        try { const u = await fetchOne(e.it); urls.set(e.k, u); e.resolve(u); }
+        catch (err) { e.reject(err); }
+        finally { flight.delete(e.k); }
+      }
+      running = false;
+    })();
+  }
+  return {
+    has: (k) => urls.has(k), get: (k) => urls.get(k),
+    request(it, urgent) {
+      const k = keyOf(it);
+      if (urls.has(k)) return Promise.resolve(urls.get(k));
+      let e = flight.get(k);
+      if (!e) {
+        e = { it, k, started: false };
+        e.promise = new Promise((res, rej) => { e.resolve = res; e.reject = rej; });
+        flight.set(k, e); queue.push(e);
+      }
+      if (urgent && !e.started) { queue = queue.filter((x) => x !== e); queue.unshift(e); }
+      pump(); return e.promise;
+    },
+    retain(keys) {
+      for (const e of queue.filter((x) => !keys.has(x.k))) { flight.delete(e.k); e.reject(new Error("cancelled")); }
+      queue = queue.filter((x) => keys.has(x.k));
+      for (const [k, u] of [...urls]) if (!keys.has(k)) { revoke(u); urls.delete(k); }
+    },
+  };
+}
+// ---- end warp helpers
+
 // ---------------------------------------------------------------- queue
 async function loadRuns() {
   const q = await getJSON(`${API}/proposals?status=all&limit=1`);
@@ -183,7 +230,7 @@ async function loadQueue() {
   const p = new URLSearchParams({ status: $("statusSel").value, sort: $("sortSel").value });
   if ($("runSel").value) p.set("run", $("runSel").value);
   const q = await getJSON(`${API}/proposals?${p}`);
-  items = q.items; idx = 0; reviewed = 0; CACHE.clear();
+  items = q.items; idx = 0; reviewed = 0; CACHE.clear(); WARPS.retain(new Set());
   await show();
 }
 
@@ -202,6 +249,24 @@ function confSummary(rec) {
   return s;
 }
 let pitchModel = null, pitchKey = "";
+const pitchOk = (rec) => { const [L, Wd] = rec.pitch_dims || [105, 68]; return !!pitchModel && pitchKey === `${L}x${Wd}`; };
+const frameUrl = (i) => `${API}/frame/${encodeURIComponent(i.clip)}/${i.frame_index}.jpg`;
+async function getRec(it) {
+  const k = keyOf(it); let rec = CACHE.get(k);
+  if (!rec) { rec = await getJSON(`${API}/proposals/${encodeURIComponent(it.clip)}/${encodeURIComponent(it.run_id)}/${it.frame_index}`); CACHE.set(k, rec); }
+  return rec;
+}
+async function fetchWarp(it) {   // one warp raster -> object URL (sequential via WARPS)
+  const rec = await getRec(it);
+  if (!rec.H) throw new Error("no H");
+  const r = await fetch(`${API}/warp`, { method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ clip: it.clip, frame_index: it.frame_index, H: rec.H, pitch_dims: rec.pitch_dims, distortion: rec.distortion || null }) });
+  if (!r.ok) { let m = r.statusText; try { m = (await r.json()).error || m; } catch (e) {} throw new Error(m); }
+  const blob = await r.blob();
+  await ensurePitch(rec);
+  return URL.createObjectURL(blob);
+}
+const WARPS = makeWarpStore(fetchWarp, (u) => URL.revokeObjectURL(u), keyOf);   // key -> blob URL
 async function ensurePitch(rec) {   // pitch-space geometry + the warp's px/m and margin
   const [L, Wd] = rec.pitch_dims || [105, 68], k = `${L}x${Wd}`;
   if (pitchModel && pitchKey === k) return pitchModel;
@@ -231,7 +296,7 @@ function drawWarpOverlay(rec) {
   svg.innerHTML = out;
 }
 function drawOverlay(rec) {
-  if (showWarp) { if (shotIsWarp) drawWarpOverlay(rec); else $("overlay").innerHTML = ""; return; }
+  if (shotIsWarp) { drawWarpOverlay(rec); return; }   // while a warp loads this draws the camera view
   const svg = $("overlay"); const [W, H] = rec.image_size || [1920, 1080];
   svg.setAttribute("viewBox", `0 0 ${W} ${H}`); svg.setAttribute("preserveAspectRatio", "none");
   if (!showOverlay) { svg.innerHTML = ""; return; }
@@ -269,8 +334,9 @@ async function show() {
   $("hint").classList.toggle("show", !nbDone && !!it.view && it.view.main_camera_wide === false);  // Claude's hint only; never auto-marks
   $("note").textContent = ""; $("conf").textContent = "";
   $("editLink").href = `/calibration?clip=${encodeURIComponent(it.clip)}&frame=${it.frame_index}&proposal=${encodeURIComponent(it.run_id)}`;
-  warpUrl = null; shotIsWarp = false; warpMode = true; showWarp = true; syncToggles();  // every item opens in warp view
-  $("shot").src = `${API}/frame/${encodeURIComponent(it.clip)}/${it.frame_index}.jpg`;
+  shotIsWarp = false; warpMode = true; peek = false; loadingKey = null;  // every item opens in warp view
+  $("shot").src = frameUrl(it);
+  syncView();   // swaps straight to the warp when it is already prefetched
   let rec = CACHE.get(k);
   if (!rec) {
     try { rec = await getJSON(`${API}/proposals/${encodeURIComponent(it.clip)}/${encodeURIComponent(it.run_id)}/${it.frame_index}`); CACHE.set(k, rec); }
@@ -287,10 +353,13 @@ async function show() {
     $("note").textContent = bits.join(" · ");
     $("conf").textContent = confSummary(rec) + (it.status !== "proposed" ? ` · ${it.status}` : "");
     drawOverlay(rec);
-    if (rec.H) setWarp(true);   // warp is the default view; items with no H stay in camera view
-    else { showWarp = false; syncToggles(); }
-    for (const nx of items.slice(idx + 1, idx + 3)) {  // warm the next frames
-      new Image().src = `${API}/frame/${encodeURIComponent(nx.clip)}/${nx.frame_index}.jpg`;
+    if (rec.H) requestView();   // warp is the default view; items with no H stay in camera view
+    else { warpMode = false; syncView(); }
+    const nexts = items.slice(idx + 1, idx + 3);
+    WARPS.retain(new Set(items.slice(Math.max(0, idx - 1), idx + 3).map(keyOf)));  // drop stale, revoke their URLs
+    for (const nx of nexts) {
+      new Image().src = frameUrl(nx);                       // warm the next frames
+      WARPS.request(nx, false).catch(() => {});             // and their warps, one at a time, behind the current one
     }
   });
 }
@@ -298,27 +367,42 @@ $("shot").addEventListener("load", () => { if (cur && CACHE.get(keyOf(cur))) dra
 
 // ---------------------------------------------------------------- toggles
 function syncToggles() {
-  $("btnOverlay").classList.toggle("on", showOverlay); $("btnWarp").classList.toggle("on", showWarp);
+  const want = wantWarp(warpMode, peek);
+  $("btnOverlay").classList.toggle("on", showOverlay);
+  $("btnWarp").classList.toggle("on", want);
+  const loading = want && !shotIsWarp && cur && loadingKey === keyOf(cur);
+  $("btnWarp").classList.toggle("loading", !!loading);
+  $("btnWarp").textContent = loading ? "Warp\u2026" : "Warp";
   if (cur && CACHE.get(keyOf(cur))) drawOverlay(CACHE.get(keyOf(cur)));
 }
-async function setWarp(on) {
-  showWarp = on; syncToggles();
+// Put on screen what the state asks for, if it is ready; otherwise stay on the camera view.
+function syncView() {
   const it = cur, rec = it && CACHE.get(keyOf(it));
-  if (!on) { if (it && shotIsWarp) { shotIsWarp = false; $("shot").src = `${API}/frame/${encodeURIComponent(it.clip)}/${it.frame_index}.jpg`; } return; }
-  if (!rec || !rec.H) { showError("This proposal has no H to warp."); showWarp = false; syncToggles(); return; }
-  try {
-    if (!warpUrl) {
-      const r = await fetch(`${API}/warp`, { method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ clip: it.clip, frame_index: it.frame_index, H: rec.H, pitch_dims: rec.pitch_dims, distortion: rec.distortion || null }) });
-      if (!r.ok) throw new Error((await r.json()).error || r.statusText);
-      warpUrl = URL.createObjectURL(await r.blob());
-    }
-    await ensurePitch(rec);
-    if (showWarp && cur === it) { shotIsWarp = true; $("shot").src = warpUrl; drawOverlay(rec); }  // overlay is redrawn on load
-  } catch (e) { showError("Warp failed: " + e.message); showWarp = false; syncToggles(); }
+  const ready = !!(rec && rec.H && wantWarp(warpMode, peek) && WARPS.has(keyOf(it)) && pitchOk(rec));
+  if (it && ready !== shotIsWarp) { shotIsWarp = ready; $("shot").src = ready ? WARPS.get(keyOf(it)) : frameUrl(it); }
+  syncToggles();
 }
+// The state (warpMode/peek) changed or a warp arrived: make the screen follow it.
+async function requestView() {
+  const it = cur, rec = it && CACHE.get(keyOf(it)), k = it && keyOf(it);
+  if (!it || !wantWarp(warpMode, peek)) { loadingKey = null; syncView(); return; }
+  if (!rec || !rec.H) { showError("This proposal has no H to warp."); warpMode = false; peek = false; syncView(); return; }
+  if (WARPS.has(k) && pitchOk(rec)) { loadingKey = null; syncView(); return; }
+  loadingKey = k; syncView();   // camera view + lines, Warp button pulsing
+  try { await WARPS.request(it, true); await ensurePitch(rec); }
+  catch (e) {
+    if (cur !== it) return;   // moved on (or cancelled): nothing to report
+    if (loadingKey === k) loadingKey = null;
+    if (wantWarp(warpMode, peek)) { showError("Warp failed: " + e.message); warpMode = false; peek = false; }
+    syncView(); return;
+  }
+  if (cur !== it) return;
+  if (loadingKey === k) loadingKey = null;
+  syncView();   // switches to the warp only if the user has not toggled away meanwhile
+}
+const toggleWarp = () => { warpMode = !warpMode; requestView(); };
 $("btnOverlay").onclick = () => { showOverlay = !showOverlay; syncToggles(); };
-$("btnWarp").onclick = () => { warpMode = !warpMode; setWarp(warpMode); };
+$("btnWarp").onclick = toggleWarp;
 $("filterBtn").onclick = () => $("filters").classList.toggle("open");
 for (const id of ["runSel", "statusSel", "sortSel"]) $(id).onchange = loadQueue;
 
@@ -371,7 +455,7 @@ $("btnNotBroadcast").onclick = () => act("not_broadcast");
   card.addEventListener("pointerdown", (e) => {
     if (e.target.closest("button, a")) return;
     sx = e.clientX; sy = e.clientY; dx = 0; drag = true; longPressed = false;
-    held = setTimeout(() => { if (Math.abs(dx) < 8) { longPressed = true; setWarp(!warpMode); } }, 450);
+    held = setTimeout(() => { if (Math.abs(dx) < 8) { longPressed = true; peek = true; requestView(); } }, 450);
   });
   card.addEventListener("pointermove", (e) => {
     if (!drag) return;
@@ -384,7 +468,7 @@ $("btnNotBroadcast").onclick = () => act("not_broadcast");
   });
   const end = () => {
     if (!drag) return; drag = false; clearTimeout(held);
-    if (longPressed) { setWarp(warpMode); }
+    if (longPressed) { peek = false; requestView(); }
     const go = Math.abs(dx) > Math.min(110, card.clientWidth * 0.3) && !longPressed;
     card.style.transform = ""; card.style.borderColor = "";
     if (go) act(dx > 0 ? "accept" : "reject");
@@ -399,7 +483,7 @@ document.addEventListener("keydown", (e) => {
   if (e.key === "a") act("accept"); else if (e.key === "r") act("reject"); else if (e.key === "n") act("not_broadcast");
   else if (e.key === "j") skip(); else if (e.key === "k") back();
   else if (e.key === "e" && cur) location.href = $("editLink").href;
-  else if (e.key === "o") { showOverlay = !showOverlay; syncToggles(); } else if (e.key === "w") { warpMode = !warpMode; setWarp(warpMode); }
+  else if (e.key === "o") { showOverlay = !showOverlay; syncToggles(); } else if (e.key === "w") toggleWarp();
 });
 
 (async () => {
