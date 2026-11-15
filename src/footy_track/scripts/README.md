@@ -30,6 +30,16 @@ uv run footy-track-split-video /path/to/video.mp4 --re_encode --bitrate 4M
 uv run footy-track-split-video -h
 ```
 
+## `reencode_keyframes.py`
+Re-encode labelling clips with a keyframe every N frames (default 10) into a new folder, so labeller seeks are cheap.
+
+Segment clips cut by stream copy can have only one or two keyframes, so every Ball Check still, context clip and main-labeller seek decodes from the start of the clip, which takes seconds per card on the Mac mini. Frames map 1:1, and each output is checked to have the same frame count as its source before it is swapped in; the source folder is never modified. Expect about 7x the size at the default `--crf 16 --preset ultrafast`.
+
+```bash
+python -m footy_track.scripts.reencode_keyframes SRC_DIR SRC_DIR_kf10
+FOOTY_CLIPS_DIR=SRC_DIR_kf10 ...   # point the labeller at the output
+```
+
 ## `extract_frames.py`
 Extract frames from a video into images using ffmpeg.
 
