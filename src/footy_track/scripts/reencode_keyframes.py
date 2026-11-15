@@ -39,7 +39,9 @@ def video_packets(path: Path) -> int:
     return int(out.strip())
 
 
-def reencode(src: Path, dst: Path, gop: int, crf: int, preset: str, threads: int) -> str:
+def reencode(
+    src: Path, dst: Path, gop: int, crf: int, preset: str, threads: int
+) -> str:
     """Re-encode one clip into ``dst`` (atomically). Returns a status string."""
     tmp = dst.with_name(f".{dst.stem}.part{dst.suffix}")
     cmd = [
@@ -80,7 +82,9 @@ def main(argv: list[str] | None = None) -> None:
         if not d.exists():
             d.symlink_to(s.resolve())
     first = [f for f in args.first.split(",") if f]
-    srcs.sort(key=lambda p: (first.index(p.stem) if p.stem in first else len(first), p.name))
+    srcs.sort(
+        key=lambda p: (first.index(p.stem) if p.stem in first else len(first), p.name)
+    )
     for s in srcs:
         d = args.out_dir / s.name
         if d.exists() and not d.is_symlink():
