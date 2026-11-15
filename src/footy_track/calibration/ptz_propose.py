@@ -39,13 +39,17 @@ GROUNDS: dict[str, dict] = {
                  "C0": (0.0, -65.0, 15.0)},
 }
 
-#: decision thresholds. Support / margin were tuned on the Emirates GT in V1 (Bournemouth is the held-out set).
-MIN_SUPPORT = 0.15
+#: decision thresholds. ``support`` is :func:`ptz.explained_f1` of a camera on the frame's line evidence (bounded in
+#: [0, 1]; V1 used the unbounded 1 - score, which went to -1..-4 on correct Vitality fits). The Emirates GT (leave-shot-out
+#: lines-only, 67 frames) separates cleanly: every answer within 1 m has F1 >= 0.61, every wrong best hypothesis <= 0.48,
+#: so the threshold sits in that gap; margin is the V1 value. Bournemouth was not used to set either.
+MIN_SUPPORT = 0.55
 MARGIN = 0.08
+CONFIRM_DELTA = 0.15  # two labels with no lines hypothesis agreeing need support >= MIN_SUPPORT + this
 POINT_PX = 10.0  # a labelled point is an inlier when it reprojects within this many canonical (1920 px) px
 AGREE_M = 3.0  # two cameras "agree" when the pitch-plane displacement over a probe grid is below this
 MAIN_P = 0.5  # shot classifier: below this and weakly supported -> not the main camera
-MAIN_SUPPORT = 0.30
+MAIN_SUPPORT = 0.60
 #: >= STRONG_N consensus points reprojecting within STRONG_RMS px (1920 wide) are accepted without line support:
 #: the white-line mask of the high Bournemouth camera is too weak to veto a fit that many independent labels agree on
 STRONG_N = 4
@@ -209,9 +213,12 @@ def ransac_points(img: np.ndarray, pitch_m: np.ndarray, rig: ptz.Rig, *, px_thr:
 # --------------------------------------------------------------------------
 
 
-def frame_masks(bgr: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    """(white-line mask, grass mask) of a frame at the pre-labelling working size."""
+def frame_masks(bgr: np.ndarray, adaptive: bool = True) -> tuple[np.ndarray, np.ndarray]:
+    """(white-line mask, grass mask) of a frame at the pre-labelling working size. ``adaptive``: the line mask's
+    saturation limit is relative to the pitch's own colour (see ``candidates.LINE_SAT_REL``); the fixed limit of the
+    pre-labelling pipeline loses most lines on the saturated Vitality turf."""
     from footy_track.calibration.prelabel.candidates import (
+        LINE_SAT_REL,
         grass_mask,
         line_mask,
         resize_to_work,
@@ -219,7 +226,7 @@ def frame_masks(bgr: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
 
     work, _ = resize_to_work(bgr)
     grass = grass_mask(work)
-    return line_mask(work, grass), grass
+    return line_mask(work, grass, sat_rel=LINE_SAT_REL if adaptive else None), grass
 
 
 def main_camera_p(bgr: np.ndarray) -> float:
@@ -245,7 +252,7 @@ class PointsCand:
     n_inliers: int
     n_labels: int
     inlier: np.ndarray
-    support: float  # 1 - line score after the line refinement
+    support: float  # explained_f1 of the camera on the line evidence (after the line refinement)
     refined: bool = False
     rms_px: float = float("nan")  # rms reprojection (canonical px) of the consensus points under ``cam``
     spread_m: float = 0.0  # std (m) of the consensus points perpendicular to their best line: 0 = collinear
@@ -275,10 +282,10 @@ def pick_camera(pts: PointsCand | None, lines_cam: ptz.Camera | None, lines_supp
 
     * >= ``STRONG_N`` consensus points within ``STRONG_RMS`` px (3 points: ``STRONG_N3_RMS``), not collinear
       (``MIN_SPREAD_M``): points (+ lines), whatever the line support (the Vitality line masks are weak); a
-      better-supported lines-only solve does not override them.
+      lines-only solve overrides them only when it is better supported by more than ``CONFIRM_DELTA``.
     * >= 3 consensus points and the refined camera has line support >= ``min_support``: points (+ lines).
     * exactly 2 points: only when some top lines hypothesis (the lines search's distinct hypotheses, answered or
-      not) is the same camera (within ``agree_m``) or the support is high (>= 2 x ``min_support`` + 0.05); two
+      not) is the same camera (within ``agree_m``) or the support is high (>= ``min_support`` + ``CONFIRM_DELTA``); two
       labels fit any camera.
     * both answered but different cameras: the one with the larger line support (ties: points).
     * otherwise the lines-only answer, else abstain with the reason."""
@@ -297,11 +304,13 @@ def pick_camera(pts: PointsCand | None, lines_cam: ptz.Camera | None, lines_supp
             pts_ok = True
         else:
             agrees = any(ptz._cam_distance(pts.cam, h) < agree_m for h in hyp_cams[:3])
-            pts_ok = agrees or pts.support >= 2 * min_support + 0.05
+            pts_ok = agrees or pts.support >= min_support + CONFIRM_DELTA
             if not pts_ok:
                 notes.append("2 LLM pts not confirmed by lines")
     if pts_ok and lines_cam is not None and ptz._cam_distance(pts.cam, lines_cam) > agree_m:
-        if not strong and (lines_support or 0.0) > pts.support + 0.1:
+        # strong labels still lose to a clearly better line fit: labels can be consistent with each other and
+        # wrong (seg085:49: six LLM points on a circle drawn 20% too small), the lines are independent evidence
+        if (lines_support or 0.0) > pts.support + (CONFIRM_DELTA if strong else 0.1):
             notes.append(f"{pts.n_inliers} LLM pts disagree with a better-supported lines-only solve")
             return lines_cam, "lines-only", None, notes
         notes.append("lines-only search disagreed")
@@ -339,7 +348,7 @@ def solve_frame(lines_mask: np.ndarray, grass: np.ndarray, rig: ptz.Rig, llm_img
     t0 = time.time()
     pitch = pitch or PitchModel(*rig.pitch)
     ev = ptz.LineEvidence.from_masks(lines_mask, grass)
-    lcam, hyps, linfo = ptz.search_lines(ev, rig, pitch, margin=margin, min_support=min_support)
+    lcam, hyps, linfo = ptz.search_lines(ev, rig, pitch, margin=margin, min_f1=min_support)
     hyp_cams = [h.cam for h in hyps]
     pts = None
     n_lab = 0 if llm_img is None else len(llm_img)
@@ -354,9 +363,10 @@ def solve_frame(lines_mask: np.ndarray, grass: np.ndarray, rig: ptz.Rig, llm_img
             r1 = _inlier_rms(cam_r, llm_img, llm_pitch, inl)
             # the lines may sharpen the points' camera, never wander off them
             refined = s1 < s0 and ptz._cam_distance(cam_p, cam_r) < 2.0 and r1 <= max(1.5 * r0, 4.0)
-            cam, s, rms = (cam_r, s1, r1) if refined else (cam_p, s0, r0)
-            pts = PointsCand(cam, int(inl.sum()), n_lab, inl, 1.0 - s, refined, rms, _spread(llm_pitch[inl]))
-    sup_l = linfo.get("support")
+            cam, rms = (cam_r, r1) if refined else (cam_p, r0)
+            sup = float(ptz.line_support([cam], ev, pitch)[0])
+            pts = PointsCand(cam, int(inl.sum()), n_lab, inl, sup, refined, rms, _spread(llm_pitch[inl]))
+    sup_l = linfo.get("f1")
     cam, mode, reason, notes = pick_camera(pts, lcam, sup_l, linfo.get("reason"), hyp_cams, min_support=min_support)
     out = Outcome(cam, mode, reason, None, linfo.get("margin"), 0, n_lab, None, p_main, notes,
                   lines_info=linfo, hyp_cams=hyp_cams)

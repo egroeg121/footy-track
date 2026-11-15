@@ -141,3 +141,111 @@ pitch metres, and the projected CENTRE_CIRCLE_TOP equals the stored one to 1e-3 
 - The root disk of the mini was at 99% during the run (1.4 GB free) and truncated a mask cache file once
   (`np.savez_compressed`: "No space left on device"); the script now recomputes a corrupt cache entry and resumes from
   `records.json`.
+
+## Line evidence fix (2026-11-15, Bournemouth lines-only)
+
+Question: why did the lines-only path answer 2 of 8 held-out Bournemouth GT frames (Emirates 88%), and why was line
+support "strongly negative even on correct fits"? Diagnosis by rendering the white-line mask, the distance transform
+and the GT-projected pitch lines for the 8 Bournemouth and 5 Emirates GT frames (renders:
+`/mnt/storage/footy_data/scratch/ptz_diag/{bmth_h_*,emi_*,new_bmth_h_*}.jpg`, top = frame with mask in red and grass hull
+in cyan, bottom = DT with the GT lines coloured by their support).
+
+### Diagnosis
+
+1. **The mask misses the Vitality lines because of an absolute saturation gate, not because the lines are faint.**
+   `candidates.line_mask` keeps pixels with `S <= 100` (the Emirates value). The Vitality turf is far more saturated
+   (median S 226-234 against 138-204 on the Emirates), and the thin, compressed lines pick up chroma from it: at the
+   best pixel of each GT-projected line the median S is 68-136 (> 100 for 17-48% of the pixels in the weak frames,
+   `seg009:29` only 17% pass the gate). The brightness cue itself is strong: the top-hat of V on the GT lines has a median of 31-69
+   and passes the 16-level threshold for 96-100% of line pixels (Emirates: 90-100%), and the line-to-turf contrast (d')
+   is equal to the Emirates one. In the renders the mask keeps the halfway line (near-vertical, wide, strongly tinted white) and the
+   board edge, and drops the centre circle and the penalty-box lines except where they run towards the camera.
+   By contrast the Emirates masks contain whole circles and boxes.
+2. **The mask carries clutter and the old score is dominated by it.** Player legs, socks and shorts survive the blob
+   opening and make up a third to half of the detected line length on the sparse frames. The score
+   `(unexplained predicted + unexplained detected) / detected length` normalises by that *detected* length, so a correct
+   camera whose circle and box lines are missing from a short mask gets "predicted unexplained" lengths of 1.5-2x the detected
+   length: support -1.6 (`seg009:29`) and -1.1 (`seg070:229`) under the point-solved camera, down to -4 in V2. A mask
+   with clutter and one clear line (the halfway line) looks mild on the same measure. The sign of this is therefore
+   a property of the normalisation, not of the camera.
+3. **Checked and not the cause.** k1: the sign is consistent (GT k1 0.02 on Bournemouth, rig 0.035, same `distort_norm` for
+   the model and the GT projection; the model lines sit on the white lines in the GT overlays). Pixel scale: everything is
+   done at 960 px (`TAU_PX`, `SEARCH_W`); the matched fraction of the model length under the GT camera is 0.46-0.90 vs 0.53-0.76 on
+   the Emirates once the mask is fixed. Far-line sample spacing: segments are length-weighted, no sign of a bias.
+   Visibility / grass hull: the one clear failure is a GT frame (`seg070:229`) whose near-touchline label lies on the
+   advertising board (GT error, 96 px) so the predicted near touchline is "off grass".
+   Remaining failures of the search are on frames where the rig prior is the problem, not the evidence: `seg075:802` wants C_y = -44.8
+   (rig prior -51 with sigma 3), the lines search stays at the prior and finds a hypothesis 4.4 m off, and `seg100:373`
+   is the second camera position.
+
+### What changed
+
+- `candidates.line_mask(..., sat_rel=LINE_SAT_REL)` (new, opt-in; the pre-labelling pipeline keeps the old behaviour): the
+  saturation limit becomes `max(100, 0.65 x median saturation of the grass)`. It is a relaxation only (0.65 x 155 ~ 100 reproduces
+  the Emirates limit; a first version that replaced the limit by `0.65 x S` was *stricter* than 100 on darker Emirates
+  frames and lost 3 answers there, so it was made one-sided before the numbers below).
+  `ptz_propose.frame_masks` and `ptz_validate.frame_evidence` use it (`--fixed-mask` reproduces V1).
+- `ptz.explained_f1(matched, visible, detected) = 2 matched / (visible + detected)` and `ptz.line_support(cams, ev, pitch)`:
+  support as the F1 of recall (matched / expected visible model length) and precision (matched / detected length), bounded
+  in [0, 1] (the same numerator as V1's score, normalised by both lengths). `search_lines(min_f1=...)` gates on it and always reports `info["f1"]`;
+  hypothesis ranking and the margin test are the V1 score unchanged.
+- `ptz_propose`: `MIN_SUPPORT = 0.55` (F1 scale), `MAIN_SUPPORT = 0.60`, two unconfirmed labels need `MIN_SUPPORT + 0.15`; the
+  points candidate's support is the F1 too. **Threshold chosen on the Emirates only**: in the leave-shot-out lines-only run on
+  the 67 Emirates frames every best hypothesis within 1 m has F1 >= 0.61 and every wrong one is <= 0.48
+  (one correct frame at 0.46), the threshold sits in that empty gap; Bournemouth was not used to set it.
+- Strong consistent labels (>= 4 points within 6 px, 3 within 4 px) still win over the lines, but no longer over a
+  lines-only answer that is better supported by more than 0.15 (labels can be consistent with each other and wrong:
+  `seg085:49`, six LLM points on a circle drawn about 20% too small, which V2 caught only by eye).
+- Tests: `tests/calibration/test_ptz_evidence.py` (relative saturation gate on synthetic turf, `explained_f1` bounds and
+  symmetry, F1 stays positive and ranks the true camera above a wrong one on a halfway-line-only mask), updated
+  `test_pick_camera_rules`.
+- Dev aids: `ptz_propose propose --frame-set-run RUN --label-run RUN2` (re-solve the exact frame set of an earlier run, labels from the
+  original pre-label run), `loso --fixed-mask`, `ptz_validate lines --fixed-mask`, `f1` recorded in `lines.json`.
+
+### Emirates (V1 lines-only experiment `ptz_validate lines --variants mid`, leave-shot-out, 67 frames; same code, mask is the only difference between rows 1 and 2)
+
+| setting | answered | median (m) | p90 | p95 | wrong > 2 m / > 5 m answers |
+|---|---|---|---|---|---|
+| V1 mask, V1 rule (support >= 0.15, margin >= 0.08) | 59 (88%) | 0.25 | 0.66 | 1.05 | 3 / 2 |
+| adaptive mask, V1 rule | 61 (91%) | 0.24 | 0.70 | 0.89 | 3 / 2 |
+| adaptive mask, F1 >= 0.55, margin >= 0.08 | 60 (90%) | 0.24 | 0.65 | 0.80 | 1 / 0 |
+
+Leave-match-out (Man City rig -> Villa, 19 frames): 14 answered (74%, median 0.43) before, 19 (100%, 0.45, p95 0.87) after. No Emirates
+regression; the F1 rule gives the cleaner tail (but its threshold was set on this same set: it is the calibration set, the
+Bournemouth numbers are the test).
+
+### Bournemouth (leave-one-shot-out, 8 GT frames, 3 m grid error vs the GT H, rig refit without the clip)
+
+| solver | answered | median (m) | p90 | max | note |
+|---|---|---|---|---|---|
+| 2 GT points | 8 / 8 | 0.53 | 8.3 | 25.5 | unchanged: does not use the evidence |
+| 3 GT points | 8 / 8 | 0.36 | 0.73 | 0.75 | unchanged |
+| lines only, before (V1 mask, support >= 0.15) | 2 / 8 | 0.26 | 0.32 | 0.34 | |
+| lines only, after (adaptive mask, F1 >= 0.55) | **5 / 8** | 0.33 | 1.96 | 2.66 | errors 0.13, 0.18, 0.33, 0.93, 2.66 m |
+
+The 3 abstentions: `seg100:373` (second camera, 38 m off: right to abstain), `seg075:802` (best hypothesis 4.4 m off: right), `seg070:229`
+(best hypothesis 0.89 m, F1 0.45: a wrong abstention, its GT has the bad touchline label). The weakest answers are `seg015:0` (F1 0.55, 2.7 m) and
+`seg009:29` (F1 0.56, 0.9 m): both sit just above the threshold; 8 frames cannot support a better one. All 3 wrong best hypotheses
+(0.41-0.46) are below 0.55, so the Emirates-set threshold also separates here, with a margin of 0.09 on the lower side.
+
+### Dry run on the `ptz_bmth1` frame set (47 frames, same rig; nothing written to the store)
+
+`ptz_propose propose --frame-set-run ptz_bmth1 --label-run bmth_pre1 --dry-run`: **17 of 47 answered (was 4)**: 12 lines-only
+(one of them `seg085:49`, see below) and 5 "k LLM pts + lines"; 30 abstain. I opened all 17 renders next to
+the raw frames (`sheets/pair_*.jpg`: top raw frame, bottom overlay): **all 17 look right**. The 5 penalty-box views (`seg050:17/27/49/87`,
+`seg110:175`) have their box front line 10-20 px (at 800 px width) above the white line, about 1-2 m; the arc and box corners are on
+their lines. The centre-circle / halfway views (`seg060:700/708/1167/1190`, `seg085:165`, `seg035:256`), the two arcs + box
+views `seg010:38`, `seg030:205/213`, `seg110:290` and `seg031:59` are within a few px (`seg031:59`: circle edge ~13 px at the
+bottom right). `seg085:49` was wrong with the 6-point rule (circle 20% too small, the frame V2 vetoed by hand) and is right
+since the override above. The 30 abstentions were not individually inspected beyond their reasons (mostly no labels plus F1 < 0.55: sparse
+single-arc views).
+
+### Limits
+
+- The 5/8 and 17/47 are on the frames that were looked at while diagnosing; the F1 threshold was set on the Emirates only, but
+  the saturation rule was derived from Bournemouth line pixels, so Bournemouth is not an untouched test any more. A
+  third ground would be.
+- Clutter (players' kit) is still in the mask; F1 down-weights its effect but a player-aware mask would help `seg070`-like
+  frames. Lines that are legitimately invisible (near touchline at the apron) still cost recall.
+- The search stays on the rig prior in C; frames needing C_y 6 m away (`seg075:802`) or another camera (`seg100:373`)
+  still abstain. The optional free-x fallback for off-centre cameras was not attempted.

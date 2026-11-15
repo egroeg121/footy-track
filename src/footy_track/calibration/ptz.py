@@ -556,6 +556,31 @@ def score_cameras(cams: list[Camera], ev: LineEvidence, pitch: PitchModel) -> np
     return np.array(out)
 
 
+def explained_f1(matched: float, visible: float, detected: float) -> float:
+    """Bounded agreement of a hypothesis with the evidence: F1 of recall (matched / expected visible model length)
+    and precision (matched / detected line length) = ``2 matched / (visible + detected)``, in [0, 1].
+
+    The raw score of :func:`_line_scores` divides the unexplained *predicted* length by the *detected* length, so a
+    frame whose mask holds one clear line and misses the faint ones drives the support of a correct camera far below
+    0 (down to -4 on the Vitality frames), while a mask rich in clutter looks mild. F1 normalises by both lengths
+    (the expected visible length of the model as well as the detected one), so missing faint lines costs at most
+    their share of the expected length and the value is comparable across grounds and mask qualities."""
+    den = visible + detected
+    return float(np.clip(2.0 * matched / den, 0.0, 1.0)) if den > 0 else 0.0
+
+
+def line_support(cams: list[Camera], ev: LineEvidence, pitch: PitchModel) -> np.ndarray:
+    """:func:`explained_f1` of fully specified cameras on the frame's line evidence."""
+    samples, pa, pb = _samples(pitch, 1.0)
+    L = max(ev.L_mask, 1.0)
+    out = []
+    for c in cams:
+        uv, vis = _project_obs(np.array([[c.pan, c.tilt, c.logf]]), c.C, c.roll, c.k1, samples, ev)
+        _, m, p = _line_scores(uv, vis, pa, pb, ev)
+        out.append(explained_f1(m[0] * L, (m[0] + p[0]) * L, L))
+    return np.array(out)
+
+
 def search_lines(
     ev: LineEvidence,
     rig: Rig,
@@ -568,12 +593,15 @@ def search_lines(
     margin: float = 0.08,
     grid: np.ndarray | None = None,
     min_support: float = 0.15,
+    min_f1: float | None = None,
 ) -> tuple[Camera | None, list[LineHypothesis], dict]:
     """Lines-only solve: coarse pan x tilt x log f search (C at the rig prior, roll / k1 from the rig) scored by the
     two-sided line score, NMS to distinct hypotheses, robust LM on (pan, tilt, log f, C within its prior) for the
     best ones, re-scored. Abstains (returns ``None``) when the best two *distinct* hypotheses differ by less than
-    ``margin`` in score (the line score is ~[0, 1]) or the best explains less than ``min_support`` of the evidence.
-    -> (camera or None, ranked hypotheses, info with the margin / support / reason)."""
+    ``margin`` in score (the line score is ~[0, 1]) or the best explains less than ``min_support`` of the evidence
+    (``1 - score``; unbounded below). With ``min_f1`` the support test uses :func:`explained_f1` instead (``info["f1"]``
+    is always reported), which does not collapse on frames whose mask misses faint lines.
+    -> (camera or None, ranked hypotheses, info with the margin / support / f1 / reason)."""
     pitch = pitch or PitchModel(*rig.pitch)
     grid = _GRID_LINES if grid is None else grid
     samples, pa, pb = _samples(pitch, 1.5)
@@ -618,8 +646,9 @@ def search_lines(
         return None, [], {**info, "reason": "no hypothesis"}
     best = distinct[0]
     gap = distinct[1].score - best.score if len(distinct) > 1 else 1.0
-    info.update(margin=float(gap), support=float(1.0 - best.score), best_score=best.score)
-    if 1.0 - best.score < min_support:
+    f1 = float(line_support([best.cam], ev, pitch)[0])
+    info.update(margin=float(gap), support=float(1.0 - best.score), best_score=best.score, f1=f1)
+    if (f1 if min_f1 is not None else 1.0 - best.score) < (min_f1 if min_f1 is not None else min_support):
         return None, distinct, {**info, "reason": "low support"}
     if gap < margin:
         return None, distinct, {**info, "reason": "near-tie"}

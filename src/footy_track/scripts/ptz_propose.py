@@ -160,10 +160,10 @@ def cmd_loso(args):
                     errs.append(pv.error_record(pv.cam_map(cam), truth)["med"])
             if errs:
                 recs.append({**base, "method": f"pts{k}", "med": float(np.median(errs)), "all": errs})
-        ev = pp.ptz.LineEvidence.from_masks(*pv_masks(f, out_dir / "masks"))
+        ev = pp.ptz.LineEvidence.from_masks(*pv_masks(f, out_dir / "masks", adaptive=not args.fixed_mask))
         t = time.time()
-        cam, hyps, info = ptz.search_lines(ev, rig, margin=pp.MARGIN, min_support=pp.MIN_SUPPORT)
-        r = {**base, "method": "lines", "secs": time.time() - t, "support": info.get("support"),
+        cam, hyps, info = ptz.search_lines(ev, rig, margin=pp.MARGIN, min_f1=pp.MIN_SUPPORT)
+        r = {**base, "method": "lines", "secs": time.time() - t, "support": info.get("f1"), "support_raw": info.get("support"),
              "margin": info.get("margin"), "reason": info.get("reason"), "abstain": cam is None}
         if hyps:
             r["best_med"] = pv.error_record(pv.cam_map(hyps[0].cam), truth)["med"]
@@ -176,7 +176,7 @@ def cmd_loso(args):
     summarise_loso(recs)
 
 
-def pv_masks(f, cache: Path):
+def pv_masks(f, cache: Path, adaptive: bool = True):
     """(lines, grass) masks of a GT frame, cached as npz."""
     from footy_track.calibration.video import read_frame
     from footy_track.scripts import ptz_validate as pv
@@ -186,7 +186,7 @@ def pv_masks(f, cache: Path):
         d = np.load(cp)
         return d["lines"], d["grass"]
     v = pv.find_clip_video(f.clip)
-    lines, grass = pp.frame_masks(read_frame(v, f.frame))
+    lines, grass = pp.frame_masks(read_frame(v, f.frame), adaptive)
     cache.mkdir(parents=True, exist_ok=True)
     np.savez_compressed(cp, lines=lines, grass=grass)
     return lines, grass
@@ -239,6 +239,18 @@ def _targets(args, gt_dir: Path, clips_dirs: list[Path]):
                     labels = [c for c in (r.get("correspondences") or []) if not c.get("synthetic")]
                     out.append((canon, k, labels, f"{args.from_run}:{r['status']}"))
                     chosen.add(k)
+        if getattr(args, "frame_set_run", None) and args.frame_set_run in runs:
+            # re-solve exactly the frames of an earlier run; labels: the original pre-label run's if it has the frame
+            # (all of its real labels), else that earlier run's own real (consensus) labels
+            label_frames = runs.get(args.label_run, {}).get("frames", {}) if getattr(args, "label_run", None) else {}
+            for key, r in runs[args.frame_set_run]["frames"].items():
+                k = int(key)
+                if k in nb or k in gt:
+                    continue
+                src = label_frames.get(key) or r
+                labels = [c for c in (src.get("correspondences") or []) if not c.get("synthetic")]
+                out.append((canon, k, labels, f"{args.frame_set_run}:{r['status']}"))
+                chosen.add(k)
         if args.extras and not gt and not nb:
             video = next((v for d in clips_dirs if d.is_dir() and (v := find_video(d, canon)) is not None), None)
             if video is not None:
@@ -387,12 +399,16 @@ def main(argv=None):
     r.add_argument("--mask-cache")
     lo = sub.choices["loso"]
     lo.add_argument("--out", required=True)
+    lo.add_argument("--fixed-mask", action="store_true", help="the V1 line mask (absolute saturation limit)")
     pr = sub.choices["propose"]
     pr.add_argument("--rig", "--rig-in", dest="rig", required=True)
     pr.add_argument("--run-id", required=True)
     pr.add_argument("--clips")
     pr.add_argument("--frames")
     pr.add_argument("--from-run", help="take this run's failed / rejected records (and their LLM points) as targets")
+    pr.add_argument("--frame-set-run", help="solve exactly the frames of this earlier run (any status), e.g. ptz_bmth1")
+    pr.add_argument("--label-run", help="with --frame-set-run: take the LLM labels from this run's record of the frame "
+                                        "when it has one (e.g. bmth_pre1)")
     pr.add_argument("--extras", type=int, default=0, help="evenly spaced frames per clip without GT / not-broadcast")
     pr.add_argument("--gt-dir")
     pr.add_argument("--clips-dirs")

@@ -393,10 +393,11 @@ def find_clip_video(clip: str):
     return None
 
 
-def frame_evidence(f: GTFrame, cache_dir: Path) -> ptz.LineEvidence | None:
+def frame_evidence(f: GTFrame, cache_dir: Path, adaptive: bool = True) -> ptz.LineEvidence | None:
     import cv2
 
     from footy_track.calibration.prelabel.candidates import (
+        LINE_SAT_REL,
         grass_mask,
         line_mask,
         resize_to_work,
@@ -416,7 +417,7 @@ def frame_evidence(f: GTFrame, cache_dir: Path) -> ptz.LineEvidence | None:
             return None
         work, _ = resize_to_work(bgr)
         grass = grass_mask(work)
-        lines = line_mask(work, grass)
+        lines = line_mask(work, grass, sat_rel=LINE_SAT_REL if adaptive else None)
         cache_dir.mkdir(parents=True, exist_ok=True)
         np.savez_compressed(cp, lines=lines, grass=grass)
         cv2.imwrite(str(cache_dir / f"{f.clip}_{f.frame}.jpg"), work)
@@ -434,7 +435,7 @@ def cmd_lines(args):
         for f in test:
             if kind == "match" and fid != "mancity->villa":
                 continue  # reverse direction has no extra information for (d); shot folds cover every frame
-            ev = frame_evidence(f, cache)
+            ev = frame_evidence(f, cache, adaptive=not args.fixed_mask)
             if ev is None:
                 print("no video for", f.key, flush=True)
                 continue
@@ -448,7 +449,7 @@ def cmd_lines(args):
                 base = {"exp": "d", "fold": kind, "fold_id": fid, "key": f.key, "match": f.match,
                         "plausible": f.plausible, "variant": var, "method": f"lines_{var}", "n_gt": len(f.ids),
                         "secs": time.time() - t, "margin": info.get("margin"), "support": info.get("support"),
-                        "reason": info.get("reason"), "n_distinct": info.get("n_distinct")}
+                        "reason": info.get("reason"), "n_distinct": info.get("n_distinct"), "f1": info.get("f1")}
                 if hyps:  # score and error of the best hypothesis even when it abstained (to study the abstain rule)
                     best = hyps[0].cam
                     base["best_err"] = error_record(cam_map(best), truth)
@@ -867,6 +868,7 @@ def main(argv=None):
     ap.add_argument("--noise", type=float, default=1.5)
     ap.add_argument("--train-filter", choices=["all", "plausible"], default="all")
     ap.add_argument("--variants", default="mid,fixed,loose")
+    ap.add_argument("--fixed-mask", action="store_true", help="lines: the V1 white-line mask (absolute saturation limit)")
     args = ap.parse_args(argv)
     Path(args.out).mkdir(parents=True, exist_ok=True)
     {"rigs": cmd_rigs, "points": cmd_points, "lines": cmd_lines, "zoom": cmd_zoom, "synthetic": cmd_synthetic,

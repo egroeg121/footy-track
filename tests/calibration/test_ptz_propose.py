@@ -96,37 +96,40 @@ def _cand(cam, n_in, support, n_lab=5, rms=3.0, spread=8.0):
 def test_pick_camera_rules():
     a, far = _cam(), _cam(pan_deg=60.0, f=6000.0)
     # >= 3 consensus points with line support: points win
-    cam, mode, why, _ = pp.pick_camera(_cand(a, 4, 0.4), None, None, "low support", [])
+    cam, mode, why, _ = pp.pick_camera(_cand(a, 4, 0.7), None, None, "low support", [])
     assert cam is a and mode == "4 LLM pts + lines" and why is None
     # two labels not confirmed by the lines and no lines answer: abstain with both reasons
-    cam, mode, why, notes = pp.pick_camera(_cand(a, 2, 0.2), None, None, "near-tie", [far])
+    cam, mode, why, notes = pp.pick_camera(_cand(a, 2, 0.6), None, None, "near-tie", [far])
     assert cam is None and mode == "abstain" and "near-tie" in why and "2 LLM pts not confirmed by lines" in notes
     # ... confirmed by a lines hypothesis: accepted
-    cam, mode, _, _ = pp.pick_camera(_cand(a, 2, 0.2), None, None, "near-tie", [_cam(pan_deg=88.2)])
+    cam, mode, _, _ = pp.pick_camera(_cand(a, 2, 0.6), None, None, "near-tie", [_cam(pan_deg=88.2)])
     assert cam is a and mode == "2 LLM pts + lines"
     # lines only
-    cam, mode, _, _ = pp.pick_camera(None, far, 0.5, None, [far])
+    cam, mode, _, _ = pp.pick_camera(None, far, 0.8, None, [far])
     assert cam is far and mode == "lines-only"
     # disagreement: the better-supported one wins, ties go to the points
-    cam, mode, _, notes = pp.pick_camera(_cand(a, 3, 0.3, spread=0.2), far, 0.6, None, [far])
+    cam, mode, _, notes = pp.pick_camera(_cand(a, 3, 0.6, spread=0.2), far, 0.9, None, [far])
     assert cam is far and mode == "lines-only" and notes
-    cam, mode, _, notes = pp.pick_camera(_cand(a, 3, 0.3, spread=0.2), far, 0.35, None, [far])
+    cam, mode, _, notes = pp.pick_camera(_cand(a, 3, 0.6, spread=0.2), far, 0.65, None, [far])
     assert cam is a and "lines-only search disagreed" in notes
     # low support, few / loose points: not used
-    cam, mode, why, _ = pp.pick_camera(_cand(a, 3, 0.05, spread=0.2), None, None, "low support", [])
+    cam, mode, why, _ = pp.pick_camera(_cand(a, 3, 0.2, spread=0.2), None, None, "low support", [])
     assert cam is None and "3/5 consistent" in why
-    cam, _, why, _ = pp.pick_camera(_cand(a, 5, 0.05, rms=9.0), None, None, "low support", [])
+    cam, _, why, _ = pp.pick_camera(_cand(a, 5, 0.2, rms=9.0), None, None, "low support", [])
     assert cam is None
-    # many tight consensus points are accepted whatever the line support, and beat a better lines-only solve
+    # many tight consensus points are accepted whatever the line support, and survive a marginally better lines-only solve
     cam, mode, _, notes = pp.pick_camera(_cand(a, 5, -1.0), None, None, "low support", [])
     assert cam is a and mode == "5 LLM pts + lines" and "accepted on 5 consistent points" in notes[0]
-    cam, mode, _, notes = pp.pick_camera(_cand(a, 4, -1.0), far, 0.9, None, [far])
+    cam, mode, _, notes = pp.pick_camera(_cand(a, 4, 0.6), far, 0.7, None, [far])
     assert cam is a and "lines-only search disagreed" in notes
+    # ... unless the lines-only answer is clearly better supported (consistent labels can all be wrong)
+    cam, mode, _, notes = pp.pick_camera(_cand(a, 4, 0.3), far, 0.95, None, [far])
+    assert cam is far and mode == "lines-only" and notes
     # exactly 3 points need a tighter fit; collinear points never count as strong
     assert pp.pick_camera(_cand(a, 3, -1.0, rms=3.0), None, None, "x", [])[0] is a
     assert pp.pick_camera(_cand(a, 3, -1.0, rms=5.0), None, None, "x", [])[0] is None
     assert pp.pick_camera(_cand(a, 5, -1.0, spread=0.2), None, None, "x", [])[0] is None
-    assert pp.pick_camera(_cand(a, 5, 0.3, spread=0.2), None, None, "x", [])[0] is a  # but lines can still confirm
+    assert pp.pick_camera(_cand(a, 5, 0.7, spread=0.2), None, None, "x", [])[0] is a  # but lines can still confirm
 
 
 def test_spread_collinear_vs_spread_out():
@@ -163,7 +166,7 @@ def test_proposal_record_h_roundtrip_and_failed_record():
     # a point projected through the stored H and distortion lands on the camera's projection
     back, _ = geo.pitch_to_image(H, np.array([[10.0, 5.0]]), rec["distortion"])
     assert np.allclose(back, cam.pitch_to_image(np.array([[10.0, 5.0]]))[0], atol=1e-6)
-    fo = pp.Outcome(None, "abstain", "low support", 0.05, None, 0, 2, None, 0.8)
+    fo = pp.Outcome(None, "abstain", "low support", 0.2, None, 0, 2, None, 0.8)
     fr = pp.failed_record(11, (1920, 1080), pitch, fo, llm[:2])
     assert fr["status"] == "failed" and fr["H"] is None and fr["failure"].startswith("PTZ rig abstained: low support")
     assert len(fr["correspondences"]) == 2 and "abstained" in fr["view"]["notes"]
