@@ -447,7 +447,11 @@ async def list_clips() -> dict:
     cdir = _clips_dir()
     if not cdir.exists():
         return {"clips": []}
-    paths = sorted(p for p in cdir.iterdir() if p.suffix.lower() in _VIDEO_SUFFIXES)
+    paths = sorted(
+        p
+        for p in cdir.iterdir()
+        if p.suffix.lower() in _VIDEO_SUFFIXES and not p.name.startswith(".")
+    )
     return {
         "clips": [
             {

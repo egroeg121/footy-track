@@ -243,7 +243,9 @@ async def list_clips() -> dict:
         return {"clips": []}
     video_suffixes = {".mp4", ".mov", ".avi", ".mkv"}
     paths = sorted(
-        p for p in _CLIPS_DIR.iterdir() if p.suffix.lower() in video_suffixes
+        p
+        for p in _CLIPS_DIR.iterdir()
+        if p.suffix.lower() in video_suffixes and not p.name.startswith(".")
     )
     # FOOTY_MAX_CLIPS keeps startup cheap on a small development box (--debug).
     max_clips = os.environ.get("FOOTY_MAX_CLIPS")
@@ -264,7 +266,9 @@ async def clips_status() -> dict:
         return {"clips": []}
     video_suffixes = {".mp4", ".mov", ".avi", ".mkv"}
     paths = sorted(
-        p for p in _CLIPS_DIR.iterdir() if p.suffix.lower() in video_suffixes
+        p
+        for p in _CLIPS_DIR.iterdir()
+        if p.suffix.lower() in video_suffixes and not p.name.startswith(".")
     )
     clips = [{"name": p.name, **_clip_completion(p.stem, p)} for p in paths]
     return {"clips": clips}

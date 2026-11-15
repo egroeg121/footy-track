@@ -43,7 +43,11 @@ def reencode(
     src: Path, dst: Path, gop: int, crf: int, preset: str, threads: int
 ) -> str:
     """Re-encode one clip into ``dst`` (atomically). Returns a status string."""
-    tmp = dst.with_name(f".{dst.stem}.part{dst.suffix}")
+    # Temp output lives in a sibling dir (same filesystem, so the swap stays
+    # atomic) rather than in OUT_DIR, where a server listing clips would see it.
+    tmp_dir = dst.parent.parent / f".{dst.parent.name}.tmp"
+    tmp_dir.mkdir(exist_ok=True)
+    tmp = tmp_dir / dst.name
     cmd = [
         "nice", "-n", "5", "ffmpeg", "-v", "error", "-y", "-i", str(src),
         "-map", "0:v:0", "-fps_mode", "passthrough",
