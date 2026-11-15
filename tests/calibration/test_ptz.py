@@ -9,6 +9,9 @@ from footy_track.calibration import ptz
 from footy_track.calibration.pitch_model import PitchModel
 
 C_TRUE = np.array([0.5, -63.0, 14.5])
+#: small search grid around the test camera (the production grid takes ~15 s per frame)
+GRID = ptz._grid(n_pan=16, n_tilt=7, n_f=6, pan_range=(np.deg2rad(70), np.deg2rad(100)),
+                 tilt_range=(np.deg2rad(8), np.deg2rad(20)), f_range=(2000.0, 4000.0))
 
 
 def _cam(pan_deg=88.0, tilt_deg=14.0, f=3500.0, roll_deg=0.4, C=C_TRUE, k1=0.015):
@@ -105,11 +108,11 @@ def test_search_lines_finds_known_camera_and_abstains_on_empty():
     lines, grass = ptz.render_synthetic(cam, width=960)
     ev = ptz.LineEvidence.from_masks(lines, grass)
     rig = ptz.Rig(C_TRUE + [0.0, 1.5, 0.0], cam.roll, cam.k1, (1.0, 3.0, 1.0))
-    est, hyps, info = ptz.search_lines(ev, rig, n_refine=6)
+    est, hyps, info = ptz.search_lines(ev, rig, grid=GRID, n_top=60, n_cells=6, n_refine=3)
     assert est is not None, info
     assert _pitch_err(est, cam).mean() < 1.0
     assert hyps[0].score < 0.5
     # no evidence at all: nothing to anchor on, must not return a confident camera
     empty = ptz.LineEvidence.from_masks(np.zeros_like(lines), grass)
-    est2, _, info2 = ptz.search_lines(empty, rig, n_refine=4)
+    est2, _, info2 = ptz.search_lines(empty, rig, grid=GRID, n_top=60, n_cells=4, n_refine=2)
     assert est2 is None and info2["reason"] in {"low support", "near-tie", "no hypothesis"}

@@ -754,12 +754,12 @@ class Svg:
                       f'<text x="{w / 2}" y="16" text-anchor="middle" font-size="13">{title}</text>',
                       f'<text x="{w / 2}" y="{h - 6}" text-anchor="middle">{xlabel}</text>',
                       f'<text transform="translate(12,{h / 2}) rotate(-90)" text-anchor="middle">{ylabel}</text>']
-        l, r, t, b = self.m
-        self.parts.append(f'<rect x="{l}" y="{t}" width="{w - l - r}" height="{h - t - b}" fill="none" stroke="#999"/>')
+        lm, r, t, b = self.m
+        self.parts.append(f'<rect x="{lm}" y="{t}" width="{w - lm - r}" height="{h - t - b}" fill="none" stroke="#999"/>')
         for v in np.linspace(*ylim, 5):
             y = self.py(v)
-            self.parts.append(f'<line x1="{l}" x2="{w - r}" y1="{y:.1f}" y2="{y:.1f}" stroke="#eee"/>'
-                              f'<text x="{l - 4}" y="{y + 4:.1f}" text-anchor="end">{v:.3g}</text>')
+            self.parts.append(f'<line x1="{lm}" x2="{w - r}" y1="{y:.1f}" y2="{y:.1f}" stroke="#eee"/>'
+                              f'<text x="{lm - 4}" y="{y + 4:.1f}" text-anchor="end">{v:.3g}</text>')
         ticks = [0.1, 0.3, 1, 3, 10, 30, 100] if logx else np.linspace(*xlim, 6)
         for v in ticks:
             if xlim[0] <= v <= xlim[1]:
@@ -769,10 +769,10 @@ class Svg:
         self.ly = t + 6
 
     def px(self, v):
-        l, r, _, _ = self.m
+        lm, r, _, _ = self.m
         a, b = self.xlim
         f = (np.log(v) - np.log(a)) / (np.log(b) - np.log(a)) if self.logx else (v - a) / (b - a)
-        return l + f * (self.w - l - r)
+        return lm + f * (self.w - lm - r)
 
     def py(self, v):
         _, _, t, b = self.m
