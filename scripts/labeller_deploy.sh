@@ -257,9 +257,23 @@ cmd_deploy() {
     run git -C "$SERVE_DIR" checkout --detach origin/main
   fi
   ((DRY)) || target="$(git -C "$SERVE_DIR" rev-parse HEAD)"
-  local rc=0
-  for s in "${svcs[@]}"; do cmd_restart "$s"; done
-  for s in "${svcs[@]}"; do wait_healthy "$s" "$target" || rc=1; done
+  if ((!DRY)); then
+    # bash has already parsed THIS copy of the script (service table included) from before the
+    # pull; re-exec the freshly checked-out copy so a changed service table takes effect now.
+    local -a fwd=()
+    ((FORCE)) && fwd+=(--force)
+    ((WARM)) || fwd+=(--no-warm)
+    exec bash "$SERVE_DIR/scripts/labeller_deploy.sh" "${fwd[@]+"${fwd[@]}"}" _restart_all "$target" "${svcs[@]}"
+  fi
+  restart_all "$target" "${svcs[@]}"
+}
+
+restart_all() {   # restart_all <sha> <svc...>: restart each, then wait until each serves <sha>
+  local target="$1"; shift
+  local s rc=0
+  for s in "$@"; do check_svc "$s"; done
+  for s in "$@"; do cmd_restart "$s"; done
+  for s in "$@"; do wait_healthy "$s" "$target" || rc=1; done
   return $rc
 }
 
@@ -289,7 +303,9 @@ main() {
     deploy) cmd_deploy "$@" ;;
     restart)
       [[ $# -ge 1 ]] || die "usage: restart <svc> [--force]"
-      check_svc "$1"; preflight_ports "$1"; cmd_restart "$1" ;;
+      check_svc "$1"; preflight_ports "$1"; cmd_restart "$1"
+      wait_healthy "$1" "$(git -C "$SERVE_DIR" rev-parse HEAD)" ;;
+    _restart_all) restart_all "$@" ;;   # internal: deploy re-execs the updated script into this
     logs) [[ $# -ge 1 ]] || die "usage: logs <svc> [tail args]"; cmd_logs "$@" ;;
     *) sed -n '2,13p' "$0"; exit 2 ;;
   esac
