@@ -1,0 +1,69 @@
+{
+ "C": [
+  0.10019769029554788,
+  -66.57647707436182,
+  15.743475255654927
+ ],
+ "roll": -0.002277934861682635,
+ "k1": 0.014741623916663997,
+ "sigma_C": [
+  1.0,
+  3.0,
+  1.0
+ ],
+ "pitch": [
+  105.0,
+  68.0
+ ],
+ "info": {
+  "n_frames": 66,
+  "n_points": 368,
+  "cost": 1733.3972155969213,
+  "ground": "emirates",
+  "excluded": [
+   {
+    "key": "arsenal_mancity_seg031:328",
+    "why": "too few consistent points",
+    "n": 3
+   }
+  ],
+  "dropped_points": [
+   {
+    "key": "arsenal_astonvilla_seg050:192",
+    "index": 1,
+    "res_px": 27.77678395477185
+   },
+   {
+    "key": "arsenal_astonvilla_seg110:495",
+    "index": 4,
+    "res_px": 20.500413757505125
+   },
+   {
+    "key": "arsenal_mancity_seg010:375",
+    "index": 4,
+    "res_px": 24.754818007979825
+   },
+   {
+    "key": "arsenal_mancity_seg010:575",
+    "index": 4,
+    "res_px": 22.72514487085891
+   },
+   {
+    "key": "arsenal_mancity_seg080:52",
+    "index": 2,
+    "res_px": 33.737993891572216
+   },
+   {
+    "key": "arsenal_mancity_seg080:87",
+    "index": 2,
+    "res_px": 41.419060303202265
+   },
+   {
+    "key": "arsenal_mancity_seg110:787",
+    "index": 1,
+    "res_px": 22.731771789113985
+   }
+  ],
+  "fit_date": "2026-11-15"
+ }
+}

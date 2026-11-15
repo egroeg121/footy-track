@@ -106,14 +106,17 @@ def match_of(clip: str) -> str | None:
         return "mancity"
     if clip.startswith("arsenal_astonvilla"):
         return "villa"
+    if clip.startswith(("arsenal_bournemouth", "bournemouth")):
+        return "bmth"
     return None
 
 
-def load_gt() -> list[GTFrame]:
+def load_gt(matches: tuple[str, ...] = ("mancity", "villa")) -> list[GTFrame]:
+    """GT frames with >= 4 correspondences of the given matches (V1: the Emirates ones; V2 passes ``("bmth",)``)."""
     out = []
     for f in sorted((GT_ROOT / "calibration_gt").glob("*.json")):
         m = match_of(f.stem)
-        if m is None:
+        if m is None or m not in matches:
             continue
         for k, r in sorted(json.loads(f.read_text())["frames"].items(), key=lambda kv: int(kv[0])):
             cs = r.get("correspondences") or []
