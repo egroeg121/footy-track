@@ -28,7 +28,7 @@ declare -A SVC_PORT=([calib]=8011 [norwich]=8012)
 declare -A SVC_ENV
 SVC_ENV[calib]="FOOTY_GT_MARKS_DIR=$DATA/ball_gt_marks
 FOOTY_CLIPS_DIR=$DATA/eval_clips_kf10
-FOOTY_CALIB_EXTRA_CLIPS_DIRS=$DATA/ballcheck_clips"
+FOOTY_CALIB_EXTRA_CLIPS_DIRS=$DATA/ballcheck_clips_kf10"
 SVC_ENV[norwich]="FOOTY_CLIPS_DIR=$DATA/arsenal_norwich/split_video_broadcast_frames_kf10
 FOOTY_BALL_CHECK_LIST=$DATA/norwich_label_queue/ball_check_list_v1.json
 FOOTY_BALL_CANDIDATES_DIR=$DATA/ball_candidates_norwich
