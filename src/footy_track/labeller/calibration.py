@@ -707,20 +707,21 @@ async def warp(body: dict):
 
 
 # ---------------------------------------------------------------------------
-# Auto circle / D points (centre circle x halfway line, penalty D x box front)
+# Auto points: two finders, "centre" (circle + halfway line + touchline end) and "d" (penalty area)
 # ---------------------------------------------------------------------------
 
-#: ``(dataset, video path, frame, distortion)`` -> ``{kind, confidence, correspondences}`` or
-#: ``{reason}``. Abstentions are cached too (the detector is deterministic). Small: one entry is
-#: a few hundred bytes, the cost being avoided is a video seek + a RANSAC ellipse fit.
+#: ``(dataset, video path, frame, distortion, kind, pitch dims)`` -> ``{kind, confidence,
+#: correspondences}`` or ``{reason}``. Abstentions are cached too (the finders are deterministic). Small:
+#: one entry is a few hundred bytes, the cost being avoided is a video seek + RANSAC / template search.
 _AUTO_CACHE_MAX = 64
 _AUTO_CACHE: collections.OrderedDict[tuple, dict] = collections.OrderedDict()
 #: One detection at a time: it is CPU work on the machine the operator is labelling on.
 _AUTO_LOCK = threading.Lock()
+AUTO_KINDS = ("centre", "d")
 
 
-def _auto_points(video: Path, idx: int, dist: dict | None, key: tuple) -> dict | None:
-    """Detector verdict for one frame (cached); ``None`` when the frame cannot be read."""
+def _auto_points(video: Path, idx: int, dist: dict | None, pitch: PitchModel, kind: str, key: tuple) -> dict | None:
+    """Finder verdict for one frame (cached); ``None`` when the frame cannot be read."""
     with _AUTO_LOCK:
         hit = _AUTO_CACHE.get(key)
         if hit is not None:
@@ -729,15 +730,14 @@ def _auto_points(video: Path, idx: int, dist: dict | None, key: tuple) -> dict |
         frame = _read_frame(video, idx)
         if frame is None:
             return None
-        from footy_track.calibration.centre_circle import detect_circle_points
+        from footy_track.calibration.pitch_finders import find_points
 
-        det = detect_circle_points(frame, dist)
+        det = find_points(kind, frame, dist, pitch)
         if det.result is None:
-            out = {"reason": det.reason or "no circle/D found"}
+            out = {"reason": det.reason or f"no {kind} structure found"}
         else:
             r = det.result
-            out = {"kind": r.kind, "confidence": float(r.confidence),
-                   "correspondences": r.correspondences()}
+            out = {"kind": kind, "confidence": float(r.confidence), "correspondences": r.correspondences()}
         _AUTO_CACHE[key] = out
         while len(_AUTO_CACHE) > _AUTO_CACHE_MAX:
             _AUTO_CACHE.popitem(last=False)
@@ -746,16 +746,26 @@ def _auto_points(video: Path, idx: int, dist: dict | None, key: tuple) -> dict |
 
 @router.post("/calibration/api/auto_points")
 async def auto_points(body: dict):
-    """Find the two halfway-line x centre-circle (or box-front x penalty-D) points of a frame.
+    """Place pitch points the machine can find in a frame.
 
-    Body ``{clip, frame_index, distortion?, pitch_dims?}`` (``distortion`` as in ``/fit``: the
-    returned image points are observed coordinates, consistent with it). Answers
-    ``{ok: true, kind, confidence, correspondences: [{image, pitch_id, pitch_xy}]}``, or
-    ``{ok: false, reason}`` with HTTP 200 when the detector abstains (not an error). Nothing is
-    stored; the page adds the pairs to its working set. Respects the request's dataset.
+    Body ``{clip, frame_index, kind, distortion?, pitch_dims?}`` with ``kind`` ``"centre"`` (centre circle x
+    halfway line, plus the touchline end(s) of the halfway line and derived circle points when the touchline
+    is visible) or ``"d"`` (penalty area: box, 6-yard box and D fitted as one template; falls back to the two
+    box-front x D points). ``distortion`` is as in ``/fit``: the returned image points are observed
+    coordinates, consistent with it. ``pitch_dims`` are the editor's pitch length x width: the touchline end
+    sits at ``(0, +-width/2)`` and the penalty-area corners are placed from the length.
+
+    Answers ``{ok: true, kind, confidence, correspondences: [{image, pitch_id, pitch_xy, confidence,
+    derived}]}`` (``pitch_id`` is ``null`` for the free derived circle points, ``derived`` marks points
+    synthesised from the fitted geometry rather than seen), or ``{ok: false, reason}`` with HTTP 200 when the
+    finder abstains (not an error). Nothing is stored; the page adds the pairs to its working set. Respects
+    the request's dataset.
     """
     try:
         clip, idx = str(body["clip"]), int(body["frame_index"])
+        kind = body.get("kind")
+        if kind not in AUTO_KINDS:
+            raise _BadRequest(f"kind must be one of {list(AUTO_KINDS)}")
         pitch = _pitch_from(body)
         dist = _distortion_from(body)
         if idx < 0:
@@ -767,15 +777,13 @@ async def auto_points(body: dict):
     video = _find_video(clip)
     if video is None:
         return _err(404, f"clip not found: {clip}")
-    key = (datasets.current_name(), str(video), idx, json.dumps(dist, sort_keys=True))
-    res = await asyncio.to_thread(_auto_points, video, idx, dist, key)
+    key = (datasets.current_name(), str(video), idx, json.dumps(dist, sort_keys=True), kind, (pitch.length, pitch.width))
+    res = await asyncio.to_thread(_auto_points, video, idx, dist, pitch, kind, key)
     if res is None:
         return _err(404, f"cannot read frame {idx}")
     if "reason" in res:
         return {"ok": False, "reason": res["reason"]}
-    kps = pitch.keypoints()
-    corr = [{**c, "pitch_xy": list(kps[c["pitch_id"]])} for c in res["correspondences"]]
-    return {"ok": True, "kind": res["kind"], "confidence": res["confidence"], "correspondences": corr}
+    return {"ok": True, "kind": res["kind"], "confidence": res["confidence"], "correspondences": res["correspondences"]}
 
 
 @router.get("/calibration/api/gt/{clip}")

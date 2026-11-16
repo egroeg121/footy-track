@@ -53,8 +53,15 @@ assert.equal(a.ptc[0].id, "CENTRE_CIRCLE_BOTTOM");
 assert.equal(autoPairsToAdd(corrs, a.ptc.concat([{id: "CENTRE_CIRCLE_TOP"}])).img.length, 0);
 assert.equal(autoPairsToAdd([corrs[0], corrs[0]], []).img.length, 1);  // duplicate id within the answer
 assert.equal(autoPairsToAdd(null, []).img.length, 0);
-assert.ok(autoStatusText("centre", 0.87, 2, 0, 2).includes("2 points placed — add 2 more (e.g. touchline / halfway line ends) to fit"));
-assert.ok(autoStatusText("pen_arc", 0.7, 2, 0, 5).includes("penalty D (confidence 70%)"));
+// free (id-less) derived points: added with null id, skipped when the same metres are already placed
+const free = [{image: [.2, .2], pitch_id: null, pitch_xy: [-6.47, 6.47]}, {image: [.3, .3], pitch_id: null, pitch_xy: [6.47, 6.47]}];
+let f = autoPairsToAdd(free, []);
+assert.equal(f.img.length, 2);
+assert.deepEqual(f.ptc[0], {id: null, x: -6.47, y: 6.47});
+assert.equal(autoPairsToAdd(free, [{id: null, x: -6.47, y: 6.47}]).img.length, 1);
+assert.equal(autoPairsToAdd(free.concat(free), []).img.length, 2);
+assert.ok(autoStatusText("centre", 0.87, 2, 0, 2, 0).includes("2 points placed — add 2 more (e.g. touchline / halfway line ends) to fit"));
+assert.ok(autoStatusText("d", 0.7, 9, 0, 9, 2).includes("penalty area (confidence 70%): added 9 points (2 derived)"));
 assert.ok(!autoStatusText("centre", 0.9, 2, 0, 4).includes("placed"));
 """
 
