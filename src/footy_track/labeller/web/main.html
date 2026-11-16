@@ -164,6 +164,7 @@ function renderTask(t) {
   meta.append(el("span", "chip", DEVICE_ICON[t.device] || DEVICE_ICON.either));
   let countChip = null;
   if (t.count_url) { countChip = el("span", "chip count", "… " + (t.count_label || "left")); meta.append(countChip); }
+  if (t.job) meta.append(el("span", "chip", t.kind + " job" + (t.dataset ? " · " + t.dataset : "")));
   if (t.owner) meta.append(el("span", "chip", t.owner));
   if (t.added) meta.append(el("span", "chip", "added " + t.added));
   a.append(meta);

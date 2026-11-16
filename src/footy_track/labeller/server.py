@@ -48,6 +48,7 @@ from footy_track.labeller.constants import (  # noqa: E402
     PROV_YOLO,
 )
 from footy_track.labeller.ingest import router as ingest_router  # noqa: E402
+from footy_track.labeller.jobs_routes import router as jobs_router  # noqa: E402
 from footy_track.labeller.review import router as review_router  # noqa: E402
 from footy_track.labeller.tasks import router as tasks_router  # noqa: E402
 from footy_track.labeller.run_stream import stream_frames  # noqa: E402
@@ -636,6 +637,7 @@ app.include_router(calibration_router)
 app.include_router(calibration_proposals_router)
 app.include_router(ingest_router)
 app.include_router(tasks_router)
+app.include_router(jobs_router)
 
 # Mount static assets (JS/CSS) if any beyond index.html.
 if _STATIC_DIR.exists():

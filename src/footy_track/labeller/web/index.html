@@ -665,7 +665,22 @@ async function loadClip(name, el) {
   $("loadBtn").click();
 }
 
-loadClipList();
+// Deep link from a labelling job (/labeller?dataset=..&clip=<stem>&frame=<n>): open that clip and
+// jump to that frame once it has loaded.
+async function openFromLink() {
+  const q = new URLSearchParams(location.search);
+  const want = q.get("clip");
+  if (!want || !clipsDir) return;
+  const list = [...document.querySelectorAll(".clip-item")];
+  const el = list.find(e => e.title === want || e.title.replace(/\.[^.]+$/, "") === want);
+  if (!el) { setStatus(`clip ${want} is not in this dataset`); return; }
+  await loadClip(el.title, el);
+  const frame = parseInt(q.get("frame"), 10);
+  if (Number.isNaN(frame)) return;
+  for (let i = 0; i < 120 && $("scrub").disabled; i++) await new Promise(r => setTimeout(r, 250));
+  if (!$("scrub").disabled) await gotoFrame(Math.min(frame, meta.total_frames - 1));
+}
+loadClipList().then(openFromLink);
 setInterval(loadClipList, 20000); // refresh clip ticks periodically
 
 $("addClipBtn").onclick = async () => {

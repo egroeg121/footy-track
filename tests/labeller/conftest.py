@@ -23,6 +23,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
+from footy_track.labeller import ball_check, datasets
 from footy_track.labeller import server as labeller_server
 from footy_track.labeller.server import Session
 from footy_track.schema import ObjectDetection
@@ -251,3 +252,47 @@ def load_fake_clip(
     FakeVideoCapture.total_frames = total_frames
     session.load(str(video))
     return video
+
+
+# ---------------------------------------------------------------------------
+# Two datasets behind a registry (multi-dataset + jobs tests)
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def two(tmp_path, monkeypatch):
+    """Registry with ``calib`` (default) and ``norwich``, each in its own tmp tree."""
+    roots = {}
+    entries = {}
+    for name in ("calib", "norwich"):
+        root = tmp_path / name
+        (root / "clips").mkdir(parents=True)
+        (root / "marks").mkdir()
+        roots[name] = root
+        entries[name] = {
+            "label": name.title(),
+            "clips_dir": str(root / "clips"),
+            "marks_dir": str(root / "marks"),
+            "candidates_dir": str(root / "cands"),
+        }
+    reg = tmp_path / "registry.json"
+    datasets.write_registry(reg, "calib", entries)
+    monkeypatch.setenv("FOOTY_LABELLER_DATASETS", str(reg))
+    datasets.invalidate()
+    # Fresh session state for the default and any lazily created ones.
+    monkeypatch.setattr(labeller_server, "SESSION", labeller_server.Session())
+    monkeypatch.setattr(labeller_server, "_SESSIONS", {})
+    monkeypatch.setattr(ball_check, "_BC_CROP_CACHE", type(ball_check._BC_CROP_CACHE)())
+    monkeypatch.setattr(ball_check, "_BC_CLIP_CACHE", type(ball_check._BC_CLIP_CACHE)())
+    monkeypatch.setattr(ball_check, "_CLIP_SIZES", {})
+    yield roots
+    # No debounced flush may fire after the registry is gone.
+    for sess in [labeller_server.SESSION, *labeller_server._SESSIONS.values()]:
+        if sess._flush_timer:
+            sess._flush_timer.cancel()
+    datasets.invalidate()
+
+
+@pytest.fixture
+def web(two) -> TestClient:
+    return TestClient(labeller_server.app)

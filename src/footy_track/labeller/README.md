@@ -1256,6 +1256,157 @@ A *dataset* is a clips dir plus where its labels live. One server serves all of 
   `innerHTML`). The home page has a dataset picker. Without `?dataset=` it does nothing.
   - UNTESTED-FRONTEND (server contract: `::test_pages_carry_the_dataset_shim`)
 
+## 19. Labelling jobs: ask main for labels (LAB-14xx)
+
+### Submitting labelling jobs from another branch
+
+Do not start your own labeller or hand-edit the task board. POST a **job** to main's labeller
+(`http://mac-mini-i7:8011`, override with `$FOOTY_LABELLER_URL`); it shows up on the home page
+task board with a deep link into the right page and dataset, and you fetch the labels later by
+job id or title.
+
+```bash
+# 1. submit (re-running with the same "key" returns the same job, never a duplicate)
+curl -s -X POST http://mac-mini-i7:8011/api/jobs -H 'Content-Type: application/json' -d '{
+  "title": "Norwich windows r1",
+  "kind": "ball_place", "dataset": "norwich",
+  "items": [{"clip": "arsenal_norwich_seg003", "frame_start": 10, "frame_end": 259, "step": 10}],
+  "why": "held-out ball placement", "device": "laptop", "priority": 2,
+  "requester": {"branch": "exp/my-branch", "commit": "abc1234", "host": "desktop"},
+  "key": "exp/my-branch/norwich-windows-r1"}'
+# -> {"id":"j-56098a576c24","url":"http://mac-mini-i7:8011/labeller?dataset=norwich&clip=...&frame=10","status":"open","created":true,...}
+
+# 2. progress (computed from the real label files) -- by id or exact title
+curl -s 'http://mac-mini-i7:8011/api/jobs/Norwich%20windows%20r1' | jq '.status, .progress'
+
+# 3. the labels, once done (or any time: partial results)
+curl -s 'http://mac-mini-i7:8011/api/jobs/j-56098a576c24/results' > labels.json
+```
+
+From Python / a Prefect flow, with no dependencies (`urllib` only; copy the single file, or fetch
+it from the server if your branch has not merged main: `curl -O http://mac-mini-i7:8011/api/jobs_client.py`):
+
+```python
+from jobs_client import submit, wait, results   # or footy_track.labeller.jobs_client
+job = submit("Norwich windows r1", "ball_place", items, dataset="norwich", key="exp/my-branch/norwich-windows-r1")
+wait(job["id"], poll=60)                  # blocks until the job is done or cancelled
+labels = results(job["id"])["labels"]
+```
+
+CLI (fills `requester.branch` / `commit` from git, `host` from the hostname):
+
+```bash
+python -m footy_track.scripts.labelling_jobs submit --title "Norwich windows r1" --kind ball_place \
+    --dataset norwich --items /mnt/storage/footy_data/norwich_label_queue/windows.csv --step 10 \
+    --key exp/my-branch/norwich-windows-r1
+python -m footy_track.scripts.labelling_jobs status  "Norwich windows r1"
+python -m footy_track.scripts.labelling_jobs wait    "Norwich windows r1" --poll 60
+python -m footy_track.scripts.labelling_jobs results "Norwich windows r1" -o labels.json
+```
+
+**Worked example: the Norwich windows.** `/mnt/storage/footy_data/norwich_label_queue/windows.csv`
+has header `clip,start_frame,end_frame,stratum,reason` and 24 windows of 250 frames
+(`start_frame..end_frame`, both ends inclusive). The CLI above turns each row into one window
+item (`start_frame`/`end_frame` are accepted aliases of `frame_start`/`frame_end`; `stratum` and
+`reason` ride along and come back in `items`). With `--step 10` that is 24 x 25 = 600 frames to
+label; the home page shows "600 left" and counts down as `ball_gt_marks_norwich/*.jsonl` fills in.
+The link opens the labeller on the next unlabelled frame (`/labeller?dataset=norwich&clip=..&frame=..`).
+
+**Request body** (`POST /api/jobs`, JSON; `title` is the only required field)
+
+| field | meaning |
+|---|---|
+| `title` | what the person sees on the board; also an id-like handle (`GET /api/jobs/<title>` when unique) |
+| `kind` | `ball_place`, `ball_check`, `calibration`, `frame_type`, `identity`, `other` (default `other`) |
+| `dataset` | registry name (section 18); default = the request's `?dataset=`, else the default dataset |
+| `items` | list of objects, per kind (below) |
+| `why`, `device`, `priority` | board text, `phone`/`laptop`/`either`, 1 = first |
+| `requester` | `{branch, commit, host, session}`, all optional strings |
+| `key` | idempotency key: the job id is derived from it; re-posting returns the existing job (HTTP 200, `created: false`) |
+| `url` | optional override of the deep link (a path on this server) |
+
+| kind | item | a unit counts as labelled when |
+|---|---|---|
+| `ball_place` | `{clip, frame_start, frame_end, step?}` (a window) or `{clip, frame}` | the clip's GT sidecar (`<marks>/<clip>.jsonl`, alias stems resolved) has a ball box tagged `labeller` or `human_checked`, or a `no_ball`/`not_broadcast` marker on that frame. Machine-only boxes are not labels (README section 1 tiers) |
+| `calibration` | same two shapes | `calibration_gt/<clip>.json` has the frame, or `frame_type/<clip>.json` flags it `not_broadcast` |
+| `frame_type` | same two shapes | `frame_type/<clip>.json` has an entry for the frame |
+| `ball_check` | `{clip, frame_index, box_index, source?}` (`sidecar` default, `cand`, `list`) | `ball_checks/<clip>.jsonl` has a live verdict (last line wins; a `null` verdict undoes) |
+| `identity` | `{clip}` | `identity_pairs.jsonl` / `identity_reviews.jsonl` of the dataset mention the clip |
+| `other` | anything | never: no computed progress, close it with `POST /api/jobs/{id}/done` |
+
+Windows expand to `range(frame_start, frame_end + 1, step)`; a job is limited to 200,000 units. A `ball_check` job's
+link opens Ball Check on that source (and clip, when all cards are in one clip); the page's queue is not
+restricted to the job's cards (progress and results are).
+
+**Endpoints**
+
+- `POST /api/jobs` -> `{id, url, status, created, title, dataset}` (201 new, 200 existing key, 422 on a bad body).
+- `GET /api/jobs?status=&title=&kind=&dataset=&requester.branch=` -> `{"jobs": [...]}` (`title` matches exactly or as a
+  case-insensitive substring; progress included for open/in_progress jobs, all with `progress=true`).
+- `GET /api/jobs/{id-or-title}` -> the job (`id, title, kind, dataset, status, items, requester, url, created, updated,
+  closed?, progress`). `progress` = `{supported, done, total, remaining, fraction, next}` where `next` is the first
+  unlabelled unit. A title must be unique among non-cancelled jobs (else 409 with `ids`).
+- `GET /api/jobs/{id-or-title}/results` -> the canonical results document below.
+- `POST /api/jobs/{id-or-title}/done | cancel | reopen`. Statuses: `open`, `in_progress`, `done`, `cancelled`.
+  The server moves `open -> in_progress` at the first label and `-> done` when progress reaches 100%
+  (never touches a cancelled or manually closed job).
+- Open jobs are merged into `GET /api/tasks` (`job: true`, `kind`, `dataset`, a `count_url` for the live "left" chip).
+- Storage: one JSON file per job in `$FOOTY_LABELLING_JOBS_DIR` (default `/mnt/storage/footy_data/labelling_jobs`,
+  created on the first submit), atomic writes. The label files are only read, never written.
+
+**Results schema `labelling-job-results/v1`** (`GET /api/jobs/{ref}/results`)
+
+```json
+{"schema": "labelling-job-results/v1", "generated_at": "2026-11-16T12:00:00Z",
+ "job": {"id": "...", "title": "...", "kind": "ball_place", "dataset": "norwich", "status": "in_progress",
+         "requester": {}, "url": "...", "n_items": 24},
+ "progress": {"supported": true, "done": 3, "total": 600, "remaining": 597, "fraction": 0.005, "next": {"clip": "...", "frame": 40}},
+ "items":  [{"index": 0, "item": {"clip": "...", "frame_start": 10, "frame_end": 259, "step": 10}, "total": 25, "done": 3}],
+ "stores": [{"clip": "...", "store": "ball_gt_marks_norwich/<stem>.jsonl", "store_mtime": "2026-11-16T11:58:00Z"}],
+ "labels": [ ...rows, only for labelled units inside the job's items... ]}
+```
+
+`labels` rows by kind (every row has `clip`; unlabelled units simply have no row):
+
+- `ball_place`: `{clip, frame_index, status: "ball"|"no_ball"|"not_broadcast", tags, label?, bbox?, center?, provenance?, tier?}`.
+  `bbox`/`center` are normalised (0..1) like the sidecar; `provenance` is `labeller` (a human placed it, tier 1) or
+  `machine+human_checked` (a machine box a human reviewed, tier 2). Sidecar rows carry **no per-row timestamp**: use
+  `stores[].store_mtime` (when the file last changed) as the upper bound.
+- `calibration`: `{clip, frame_index, status: "calibrated", correspondences, H, H_convention, pitch_dims, image_size,
+  method, inliers, mean_err_m, ts, origin}` or `{status: "not_broadcast", ts, run_id?, note?}`.
+- `frame_type`: `{clip, frame_index, status: <type, e.g. "not_broadcast">, ts, run_id?, note?}`.
+- `ball_check`: the verdict row: `{clip, frame_index, box_index, source, verdict, bbox, corrected_bbox, label, provenance, confidence, ts}`
+  (`ts` = epoch seconds).
+- `identity`: the raw pair/review records that mention the clip, plus `clip`.
+
+- **LAB-1400** (MUST) `POST /api/jobs` validates and stores a job (one atomic file) and returns `{id, url, status}`;
+  a repeated `key` returns the existing job, even under concurrent submits.
+  - Tests: `test_jobs.py::test_submit_returns_id_url_status_and_is_stored_one_file_per_job`,
+    `::test_same_key_returns_the_existing_job_not_a_duplicate`, `::test_same_key_concurrent_submits_create_one_job`,
+    `::test_validation_errors_are_422`
+- **LAB-1401** (MUST) `GET /api/jobs` filters by status, title (exact or substring), kind, dataset, `requester.branch`;
+  `GET /api/jobs/{id}` also resolves a unique exact title.
+  - Tests: `::test_get_by_id_and_by_exact_title_and_listing_filters`, `::test_title_with_a_slash_and_an_ambiguous_title`
+- **LAB-1402** (MUST) Progress is computed from the dataset's actual label store, per kind, never from a counter, and
+  ignores other datasets, other clips, other frames and machine-only boxes.
+  - Tests: `::test_progress_counts_only_human_labels_in_the_jobs_frames`, `::test_progress_follows_the_label_files_not_a_counter`,
+    `::test_labels_in_another_dataset_do_not_count`, `::test_ball_check_progress_and_results_from_the_verdict_log`,
+    `::test_calibration_and_frame_type_progress`, `::test_identity_progress`, `::test_window_step_and_start_end_aliases_and_extra_columns`
+- **LAB-1403** (MUST) `GET /api/jobs/{id}/results` returns exactly the job's labelled units in the schema above.
+  - Tests: `::test_results_contain_exactly_the_jobs_labels_with_provenance`
+- **LAB-1404** (MUST) Jobs close via `done`/`cancel`/`reopen`; reaching 100% auto-marks `done`.
+  - Tests: `::test_done_cancel_reopen_endpoints`, `::test_auto_done_at_full_progress_and_not_reopened_or_cancel_overridden`
+- **LAB-1405** (MUST) Open jobs appear on the task board with a deep link into the right page and dataset; manual
+  tasks keep working; a broken job file never breaks the board.
+  - Tests: `::test_open_jobs_appear_on_the_task_board_and_manual_tasks_still_work`,
+    `::test_board_link_points_at_the_next_unlabelled_frame`, `::test_a_broken_job_file_does_not_break_the_board_or_listing`
+- **LAB-1406** (SHOULD) `jobs_client.py` is stdlib-only and standalone (served at `/api/jobs_client.py`): `submit`, `get`,
+  `wait(poll)`, `results`; the CLI fills `requester` from git.
+  - Tests: `::test_client_submit_get_wait_results_roundtrip`, `::test_client_errors_are_typed`,
+    `::test_cli_submits_a_csv_of_windows_and_reports_status`, `::test_client_is_a_standalone_stdlib_only_file_and_served_by_the_server`
+- **LAB-1407** (SHOULD) The labeller page deep link `?clip=<stem>&frame=<n>` opens that clip at that frame.
+  - UNTESTED-FRONTEND
+
 ## 15. Traceability summary
 
 | Section | Requirements | Tested | UNTESTED | UNTESTED-FRONTEND |
@@ -1274,7 +1425,8 @@ A *dataset* is a clips dir plus where its labels live. One server serves all of 
 | 12. Confidence sampling (LAB-11xx) | 5 | 5 | 0 | 0 |
 | 16. Pitch calibration (LAB-12xx) | 22 | 17 | 0 | 5 |
 | 18. Datasets (LAB-13xx) | 6 | 5 | 0 | 1 |
-| **Total** | **129** | **93** | **8** | **28** |
+| 19. Labelling jobs (LAB-14xx) | 8 | 7 | 0 | 1 |
+| **Total** | **137** | **100** | **8** | **29** |
 
 Open items: 4 (OPEN-1..4) + 1 fixed on main (undo provenance, `95b60cc`).
 Test suite: 138 tests in `tests/labeller/` (all green), plus the
