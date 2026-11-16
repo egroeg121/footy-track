@@ -117,19 +117,47 @@ def test_pick_camera_rules():
     assert cam is None and "3/5 consistent" in why
     cam, _, why, _ = pp.pick_camera(_cand(a, 5, 0.2, rms=9.0), None, None, "low support", [])
     assert cam is None
-    # many tight consensus points are accepted whatever the line support, and survive a marginally better lines-only solve
-    cam, mode, _, notes = pp.pick_camera(_cand(a, 5, -1.0), None, None, "low support", [])
-    assert cam is a and mode == "5 LLM pts + lines" and "accepted on 5 consistent points" in notes[0]
+    # many tight consensus points survive a marginally better lines-only solve
+    cam, mode, _, notes = pp.pick_camera(_cand(a, 5, 0.6), None, None, "low support", [])
+    assert cam is a and mode == "5 LLM pts + lines"
     cam, mode, _, notes = pp.pick_camera(_cand(a, 4, 0.6), far, 0.7, None, [far])
     assert cam is a and "lines-only search disagreed" in notes
     # ... unless the lines-only answer is clearly better supported (consistent labels can all be wrong)
     cam, mode, _, notes = pp.pick_camera(_cand(a, 4, 0.3), far, 0.95, None, [far])
     assert cam is far and mode == "lines-only" and notes
     # exactly 3 points need a tighter fit; collinear points never count as strong
-    assert pp.pick_camera(_cand(a, 3, -1.0, rms=3.0), None, None, "x", [])[0] is a
+    assert pp.pick_camera(_cand(a, 3, 0.6, rms=3.0), None, None, "x", [])[0] is a
     assert pp.pick_camera(_cand(a, 3, -1.0, rms=5.0), None, None, "x", [])[0] is None
     assert pp.pick_camera(_cand(a, 5, -1.0, spread=0.2), None, None, "x", [])[0] is None
     assert pp.pick_camera(_cand(a, 5, 0.7, spread=0.2), None, None, "x", [])[0] is a  # but lines can still confirm
+
+
+def test_llm_points_need_min_support():
+    """Regression (ptz_bmth1 review): consistent, tight LLM points were accepted at line support 0.24 / 0.46 and all
+    three such proposals were rejected by the human; LLM-point fits face the same MIN_SUPPORT gate as lines-only."""
+    a, far = _cam(), _cam(pan_deg=60.0, f=6000.0)
+    for n_in, sup in [(5, 0.24), (4, 0.46), (6, -1.0), (3, 0.54), (5, pp.MIN_SUPPORT - 1e-6)]:
+        cam, mode, why, notes = pp.pick_camera(_cand(a, n_in, sup), None, None, "low support", [])
+        assert cam is None and mode == "abstain" and f"{n_in}/5 consistent" in why, (n_in, sup)
+        assert any("rejected: line support" in n for n in notes)
+        # a supported lines-only answer is used instead of the unsupported points
+        cam, mode, _, _ = pp.pick_camera(_cand(a, n_in, sup), far, 0.8, None, [far])
+        assert cam is far and mode == "lines-only"
+    # exactly at the threshold the points pass, as lines-only does
+    assert pp.pick_camera(_cand(a, 5, pp.MIN_SUPPORT), None, None, "x", [])[0] is a
+    # the same bar for every points route (3+ non-strong, 2 confirmed by a hypothesis)
+    assert pp.pick_camera(_cand(a, 3, 0.3, spread=0.2), None, None, "x", [])[0] is None
+    assert pp.pick_camera(_cand(a, 2, 0.3), None, None, "x", [a])[0] is None
+
+
+def test_solve_frame_no_llm_points_ignores_labels():
+    cam = _cam(pan_deg=110.0, f=2200.0)
+    ids, xy, uv = _labels(cam)
+    blank, grass = np.zeros((90, 160), bool), np.ones((90, 160), bool)  # no line evidence: nothing can be supported
+    for use in (True, False):
+        out = pp.solve_frame(blank, grass, RIG, uv[:6], xy[:6], use_llm_points=use)
+        assert out.cam is None and out.mode == "abstain"  # unsupported labels are not enough either way
+        assert out.n_labels == (6 if use else 0)
 
 
 def test_spread_collinear_vs_spread_out():

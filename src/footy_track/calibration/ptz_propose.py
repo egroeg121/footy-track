@@ -280,9 +280,11 @@ def pick_camera(pts: PointsCand | None, lines_cam: ptz.Camera | None, lines_supp
                 agree_m: float = AGREE_M) -> tuple[ptz.Camera | None, str, str | None, list[str]]:
     """Decision between the points candidate and the lines-only answer -> (camera, mode, abstain reason, notes).
 
+    * every points answer needs line support >= ``min_support`` (the same gate as lines-only); below it the points
+      are dropped (a lines-only answer or abstention follows), however many labels agree.
     * >= ``STRONG_N`` consensus points within ``STRONG_RMS`` px (3 points: ``STRONG_N3_RMS``), not collinear
-      (``MIN_SPREAD_M``): points (+ lines), whatever the line support (the Vitality line masks are weak); a
-      lines-only solve overrides them only when it is better supported by more than ``CONFIRM_DELTA``.
+      (``MIN_SPREAD_M``) and supported: points (+ lines); a lines-only solve overrides them only when it is better
+      supported by more than ``CONFIRM_DELTA``.
     * >= 3 consensus points and the refined camera has line support >= ``min_support``: points (+ lines).
     * exactly 2 points: only when some top lines hypothesis (the lines search's distinct hypotheses, answered or
       not) is the same camera (within ``agree_m``) or the support is high (>= ``min_support`` + ``CONFIRM_DELTA``); two
@@ -295,10 +297,12 @@ def pick_camera(pts: PointsCand | None, lines_cam: ptz.Camera | None, lines_supp
               and ((pts.n_inliers >= STRONG_N and pts.rms_px <= STRONG_RMS)
                    or (pts.n_inliers == 3 and pts.rms_px <= STRONG_N3_RMS))
               and ptz.F_RANGE[0] * 1.5 <= pts.cam.f <= ptz.F_RANGE[1])
-    if strong:
+    if strong and pts.support < min_support:
+        # consistent labels are not enough: LLM-point fits face the same line-support gate as lines-only (human review
+        # of ptz_bmth1 rejected all three ungated "N consistent points" proposals; support was 0.24-0.46)
+        notes.append(f"{pts.n_inliers} consistent LLM pts rejected: line support {pts.support:.2f} < {min_support:.2f}")
+    elif strong:
         pts_ok = True
-        if pts.support < min_support:
-            notes.append(f"line support {pts.support:.2f} low, accepted on {pts.n_inliers} consistent points")
     elif pts is not None and pts.support >= min_support:
         if pts.n_inliers >= 3:
             pts_ok = True
@@ -341,8 +345,8 @@ def _inlier_rms(cam: ptz.Camera, img: np.ndarray, pitch_m: np.ndarray, inl: np.n
 
 def solve_frame(lines_mask: np.ndarray, grass: np.ndarray, rig: ptz.Rig, llm_img: np.ndarray | None = None,
                 llm_pitch: np.ndarray | None = None, *, p_main: float | None = None, pitch: PitchModel | None = None,
-                margin: float = MARGIN, min_support: float = MIN_SUPPORT) -> Outcome:
-    """Solve one frame from its white-line / grass masks and (optionally) LLM point labels (image: observed
+                margin: float = MARGIN, min_support: float = MIN_SUPPORT, use_llm_points: bool = True) -> Outcome:
+    """Solve one frame from its white-line / grass masks and (optionally) LLM point labels, ignored when ``use_llm_points`` is False (image: observed
     normalised coords, pitch: metres): robust point solve + line refinement, the lines-only search as a second
     opinion / fallback, then :func:`pick_camera`; abstains on low support, near-ties and non-main cameras."""
     t0 = time.time()
@@ -352,6 +356,8 @@ def solve_frame(lines_mask: np.ndarray, grass: np.ndarray, rig: ptz.Rig, llm_img
     hyp_cams = [h.cam for h in hyps]
     pts = None
     n_lab = 0 if llm_img is None else len(llm_img)
+    if not use_llm_points:
+        n_lab = 0
     if n_lab >= 2:
         r = ransac_points(llm_img, llm_pitch, rig)
         if r is not None:

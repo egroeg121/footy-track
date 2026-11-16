@@ -330,7 +330,8 @@ def cmd_propose(args):
                 np.savez_compressed(cp, lines=lines, grass=grass)
         llm_xy = np.array([c["pitch_xy"] for c in llm], float).reshape(-1, 2)
         llm_uv = np.array([c["image"] for c in llm], float).reshape(-1, 2)
-        out = pp.solve_frame(lines, grass, rig, llm_uv, llm_xy, p_main=pp.main_camera_p(bgr), pitch=pitch)
+        out = pp.solve_frame(lines, grass, rig, llm_uv, llm_xy, p_main=pp.main_camera_p(bgr), pitch=pitch,
+                             use_llm_points=not args.no_llm_points)
         extra = {"source_frame": tag}
         if out.cam is not None:
             rec = pp.proposal_record(idx, (w, h), pitch, out, llm, extra)
@@ -414,6 +415,9 @@ def main(argv=None):
     pr.add_argument("--clips-dirs")
     pr.add_argument("--render-dir")
     pr.add_argument("--cache", help="directory to cache the white-line / grass masks")
+    pr.add_argument("--no-llm-points", action="store_true",
+                    help="ignore the LLM-labelled points: lines-only proposals (default: points allowed, gated on "
+                         "the same line support as lines-only)")
     pr.add_argument("--dry-run", action="store_true")
     pb = sub.choices["publish"]
     for a in ("--rig", "--run-id", "--render-dir"):
