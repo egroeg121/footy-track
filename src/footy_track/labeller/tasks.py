@@ -18,12 +18,12 @@ import time
 from datetime import UTC, datetime
 from pathlib import Path
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 
-from footy_track.labeller import jobs
+from footy_track.labeller import jobs, task_done
 
 DEFAULT_TASKS_FILE = "/mnt/storage/footy_data/labelling_tasks.json"
-CALIB = "http://mac-mini-i7:8011"
+CALIB = task_done.CALIB
 
 #: Written only when the tasks file does not exist yet.
 SEED_TASKS: list[dict] = [
@@ -188,12 +188,14 @@ router = APIRouter()
 
 
 @router.get("/api/tasks")
-async def api_tasks():
+async def api_tasks(request: Request):
     tasks, error = load_tasks()
     # Open labelling jobs (POST /api/jobs) appear automatically, beside the hand-added tasks.
     job_tasks = await asyncio.to_thread(jobs.board_tasks)
     if job_tasks:
         tasks = sorted(tasks + job_tasks, key=_task_sort_key)
+    # done_when (explicit or inferred, see task_done.py): done tasks sort last, old ones drop off.
+    tasks = await task_done.annotate(tasks, tasks_path(), str(request.base_url))
     out = {"tasks": tasks, "file": str(tasks_path()), "n_jobs": len(job_tasks)}
     if error:
         out["error"] = error

@@ -1164,13 +1164,47 @@ python -m footy_track.scripts.labelling_tasks add "Recheck X" --url http://mac-m
     --why "one line" --device phone --priority 1 \
     --count-url 'http://mac-mini-i7:8011/ball_check/queue?source=list&limit=1' --count-label left
 python -m footy_track.scripts.labelling_tasks list
-python -m footy_track.scripts.labelling_tasks done <id>      # remove it when finished
+python -m footy_track.scripts.labelling_tasks done <id>      # remove it by hand
 ```
 
 `--device` is `phone|laptop|either`; lower `--priority` sorts first. A count URL
 returns JSON with `total`, `count` or `remaining` (optional `count_path` in the file
 for a dotted path). A malformed file never breaks the page: `/api/tasks` answers 200
 with `error` set and the CLI refuses to overwrite it.
+
+**Tasks complete themselves.** A task may carry `done_when`; `/api/tasks` evaluates it
+server-side (`labeller/task_done.py`, results cached 5 s) and returns `done: bool` plus
+`progress` where it has one. A task with no `done_when` (and nothing inferable, below)
+behaves as before: it stays until `done <id>`. Shapes:
+
+| `done_when` | done when | `progress` |
+|---|---|---|
+| `{"gt": {"clip", "frame"[, "since"]}}` | calibration GT exists for that frame | - |
+| `{"proposal": {"clip", "run", "frame"}, "status_in": [...]}` | that proposal's status is in `status_in` (default `accepted`, `edited`) | - |
+| `{"frames": [[clip, frame], ...][, "since"]}` | every frame has GT, a `not_broadcast` mark or a `too_few_points` mark (that mark is not written on main yet; it counts the day it lands) | `{done: k, total: n}` |
+| `{"count_zero": true}` | the task's `count_url` returns 0 (same `total`/`count`/`remaining`/`count_path` parsing as the page chip; own-host URLs are fetched through the request's base URL, 2 s timeout; an unreachable URL is never "done") | `{remaining: n}` |
+
+Clips go through `canonical_clip_id`, the same as the calibration routes, so
+`arsenal_bournemouth_1st_seg030` and `bournemouth_broadcast_seg030` are one clip. `since` is
+`"added"` or `YYYY-MM-DD` and ignores GT whose `ts` is earlier (for "recheck" tasks whose frame
+already had GT). Any shape may add `"dataset": NAME` (default: the default dataset, which a
+link without `?dataset=` opens). A malformed spec or a failing evaluation means "not done",
+never an error.
+
+*Inference at read time* (the JSON is never rewritten; the effective spec is returned as
+`done_when` with `done_when_inferred: true`), when a task has no explicit `done_when`:
+a `count_url` -> `{"count_zero": true}`; otherwise a `/calibration?clip=X&frame=N...` url
+-> `{"gt": {clip: X, frame: N, since: "added"}}` (and `dataset` from the url). Job tasks
+(`job: true`) already leave the board when their job closes and are not inferred.
+
+*Board behaviour.* Active tasks first (priority order), then done ones. The first time a
+task is seen done its timestamp (`done_at`) is stored in the sidecar
+`<tasks file>.done.json`; done tasks older than 2 days are left out of the response (never
+deleted from the tasks file). If the condition turns false again (GT deleted) the task is
+active again. The home page shows done tasks greyed with a tick in a collapsed "Done (n)"
+section at the bottom, and `k/n` on tasks with progress. CLI: `add ... --done-when-gt
+CLIP:FRAME`, `--done-when-frames CLIP:FRAME,CLIP:FRAME`, `--done-when-count-zero` (needs
+`--count-url`); `done <id>` still removes a task manually.
 
 **Deploying.** Live servers run **only** from `/home/george/footy-track-main`, on
 main. After a merge to main:

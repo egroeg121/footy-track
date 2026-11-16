@@ -31,6 +31,11 @@
   .chip { border:1px solid var(--border); border-radius:999px; padding:1px 8px; white-space:nowrap; }
   .chip.count { color:var(--ink); border-color:var(--accent); }
   .empty { color:var(--muted); padding:12px 0; }
+  .task.done { opacity:.55; border-left-color:var(--border); }
+  .task.done .title { text-decoration:line-through; }
+  .task .tick { color:var(--green, #3fb950); font-weight:700; }
+  details.donebox { margin-top:14px; }
+  details.donebox > summary { cursor:pointer; color:var(--muted); font-size:13px; margin-bottom:8px; }
 
   /* tool cards */
   .cards { display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:10px; }
@@ -154,16 +159,19 @@ function pickCount(j, path) {
 }
 
 function renderTask(t) {
-  const a = el("a", "task p" + (t.priority || 2));
+  const a = el("a", "task p" + (t.priority || 2) + (t.done ? " done" : ""));
   a.href = t.url || "#";
   const top = el("div", "top");
-  top.append(el("div", "title", t.title));
+  top.append(el("div", "title", (t.done ? "\u2713 " : "") + t.title));
   a.append(top);
   if (t.why) a.append(el("div", "why", t.why));
   const meta = el("div", "meta");
   meta.append(el("span", "chip", DEVICE_ICON[t.device] || DEVICE_ICON.either));
   let countChip = null;
-  if (t.count_url) { countChip = el("span", "chip count", "… " + (t.count_label || "left")); meta.append(countChip); }
+  if (t.done) meta.append(el("span", "chip tick", "\u2713 done" + (t.done_at ? " " + t.done_at.slice(0, 10) : "")));
+  else if (t.progress && t.progress.total != null)
+    meta.append(el("span", "chip count", t.progress.done + "/" + t.progress.total + " done"));
+  if (t.count_url && !t.done) { countChip = el("span", "chip count", "… " + (t.count_label || "left")); meta.append(countChip); }
   if (t.job) meta.append(el("span", "chip", t.kind + " job" + (t.dataset ? " · " + t.dataset : "")));
   if (t.owner) meta.append(el("span", "chip", t.owner));
   if (t.added) meta.append(el("span", "chip", "added " + t.added));
@@ -183,8 +191,15 @@ async function loadTasks() {
     const j = await getJSON("/api/tasks");
     box.replaceChildren();
     if (j.error) box.append(el("div", "err", "Tasks file problem: " + j.error));
-    if (!j.tasks.length && !j.error) box.append(el("div", "empty", "Nothing to do right now."));
-    for (const t of j.tasks) box.append(renderTask(t));
+    const active = j.tasks.filter((t) => !t.done), done = j.tasks.filter((t) => t.done);
+    if (!active.length && !j.error) box.append(el("div", "empty", "Nothing to do right now."));
+    for (const t of active) box.append(renderTask(t));
+    if (done.length) {  // finished by themselves (done_when); kept for 2 days, collapsed
+      const d = el("details", "donebox");
+      d.append(el("summary", null, "Done (" + done.length + ")"));
+      for (const t of done) d.append(renderTask(t));
+      box.append(d);
+    }
   } catch (e) {
     box.replaceChildren(el("div", "err", "Could not load tasks: " + e.message));
   }
