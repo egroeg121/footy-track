@@ -2,8 +2,12 @@
 
     python -m footy_track.scripts.labelling_tasks list
     python -m footy_track.scripts.labelling_tasks add "Title" --url URL --why "one line" \
-        --device phone --priority 2 [--count-url URL --count-label "left"] [--owner NAME]
+        --device phone --priority 2 [--count-url URL --count-label "left"] [--owner NAME] \
+        [--done-when-gt CLIP:FRAME | --done-when-frames CLIP:FRAME,CLIP:FRAME,... | --done-when-count-zero]
     python -m footy_track.scripts.labelling_tasks done <id>
+
+A task with a done-when completes itself (greyed into the "Done" section of the board);
+``done <id>`` still removes one by hand. See labeller/task_done.py and README section 17.
 
 The file is ``$FOOTY_TASKS_FILE`` (default /mnt/storage/footy_data/labelling_tasks.json).
 Writes are atomic; ids are stable. The servers re-read the file per request.
@@ -22,6 +26,13 @@ def _load_or_die() -> list[dict]:
     if err:
         sys.exit(f"refusing to edit a malformed tasks file: {err}")
     return tasks
+
+
+def _clip_frame(spec: str) -> tuple[str, int]:
+    clip, sep, frame = spec.strip().rpartition(":")
+    if not sep or not clip or not frame.isdigit():
+        sys.exit(f"expected CLIP:FRAME, got {spec!r}")
+    return clip, int(frame)
 
 
 def cmd_list(args: argparse.Namespace) -> int:
@@ -49,6 +60,15 @@ def cmd_add(args: argparse.Namespace) -> int:
     if args.count_url:
         task["count_url"] = args.count_url
         task["count_label"] = args.count_label or "left"
+    if args.done_when_gt:
+        clip, frame = _clip_frame(args.done_when_gt)
+        task["done_when"] = {"gt": {"clip": clip, "frame": frame, "since": "added"}}
+    elif args.done_when_frames:
+        task["done_when"] = {"frames": [list(_clip_frame(x)) for x in args.done_when_frames.split(",") if x.strip()]}
+    elif args.done_when_count_zero:
+        if not args.count_url:
+            sys.exit("--done-when-count-zero needs --count-url")
+        task["done_when"] = {"count_zero": True}
     if args.owner:
         task["owner"] = args.owner
     tasks.append(task)
@@ -81,6 +101,11 @@ def main(argv: list[str] | None = None) -> int:
     a.add_argument("--count-url", help="GET returning JSON with total/count/remaining")
     a.add_argument("--count-label")
     a.add_argument("--owner")
+    w = a.add_mutually_exclusive_group()
+    w.add_argument("--done-when-gt", metavar="CLIP:FRAME", help="done when calibration GT exists for that frame")
+    w.add_argument("--done-when-frames", metavar="CLIP:FRAME,...",
+                   help="done when every frame has GT or a not_broadcast / too_few_points mark")
+    w.add_argument("--done-when-count-zero", action="store_true", help="done when --count-url returns 0")
     a.set_defaults(fn=cmd_add)
     d = sub.add_parser("done")
     d.add_argument("id")
