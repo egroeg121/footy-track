@@ -1,0 +1,2771 @@
+{
+ "d": 2,
+ "n_pairs": 30,
+ "summary": {
+  "orb@480|mask": {
+   "n": 30,
+   "fail_rate": 0.0,
+   "silent_worse_than_identity": 0.5,
+   "ms_median": 285.2566935000027,
+   "ms_mean": 278.53615530000314,
+   "pitch_resid_median": 1.1138019561767578,
+   "pitch_resid_p90": 2.450619912147523,
+   "identity_resid_median_same_pairs": 1.069640874862671,
+   "inliers_median": 1178.0,
+   "reasons": {}
+  },
+  "orb@480|nomask": {
+   "n": 30,
+   "fail_rate": 0.0,
+   "silent_worse_than_identity": 0.4666666666666667,
+   "ms_median": 307.52177950000004,
+   "ms_mean": 295.05948286666666,
+   "pitch_resid_median": 1.294188678264618,
+   "pitch_resid_p90": 1.9350977659225463,
+   "identity_resid_median_same_pairs": 1.069640874862671,
+   "inliers_median": 1196.0,
+   "reasons": {}
+  },
+  "orb@960|mask": {
+   "n": 30,
+   "fail_rate": 0.0,
+   "silent_worse_than_identity": 0.4666666666666667,
+   "ms_median": 467.4987594999998,
+   "ms_mean": 465.19349139999906,
+   "pitch_resid_median": 1.3943055868148804,
+   "pitch_resid_p90": 2.6476763963699343,
+   "identity_resid_median_same_pairs": 1.069640874862671,
+   "inliers_median": 1175.5,
+   "reasons": {}
+  },
+  "orb@960|nomask": {
+   "n": 30,
+   "fail_rate": 0.0,
+   "silent_worse_than_identity": 0.5,
+   "ms_median": 449.1362185000014,
+   "ms_mean": 449.37662103333423,
+   "pitch_resid_median": 1.272627830505371,
+   "pitch_resid_p90": 2.2793512821197526,
+   "identity_resid_median_same_pairs": 1.069640874862671,
+   "inliers_median": 1077.5,
+   "reasons": {}
+  },
+  "akaze@480|mask": {
+   "n": 30,
+   "fail_rate": 0.06666666666666665,
+   "silent_worse_than_identity": 0.39285714285714285,
+   "ms_median": 167.98171900000725,
+   "ms_mean": 179.53767826666862,
+   "pitch_resid_median": 1.0987571477890015,
+   "pitch_resid_p90": 2.560533452033997,
+   "identity_resid_median_same_pairs": 1.1857939958572388,
+   "inliers_median": 108.5,
+   "reasons": {
+    "inliers 8/8": 1,
+    "too few keypoints": 1
+   }
+  },
+  "akaze@480|nomask": {
+   "n": 30,
+   "fail_rate": 0.0,
+   "silent_worse_than_identity": 0.3333333333333333,
+   "ms_median": 153.75365549999387,
+   "ms_mean": 160.362157066669,
+   "pitch_resid_median": 0.9050986170768738,
+   "pitch_resid_p90": 1.4900331616401672,
+   "identity_resid_median_same_pairs": 1.069640874862671,
+   "inliers_median": 135.0,
+   "reasons": {}
+  },
+  "ecc@480|mask": {
+   "n": 30,
+   "fail_rate": 0.0,
+   "silent_worse_than_identity": 0.13333333333333333,
+   "ms_median": 193.4018269999882,
+   "ms_mean": 267.14967596667196,
+   "pitch_resid_median": 0.6233148574829102,
+   "pitch_resid_p90": 1.631801509857179,
+   "identity_resid_median_same_pairs": 1.069640874862671,
+   "inliers_median": 0.0,
+   "reasons": {}
+  },
+  "ecc@480|nomask": {
+   "n": 30,
+   "fail_rate": 0.0,
+   "silent_worse_than_identity": 0.06666666666666667,
+   "ms_median": 194.93980850000804,
+   "ms_mean": 285.6425886333331,
+   "pitch_resid_median": 0.6292063593864441,
+   "pitch_resid_p90": 1.106238639354706,
+   "identity_resid_median_same_pairs": 1.069640874862671,
+   "inliers_median": 0.0,
+   "reasons": {}
+  },
+  "orb+ecc@480|mask": {
+   "n": 30,
+   "fail_rate": 0.0,
+   "silent_worse_than_identity": 0.13333333333333333,
+   "ms_median": 455.12009050000654,
+   "ms_mean": 512.897015533335,
+   "pitch_resid_median": 0.6293554306030273,
+   "pitch_resid_p90": 1.148832118511201,
+   "identity_resid_median_same_pairs": 1.069640874862671,
+   "inliers_median": 1178.0,
+   "reasons": {}
+  },
+  "orb+ecc@480|nomask": {
+   "n": 30,
+   "fail_rate": 0.0,
+   "silent_worse_than_identity": 0.06666666666666667,
+   "ms_median": 466.8354205000185,
+   "ms_mean": 527.0830988666705,
+   "pitch_resid_median": 0.626572847366333,
+   "pitch_resid_p90": 1.0370999217033388,
+   "identity_resid_median_same_pairs": 1.069640874862671,
+   "inliers_median": 1196.0,
+   "reasons": {}
+  }
+ },
+ "rows": [
+  {
+   "clip": "arsenal_bournemouth_1st_seg070",
+   "frame": 296,
+   "n_boxes": 16,
+   "hist_adjacent_max": 0.03640653015999558,
+   "hist_t_td": 0.04848777290472384,
+   "identity_pitch": 0.8179505467414856,
+   "orb@480|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 1594,
+    "ms": 305.1676680000011,
+    "pitch": 0.519285261631012,
+    "resid": 2.2245757579803467
+   },
+   "orb@480|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 1630,
+    "ms": 276.17149299999966,
+    "pitch": 0.7772217988967896,
+    "resid": 2.9892284870147705
+   },
+   "orb@960|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 1943,
+    "ms": 429.56489700000054,
+    "pitch": 0.6131494045257568,
+    "resid": 2.470524311065674
+   },
+   "orb@960|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 1695,
+    "ms": 416.0219620000021,
+    "pitch": 0.5803903937339783,
+    "resid": 3.1794910430908203
+   },
+   "akaze@480|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 79,
+    "ms": 158.6200290000015,
+    "pitch": 1.226503849029541,
+    "resid": 2.996497392654419
+   },
+   "akaze@480|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 117,
+    "ms": 138.21402099999958,
+    "pitch": 0.9078479409217834,
+    "resid": 3.3880934715270996
+   },
+   "ecc@480|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 0,
+    "ms": 182.4384650000006,
+    "pitch": 0.488383024930954,
+    "resid": 2.1305599212646484
+   },
+   "ecc@480|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 0,
+    "ms": 125.16653799999844,
+    "pitch": 0.6653082370758057,
+    "resid": 2.8299999237060547
+   },
+   "orb+ecc@480|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 1594,
+    "ms": 350.034076,
+    "pitch": 0.4897575378417969,
+    "resid": 2.136796474456787
+   },
+   "orb+ecc@480|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 1630,
+    "ms": 389.4614959999991,
+    "pitch": 0.6660798788070679,
+    "resid": 2.829390525817871
+   }
+  },
+  {
+   "clip": "arsenal_astonvilla_seg080",
+   "frame": 467,
+   "n_boxes": 16,
+   "hist_adjacent_max": 0.05377878173564525,
+   "hist_t_td": 0.04719892862032585,
+   "identity_pitch": 1.3466148376464844,
+   "orb@480|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 599,
+    "ms": 298.2375839999989,
+    "pitch": 1.0654352903366089,
+    "resid": 5.539701461791992
+   },
+   "orb@480|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 641,
+    "ms": 301.95687100000157,
+    "pitch": 1.4744337797164917,
+    "resid": 6.076557159423828
+   },
+   "orb@960|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 1008,
+    "ms": 474.5786599999988,
+    "pitch": 1.4894243478775024,
+    "resid": 7.683055877685547
+   },
+   "orb@960|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 1018,
+    "ms": 472.38989799999945,
+    "pitch": 1.3892172574996948,
+    "resid": 7.541601181030273
+   },
+   "akaze@480|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 63,
+    "ms": 170.23385199999908,
+    "pitch": 1.2607609033584595,
+    "resid": 5.60737943649292
+   },
+   "akaze@480|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 70,
+    "ms": 143.7380740000016,
+    "pitch": 1.5450530052185059,
+    "resid": 7.320818901062012
+   },
+   "ecc@480|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 0,
+    "ms": 189.22972499999702,
+    "pitch": 0.7823561429977417,
+    "resid": 5.029047966003418
+   },
+   "ecc@480|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 0,
+    "ms": 193.91843200000025,
+    "pitch": 0.7214310169219971,
+    "resid": 5.738590240478516
+   },
+   "orb+ecc@480|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 599,
+    "ms": 412.8504799999995,
+    "pitch": 0.7808486223220825,
+    "resid": 5.026931285858154
+   },
+   "orb+ecc@480|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 641,
+    "ms": 525.1726509999983,
+    "pitch": 0.7192984819412231,
+    "resid": 5.730887413024902
+   }
+  },
+  {
+   "clip": "arsenal_astonvilla_seg080",
+   "frame": 502,
+   "n_boxes": 16,
+   "hist_adjacent_max": 0.02588154434305005,
+   "hist_t_td": 0.029660079333013685,
+   "identity_pitch": 0.8666362762451172,
+   "orb@480|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 1749,
+    "ms": 320.0101019999977,
+    "pitch": 0.6952505111694336,
+    "resid": 2.6411139965057373
+   },
+   "orb@480|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 1593,
+    "ms": 311.4787769999978,
+    "pitch": 0.7210409641265869,
+    "resid": 3.2402005195617676
+   },
+   "orb@960|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 1851,
+    "ms": 512.6261099999994,
+    "pitch": 0.6450358033180237,
+    "resid": 2.5911386013031006
+   },
+   "orb@960|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 1519,
+    "ms": 454.87132099999883,
+    "pitch": 0.708223819732666,
+    "resid": 4.417257785797119
+   },
+   "akaze@480|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 135,
+    "ms": 162.94933300000025,
+    "pitch": 0.9337540864944458,
+    "resid": 3.0940780639648438
+   },
+   "akaze@480|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 135,
+    "ms": 153.06184399999978,
+    "pitch": 0.7070006728172302,
+    "resid": 3.133063316345215
+   },
+   "ecc@480|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 0,
+    "ms": 124.30019399999992,
+    "pitch": 0.6110084652900696,
+    "resid": 2.4211225509643555
+   },
+   "ecc@480|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 0,
+    "ms": 118.82224500000405,
+    "pitch": 0.5992973446846008,
+    "resid": 3.0671606063842773
+   },
+   "orb+ecc@480|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 1749,
+    "ms": 393.27760300000136,
+    "pitch": 0.6116460561752319,
+    "resid": 2.421278476715088
+   },
+   "orb+ecc@480|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 1593,
+    "ms": 424.82990200000614,
+    "pitch": 0.5992322564125061,
+    "resid": 3.0671913623809814
+   }
+  },
+  {
+   "clip": "arsenal_mancity_seg064",
+   "frame": 262,
+   "n_boxes": 17,
+   "hist_adjacent_max": 0.03513713647384656,
+   "hist_t_td": 0.044153172980623545,
+   "identity_pitch": 4.486715316772461,
+   "orb@480|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 946,
+    "ms": 272.14593000000065,
+    "pitch": 1.590998888015747,
+    "resid": 4.975501537322998
+   },
+   "orb@480|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 889,
+    "ms": 320.29863800000413,
+    "pitch": 3.3766114711761475,
+    "resid": 6.973734378814697
+   },
+   "orb@960|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 651,
+    "ms": 471.55058999999966,
+    "pitch": 2.6407663822174072,
+    "resid": 6.162652492523193
+   },
+   "orb@960|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 704,
+    "ms": 416.48061800000136,
+    "pitch": 1.4932106733322144,
+    "resid": 5.888237953186035
+   },
+   "akaze@480|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 120,
+    "ms": 195.91659099999958,
+    "pitch": 2.1123692989349365,
+    "resid": 5.03285026550293
+   },
+   "akaze@480|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 140,
+    "ms": 161.86419699999988,
+    "pitch": 1.1248339414596558,
+    "resid": 4.85624885559082
+   },
+   "ecc@480|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 0,
+    "ms": 213.77257599999666,
+    "pitch": 2.3887393474578857,
+    "resid": 11.067285537719727
+   },
+   "ecc@480|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 0,
+    "ms": 1775.8763280000026,
+    "pitch": 1.1595666408538818,
+    "resid": 4.947652816772461
+   },
+   "orb+ecc@480|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 946,
+    "ms": 448.8804280000025,
+    "pitch": 0.9646404385566711,
+    "resid": 4.140607833862305
+   },
+   "orb+ecc@480|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 889,
+    "ms": 488.48093200000164,
+    "pitch": 0.9997524619102478,
+    "resid": 4.69868278503418
+   }
+  },
+  {
+   "clip": "arsenal_mancity_seg050",
+   "frame": 150,
+   "n_boxes": 15,
+   "hist_adjacent_max": 0.024018120889606972,
+   "hist_t_td": 0.025765899462118665,
+   "identity_pitch": 0.2768261134624481,
+   "orb@480|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 1667,
+    "ms": 248.2705630000055,
+    "pitch": 0.2785305380821228,
+    "resid": 0.8681513071060181
+   },
+   "orb@480|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 1727,
+    "ms": 284.7481760000008,
+    "pitch": 0.32675856351852417,
+    "resid": 1.4401389360427856
+   },
+   "orb@960|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 2094,
+    "ms": 468.3634679999997,
+    "pitch": 0.2762579619884491,
+    "resid": 0.9952415227890015
+   },
+   "orb@960|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 1869,
+    "ms": 446.67375499999906,
+    "pitch": 0.28623801469802856,
+    "resid": 1.5907427072525024
+   },
+   "akaze@480|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 90,
+    "ms": 167.43502800000698,
+    "pitch": 0.5284823179244995,
+    "resid": 1.6771197319030762
+   },
+   "akaze@480|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 136,
+    "ms": 155.48487700000635,
+    "pitch": 0.5548635125160217,
+    "resid": 1.9760535955429077
+   },
+   "ecc@480|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 0,
+    "ms": 91.52556200000106,
+    "pitch": 0.27698689699172974,
+    "resid": 0.8471531867980957
+   },
+   "ecc@480|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 0,
+    "ms": 162.58556900000087,
+    "pitch": 0.32317817211151123,
+    "resid": 1.4005014896392822
+   },
+   "orb+ecc@480|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 1667,
+    "ms": 302.03015099999675,
+    "pitch": 0.27670818567276,
+    "resid": 0.8402034044265747
+   },
+   "orb+ecc@480|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 1727,
+    "ms": 371.0067619999933,
+    "pitch": 0.323521226644516,
+    "resid": 1.4001543521881104
+   }
+  },
+  {
+   "clip": "arsenal_mancity_seg141",
+   "frame": 1442,
+   "n_boxes": 21,
+   "hist_adjacent_max": 0.03196836528819956,
+   "hist_t_td": 0.03665999388004046,
+   "identity_pitch": 0.37706631422042847,
+   "orb@480|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 1358,
+    "ms": 338.4145650000079,
+    "pitch": 0.9512481093406677,
+    "resid": 5.029758453369141
+   },
+   "orb@480|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 1355,
+    "ms": 337.2984009999982,
+    "pitch": 1.1495997905731201,
+    "resid": 6.1066741943359375
+   },
+   "orb@960|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 1328,
+    "ms": 486.59596199999555,
+    "pitch": 1.3164751529693604,
+    "resid": 6.985887050628662
+   },
+   "orb@960|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 1263,
+    "ms": 477.2479909999987,
+    "pitch": 0.6387352347373962,
+    "resid": 6.906210899353027
+   },
+   "akaze@480|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 242,
+    "ms": 200.15308499999662,
+    "pitch": 1.0927648544311523,
+    "resid": 4.830080509185791
+   },
+   "akaze@480|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 292,
+    "ms": 199.03124100000014,
+    "pitch": 0.46883270144462585,
+    "resid": 4.445331573486328
+   },
+   "ecc@480|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 0,
+    "ms": 154.37251100000537,
+    "pitch": 0.3862588107585907,
+    "resid": 4.030028343200684
+   },
+   "ecc@480|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 0,
+    "ms": 183.69701599999644,
+    "pitch": 0.514557421207428,
+    "resid": 4.627345561981201
+   },
+   "orb+ecc@480|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 1358,
+    "ms": 408.4548640000065,
+    "pitch": 0.38779619336128235,
+    "resid": 4.027952194213867
+   },
+   "orb+ecc@480|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 1355,
+    "ms": 525.8659769999952,
+    "pitch": 0.5134796500205994,
+    "resid": 4.614783763885498
+   }
+  },
+  {
+   "clip": "arsenal_mancity_seg105",
+   "frame": 802,
+   "n_boxes": 23,
+   "hist_adjacent_max": 0.03219731623445776,
+   "hist_t_td": 0.0356563333011538,
+   "identity_pitch": 1.0722395181655884,
+   "orb@480|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 503,
+    "ms": 117.94520299999078,
+    "pitch": 0.8769224286079407,
+    "resid": 2.4011998176574707
+   },
+   "orb@480|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 747,
+    "ms": 195.70638300000098,
+    "pitch": 1.433232069015503,
+    "resid": 4.377200603485107
+   },
+   "orb@960|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 1266,
+    "ms": 355.707785000007,
+    "pitch": 1.0265675783157349,
+    "resid": 2.9214346408843994
+   },
+   "orb@960|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 1137,
+    "ms": 428.51563399999293,
+    "pitch": 1.2898708581924438,
+    "resid": 4.825286865234375
+   },
+   "akaze@480|mask": {
+    "ok": false,
+    "reason": "too few keypoints",
+    "inliers": 0,
+    "ms": 158.89182699999083,
+    "pitch": null,
+    "resid": Infinity
+   },
+   "akaze@480|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 26,
+    "ms": 144.2011390000033,
+    "pitch": 1.228821873664856,
+    "resid": 4.099583625793457
+   },
+   "ecc@480|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 0,
+    "ms": 218.83563300001185,
+    "pitch": 0.783466100692749,
+    "resid": 2.3058271408081055
+   },
+   "ecc@480|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 0,
+    "ms": 138.94666799998845,
+    "pitch": 0.6699482798576355,
+    "resid": 2.989962577819824
+   },
+   "orb+ecc@480|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 503,
+    "ms": 314.53395700000897,
+    "pitch": 0.7842565774917603,
+    "resid": 2.3049566745758057
+   },
+   "orb+ecc@480|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 747,
+    "ms": 436.13705300001016,
+    "pitch": 0.666776180267334,
+    "resid": 2.985304832458496
+   }
+  },
+  {
+   "clip": "arsenal_mancity_seg110",
+   "frame": 94,
+   "n_boxes": 22,
+   "hist_adjacent_max": 0.03661307879832516,
+   "hist_t_td": 0.03938176560492336,
+   "identity_pitch": 2.6003646850585938,
+   "orb@480|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 886,
+    "ms": 346.0090450000024,
+    "pitch": 1.578418254852295,
+    "resid": 7.183021068572998
+   },
+   "orb@480|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 1011,
+    "ms": 356.8897690000057,
+    "pitch": 1.6822454929351807,
+    "resid": 8.678766250610352
+   },
+   "orb@960|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 828,
+    "ms": 477.7354539999976,
+    "pitch": 0.6077414751052856,
+    "resid": 5.211195945739746
+   },
+   "orb@960|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 923,
+    "ms": 471.3883579999987,
+    "pitch": 0.5918169617652893,
+    "resid": 5.161378383636475
+   },
+   "akaze@480|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 341,
+    "ms": 226.2269260000096,
+    "pitch": 0.49571776390075684,
+    "resid": 4.6343674659729
+   },
+   "akaze@480|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 372,
+    "ms": 187.35417700000312,
+    "pitch": 0.5671606659889221,
+    "resid": 5.189515113830566
+   },
+   "ecc@480|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 0,
+    "ms": 338.69302499999776,
+    "pitch": 0.6363286375999451,
+    "resid": 6.071265697479248
+   },
+   "ecc@480|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 0,
+    "ms": 275.79258299999765,
+    "pitch": 0.560386061668396,
+    "resid": 6.247342586517334
+   },
+   "orb+ecc@480|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 886,
+    "ms": 559.8104380000137,
+    "pitch": 0.6357097625732422,
+    "resid": 6.064425468444824
+   },
+   "orb+ecc@480|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 1011,
+    "ms": 2072.595060000012,
+    "pitch": 0.5602522492408752,
+    "resid": 6.244733810424805
+   }
+  },
+  {
+   "clip": "arsenal_bournemouth_1st_seg070",
+   "frame": 307,
+   "n_boxes": 16,
+   "hist_adjacent_max": 0.027282006500957082,
+   "hist_t_td": 0.036531397422385155,
+   "identity_pitch": 1.0580366849899292,
+   "orb@480|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 1642,
+    "ms": 312.7753789999872,
+    "pitch": 0.45317402482032776,
+    "resid": 1.8311333656311035
+   },
+   "orb@480|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 1566,
+    "ms": 315.9404900000027,
+    "pitch": 1.6783146858215332,
+    "resid": 3.6941051483154297
+   },
+   "orb@960|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 1931,
+    "ms": 466.6340509999998,
+    "pitch": 2.503948450088501,
+    "resid": 4.070359230041504
+   },
+   "orb@960|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 1743,
+    "ms": 446.03975200000434,
+    "pitch": 0.6156399846076965,
+    "resid": 2.901155471801758
+   },
+   "akaze@480|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 86,
+    "ms": 168.5284100000075,
+    "pitch": 2.376316547393799,
+    "resid": 3.665238857269287
+   },
+   "akaze@480|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 115,
+    "ms": 139.9473400000062,
+    "pitch": 0.9990479946136475,
+    "resid": 3.0129575729370117
+   },
+   "ecc@480|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 0,
+    "ms": 120.68960199999879,
+    "pitch": 0.43576911091804504,
+    "resid": 1.8185758590698242
+   },
+   "ecc@480|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 0,
+    "ms": 117.15232199999548,
+    "pitch": 0.6297128200531006,
+    "resid": 2.5144829750061035
+   },
+   "orb+ecc@480|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 1642,
+    "ms": 323.31238499999415,
+    "pitch": 0.4364648163318634,
+    "resid": 1.819912314414978
+   },
+   "orb+ecc@480|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 1566,
+    "ms": 373.30020599999614,
+    "pitch": 0.6308967471122742,
+    "resid": 2.5138349533081055
+   }
+  },
+  {
+   "clip": "arsenal_astonvilla_seg080",
+   "frame": 412,
+   "n_boxes": 17,
+   "hist_adjacent_max": 0.045078966823092016,
+   "hist_t_td": 0.03678531290947065,
+   "identity_pitch": 1.5051169395446777,
+   "orb@480|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 1143,
+    "ms": 280.0061500000055,
+    "pitch": 1.0355743169784546,
+    "resid": 3.479353189468384
+   },
+   "orb@480|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 1235,
+    "ms": 308.35276099999476,
+    "pitch": 0.5258602499961853,
+    "resid": 3.333061456680298
+   },
+   "orb@960|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 1149,
+    "ms": 514.8957629999984,
+    "pitch": 2.4945144653320312,
+    "resid": 7.062490463256836
+   },
+   "orb@960|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 800,
+    "ms": 492.5309479999953,
+    "pitch": 1.1237457990646362,
+    "resid": 5.48645544052124
+   },
+   "akaze@480|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 99,
+    "ms": 156.17687399999625,
+    "pitch": 1.9872984886169434,
+    "resid": 4.833917140960693
+   },
+   "akaze@480|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 113,
+    "ms": 158.04984499999364,
+    "pitch": 1.2248693704605103,
+    "resid": 4.426645278930664
+   },
+   "ecc@480|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 0,
+    "ms": 230.37841400000048,
+    "pitch": 0.7804792523384094,
+    "resid": 4.229201793670654
+   },
+   "ecc@480|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 0,
+    "ms": 231.83729099999084,
+    "pitch": 0.6286998987197876,
+    "resid": 4.813775062561035
+   },
+   "orb+ecc@480|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 1143,
+    "ms": 554.4388040000001,
+    "pitch": 0.7626545429229736,
+    "resid": 4.221014499664307
+   },
+   "orb+ecc@480|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 1235,
+    "ms": 597.7697169999914,
+    "pitch": 0.6222489476203918,
+    "resid": 4.7765045166015625
+   }
+  },
+  {
+   "clip": "arsenal_astonvilla_seg080",
+   "frame": 448,
+   "n_boxes": 16,
+   "hist_adjacent_max": 0.03432193979519903,
+   "hist_t_td": 0.04026564045807664,
+   "identity_pitch": 1.0137757062911987,
+   "orb@480|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 1420,
+    "ms": 355.57832399999256,
+    "pitch": 1.1099656820297241,
+    "resid": 4.200459003448486
+   },
+   "orb@480|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 1118,
+    "ms": 386.0842300000087,
+    "pitch": 1.7354117631912231,
+    "resid": 6.291210174560547
+   },
+   "orb@960|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 1559,
+    "ms": 580.597214000008,
+    "pitch": 0.8526023626327515,
+    "resid": 4.2338104248046875
+   },
+   "orb@960|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 1192,
+    "ms": 550.947452999992,
+    "pitch": 1.0716191530227661,
+    "resid": 6.228031635284424
+   },
+   "akaze@480|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 103,
+    "ms": 193.1752950000032,
+    "pitch": 1.2341142892837524,
+    "resid": 4.098540782928467
+   },
+   "akaze@480|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 135,
+    "ms": 184.1196000000025,
+    "pitch": 0.6782717108726501,
+    "resid": 3.983853816986084
+   },
+   "ecc@480|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 0,
+    "ms": 221.80342000000053,
+    "pitch": 0.5619300603866577,
+    "resid": 3.463940143585205
+   },
+   "ecc@480|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 0,
+    "ms": 179.77140099999644,
+    "pitch": 0.6221138834953308,
+    "resid": 4.0862579345703125
+   },
+   "orb+ecc@480|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 1420,
+    "ms": 478.09657199999833,
+    "pitch": 0.5618937015533447,
+    "resid": 3.4637999534606934
+   },
+   "orb+ecc@480|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 1118,
+    "ms": 596.1463130000055,
+    "pitch": 0.6218592524528503,
+    "resid": 4.085376262664795
+   }
+  },
+  {
+   "clip": "arsenal_astonvilla_seg080",
+   "frame": 437,
+   "n_boxes": 17,
+   "hist_adjacent_max": 0.057917721817451834,
+   "hist_t_td": 0.058410527341221444,
+   "identity_pitch": 1.0670422315597534,
+   "orb@480|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 1070,
+    "ms": 280.1786250000049,
+    "pitch": 1.5300536155700684,
+    "resid": 5.21324348449707
+   },
+   "orb@480|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 1120,
+    "ms": 329.7340100000099,
+    "pitch": 0.6973401308059692,
+    "resid": 4.6628737449646
+   },
+   "orb@960|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 887,
+    "ms": 500.120066000008,
+    "pitch": 0.7335861921310425,
+    "resid": 4.33498477935791
+   },
+   "orb@960|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 783,
+    "ms": 454.4309430000055,
+    "pitch": 1.3834493160247803,
+    "resid": 6.460616588592529
+   },
+   "akaze@480|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 93,
+    "ms": 169.10348599999736,
+    "pitch": 0.5848706960678101,
+    "resid": 3.5839879512786865
+   },
+   "akaze@480|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 108,
+    "ms": 154.44546699998796,
+    "pitch": 1.3386849164962769,
+    "resid": 6.330228805541992
+   },
+   "ecc@480|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 0,
+    "ms": 195.8693019999771,
+    "pitch": 0.5293294787406921,
+    "resid": 4.347100734710693
+   },
+   "ecc@480|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 0,
+    "ms": 191.26833900000406,
+    "pitch": 0.5832381844520569,
+    "resid": 4.88826847076416
+   },
+   "orb+ecc@480|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 1070,
+    "ms": 461.35975300001064,
+    "pitch": 0.5284579992294312,
+    "resid": 4.345163822174072
+   },
+   "orb+ecc@480|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 1120,
+    "ms": 440.3208680000148,
+    "pitch": 0.5839746594429016,
+    "resid": 4.887308597564697
+   }
+  },
+  {
+   "clip": "arsenal_astonvilla_seg080",
+   "frame": 345,
+   "n_boxes": 17,
+   "hist_adjacent_max": 0.037677412988022636,
+   "hist_t_td": 0.044909975998742975,
+   "identity_pitch": 0.871389627456665,
+   "orb@480|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 1428,
+    "ms": 256.18989199998055,
+    "pitch": 1.8002909421920776,
+    "resid": 4.320609092712402
+   },
+   "orb@480|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 1197,
+    "ms": 264.38300899999945,
+    "pitch": 1.968231201171875,
+    "resid": 5.633012771606445
+   },
+   "orb@960|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 1594,
+    "ms": 450.24328599998853,
+    "pitch": 2.294172763824463,
+    "resid": 4.90025520324707
+   },
+   "orb@960|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 1262,
+    "ms": 453.13840200000755,
+    "pitch": 2.1828320026397705,
+    "resid": 5.8094916343688965
+   },
+   "akaze@480|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 67,
+    "ms": 157.14166399999385,
+    "pitch": 1.95004403591156,
+    "resid": 4.927933216094971
+   },
+   "akaze@480|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 80,
+    "ms": 146.73380300001782,
+    "pitch": 0.8950777053833008,
+    "resid": 4.108128070831299
+   },
+   "ecc@480|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 0,
+    "ms": 190.9343519999993,
+    "pitch": 0.43417680263519287,
+    "resid": 2.6441729068756104
+   },
+   "ecc@480|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 0,
+    "ms": 148.73119899999665,
+    "pitch": 0.5588968396186829,
+    "resid": 3.3941357135772705
+   },
+   "orb+ecc@480|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 1428,
+    "ms": 484.28252700000485,
+    "pitch": 0.43372660875320435,
+    "resid": 2.6431448459625244
+   },
+   "orb+ecc@480|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 1197,
+    "ms": 509.77953899999306,
+    "pitch": 0.6022557020187378,
+    "resid": 3.4556825160980225
+   }
+  },
+  {
+   "clip": "arsenal_example",
+   "frame": 228,
+   "n_boxes": 16,
+   "hist_adjacent_max": 0.02881510886484602,
+   "hist_t_td": 0.035966096676937086,
+   "identity_pitch": 1.8712031841278076,
+   "orb@480|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 902,
+    "ms": 337.1972669999934,
+    "pitch": 1.9071228504180908,
+    "resid": 8.522309303283691
+   },
+   "orb@480|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 1278,
+    "ms": 353.2778510000014,
+    "pitch": 1.0224710702896118,
+    "resid": 6.724003314971924
+   },
+   "orb@960|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 983,
+    "ms": 499.69720300001086,
+    "pitch": 0.8273454904556274,
+    "resid": 5.755340576171875
+   },
+   "orb@960|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 892,
+    "ms": 491.8144139999754,
+    "pitch": 1.4696545600891113,
+    "resid": 12.02183723449707
+   },
+   "akaze@480|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 350,
+    "ms": 213.24444600000447,
+    "pitch": 0.5655434727668762,
+    "resid": 4.317119121551514
+   },
+   "akaze@480|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 367,
+    "ms": 205.47784000001457,
+    "pitch": 0.6165759563446045,
+    "resid": 5.171833515167236
+   },
+   "ecc@480|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 0,
+    "ms": 571.961377000008,
+    "pitch": 0.6356212496757507,
+    "resid": 4.6655073165893555
+   },
+   "ecc@480|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 0,
+    "ms": 487.30713499998046,
+    "pitch": 0.6804739832878113,
+    "resid": 5.501255512237549
+   },
+   "orb+ecc@480|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 902,
+    "ms": 584.8378089999926,
+    "pitch": 0.6230010986328125,
+    "resid": 4.612084865570068
+   },
+   "orb+ecc@480|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 1278,
+    "ms": 465.9160360000101,
+    "pitch": 0.6834688186645508,
+    "resid": 5.489449977874756
+   }
+  },
+  {
+   "clip": "arsenal_mancity_seg100",
+   "frame": 3,
+   "n_boxes": 17,
+   "hist_adjacent_max": 0.033884087004370865,
+   "hist_t_td": 0.037081198324415116,
+   "identity_pitch": 0.9591777324676514,
+   "orb@480|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 1202,
+    "ms": 350.19721500000855,
+    "pitch": 1.7660340070724487,
+    "resid": 7.927197456359863
+   },
+   "orb@480|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 1443,
+    "ms": 346.0147130000166,
+    "pitch": 1.1211954355239868,
+    "resid": 6.815367221832275
+   },
+   "orb@960|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 1266,
+    "ms": 532.7616409999791,
+    "pitch": 0.9052280187606812,
+    "resid": 7.3338422775268555
+   },
+   "orb@960|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 1206,
+    "ms": 473.63712300000316,
+    "pitch": 1.7775071859359741,
+    "resid": 8.534586906433105
+   },
+   "akaze@480|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 342,
+    "ms": 223.10325200001557,
+    "pitch": 0.49159812927246094,
+    "resid": 4.723773002624512
+   },
+   "akaze@480|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 327,
+    "ms": 201.81259500000692,
+    "pitch": 0.5037146210670471,
+    "resid": 5.403773307800293
+   },
+   "ecc@480|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 0,
+    "ms": 182.39736000001017,
+    "pitch": 0.5243631601333618,
+    "resid": 5.069048881530762
+   },
+   "ecc@480|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 0,
+    "ms": 190.37583400000813,
+    "pitch": 0.5800744295120239,
+    "resid": 5.862833023071289
+   },
+   "orb+ecc@480|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 1202,
+    "ms": 536.6005950000101,
+    "pitch": 0.5242865681648254,
+    "resid": 5.068516254425049
+   },
+   "orb+ecc@480|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 1443,
+    "ms": 486.62763199999404,
+    "pitch": 0.5803195238113403,
+    "resid": 5.860418319702148
+   }
+  },
+  {
+   "clip": "arsenal_mancity_seg060",
+   "frame": 72,
+   "n_boxes": 19,
+   "hist_adjacent_max": 0.028210450901053674,
+   "hist_t_td": 0.03485253602887542,
+   "identity_pitch": 5.214540958404541,
+   "orb@480|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 542,
+    "ms": 271.173675,
+    "pitch": 6.176001071929932,
+    "resid": 10.105084419250488
+   },
+   "orb@480|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 714,
+    "ms": 303.4395979999829,
+    "pitch": 1.8807458877563477,
+    "resid": 6.417108535766602
+   },
+   "orb@960|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 559,
+    "ms": 464.87479800001097,
+    "pitch": 2.709866523742676,
+    "resid": 6.796772003173828
+   },
+   "orb@960|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 616,
+    "ms": 453.1064949999859,
+    "pitch": 3.148024797439575,
+    "resid": 8.572508811950684
+   },
+   "akaze@480|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 105,
+    "ms": 181.68686799998568,
+    "pitch": 1.1047494411468506,
+    "resid": 4.294261455535889
+   },
+   "akaze@480|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 112,
+    "ms": 161.51559800002246,
+    "pitch": 1.4877640008926392,
+    "resid": 5.786784648895264
+   },
+   "ecc@480|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 0,
+    "ms": 1420.211447000014,
+    "pitch": 4.882328033447266,
+    "resid": 10.311907768249512
+   },
+   "ecc@480|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 0,
+    "ms": 491.36927300000366,
+    "pitch": 2.439652919769287,
+    "resid": 12.260110855102539
+   },
+   "orb+ecc@480|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 542,
+    "ms": 719.1622820000134,
+    "pitch": 1.7811782360076904,
+    "resid": 5.384263515472412
+   },
+   "orb+ecc@480|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 714,
+    "ms": 411.59093199999575,
+    "pitch": 1.5148669481277466,
+    "resid": 5.619105339050293
+   }
+  },
+  {
+   "clip": "arsenal_mancity_seg127",
+   "frame": 432,
+   "n_boxes": 20,
+   "hist_adjacent_max": 0.031779587360320875,
+   "hist_t_td": 0.0349793193944025,
+   "identity_pitch": 1.0626338720321655,
+   "orb@480|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 1042,
+    "ms": 280.7087850000016,
+    "pitch": 0.866466224193573,
+    "resid": 5.146170139312744
+   },
+   "orb@480|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 926,
+    "ms": 318.6498860000029,
+    "pitch": 1.9314162731170654,
+    "resid": 7.559772491455078
+   },
+   "orb@960|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 1375,
+    "ms": 541.1999210000147,
+    "pitch": 1.6541074514389038,
+    "resid": 6.632866382598877
+   },
+   "orb@960|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 1119,
+    "ms": 548.2434190000163,
+    "pitch": 1.0484758615493774,
+    "resid": 5.2730326652526855
+   },
+   "akaze@480|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 163,
+    "ms": 205.83865900002252,
+    "pitch": 0.5607591271400452,
+    "resid": 3.5375852584838867
+   },
+   "akaze@480|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 189,
+    "ms": 178.76228399998695,
+    "pitch": 0.6669629216194153,
+    "resid": 4.07631254196167
+   },
+   "ecc@480|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 0,
+    "ms": 178.23585500002537,
+    "pitch": 0.5753189325332642,
+    "resid": 3.88309907913208
+   },
+   "ecc@480|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 0,
+    "ms": 200.51483899999312,
+    "pitch": 0.4806680977344513,
+    "resid": 4.176538467407227
+   },
+   "orb+ecc@480|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 1042,
+    "ms": 2210.9619269999994,
+    "pitch": 0.5769137144088745,
+    "resid": 3.886434316635132
+   },
+   "orb+ecc@480|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 926,
+    "ms": 520.3607520000162,
+    "pitch": 0.4806802570819855,
+    "resid": 4.175817012786865
+   }
+  },
+  {
+   "clip": "arsenal_mancity_seg094",
+   "frame": 2412,
+   "n_boxes": 19,
+   "hist_adjacent_max": 0.031705867078076544,
+   "hist_t_td": 0.030009912470881184,
+   "identity_pitch": 0.8580580949783325,
+   "orb@480|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 1295,
+    "ms": 407.22136499999806,
+    "pitch": 1.0546324253082275,
+    "resid": 4.358252048492432
+   },
+   "orb@480|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 1282,
+    "ms": 290.69900800001847,
+    "pitch": 1.62533700466156,
+    "resid": 6.129460334777832
+   },
+   "orb@960|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 1217,
+    "ms": 463.90815999998836,
+    "pitch": 1.6734696626663208,
+    "resid": 6.2070841789245605
+   },
+   "orb@960|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 1196,
+    "ms": 457.080904999998,
+    "pitch": 1.6567447185516357,
+    "resid": 7.171291351318359
+   },
+   "akaze@480|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 142,
+    "ms": 166.84352800001534,
+    "pitch": 0.6070200800895691,
+    "resid": 3.6489086151123047
+   },
+   "akaze@480|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 161,
+    "ms": 144.03700399998343,
+    "pitch": 0.6493525505065918,
+    "resid": 4.59453010559082
+   },
+   "ecc@480|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 0,
+    "ms": 336.48505200000045,
+    "pitch": 0.5617184042930603,
+    "resid": 4.722236156463623
+   },
+   "ecc@480|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 0,
+    "ms": 213.1767850000017,
+    "pitch": 0.6085231900215149,
+    "resid": 5.194068908691406
+   },
+   "orb+ecc@480|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 1295,
+    "ms": 446.0817530000156,
+    "pitch": 0.5582441091537476,
+    "resid": 4.711548805236816
+   },
+   "orb+ecc@480|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 1282,
+    "ms": 509.28452900001275,
+    "pitch": 0.6028681397438049,
+    "resid": 5.161137580871582
+   }
+  },
+  {
+   "clip": "arsenal_bournemouth_1st_seg010",
+   "frame": 26,
+   "n_boxes": 12,
+   "hist_adjacent_max": 0.0293394703355289,
+   "hist_t_td": 0.031747245493863784,
+   "identity_pitch": 1.5031825304031372,
+   "orb@480|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 1353,
+    "ms": 302.84506899999997,
+    "pitch": 0.6954113245010376,
+    "resid": 2.96948504447937
+   },
+   "orb@480|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 1221,
+    "ms": 306.6907980000053,
+    "pitch": 1.2623121738433838,
+    "resid": 4.141005516052246
+   },
+   "orb@960|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 1218,
+    "ms": 479.0896620000069,
+    "pitch": 1.7029757499694824,
+    "resid": 5.696926593780518
+   },
+   "orb@960|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 947,
+    "ms": 416.9501959999877,
+    "pitch": 1.7112642526626587,
+    "resid": 6.378449440002441
+   },
+   "akaze@480|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 139,
+    "ms": 165.96106900001928,
+    "pitch": 0.5552189946174622,
+    "resid": 2.7153422832489014
+   },
+   "akaze@480|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 178,
+    "ms": 146.05669900001317,
+    "pitch": 0.9023492932319641,
+    "resid": 3.9909462928771973
+   },
+   "ecc@480|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 0,
+    "ms": 249.71300300001076,
+    "pitch": 1.5476973056793213,
+    "resid": 4.896214008331299
+   },
+   "ecc@480|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 0,
+    "ms": 208.30446099998312,
+    "pitch": 0.6716970801353455,
+    "resid": 4.9913811683654785
+   },
+   "orb+ecc@480|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 1353,
+    "ms": 482.53479099997776,
+    "pitch": 0.7436830401420593,
+    "resid": 3.4534881114959717
+   },
+   "orb+ecc@480|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 1221,
+    "ms": 435.1611939999884,
+    "pitch": 0.7330768704414368,
+    "resid": 3.6158604621887207
+   }
+  },
+  {
+   "clip": "arsenal_mancity_seg110",
+   "frame": 1032,
+   "n_boxes": 20,
+   "hist_adjacent_max": 0.021663551078145625,
+   "hist_t_td": 0.025610474772176733,
+   "identity_pitch": 0.487682968378067,
+   "orb@480|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 1162,
+    "ms": 178.3592940000176,
+    "pitch": 0.41375964879989624,
+    "resid": 2.041189670562744
+   },
+   "orb@480|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 1292,
+    "ms": 206.1035170000025,
+    "pitch": 0.4676888585090637,
+    "resid": 2.5856711864471436
+   },
+   "orb@960|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 1682,
+    "ms": 414.6323439999833,
+    "pitch": 2.0345821380615234,
+    "resid": 3.964887857437134
+   },
+   "orb@960|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 1619,
+    "ms": 419.218858000022,
+    "pitch": 0.9443413615226746,
+    "resid": 3.982846260070801
+   },
+   "akaze@480|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 27,
+    "ms": 153.62049899999874,
+    "pitch": 4.285801887512207,
+    "resid": 7.506744384765625
+   },
+   "akaze@480|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 44,
+    "ms": 130.88517700001034,
+    "pitch": 0.6177921891212463,
+    "resid": 2.9213733673095703
+   },
+   "ecc@480|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 0,
+    "ms": 131.78193499999225,
+    "pitch": 0.3466486632823944,
+    "resid": 1.962380051612854
+   },
+   "ecc@480|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 0,
+    "ms": 118.93316600000503,
+    "pitch": 0.34937992691993713,
+    "resid": 2.3989198207855225
+   },
+   "orb+ecc@480|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 1162,
+    "ms": 270.9696830000041,
+    "pitch": 0.34766101837158203,
+    "resid": 1.9645036458969116
+   },
+   "orb+ecc@480|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 1292,
+    "ms": 542.2344179999925,
+    "pitch": 0.3493061065673828,
+    "resid": 2.3961806297302246
+   }
+  },
+  {
+   "clip": "arsenal_example",
+   "frame": 138,
+   "n_boxes": 16,
+   "hist_adjacent_max": 0.03629838744196452,
+   "hist_t_td": 0.03453013284350281,
+   "identity_pitch": 1.5752742290496826,
+   "orb@480|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 1305,
+    "ms": 289.8046020000038,
+    "pitch": 0.9033425450325012,
+    "resid": 6.888088703155518
+   },
+   "orb@480|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 1285,
+    "ms": 325.28083599999036,
+    "pitch": 1.402239441871643,
+    "resid": 8.93863582611084
+   },
+   "orb@960|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 1071,
+    "ms": 466.4368619999948,
+    "pitch": 0.7760267853736877,
+    "resid": 4.405869007110596
+   },
+   "orb@960|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 1036,
+    "ms": 449.5071110000026,
+    "pitch": 1.4625157117843628,
+    "resid": 10.299834251403809
+   },
+   "akaze@480|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 422,
+    "ms": 218.87544899999511,
+    "pitch": 0.8201524615287781,
+    "resid": 5.176827430725098
+   },
+   "akaze@480|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 475,
+    "ms": 205.66841100000488,
+    "pitch": 0.8593895435333252,
+    "resid": 7.143843650817871
+   },
+   "ecc@480|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 0,
+    "ms": 168.65311999998767,
+    "pitch": 0.6397259831428528,
+    "resid": 5.375312328338623
+   },
+   "ecc@480|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 0,
+    "ms": 197.46405899999786,
+    "pitch": 0.6127424240112305,
+    "resid": 6.184006690979004
+   },
+   "orb+ecc@480|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 1305,
+    "ms": 427.68726399998513,
+    "pitch": 0.6385359764099121,
+    "resid": 5.360824108123779
+   },
+   "orb+ecc@480|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 1285,
+    "ms": 432.82523600001355,
+    "pitch": 0.6131926774978638,
+    "resid": 6.191860675811768
+   }
+  },
+  {
+   "clip": "arsenal_example",
+   "frame": 125,
+   "n_boxes": 16,
+   "hist_adjacent_max": 0.06741605932141627,
+   "hist_t_td": 0.07845788721754308,
+   "identity_pitch": 1.5185307264328003,
+   "orb@480|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 1418,
+    "ms": 326.13168899999323,
+    "pitch": 1.5325218439102173,
+    "resid": 7.609574794769287
+   },
+   "orb@480|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 1304,
+    "ms": 341.66055500000425,
+    "pitch": 1.326065182685852,
+    "resid": 7.551033973693848
+   },
+   "orb@960|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 1064,
+    "ms": 507.03976099998727,
+    "pitch": 1.8015317916870117,
+    "resid": 9.558775901794434
+   },
+   "orb@960|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 1053,
+    "ms": 449.50868500001206,
+    "pitch": 1.8943921327590942,
+    "resid": 9.510735511779785
+   },
+   "akaze@480|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 376,
+    "ms": 220.9616629999971,
+    "pitch": 1.1931548118591309,
+    "resid": 6.093809127807617
+   },
+   "akaze@480|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 427,
+    "ms": 211.3687769999899,
+    "pitch": 1.2569235563278198,
+    "resid": 6.122427463531494
+   },
+   "ecc@480|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 0,
+    "ms": 197.48572599999648,
+    "pitch": 1.0783520936965942,
+    "resid": 5.90374755859375
+   },
+   "ecc@480|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 0,
+    "ms": 195.9611850000158,
+    "pitch": 1.1003133058547974,
+    "resid": 6.598001003265381
+   },
+   "orb+ecc@480|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 1418,
+    "ms": 471.14521100002094,
+    "pitch": 1.0785714387893677,
+    "resid": 5.903908729553223
+   },
+   "orb+ecc@480|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 1304,
+    "ms": 455.53979799998956,
+    "pitch": 1.0997023582458496,
+    "resid": 6.597047805786133
+   }
+  },
+  {
+   "clip": "arsenal_mancity_seg158",
+   "frame": 422,
+   "n_boxes": 11,
+   "hist_adjacent_max": 0.027506578274188738,
+   "hist_t_td": 0.02885704608625525,
+   "identity_pitch": 1.6991034746170044,
+   "orb@480|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 847,
+    "ms": 234.86042300001486,
+    "pitch": 3.075289011001587,
+    "resid": 6.776398658752441
+   },
+   "orb@480|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 826,
+    "ms": 246.66625400001863,
+    "pitch": 1.7561873197555542,
+    "resid": 6.556135177612305
+   },
+   "orb@960|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 777,
+    "ms": 426.56451100000936,
+    "pitch": 1.8673183917999268,
+    "resid": 5.544772148132324
+   },
+   "orb@960|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 828,
+    "ms": 407.24894000001655,
+    "pitch": 1.364184856414795,
+    "resid": 5.941346168518066
+   },
+   "akaze@480|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 112,
+    "ms": 159.5586159999982,
+    "pitch": 1.338505744934082,
+    "resid": 4.160285949707031
+   },
+   "akaze@480|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 99,
+    "ms": 133.01492200000098,
+    "pitch": 1.3793710470199585,
+    "resid": 4.96811056137085
+   },
+   "ecc@480|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 0,
+    "ms": 568.7459789999991,
+    "pitch": 0.5102435350418091,
+    "resid": 3.3806185722351074
+   },
+   "ecc@480|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 0,
+    "ms": 399.935892000002,
+    "pitch": 0.9131728410720825,
+    "resid": 4.824178218841553
+   },
+   "orb+ecc@480|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 847,
+    "ms": 709.5030769999937,
+    "pitch": 2.3245487213134766,
+    "resid": 5.954306125640869
+   },
+   "orb+ecc@480|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 826,
+    "ms": 557.1965290000094,
+    "pitch": 0.9506993889808655,
+    "resid": 4.88110876083374
+   }
+  },
+  {
+   "clip": "arsenal_mancity_seg050",
+   "frame": 222,
+   "n_boxes": 16,
+   "hist_adjacent_max": 0.033538023225911304,
+   "hist_t_td": 0.03685843509075785,
+   "identity_pitch": 5.453965663909912,
+   "orb@480|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 473,
+    "ms": 232.1947560000126,
+    "pitch": 2.2099502086639404,
+    "resid": 6.030720233917236
+   },
+   "orb@480|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 592,
+    "ms": 259.4377810000026,
+    "pitch": 2.865450382232666,
+    "resid": 6.827915191650391
+   },
+   "orb@960|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 516,
+    "ms": 440.3253649999783,
+    "pitch": 2.7707793712615967,
+    "resid": 5.950171947479248
+   },
+   "orb@960|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 428,
+    "ms": 443.7206180000146,
+    "pitch": 5.317201137542725,
+    "resid": 10.032990455627441
+   },
+   "akaze@480|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 42,
+    "ms": 157.81134600001678,
+    "pitch": 2.990372896194458,
+    "resid": 6.996588230133057
+   },
+   "akaze@480|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 56,
+    "ms": 132.75526000001037,
+    "pitch": 3.0576255321502686,
+    "resid": 7.595560550689697
+   },
+   "ecc@480|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 0,
+    "ms": 121.67547600000717,
+    "pitch": 4.235289096832275,
+    "resid": 10.540215492248535
+   },
+   "ecc@480|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 0,
+    "ms": 356.23482799999806,
+    "pitch": 3.4047646522521973,
+    "resid": 9.752912521362305
+   },
+   "orb+ecc@480|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 473,
+    "ms": 497.86856000000057,
+    "pitch": 1.0260186195373535,
+    "resid": 4.081460475921631
+   },
+   "orb+ecc@480|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 592,
+    "ms": 737.3125750000042,
+    "pitch": 1.316912055015564,
+    "resid": 4.831266403198242
+   }
+  },
+  {
+   "clip": "arsenal_mancity_seg080",
+   "frame": 87,
+   "n_boxes": 21,
+   "hist_adjacent_max": 0.027615604706228328,
+   "hist_t_td": 0.02786566634059596,
+   "identity_pitch": 1.0278199911117554,
+   "orb@480|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 490,
+    "ms": 89.32921200002397,
+    "pitch": 0.815971851348877,
+    "resid": 1.662092924118042
+   },
+   "orb@480|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 882,
+    "ms": 178.34973300000456,
+    "pitch": 0.9885340929031372,
+    "resid": 2.712646484375
+   },
+   "orb@960|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 1467,
+    "ms": 367.5555250000002,
+    "pitch": 0.8740759491920471,
+    "resid": 1.91947603225708
+   },
+   "orb@960|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 1305,
+    "ms": 386.5413380000007,
+    "pitch": 1.2365444898605347,
+    "resid": 3.4602129459381104
+   },
+   "akaze@480|mask": {
+    "ok": false,
+    "reason": "inliers 8/8",
+    "inliers": 8,
+    "ms": 154.15953400000149,
+    "pitch": 3.4378461837768555,
+    "resid": 4.752755641937256
+   },
+   "akaze@480|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 38,
+    "ms": 129.84322299999462,
+    "pitch": 1.186663269996643,
+    "resid": 3.2999579906463623
+   },
+   "ecc@480|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 0,
+    "ms": 114.0232140000137,
+    "pitch": 0.7156952619552612,
+    "resid": 1.4773595333099365
+   },
+   "ecc@480|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 0,
+    "ms": 166.03838999998288,
+    "pitch": 0.725853681564331,
+    "resid": 2.3586721420288086
+   },
+   "orb+ecc@480|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 490,
+    "ms": 170.88692900000524,
+    "pitch": 0.7158259749412537,
+    "resid": 1.4780335426330566
+   },
+   "orb+ecc@480|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 882,
+    "ms": 291.7706319999809,
+    "pitch": 0.7259140014648438,
+    "resid": 2.3581650257110596
+   }
+  },
+  {
+   "clip": "arsenal_mancity_seg100",
+   "frame": 442,
+   "n_boxes": 18,
+   "hist_adjacent_max": 0.03131096731731597,
+   "hist_t_td": 0.037785876895966436,
+   "identity_pitch": 0.451272189617157,
+   "orb@480|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 1194,
+    "ms": 348.59190500000636,
+    "pitch": 1.269332766532898,
+    "resid": 4.831211090087891
+   },
+   "orb@480|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 1195,
+    "ms": 312.4208430000124,
+    "pitch": 0.9811479449272156,
+    "resid": 5.4447174072265625
+   },
+   "orb@960|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 1202,
+    "ms": 472.342771000001,
+    "pitch": 1.4721360206604004,
+    "resid": 6.81852912902832
+   },
+   "orb@960|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 1242,
+    "ms": 448.7653260000002,
+    "pitch": 1.2553848028182983,
+    "resid": 7.60623025894165
+   },
+   "akaze@480|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 240,
+    "ms": 195.4750260000253,
+    "pitch": 0.47814634442329407,
+    "resid": 3.1050593852996826
+   },
+   "akaze@480|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 270,
+    "ms": 173.10095299998807,
+    "pitch": 0.5841188430786133,
+    "resid": 4.219547271728516
+   },
+   "ecc@480|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 0,
+    "ms": 146.57915600000138,
+    "pitch": 0.5538085103034973,
+    "resid": 3.76826810836792
+   },
+   "ecc@480|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 0,
+    "ms": 187.60605500000338,
+    "pitch": 0.3743131160736084,
+    "resid": 4.059768199920654
+   },
+   "orb+ecc@480|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 1194,
+    "ms": 547.3492369999917,
+    "pitch": 0.5539689660072327,
+    "resid": 3.7657270431518555
+   },
+   "orb+ecc@480|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 1195,
+    "ms": 467.75480500002686,
+    "pitch": 0.3741927742958069,
+    "resid": 4.060061931610107
+   }
+  },
+  {
+   "clip": "arsenal_mancity_seg147",
+   "frame": 952,
+   "n_boxes": 20,
+   "hist_adjacent_max": 0.02945610948750889,
+   "hist_t_td": 0.02942032615494005,
+   "identity_pitch": 0.6686226725578308,
+   "orb@480|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 981,
+    "ms": 257.6228370000422,
+    "pitch": 1.2436977624893188,
+    "resid": 5.0146164894104
+   },
+   "orb@480|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 1090,
+    "ms": 302.48094899997113,
+    "pitch": 0.8859027624130249,
+    "resid": 4.832088947296143
+   },
+   "orb@960|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 1095,
+    "ms": 457.7088419999882,
+    "pitch": 1.1534953117370605,
+    "resid": 5.073775768280029
+   },
+   "orb@960|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 1102,
+    "ms": 443.31048999998757,
+    "pitch": 0.5036805272102356,
+    "resid": 3.989992380142212
+   },
+   "akaze@480|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 140,
+    "ms": 166.2158689999842,
+    "pitch": 0.47052082419395447,
+    "resid": 3.3441414833068848
+   },
+   "akaze@480|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 169,
+    "ms": 139.9837170000069,
+    "pitch": 0.5962268710136414,
+    "resid": 4.234321117401123
+   },
+   "ecc@480|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 0,
+    "ms": 187.69711100003406,
+    "pitch": 0.48021990060806274,
+    "resid": 3.9530630111694336
+   },
+   "ecc@480|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 0,
+    "ms": 158.35491900003262,
+    "pitch": 0.5243865847587585,
+    "resid": 4.30534553527832
+   },
+   "orb+ecc@480|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 981,
+    "ms": 365.0873490000208,
+    "pitch": 0.4794791638851166,
+    "resid": 3.9504783153533936
+   },
+   "orb+ecc@480|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 1090,
+    "ms": 444.7337870000183,
+    "pitch": 0.5238310098648071,
+    "resid": 4.300475120544434
+   }
+  },
+  {
+   "clip": "arsenal_bournemouth_1st_seg070",
+   "frame": 37,
+   "n_boxes": 16,
+   "hist_adjacent_max": 0.032476313237065936,
+   "hist_t_td": 0.029432034694362914,
+   "identity_pitch": 2.0834341049194336,
+   "orb@480|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 1228,
+    "ms": 233.79419600001938,
+    "pitch": 4.0572099685668945,
+    "resid": 6.594910621643066
+   },
+   "orb@480|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 1139,
+    "ms": 239.92445199996837,
+    "pitch": 1.0581876039505005,
+    "resid": 4.05956506729126
+   },
+   "orb@960|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 1058,
+    "ms": 391.6181559999927,
+    "pitch": 4.497797966003418,
+    "resid": 7.431422710418701
+   },
+   "orb@960|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 902,
+    "ms": 407.5713650000239,
+    "pitch": 4.509618282318115,
+    "resid": 9.226022720336914
+   },
+   "akaze@480|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 76,
+    "ms": 162.9996080000069,
+    "pitch": 2.9927496910095215,
+    "resid": 5.759142875671387
+   },
+   "akaze@480|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 93,
+    "ms": 129.48808999999528,
+    "pitch": 1.51045560836792,
+    "resid": 4.685601234436035
+   },
+   "ecc@480|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 0,
+    "ms": 223.56662100003177,
+    "pitch": 0.7396236062049866,
+    "resid": 4.2362260818481445
+   },
+   "ecc@480|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 0,
+    "ms": 245.1309890000175,
+    "pitch": 0.7959267497062683,
+    "resid": 4.597340106964111
+   },
+   "orb+ecc@480|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 1228,
+    "ms": 589.0220169999907,
+    "pitch": 0.7480189204216003,
+    "resid": 4.2547078132629395
+   },
+   "orb+ecc@480|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 1139,
+    "ms": 407.1759420000376,
+    "pitch": 0.7520052194595337,
+    "resid": 4.34710693359375
+   }
+  },
+  {
+   "clip": "arsenal_example",
+   "frame": 151,
+   "n_boxes": 17,
+   "hist_adjacent_max": 0.04668967500669981,
+   "hist_t_td": 0.05443127354935737,
+   "identity_pitch": 2.4132344722747803,
+   "orb@480|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 1296,
+    "ms": 308.84710200001564,
+    "pitch": 1.1176382303237915,
+    "resid": 6.005189895629883
+   },
+   "orb@480|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 1322,
+    "ms": 319.51566199995796,
+    "pitch": 1.2048630714416504,
+    "resid": 7.0825676918029785
+   },
+   "orb@960|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 1082,
+    "ms": 424.70221700000366,
+    "pitch": 1.017105221748352,
+    "resid": 4.995532512664795
+   },
+   "orb@960|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 991,
+    "ms": 407.7012879999984,
+    "pitch": 1.031562328338623,
+    "resid": 6.22026252746582
+   },
+   "akaze@480|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 426,
+    "ms": 205.613838999966,
+    "pitch": 1.0004496574401855,
+    "resid": 5.188766002655029
+   },
+   "akaze@480|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 460,
+    "ms": 195.2187950000166,
+    "pitch": 1.2114726305007935,
+    "resid": 6.9776787757873535
+   },
+   "ecc@480|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 0,
+    "ms": 450.757488000022,
+    "pitch": 1.0205662250518799,
+    "resid": 5.40690279006958
+   },
+   "ecc@480|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 0,
+    "ms": 332.8033859999664,
+    "pitch": 1.0297468900680542,
+    "resid": 6.097624778747559
+   },
+   "orb+ecc@480|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 1296,
+    "ms": 442.54005499999494,
+    "pitch": 1.0077290534973145,
+    "resid": 5.359137535095215
+   },
+   "orb+ecc@480|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 1322,
+    "ms": 412.9973930000119,
+    "pitch": 1.0301440954208374,
+    "resid": 6.078320026397705
+   }
+  },
+  {
+   "clip": "arsenal_mancity_seg100",
+   "frame": 658,
+   "n_boxes": 22,
+   "hist_adjacent_max": 0.03142613843571084,
+   "hist_t_td": 0.02833201665235546,
+   "identity_pitch": 1.3045457601547241,
+   "orb@480|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 481,
+    "ms": 176.27623699996775,
+    "pitch": 2.3812122344970703,
+    "resid": 6.090841770172119
+   },
+   "orb@480|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 578,
+    "ms": 212.12904200001503,
+    "pitch": 1.5434415340423584,
+    "resid": 6.0256266593933105
+   },
+   "orb@960|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 611,
+    "ms": 416.1336970000207,
+    "pitch": 0.5154199004173279,
+    "resid": 2.9258391857147217
+   },
+   "orb@960|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 664,
+    "ms": 396.69502499998543,
+    "pitch": 0.5222193598747253,
+    "resid": 3.723299980163574
+   },
+   "akaze@480|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 27,
+    "ms": 149.60867700000335,
+    "pitch": 1.1468769311904907,
+    "resid": 4.218837261199951
+   },
+   "akaze@480|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 40,
+    "ms": 125.62974200000099,
+    "pitch": 1.277558445930481,
+    "resid": 5.2763824462890625
+   },
+   "ecc@480|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 0,
+    "ms": 291.67757800001937,
+    "pitch": 0.7482820749282837,
+    "resid": 4.751323223114014
+   },
+   "ecc@480|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 0,
+    "ms": 576.2005320000299,
+    "pitch": 0.9738626480102539,
+    "resid": 5.210391521453857
+   },
+   "orb+ecc@480|mask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 481,
+    "ms": 423.3098889999951,
+    "pitch": 2.0117108821868896,
+    "resid": 5.982613563537598
+   },
+   "orb+ecc@480|nomask": {
+    "ok": true,
+    "reason": "",
+    "inliers": 578,
+    "ms": 483.1442999999922,
+    "pitch": 1.0121467113494873,
+    "resid": 5.346094131469727
+   }
+  }
+ ]
+}
