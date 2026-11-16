@@ -115,6 +115,15 @@
       <button id="pauseBtn" disabled>⏸️ Pause</button>
     </div>
 
+    <div id="jobBar" class="row" style="display:none;margin-bottom:8px;padding:6px 8px;border:1px solid var(--accent);border-radius:6px;">
+      <b id="jobTitle"></b>
+      <span id="jobPos"></span>
+      <span id="jobMeta" class="muted"></span>
+      <span class="grow"></span>
+      <label class="muted" title="Placing the ball or marking no-ball / not-broadcast jumps to the next unlabelled job frame"><input type="checkbox" id="jobAuto" checked> auto-advance</label>
+      <button id="jobPrevBtn" title="Previous job frame (K)">⏮ Prev job frame (K)</button>
+      <button id="jobNextBtn" class="primary" title="Next job frame that is not labelled yet (J)">Next job frame (J) ⏭</button>
+    </div>
     <div class="muted" id="hint" style="margin-bottom:8px;">Load a video to begin. Edit: drag/resize, Delete removes. Draw: drag a box.</div>
 
     <div id="stageOuter" style="position:relative;">
@@ -169,6 +178,14 @@ let frameDirty = false;     // true only if user has edited the current frame
 let undoStack = [];         // stack of box snapshots for current frame
 const noBallFrames = new Set();
 const notBroadcastFrames = new Set();
+// Job mode (/labeller?job=<id>): step through the job's own frames only. No auto-detect, no
+// forward propagation, so every mark on a job frame is a human one.
+const JOB_ID = new URLSearchParams(location.search).get("job");
+let job = null;             // {id,title,total,frames:[{clip,frame,item,done,stratum,reason}]}
+const jobDone = new Set();  // "clip\tframe" keys the labeller counts as done
+let jobPos = -1;            // index in job.frames of the last job frame visited
+let jobBusy = false;
+let loadedPath = "";        // path of the clip loaded in the session
 
 // --- Per-class handback confidence thresholds (LAB-610/712/812) -------------
 // The run pauses for correction only when a tracked box's confidence falls
@@ -502,7 +519,7 @@ stage.on("mousemove", ()=>{
   drawing.x(Math.min(p.x,drawStart.x)); drawing.y(Math.min(p.y,drawStart.y));
   refreshNumbers(); boxLayer.draw();
 });
-stage.on("mouseup", ()=>{ if(drawing){ if(drawing.width()<4||drawing.height()<4){const t=drawing.getAttr("numText");if(t)t.destroy();drawing.destroy();} else { pushUndo(); frameDirty=true; syncTimelineSets(); scheduleEditSave(); } drawing=null; renderList(); }});
+stage.on("mouseup", ()=>{ if(drawing){ if(drawing.width()<4||drawing.height()<4){const t=drawing.getAttr("numText");if(t)t.destroy();drawing.destroy();} else { pushUndo(); frameDirty=true; syncTimelineSets(); scheduleEditSave(); if (JOB_ID && BALL_LABELS.has(drawing.getAttr("label"))) setTimeout(jobPlaced, 0); } drawing=null; renderList(); }});
 
 // no-ball mark
 async function markNoBall() {
@@ -513,6 +530,7 @@ async function markNoBall() {
       body: JSON.stringify({idx: viewFrame})});
     setStatus(`Frame ${viewFrame} no-ball cleared`);
     renderList(); renderTimelineBar();
+    if (JOB_ID) jobSyncCurrent();
     return;
   }
   if (mode === "idle") {
@@ -526,6 +544,7 @@ async function markNoBall() {
     body: JSON.stringify({idx: viewFrame})});
   await loadTimelineFrame(viewFrame, mode !== "running");
   setStatus(`🚫 Frame ${viewFrame} marked no-ball`);
+  if (JOB_ID) { jobSyncCurrent(); if (jobAutoOn()) await jobNext(); }
 }
 
 $("noBallBtn").onclick = markNoBall;
@@ -538,6 +557,7 @@ async function markNotBroadcast() {
     await fetch("/not-broadcast/clear", {method:"POST", headers:{"Content-Type":"application/json"},
       body: JSON.stringify({idx: viewFrame})});
     setStatus(`Frame ${viewFrame} not-broadcast cleared`);
+    if (JOB_ID) jobSyncCurrent();
   } else {
     notBroadcastFrames.add(viewFrame);
     await fetch("/not-broadcast", {method:"POST", headers:{"Content-Type":"application/json"},
@@ -545,6 +565,7 @@ async function markNotBroadcast() {
     setStatus(`📺 Frame ${viewFrame} marked not-broadcast`);
   }
   renderList();
+  if (JOB_ID && notBroadcastFrames.has(viewFrame)) { jobSyncCurrent(); if (jobAutoOn()) await jobNext(); }
 }
 $("notBroadcastBtn").onclick = markNotBroadcast;
 
@@ -600,7 +621,9 @@ window.addEventListener("keydown",(e)=>{
     if (mode === "running") { e.preventDefault(); $("pauseBtn").click(); }
     return;
   }
-  if (e.key === "q" || e.key === "Q") { autodetect(viewFrame); return; }
+  if (JOB_ID && (e.key === "j" || e.key === "J")) { e.preventDefault(); jobNext(); return; }
+  if (JOB_ID && (e.key === "k" || e.key === "K")) { e.preventDefault(); jobPrev(); return; }
+  if ((e.key === "q" || e.key === "Q") && !JOB_ID) { autodetect(viewFrame); return; }
   if (e.key === "r" || e.key === "R") {
     // r = Run (idle) or Restart (paused) — whichever control is active.
     if ($("restartBtn").style.display !== "none") $("restartBtn").click();
@@ -608,6 +631,114 @@ window.addEventListener("keydown",(e)=>{
     return;
   }
 });
+
+// ---------- job mode ----------
+// /labeller?job=<id>: the page walks the job's own frames (GET /api/jobs/<id>/frames: items in job
+// order, frame_start..frame_end by step, each with the server's own done flag).
+const jobKey = (clip, frame) => `${clip}\t${frame}`;
+const stemOf = p => p.split("/").pop().replace(/\.[^.]+$/, "");
+const jobAutoOn = () => $("jobAuto").checked;
+$("jobAuto").onchange = (e) => e.target.blur();   // a focused checkbox would swallow the J/K keys
+
+function jobIndexHere() {
+  if (!job || meta === null) return -1;
+  const clip = stemOf(loadedPath);
+  return job.frames.findIndex(f => f.clip === clip && f.frame === viewFrame);
+}
+
+function jobRender() {
+  if (!job) return;
+  const i = jobIndexHere();
+  const f = i >= 0 ? job.frames[i] : null;
+  if (f) jobPos = i;
+  const at = job.frames[jobPos];
+  $("jobTitle").textContent = `Job: ${job.title}`;
+  if (f) {
+    $("jobPos").textContent = `job frame ${i + 1} / ${job.total}${jobDone.has(jobKey(f.clip, f.frame)) ? " ✓ labelled" : ""}`;
+    $("jobMeta").textContent = `clip ${f.clip}, stratum ${f.stratum || "-"} · done ${jobDone.size} / ${job.total}`;
+    $("jobMeta").title = f.reason || "";
+  } else {
+    $("jobPos").textContent = `not a job frame (last: ${jobPos + 1} / ${job.total})`;
+    $("jobMeta").textContent = at ? `clip ${at.clip}, frame ${at.frame} · done ${jobDone.size} / ${job.total}` : "";
+    $("jobMeta").title = "";
+  }
+}
+
+// Mirror the labeller's rule for the frame on screen: done = a human ball box, a no-ball mark or a
+// not-broadcast mark. (/edit with any box clears both marks server-side; do the same here.)
+function jobSyncCurrent() {
+  if (!job || meta === null) return;
+  const humanBall = boxLayer.find(".box").some(r => r.getAttr("source") === "labeller" && BALL_LABELS.has(r.getAttr("label")));
+  if (boxLayer.find(".box").length) { noBallFrames.delete(viewFrame); notBroadcastFrames.delete(viewFrame); }
+  const key = jobKey(stemOf(loadedPath), viewFrame);
+  if (humanBall || noBallFrames.has(viewFrame) || notBroadcastFrames.has(viewFrame)) jobDone.add(key);
+  else jobDone.delete(key);
+  jobRender();
+}
+
+async function jobPlaced() {            // a ball box was just drawn
+  if (!job || jobBusy) return;
+  await saveCurrentEdits();             // persist now; the debounced save would race the jump
+  jobSyncCurrent();
+  if (jobAutoOn()) await jobNext();
+}
+
+async function jobGoto(i) {
+  if (!job || jobBusy || i < 0 || i >= job.frames.length) return;
+  jobBusy = true;
+  try {
+    const f = job.frames[i];
+    if (meta === null || stemOf(loadedPath) !== f.clip) {
+      const el = [...document.querySelectorAll(".clip-item")]
+        .find(e => e.title === f.clip || e.title.replace(/\.[^.]+$/, "") === f.clip);
+      if (!el) { setStatus(`job clip ${f.clip} is not in this dataset`); return; }
+      await loadClip(el.title, el);
+      if (stemOf(loadedPath) !== f.clip) { setStatus(`could not load clip ${f.clip}`); return; }
+    }
+    jobPos = i;
+    await gotoFrame(Math.min(f.frame, meta.total_frames - 1));
+    jobRender();
+  } finally { jobBusy = false; }
+}
+
+async function jobNext() {
+  if (!job) return;
+  const here = jobIndexHere(), start = here >= 0 ? here : jobPos, n = job.frames.length;
+  for (let k = 1; k <= n; k++) {        // forward from here, wrapping round to earlier gaps
+    const i = (start + k) % n, f = job.frames[i];
+    if (!jobDone.has(jobKey(f.clip, f.frame))) {
+      if (i === here) { setStatus("This is the only job frame left to label"); return; }
+      await jobGoto(i); return;
+    }
+  }
+  setStatus(`All ${job.total} job frames are labelled`);
+}
+
+async function jobPrev() {
+  if (!job) return;
+  const here = jobIndexHere(), at = here >= 0 ? here : jobPos;
+  if (at <= 0) { setStatus("This is the first job frame"); return; }
+  await jobGoto(at - 1);
+}
+$("jobNextBtn").onclick = jobNext;
+$("jobPrevBtn").onclick = jobPrev;
+
+async function jobStart() {
+  let why = "";
+  try {
+    const r = await fetch(`/api/jobs/${encodeURIComponent(JOB_ID)}/frames`);
+    if (r.ok) job = await r.json();
+    else { try { why = (await r.json()).detail || ""; } catch {} why = why || r.statusText; }
+  } catch (err) { why = String(err); }
+  if (!job || !job.frames.length) { setStatus(`job ${JOB_ID}: ${why || "no frames"} (job mode, no auto-detect)`); job = null; return; }
+  job.frames.forEach(f => { if (f.done) jobDone.add(jobKey(f.clip, f.frame)); });
+  $("jobBar").style.display = "flex";
+  const q = new URLSearchParams(location.search), clip = q.get("clip"), frame = parseInt(q.get("frame"), 10);
+  let i = clip && !Number.isNaN(frame) ? job.frames.findIndex(f => f.clip === clip && f.frame === frame) : -1;
+  if (i < 0) i = Math.max(0, job.frames.findIndex(f => !jobDone.has(jobKey(f.clip, f.frame))));
+  jobRender();
+  await jobGoto(i);
+}
 
 // ---------- clip picker ----------
 async function loadClipList() {
@@ -663,7 +794,7 @@ async function loadClip(name, el) {
   // Highlight active clip
   document.querySelectorAll(".clip-item").forEach(e => e.classList.remove("active"));
   if (el) el.classList.add("active");
-  $("loadBtn").click();
+  await $("loadBtn").onclick();
 }
 
 // Deep link from a labelling job (/labeller?dataset=..&clip=<stem>&frame=<n>): open that clip and
@@ -681,7 +812,7 @@ async function openFromLink() {
   for (let i = 0; i < 120 && $("scrub").disabled; i++) await new Promise(r => setTimeout(r, 250));
   if (!$("scrub").disabled) await gotoFrame(Math.min(frame, meta.total_frames - 1));
 }
-loadClipList().then(openFromLink);
+loadClipList().then(() => (JOB_ID ? jobStart() : openFromLink()));
 setInterval(loadClipList, 20000); // refresh clip ticks periodically
 
 $("addClipBtn").onclick = async () => {
@@ -705,6 +836,7 @@ $("loadBtn").onclick = async ()=>{
   const res = await fetch("/session/load",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({video_path:path})});
   if(!res.ok){ setStatus("load failed"); return; }
   meta = await res.json();
+  loadedPath = path;
   fitStage(); await showFrame(0);
   mode="idle"; lastCompleted=-1;
   // Reset run-control UI left over from the previous clip (stale "Restart
@@ -734,8 +866,8 @@ $("loadBtn").onclick = async ()=>{
   const tl0data = tl0.ok ? await tl0.json() : null;
   if (tl0data && tl0data.boxes && tl0data.boxes.length > 0) {
     await loadTimelineFrame(0, true);
-  } else {
-    await autodetect(0);
+  } else if (!JOB_ID) {
+    await autodetect(0);   // never in job mode: detector boxes must not look like labels
   }
   connectWS();
 };
@@ -756,11 +888,12 @@ async function autodetect(frameIdx){
   setStatus(`auto-detected ${data.boxes.length} objects`);
 }
 $("autoBtn").onclick = ()=>autodetect(viewFrame);
+if (JOB_ID) { $("autoBtn").disabled = true; $("autoBtn").title = "Disabled in job mode: detector boxes must not look like labels"; }
 $("nextDetBtn").onclick = ()=>gotoNextDetection();
 
 // Call renderTimelineBar after navigating to a frame
 const _origShowFrame = showFrame;
-showFrame = async function(idx){ await _origShowFrame(idx); renderTimelineBar(); };
+showFrame = async function(idx){ await _origShowFrame(idx); renderTimelineBar(); if (job) jobRender(); };
 window.addEventListener("resize", () => { if (meta) { fitStage(); showFrame(viewFrame); } renderTimelineBar(); });
 
 // ---------- scrubbing ----------
@@ -815,7 +948,7 @@ async function saveCurrentEdits(){
       const data = await res.json();
       // Propagate each labeller box forward
       let totalPropagated = 0;
-      for (let i = 0; i < data.boxes.length; i++) {
+      for (let i = 0; i < data.boxes.length && !JOB_ID; i++) {
         if (data.boxes[i].source === "labeller") {
           const propRes = await fetch("/propagate",{method:"POST",headers:{"Content-Type":"application/json"},
             body:JSON.stringify({frame_idx:viewFrame, box_idx:i})});
@@ -830,6 +963,7 @@ async function saveCurrentEdits(){
       }
     }
     frameDirty = false;
+    if (JOB_ID) jobSyncCurrent();
   }
 }
 

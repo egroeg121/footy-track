@@ -101,6 +101,23 @@ async def job_results(request: Request, ref: str):
         return _err(e)
 
 
+@router.get("/api/jobs/{ref:path}/frames")
+async def job_frames(ref: str):
+    """The job's frames in order with ``done`` flags (same rule as progress). Drives the
+    labeller's job mode (``/labeller?job=<id>``)."""
+
+    def work():
+        job = jobs.resolve(ref)
+        if job["kind"] == "ball_place":
+            return jobs.frame_list(job)
+        raise jobs.JobError(422, f"job kind {job['kind']!r} has no labeller frame list")
+
+    try:
+        return await asyncio.to_thread(work)
+    except jobs.JobError as e:
+        return _err(e)
+
+
 async def _close(request: Request, ref: str, new: str):
     def work():
         job = jobs.close(jobs.resolve(ref)["id"], new)

@@ -621,6 +621,37 @@ def progress_of(c: dict) -> dict:
     }
 
 
+def frame_list(job: dict) -> dict:
+    """The job's frames in order (items in job order, each ``frame_start..frame_end`` by ``step``)
+    with a ``done`` flag decided by the same rule as :func:`compute` (``_frame_unit_labels``).
+
+    Feeds the labeller's job mode (``/labeller?job=<id>``). Only frame kinds have one.
+    """
+    kind = job["kind"]
+    if kind not in _FRAME_KINDS:
+        raise JobError(422, f"job kind {kind!r} has no frame list")
+    try:
+        ds = datasets.get(job["dataset"])
+    except datasets.UnknownDatasetError:
+        msg = f"dataset {job['dataset']!r} is not in the registry"
+        raise JobError(422, msg) from None
+    by_clip: dict[str, dict[int, list[dict]]] = {}
+    frames: list[dict] = []
+    for i, it in enumerate(job["items"]):
+        clip = it["clip"]
+        if clip not in by_clip:
+            by_clip[clip] = _frame_unit_labels(kind, ds, clip)[0]
+        labelled = by_clip[clip]
+        meta = {k: it[k] for k in ("stratum", "reason") if k in it}
+        frames.extend(
+            {"clip": clip, "frame": f, "item": i, "done": bool(labelled.get(f)), **meta}
+            for f in _item_units(kind, it)
+        )
+    done = sum(1 for f in frames if f["done"])
+    return {"id": job["id"], "title": job["title"], "kind": kind, "dataset": job["dataset"],
+            "total": len(frames), "done": done, "frames": frames}  # fmt: skip
+
+
 def refresh_status(job: dict, c: dict) -> dict:
     """Persist the cheap, safe transitions: open -> in_progress at the first label, and
     -> done at 100% (only ever from open/in_progress; never reopens a cancelled/done job)."""
@@ -654,6 +685,9 @@ def deep_link(job: dict, c: dict | None = None) -> str:
         if frame is not None:
             q["frame"] = frame
         page = "/labeller" if kind == "ball_place" else "/calibration"
+        if kind == "ball_place":
+            # job mode: the page steps through this job's own frames
+            q["job"] = job["id"]
     elif kind == "ball_check":
         q["source"] = nxt.get("source") or first.get("source", "sidecar")
         clips = {it["clip"] for it in items}
