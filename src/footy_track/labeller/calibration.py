@@ -41,7 +41,11 @@ from footy_track.calibration.pitch_model import (
 )
 from footy_track.calibration.frame_type import (
     NOT_BROADCAST,
+    TOO_FEW_POINTS,
+    VISIBLE_TAGS,
+    all_too_few_points,
     not_broadcast_frames,
+    too_few_points_frames,
     update_frame_types,
 )
 from footy_track.calibration.prelabel.proposals import read_proposals, update_proposals
@@ -206,7 +210,11 @@ def clear_not_broadcast(clip: str, idx: int) -> bool:
     displaced: list[dict] = []
 
     def _unflag(doc: dict) -> None:
-        rec = doc["frames"].pop(str(idx), None)
+        rec = doc["frames"].get(str(idx))
+        if rec is not None and rec.get("type", NOT_BROADCAST) != NOT_BROADCAST:
+            rec = None   # a different flag (too_few_points): not ours to clear
+        else:
+            doc["frames"].pop(str(idx), None)
         gone.append(rec is not None)
         if rec and rec.get("displaced_gt"):
             displaced.append(rec["displaced_gt"])
@@ -267,6 +275,162 @@ def _not_broadcast_conflict(existing: dict) -> JSONResponse:
                   "would set that GT aside (Undo restores it). Resend with overwrite=true to do so"},
         status_code=409,
     )
+
+
+# ---------------------------------------------------------------------------
+# Too few points (frame shows < 4 identifiable pitch features; PTZ-solver candidate)
+# ---------------------------------------------------------------------------
+
+
+def _too_few_points(clip: str) -> dict[str, list[str]]:
+    """``{"<frame_index>": [tags]}`` of the clip's too-few-points frames (JSON-friendly)."""
+    try:
+        return {str(k): v["tags"] for k, v in sorted(too_few_points_frames(_gt_marks_dir(), clip).items())}
+    except OSError:
+        return {}
+
+
+def _clean_tags(tags: object) -> list[str]:
+    if tags is None:
+        return []
+    if not isinstance(tags, list) or not all(isinstance(t, str) for t in tags):
+        raise _BadRequest("tags must be a list of strings")
+    bad = [t for t in tags if t not in VISIBLE_TAGS]
+    if bad:
+        raise _BadRequest(f"unknown tags {bad}; allowed: {list(VISIBLE_TAGS)}")
+    return [t for t in VISIBLE_TAGS if t in tags]   # canonical order, de-duplicated
+
+
+def mark_too_few_points(clip: str, idx: int, *, tags: list[str] | None = None, run_id: str | None = None) -> dict:
+    """Flag frame ``idx`` as having too few identifiable pitch points (<4 pairs).
+
+    Writes the frame-type sidecar (``type=too_few_points`` + optional ``tags``) and sets the
+    frame's proposals to ``too_few_points`` (the named ``run_id``'s whatever its status;
+    other runs' only while still ``proposed``/``failed``), keeping each proposal record and
+    remembering ``prev_status``. Marking an already-marked frame just replaces its tags.
+    Refused with ``{"conflict": ...}`` when the frame has calibration GT (it evidently has
+    enough points) or is flagged not_broadcast; nothing is written then.
+    """
+    gt = _read_gt(clip)["frames"].get(str(idx))
+    if gt is not None:
+        return {"conflict": "gt", "existing_gt": "human" if not gt.get("origin") else "machine"}
+    if idx in not_broadcast_frames(_gt_marks_dir(), clip):
+        return {"conflict": "not_broadcast"}
+    ts = time.strftime("%Y-%m-%dT%H:%M:%S%z")
+    tags = tags or []
+
+    def _flag(doc: dict) -> None:
+        old = doc["frames"].get(str(idx)) or {}
+        rec = {"type": TOO_FEW_POINTS, "ts": old.get("ts") or ts, "tags": tags}
+        if run_id or old.get("run_id"):
+            rec["run_id"] = run_id or old["run_id"]
+        doc["frames"][str(idx)] = rec
+
+    update_frame_types(_gt_marks_dir(), clip, _flag)
+
+    def _props(doc: dict) -> None:
+        for rid, run in doc["runs"].items():
+            f = run["frames"].get(str(idx))
+            if f is None or f["status"] == NOT_BROADCAST:
+                continue
+            if f["status"] == TOO_FEW_POINTS:
+                f["tags"] = tags
+            elif rid == run_id or f["status"] in ("proposed", "failed"):
+                f["prev_status"] = f["status"]
+                f["status"] = TOO_FEW_POINTS
+                f["reviewed_at"] = ts
+                f["tags"] = tags
+
+    if read_proposals(_gt_marks_dir(), clip)["runs"]:
+        update_proposals(_gt_marks_dir(), clip, _props)
+    return {"ok": True, "frame_index": idx, "tags": tags, "too_few_points": _too_few_points(clip)}
+
+
+def clear_too_few_points(clip: str, idx: int) -> bool:
+    """Undo ``mark_too_few_points``; proposals go back to their previous status. ``False``
+    when the frame was not flagged."""
+    gone: list[bool] = []
+
+    def _unflag(doc: dict) -> None:
+        rec = doc["frames"].get(str(idx))
+        if rec is not None and rec.get("type") == TOO_FEW_POINTS:
+            del doc["frames"][str(idx)]
+            gone.append(True)
+        else:
+            gone.append(False)
+
+    update_frame_types(_gt_marks_dir(), clip, _unflag)
+
+    def _props(doc: dict) -> None:
+        for run in doc["runs"].values():
+            f = run["frames"].get(str(idx))
+            if f is not None and f["status"] == TOO_FEW_POINTS:
+                f["status"] = f.pop("prev_status", None) or ("proposed" if f.get("H") is not None else "failed")
+                f.pop("reviewed_at", None)
+                f.pop("tags", None)
+
+    if read_proposals(_gt_marks_dir(), clip)["runs"]:
+        update_proposals(_gt_marks_dir(), clip, _props)
+    return gone[0]
+
+
+def _too_few_conflict(res: dict) -> JSONResponse:
+    if res["conflict"] == "not_broadcast":
+        msg = "this frame is marked not broadcast; clear that mark (Undo) before marking it too few points"
+        return JSONResponse({"ok": False, "error": msg}, status_code=409)
+    what = "hand-labelled" if res.get("existing_gt") == "human" else "accepted machine"
+    return JSONResponse(
+        {"ok": False, "existing_gt": res.get("existing_gt"),
+         "error": f"this frame already has {what} calibration GT, so it has enough points; "
+                  "delete that GT first if you really want to mark it too few points"},
+        status_code=409,
+    )
+
+
+def _tags_or_err(body: dict):
+    try:
+        return _clean_tags(body.get("tags")), None
+    except _BadRequest as exc:
+        return None, _err(400, str(exc))
+
+
+@router.get("/calibration/api/too_few_points")
+async def too_few_points_all() -> dict:
+    """Every too-few-points frame of every clip (canonical ids): for the PTZ proposer."""
+    allc = await asyncio.to_thread(lambda: all_too_few_points(_gt_marks_dir()))
+    clips = {c: [{"frame_index": i, **v} for i, v in sorted(fr.items())] for c, fr in allc.items()}
+    return {"total": sum(len(v) for v in clips.values()), "clips": clips}
+
+
+@router.get("/calibration/api/too_few_points/{clip}")
+async def too_few_points_list(clip: str) -> dict:
+    fr = await asyncio.to_thread(lambda: too_few_points_frames(_gt_marks_dir(), clip))
+    return {"clip": canonical_clip_id(clip),
+            "frames": [{"frame_index": i, **v} for i, v in sorted(fr.items())],
+            "too_few_points": await asyncio.to_thread(_too_few_points, clip)}
+
+
+@router.put("/calibration/api/too_few_points/{clip}/{idx}")
+async def too_few_points_set(clip: str, idx: int, body: dict | None = None):
+    """Flag the frame ``too_few_points`` (body ``{tags?, run_id?}``); PUT again to change the tags."""
+    body = body or {}
+    if idx < 0:
+        return _err(400, "frame_index must be >= 0")
+    tags, err = _tags_or_err(body)
+    if err is not None:
+        return err
+    res = await asyncio.to_thread(lambda: mark_too_few_points(clip, idx, tags=tags, run_id=body.get("run_id")))
+    if "conflict" in res:
+        return _too_few_conflict(res)
+    return res
+
+
+@router.delete("/calibration/api/too_few_points/{clip}/{idx}")
+async def too_few_points_clear(clip: str, idx: int):
+    if not await asyncio.to_thread(clear_too_few_points, clip, idx):
+        return _err(404, "this frame is not marked too_few_points")
+    return {"ok": True, "too_few_points": await asyncio.to_thread(_too_few_points, clip)}
+
 
 
 # ---------------------------------------------------------------------------
@@ -460,6 +624,7 @@ async def list_clips() -> dict:
                 "canonical": canonical_clip_id(p.stem),
                 "n_gt": len(_gt_frames(p.stem)),
                 "n_not_broadcast": len(_not_broadcast(p.stem)),
+                "n_too_few_points": len(_too_few_points(p.stem)),
             }
             for p in paths
         ]
@@ -474,7 +639,8 @@ async def clip_meta(clip: str):
     meta = await asyncio.to_thread(_video_meta, video)
     if meta is None:
         return _err(404, f"cannot open video for {clip}")
-    return {**meta, "name": clip, "gt_frames": _gt_frames(clip), "not_broadcast": _not_broadcast(clip)}
+    return {**meta, "name": clip, "gt_frames": _gt_frames(clip),
+            "not_broadcast": _not_broadcast(clip), "too_few_points": _too_few_points(clip)}
 
 
 @router.get("/calibration/api/frame/{clip}/{idx}.jpg")
@@ -544,6 +710,7 @@ async def gt_list(clip: str) -> dict:
     return {
         "clip": doc["clip"],
         "not_broadcast": await asyncio.to_thread(_not_broadcast, clip),
+        "too_few_points": await asyncio.to_thread(_too_few_points, clip),
         "frames": [
             {
                 "frame_index": int(k),
@@ -609,6 +776,8 @@ async def gt_save(clip: str, idx: int, body: dict):
         doc = _read_gt(clip)
         doc["frames"][str(idx)] = rec
         _write_gt(clip, doc)
+        if idx in too_few_points_frames(_gt_marks_dir(), clip):
+            clear_too_few_points(clip, idx)   # labelled after all: it had enough points
 
     await asyncio.to_thread(_store)
     return {"ok": True, "frame_index": idx, "gt_frames": _gt_frames(clip), "record": rec}

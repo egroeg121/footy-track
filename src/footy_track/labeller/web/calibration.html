@@ -26,6 +26,11 @@
   button { cursor:pointer; }
   button:hover { border-color:var(--accent); }
   button.primary { background:var(--accent); border-color:var(--accent); color:#fff; }
+  #fewBtn.on { border-color:var(--accent); color:var(--accent); }
+  #fewBanner { display:none; color:var(--accent); font-weight:600; align-items:center; gap:6px; flex-wrap:wrap; }
+  #fewBanner .tag { padding:3px 10px; border-radius:12px; cursor:pointer; border:1px solid var(--border);
+                    color:var(--muted); background:transparent; font-weight:400; }
+  #fewBanner .tag.on { border-color:var(--accent); color:var(--accent); background:#10263d; font-weight:600; }
   #undoBtn { min-height:36px; padding:6px 16px; }   /* big enough to tap on a phone */
   #undoBtn:disabled { opacity:.4; cursor:default; }
   button.danger:hover { border-color:var(--red); color:var(--red); }
@@ -45,6 +50,7 @@
   .pchip.accepted, .pchip.edited { border-color:var(--green); color:var(--green); background:#1b3a2a; }
   .pchip.rejected { text-decoration:line-through; opacity:.7; }
   .pchip.not_broadcast { border-color:var(--amber); color:var(--amber); background:#2e2410; }
+  .pchip.too_few_points { border-color:var(--accent); color:var(--accent); background:#10263d; border-style:dashed; }
   .pchip.cur { outline:2px solid var(--ink); outline-offset:1px; }
   #body { flex:1; display:flex; min-height:0; }
   .pane { flex:1; min-width:0; display:flex; flex-direction:column;
@@ -105,19 +111,23 @@
   <button id="undoBtn" title="Undo the last point edit (Ctrl/Cmd+Z)" disabled>Undo</button>
   <button id="clearBtn">Clear points</button>
   <button id="nbBtn" title="This frame is not the main broadcast pitch view (replay, close-up, crowd, graphic). Key: n">Not broadcast</button>
+  <button id="fewBtn" title="Too few identifiable pitch features to place 4 point pairs (e.g. only the centre circle / halfway line). Skipped here, kept as a PTZ-solver candidate. Press again to clear. Key: t">Too few points</button>
   <span id="status"></span>
   <span id="propBanner" style="display:none;color:var(--amber)"></span>
   <button id="rejectBtn" class="danger" style="display:none" title="Reject this proposal and open the next proposed frame of the clip. Key: x">Reject proposal</button>
   <span id="propInfo" style="color:var(--muted)"></span>
   <span id="nbBanner" style="display:none;color:var(--amber);font-weight:600">not a broadcast frame
     <button id="nbUndo">Undo</button></span>
+  <span id="fewBanner">too few points &mdash; only visible:
+    <span id="fewTags"></span>
+    <button id="fewUndo">Undo</button></span>
 </header>
 <div id="clipNav">
   <button id="prevClipBtn" title="previous clip ( [ )">&#9664; Prev clip</button>
   <button id="nextClipBtn" title="next clip ( ] )">Next clip &#9654;</button>
   <button id="nextTodoBtn" title="next clip still to do, wrapping round ( Shift+] )">Next to-do &#9654;</button>
   <span id="navProgress">no clips</span>
-  <span id="clipBadge" title="state of this clip: done (has GT), skipped (only not-broadcast marks) or to-do"></span>
+  <span id="clipBadge" title="state of this clip: done (has GT), skipped (only not-broadcast / too-few-points marks) or to-do"></span>
   <span class="spacer"></span>
   <button id="saveNextBtn" class="primary" title="Save GT, then go to the next to-do clip if the save worked">Save &amp; next &#9654;</button>
 </div>
@@ -451,7 +461,7 @@ async function loadPitch() {
   for (const p of state.pitchPts) if (p.id && state.pitch.keypoints[p.id]) [p.x, p.y] = state.pitch.keypoints[p.id];
 }
 // ---- clip queue / progress
-function clipState(c) { return c.n_gt >= 1 ? "done" : (c.n_not_broadcast || 0) >= 1 ? "skipped" : "todo"; }
+function clipState(c) { return c.n_gt >= 1 ? "done" : ((c.n_not_broadcast || 0) + (c.n_too_few_points || 0)) >= 1 ? "skipped" : "todo"; }
 const STATE_LABEL = { done: "done", skipped: "skipped", todo: "to-do" };
 function buildQueue(all, filter) {
   // One entry per canonical id (first video file wins), optional case-insensitive substring filter, ordered by canonical.
@@ -520,7 +530,7 @@ function proposalPoints(rec, pitchKps) {
 }
 function propSummary(items) {
   const n = {}; for (const i of items || []) n[i.status] = (n[i.status] || 0) + 1;
-  return ["proposed", "failed", "accepted", "edited", "rejected", "not_broadcast"].filter(k => n[k]).map(k => `${n[k]} ${k.replace("_", " ")}`).join(" \u00b7 ");
+  return ["proposed", "failed", "accepted", "edited", "rejected", "not_broadcast", "too_few_points"].filter(k => n[k]).map(k => `${n[k]} ${k.replace("_", " ")}`).join(" \u00b7 ");
 }
 // ---- end proposals helpers
 function syncUrl() {
@@ -540,7 +550,7 @@ async function refreshCounts() {  // re-fetch per-clip GT / not-broadcast counts
     const r = await (await api("/clips")).json();
     if (seq !== countsSeq) return;
     const fresh = new Map(r.clips.map(c => [c.name, c]));
-    for (const c of state.clips) { const f = fresh.get(c.name); if (f) { c.n_gt = f.n_gt; c.n_not_broadcast = f.n_not_broadcast || 0; } }
+    for (const c of state.clips) { const f = fresh.get(c.name); if (f) { c.n_gt = f.n_gt; c.n_not_broadcast = f.n_not_broadcast || 0; c.n_too_few_points = f.n_too_few_points || 0; } }
     drawClipSelect(); syncNav();
   } catch (e) { /* progress just stays stale */ }
 }
@@ -594,7 +604,7 @@ async function selectClip() {
   const meta = await (await api(`/clips/${encodeURIComponent(wantClip)}/meta`)).json();
   if (state.clip !== wantClip) return;   // user already moved on to another clip while this one loaded
   state.meta = meta;
-  state.gtFrames = state.meta.gt_frames; state.notBroadcast = state.meta.not_broadcast || [];
+  state.gtFrames = state.meta.gt_frames; state.notBroadcast = state.meta.not_broadcast || []; state.tooFew = state.meta.too_few_points || {};
   $("frameSlider").max = $("frameNum").max = Math.max(0, state.meta.frames - 1);
   $("frameTotal").textContent = `/ ${state.meta.frames - 1}`;
   const qp = new URLSearchParams(location.search);
@@ -606,7 +616,7 @@ async function selectClip() {
   if (state.clip !== wantClip) return;
   // ?proposals=<run>: land on the clip's best proposal (not a failed/decided one, nor a frame that already has GT / is not broadcast)
   const best = state.propsRun && !explicit
-    ? pickBestProposal(state.clipProps, [...state.gtFrames, ...state.notBroadcast]) : null;
+    ? pickBestProposal(state.clipProps, [...state.gtFrames, ...state.notBroadcast, ...Object.keys(state.tooFew || {}).map(Number)]) : null;
   if (best) {
     await gotoFrame(best.frame_index, true, true);
     if (state.clip === wantClip && state.frame === best.frame_index) await loadProposal(state.propsRun, best.frame_index);
@@ -696,7 +706,7 @@ async function rejectProposal() {
   const it = state.clipProps.find(i => i.frame_index === idx && run === state.propsRun);
   if (it) it.status = "rejected";
   state.dirty = false;   // rejecting discards any edits of this proposal
-  const next = run === state.propsRun ? pickBestProposal(state.clipProps, [...state.gtFrames, ...state.notBroadcast]) : null;
+  const next = run === state.propsRun ? pickBestProposal(state.clipProps, [...state.gtFrames, ...state.notBroadcast, ...Object.keys(state.tooFew || {}).map(Number)]) : null;
   if (next) {
     await gotoFrame(next.frame_index, true, true);
     if (state.clip === clip && state.frame === next.frame_index) await loadProposal(run, next.frame_index);
@@ -722,7 +732,7 @@ async function gotoFrame(idx, force, noGt) {
   await new Promise((res, rej) => { img.onload = res; img.onerror = () => rej(new Error("frame failed to load"));
     img.src = `${API}/frame/${encodeURIComponent(state.clip)}/${idx}.jpg`; }).catch(e => status(e.message, true));
   state.frameImg = img.naturalWidth ? img : null; status("");
-  drawChips(); redraw(); syncNb();
+  drawChips(); redraw(); syncNb(); syncFew();
   if (!noGt && state.gtFrames.includes(idx)) await loadGt(true);
   return true;
 }
@@ -746,7 +756,7 @@ async function saveGt() {
       const body = { ...fitBody(), overwrite: state.gtFrames.includes(state.frame) };
       const r = await (await api(`/proposals/${encodeURIComponent(state.clip)}/${encodeURIComponent(state.proposal.run_id)}/${state.frame}/accept`, jsonOpts("POST", body))).json();
       const run = state.proposal.run_id;
-      state.gtFrames = r.gt_frames; state.dirty = false; setProposal(null);
+      state.gtFrames = r.gt_frames; state.dirty = false; setProposal(null); if (isTooFew()) dropTooFewLocal();
       const it = run === state.propsRun ? state.clipProps.find(i => i.frame_index === state.frame) : null;
       if (it) it.status = r.status;
       drawChips();
@@ -757,15 +767,15 @@ async function saveGt() {
   }
   try {
     const r = await (await api(`/gt/${encodeURIComponent(state.clip)}/${state.frame}`, jsonOpts("PUT", fitBody()))).json();
-    state.gtFrames = r.gt_frames; state.dirty = false; drawChips();
+    state.gtFrames = r.gt_frames; state.dirty = false; dropTooFewLocal(); drawChips();
     status(`saved (mean err ${r.record.mean_err_m.toFixed(2)} m)`);
   } catch (e) { status("save failed: " + e.message, true); return false; }
   await refreshCounts();
   return true;
 }
 async function saveAndNext() {
-  // a frame marked not-broadcast has no GT to save: just move on
-  const nb = (state.notBroadcast || []).includes(state.frame);
+  // a frame marked not-broadcast / too-few-points has no GT to save: just move on
+  const nb = (state.notBroadcast || []).includes(state.frame) || isTooFew();
   if (!nb && !(await saveGt())) return;   // stay put (status already shows why)
   const ok = state.clips.some(c => clipState(c) === "todo");
   if (!ok) { status(`${nb ? "skipped" : "saved"}: all clips in this queue are done`); return; }
@@ -780,7 +790,7 @@ async function markNotBroadcast(overwrite) {
   try {
     const r = await api(`/frame_type/${encodeURIComponent(state.clip)}/${state.frame}`, jsonOpts("PUT", overwrite ? { overwrite: true } : {}));
     const j = await r.json();
-    state.notBroadcast = [...new Set([...(state.notBroadcast || []), state.frame])]; state.gtFrames = j.gt_frames; drawChips(); syncNb();
+    state.notBroadcast = [...new Set([...(state.notBroadcast || []), state.frame])]; state.gtFrames = j.gt_frames; dropTooFewLocal(); drawChips(); syncNb();
     status("marked not a broadcast frame (Undo to clear)");
     refreshCounts();
   } catch (e) {
@@ -794,6 +804,42 @@ async function clearNotBroadcast() {
     state.notBroadcast = j.not_broadcast; syncNb(); status("not-broadcast mark cleared"); refreshCounts();
   } catch (e) { status("undo failed: " + e.message, true); }
 }
+// ---- too few points: < 4 identifiable pitch features; skipped here, a PTZ-solver candidate
+const FEW_TAGS = [["centre_circle", "centre circle"], ["halfway_line", "halfway line"], ["penalty_box", "penalty box"],
+                  ["goal_area", "goal area"], ["touchline", "touchline"]];
+const isTooFew = () => Object.prototype.hasOwnProperty.call(state.tooFew || {}, String(state.frame));
+function syncFew() {
+  const on = isTooFew(), tags = on ? state.tooFew[String(state.frame)] || [] : [];
+  $("fewBanner").style.display = on ? "inline-flex" : "none";
+  $("fewBtn").classList.toggle("on", on); $("fewBtn").textContent = on ? "Clear too few points" : "Too few points";
+  const box = $("fewTags"); box.innerHTML = "";
+  if (!on) return;
+  for (const [id, label] of FEW_TAGS) {
+    const b = document.createElement("button"); b.className = "tag" + (tags.includes(id) ? " on" : ""); b.textContent = label;
+    b.onclick = () => markTooFew(tags.includes(id) ? tags.filter(t => t !== id) : [...tags, id]);
+    box.appendChild(b);
+  }
+}
+async function markTooFew(tags) {
+  if (!state.clip) return;
+  try {
+    const j = await (await api(`/too_few_points/${encodeURIComponent(state.clip)}/${state.frame}`, jsonOpts("PUT", { tags: tags || [] }))).json();
+    state.tooFew = j.too_few_points; syncFew(); drawChips(); reloadProps();
+    status("marked too few points (press again or Undo to clear)"); refreshCounts();
+  } catch (e) { status("too few points failed: " + e.message, true); }
+}
+async function clearTooFew() {
+  try {
+    const j = await (await api(`/too_few_points/${encodeURIComponent(state.clip)}/${state.frame}`, { method: "DELETE" })).json();
+    state.tooFew = j.too_few_points; syncFew(); drawChips(); reloadProps(); status("too-few-points mark cleared"); refreshCounts();
+  } catch (e) { status("undo failed: " + e.message, true); }
+}
+function dropTooFewLocal() {   // the server replaced / cleared this frame's too-few mark (GT saved, not-broadcast set)
+  if (state.tooFew) delete state.tooFew[String(state.frame)];
+  syncFew(); reloadProps();
+}
+async function reloadProps() { if (state.propsRun && state.clip) { await loadClipProps(state.clip); } }
+const toggleTooFew = () => (isTooFew() ? clearTooFew() : markTooFew([]));
 async function deleteGt() {
   if (!state.gtFrames.includes(state.frame)) { status("no GT on this frame"); return; }
   if (!confirm("Delete saved GT for this frame?")) return;
@@ -815,6 +861,7 @@ $("prevBtn").onclick = () => gotoFrame(state.frame - 1);
 $("nextBtn").onclick = () => gotoFrame(state.frame + 1);
 $("saveBtn").onclick = saveGt; $("loadBtn").onclick = () => loadGt(false); $("delGtBtn").onclick = deleteGt;
 $("nbBtn").onclick = () => markNotBroadcast(false); $("nbUndo").onclick = clearNotBroadcast;
+$("fewBtn").onclick = toggleTooFew; $("fewUndo").onclick = clearTooFew;
 $("undoBtn").onclick = undo;
 $("rejectBtn").onclick = rejectProposal;
 $("clearBtn").onclick = () => { snapshot(); state.imgPts = []; state.pitchPts = []; state.dirty = true; refit(); };
@@ -830,6 +877,7 @@ document.addEventListener("keydown", e => {
   if (e.key === "ArrowLeft") gotoFrame(state.frame - step);
   else if (e.key === "ArrowRight") gotoFrame(state.frame + step);
   else if (e.key === "n") markNotBroadcast(false);
+  else if (e.key === "t") toggleTooFew();
   else if (e.ctrlKey || e.metaKey || e.altKey) return;
   else if (e.key === "x") rejectProposal();   // no-op unless a proposal is loaded
   else if (e.key === "[") goRel(-1);
