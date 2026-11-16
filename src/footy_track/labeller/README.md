@@ -1157,7 +1157,8 @@ becomes GT without a human accepting it; accepted GT carries
   flag is 409 and nothing is written; saving GT or accepting a proposal on a marked frame clears the
   mark. `not_broadcast` replaces a too-few mark and never clears one. The feature store ingests the
   flag and the proposal status as `review_status=too_few_points` (no H; never wins
-  `frame_calibration_best`). The pre-label pipeline does not skip these frames. Editor: "Too few points"
+  `frame_calibration_best`). The pre-label run skips these frames like not_broadcast ones (`--skip-gt`). The
+  marks live in the current dataset's marks dir (`?dataset=`), like not_broadcast. Editor: "Too few points"
   button (key `t`, toggles; "Clear too few points" when on) next to Not broadcast, with a banner, one-tap
   tag chips and Undo; a clip with only not-broadcast / too-few marks counts as "skipped". Review page:
   big "Too few points" button (key `t`, "Clear" on marked items) beside Not broadcast/Skip, optional
@@ -1165,6 +1166,8 @@ becomes GT without a human accepting it; accepted GT carries
   - Tests: `test_calibration_proposals.py::test_too_few_points_*`,
     `::test_review_and_editor_pages_have_too_few_points_button_and_filter` (markers; flow UNTESTED-FRONTEND),
     `test_calibration.py::test_too_few_points_editor_endpoint_without_proposals`,
+    `test_datasets.py::test_too_few_points_marks_are_per_dataset`,
+    `tests/calibration/test_prelabel.py::test_pipeline_skips_too_few_points_frames`,
     `tests/feature_store/test_ingest_calibration.py::test_too_few_points_status_and_flags_are_ingested_without_winning_best`
 - **LAB-1219** (SHOULD) Frames are read through `footy_track.calibration.video.read_frame`
   (cv2, falling back to the ffmpeg CLI when cv2 fails or returns an all-black frame,

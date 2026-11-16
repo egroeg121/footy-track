@@ -721,3 +721,14 @@ def test_pipeline_skips_not_broadcast_frames(run_env):
     s = pl.run_prelabel(cfg, idf.MockIdentifier(gt), log=lambda *_: None)
     frames = set(read_proposals(gt, "mancity_seg010")["runs"][s.run_id]["frames"])
     assert frames == {"0", "2", "3"}
+
+
+def test_pipeline_skips_too_few_points_frames(run_env):
+    from footy_track.calibration.frame_type import update_frame_types
+    gt, clips = run_env
+    update_frame_types(gt, "arsenal_mancity_seg010", lambda d: d["frames"].update(
+        {"1": {"type": "too_few_points", "tags": ["halfway_line"]}, "2": {"type": "not_broadcast"}}))
+    cfg = pl.RunConfig(gt_dir=gt, clips_dir=clips, clips=["mancity_seg010"], every=1, limit=3)
+    s = pl.run_prelabel(cfg, idf.MockIdentifier(gt), log=lambda *_: None)
+    frames = set(read_proposals(gt, "mancity_seg010")["runs"][s.run_id]["frames"])
+    assert frames == {"0", "3", "4"}
