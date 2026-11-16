@@ -161,6 +161,7 @@ let dispW = 0, dispH = 0;
 let tool = "draw";          // edit | draw
 let viewFrame = 0;          // currently shown frame index
 let mode = "idle";          // idle | running | paused
+let pausing = false;        // Pause clicked, server has not confirmed yet (mode stays "running")
 let lastCompleted = -1;
 let ws = null;
 let clipsDir = "";          // resolved server-side clips directory
@@ -743,6 +744,12 @@ async function autodetect(frameIdx){
   setStatus("auto-detecting…");
   const res = await fetch("/autodetect",{method:"POST",headers:{"Content-Type":"application/json"},
     body:JSON.stringify({frame_idx:frameIdx, conf:0.35, iou:0.5, current_boxes:boxesNorm()})});
+  if (!res.ok) {
+    let why = res.statusText;
+    try { why = (await res.json()).detail || why; } catch {}
+    setStatus(`⚠️ auto-detect failed: ${why}`);
+    return;
+  }
   const data = await res.json();   // writes to timeline server-side
   drawBoxes(data.boxes, true);
   syncTimelineSets();
@@ -871,6 +878,7 @@ $("runBtn").onclick = async ()=>{
   try { await wsSend({type:"run", start_frame:viewFrame, conf:0.25, imgsz:+$("imgszSel").value, model_uri:modelUri(), handback_thresholds:handbackThresholds}); }
   catch { return; }  // reconnect failed — status already shows the problem
   lastCompleted = -1;  // forget the previous run's high-water mark (LAB-713)
+  pausing = false;
   mode="running"; uiRunning();
 };
 $("restartBtn").onclick = async ()=>{
@@ -879,9 +887,20 @@ $("restartBtn").onclick = async ()=>{
   try { await wsSend({type:"restart", start_frame:viewFrame, conf:0.25, imgsz:+$("imgszSel").value, model_uri:modelUri(), handback_thresholds:handbackThresholds}); }
   catch { return; }
   lastCompleted = -1;  // forget the previous run's high-water mark (LAB-713)
+  pausing = false;
   mode="running"; uiRunning();
 };
-$("pauseBtn").onclick = ()=>{ wsSend({type:"pause"}).catch(()=>{}); };
+$("pauseBtn").onclick = ()=>{
+  if (mode !== "running" || pausing) return;
+  // Stop painting queued live frames NOW. The server confirms with a "paused"
+  // status, but frame messages already in flight arrive first; without this the
+  // viewer keeps racing ahead for seconds after the click and it looks as if
+  // Pause did nothing.
+  pausing = true;
+  $("pauseBtn").disabled = true;
+  $("runMsg").textContent = "⏸ Pausing…";
+  wsSend({type:"pause"}).catch(()=>{ pausing = false; $("pauseBtn").disabled = false; });
+};
 
 function uiRunning(){
   $("runBtn").style.display="none"; $("restartBtn").style.display="none";
@@ -891,7 +910,7 @@ function uiRunning(){
   setCompilingOverlay(true);
 }
 function uiPaused(idx){
-  mode="paused";
+  mode="paused"; pausing = false;
   $("pauseBtn").disabled=true; $("autoBtn").disabled=false;
   $("runBtn").style.display="none";
   $("restartBtn").style.display=""; $("restartBtn").textContent=`▶️ Restart from frame ${idx}`;
@@ -900,7 +919,7 @@ function uiPaused(idx){
   setCompilingOverlay(false);
 }
 function uiIdle(){
-  mode="idle_results";
+  mode="idle_results"; pausing = false;
   $("runBtn").style.display=""; $("runBtn").disabled=false; $("restartBtn").style.display="none";
   $("pauseBtn").disabled=true; $("autoBtn").disabled=false;
   $("runMsg").textContent="";
@@ -964,7 +983,7 @@ function connectWS(){
       // Only render live frames while actually running — ignore in-flight frame
       // messages that arrive after a pause/scrub (they'd reset viewFrame and make
       // Restart use the wrong frame).
-      if (mode==="running"){
+      if (mode==="running" && !pausing){
         // First live frame means compiling has actually finished — drop the
         // overlay now rather than waiting on any particular status message.
         setCompilingOverlay(false);
@@ -988,6 +1007,7 @@ function connectWS(){
     else if (m.type==="error"){ setStatus("⚠️ "+m.message); setCompilingOverlay(false); }
   };
   ws.onclose = ()=>{
+    pausing = false;
     setStatus("⚠️ disconnected — reconnecting…");
     setCompilingOverlay(false);
     // Auto-reconnect with capped backoff so a server restart heals itself.

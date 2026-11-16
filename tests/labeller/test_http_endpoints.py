@@ -353,6 +353,20 @@ def test_autodetect_with_no_current_boxes_keeps_all_yolo(
     assert [b["source"] for b in data["boxes"]] == [PROV_YOLO]
 
 
+def test_autodetect_missing_weights_is_a_clear_503(
+    client, fresh_session, clips_dir, fake_cv2, monkeypatch
+):
+    load_fake_clip(fresh_session, clips_dir)
+
+    def no_weights(*a, **k):
+        raise FileNotFoundError(2, "No such file or directory", "/x/best.pt")
+
+    monkeypatch.setattr(labeller_server, "yolo_seed_objects", no_weights)
+    res = client.post("/autodetect", json={"frame_idx": 0, "current_boxes": []})
+    assert res.status_code == 503
+    assert "/x/best.pt" in res.json()["detail"]
+
+
 # ---------------------------------------------------------------------------
 # /propagate
 # ---------------------------------------------------------------------------
