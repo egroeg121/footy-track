@@ -12,13 +12,15 @@ from pathlib import Path
 ap = argparse.ArgumentParser()
 ap.add_argument("--labels", type=Path, required=True)
 ap.add_argument("--video-dir", type=Path, required=True, help="to read the frame size of <clip>.mp4 (labels are normalised)")
+ap.add_argument("--video-map", type=Path, default=None, help="optional json {clip: video file name} when files are not named <clip>.mp4")
 ap.add_argument("--thr", type=float, default=0.8)
 ap.add_argument("--spacing", type=int, default=100)
 ap.add_argument("--index-stride", type=int, default=1)
 ap.add_argument("--clip-prefix", default="", help="only labels files starting with this")
 a = ap.parse_args()
 for p in sorted(a.labels.glob(f"{a.clip_prefix}*.jsonl")):
-    v = a.video_dir / (p.stem + ".mp4")
+    vm = json.loads(a.video_map.read_text()) if a.video_map else {}
+    v = a.video_dir / vm.get(p.stem, p.stem + ".mp4")
     if not v.exists():
         continue
     w, h = (int(x) for x in subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height", "-of", "csv=p=0", str(v)],

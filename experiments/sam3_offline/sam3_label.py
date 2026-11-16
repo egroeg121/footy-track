@@ -59,7 +59,11 @@ def seed_box(s: dict, h: int) -> list[float]:
 def merge_clip(tracks: list[dict], score_gate: float, px: float, stride: int, scale: float) -> list[dict]:
     """One row per processed frame: S1 agreement (fwd of seed a vs bwd of the next seed b) else nearest-seed single track + score gate."""
     by_frame: dict[int, list] = {}
+    seed_rows: dict[int, dict] = {}
     for t in tracks:
+        r0 = t["frames"].get(str(t["t"]))
+        if r0 and r0[0]:
+            seed_rows[t["t"]] = {"x": r0[1], "y": r0[2], "box": r0[5:9], "score": 99.0, "seed": t["seed"], "dir": "seed", "dist": 0, "gate": "seed"}
         for k, r in t["frames"].items():
             p = int(k)
             if p == t["t"] or not r[0]:
@@ -81,7 +85,11 @@ def merge_clip(tracks: list[dict], score_gate: float, px: float, stride: int, sc
             c = min(cs, key=lambda c: c["dist"])
             best = {**c, "gate": "score" if c["score"] > score_gate else "weak"}
         rows.append({"p": p, "frame": p * stride, **best})
-    return rows
+    have = {r["p"] for r in rows}
+    for p, r in seed_rows.items():
+        rows = [x for x in rows if x["p"] != p] if p in have else rows
+        rows.append({"p": p, "frame": p * stride, **r})
+    return sorted(rows, key=lambda r: r["p"])
 
 
 def main():
