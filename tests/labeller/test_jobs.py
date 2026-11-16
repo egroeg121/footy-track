@@ -376,6 +376,58 @@ def test_open_jobs_appear_on_the_task_board_and_manual_tasks_still_work(web, two
     assert [t["id"] for t in web.get("/api/tasks").json()["tasks"]] == ["manual"]
 
 
+def test_ball_place_url_opens_job_mode_and_other_kinds_do_not(web):
+    j = _submit(web).json()
+    tail = f"&job={j['id']}"  # /labeller?dataset=..&clip=..&frame=10&job=<id>
+    assert j["url"].endswith(tail)
+    assert web.get(f"/api/jobs/{j['id']}").json()["url"].endswith(tail)
+    cal = _submit(web, title="cal", kind="calibration").json()
+    assert "job=" not in cal["url"]
+    own = _submit(web, title="own url", url="/labeller?clip=x").json()
+    assert "job=" not in own["url"]  # a submitter-supplied url still wins
+
+
+def test_frames_endpoint_expands_items_in_job_order_with_the_progress_rule(web, two):
+    other = "arsenal_nottinghamforest_seg002"
+    _sidecar(
+        two, "nottinghamforest", CLIP,
+        [
+            _row(10, ["in_play_ball", "labeller"]),  # human ball: done
+            _row(20, ["in_play_ball", "vittrack"]),  # machine only: NOT done
+            _row(30, ["no_ball"]),  # done
+            _row(40, ["not_broadcast"]),  # done
+        ],
+    )  # fmt: skip
+    items = [
+        {"clip": CLIP, "frame_start": 10, "frame_end": 50, "step": 10, "stratum": "easy", "reason": "r1"},
+        {"clip": other, "frame_start": 5, "frame_end": 6},
+    ]
+    j = _submit(web, items=items).json()
+    r = web.get(f"/api/jobs/{j['id']}/frames")
+    assert r.status_code == 200
+    doc = r.json()
+    assert [(f["clip"], f["frame"], f["done"]) for f in doc["frames"]] == [
+        (CLIP, 10, True), (CLIP, 20, False), (CLIP, 30, True), (CLIP, 40, True), (CLIP, 50, False),
+        (other, 5, False), (other, 6, False),
+    ]  # fmt: skip
+    assert doc["frames"][0]["stratum"] == "easy"
+    assert doc["frames"][0]["reason"] == "r1"
+    assert "stratum" not in doc["frames"][-1]
+    assert (doc["total"], doc["done"]) == (7, 3)
+    assert doc["title"] == "Nottingham Forest windows"
+    prog = web.get(f"/api/jobs/{j['id']}").json()["progress"]  # same rule as the board's progress
+    assert (prog["done"], prog["total"]) == (doc["done"], doc["total"])
+    assert prog["next"] == {"clip": CLIP, "frame": 20}
+    by_title = web.get("/api/jobs/Nottingham Forest windows/frames")
+    assert by_title.json()["total"] == 7
+
+
+def test_frames_endpoint_rejects_non_frame_jobs_and_unknown_ids(web):
+    assert web.get("/api/jobs/j-doesnotexist/frames").status_code == 404
+    cal = _submit(web, title="cal", kind="calibration").json()
+    assert web.get(f"/api/jobs/{cal['id']}/frames").status_code == 422
+
+
 def test_board_link_points_at_the_next_unlabelled_frame(web, two):
     _sidecar(two, "nottinghamforest", CLIP, [_row(f, ["in_play_ball", "labeller"]) for f in (10, 11, 12)])
     j = _submit(web).json()

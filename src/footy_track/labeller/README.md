@@ -1428,6 +1428,9 @@ restricted to the job's cards (progress and results are).
 - `GET /api/jobs/{id-or-title}` -> the job (`id, title, kind, dataset, status, items, requester, url, created, updated,
   closed?, progress`). `progress` = `{supported, done, total, remaining, fraction, next}` where `next` is the first
   unlabelled unit. A title must be unique among non-cancelled jobs (else 409 with `ids`).
+- `GET /api/jobs/{id-or-title}/frames` (`ball_place` jobs) -> `{id, title, total, done, frames: [{clip, frame, item,
+  done, stratum?, reason?}]}`: the items expanded in job order (`frame_start..frame_end` by `step`), `done` by the same
+  rule as `progress`. Feeds the labeller's job mode (`/labeller?...&job=<id>`, which a `ball_place` job's `url` carries).
 - `GET /api/jobs/{id-or-title}/results` -> the canonical results document below.
 - `POST /api/jobs/{id-or-title}/done | cancel | reopen`. Statuses: `open`, `in_progress`, `done`, `cancelled`.
   The server moves `open -> in_progress` at the first label and `-> done` when progress reaches 100%
@@ -1488,6 +1491,14 @@ restricted to the job's cards (progress and results are).
     `::test_cli_submits_a_csv_of_windows_and_reports_status`, `::test_client_is_a_standalone_stdlib_only_file_and_served_by_the_server`
 - **LAB-1407** (SHOULD) The labeller page deep link `?clip=<stem>&frame=<n>` opens that clip at that frame.
   - UNTESTED-FRONTEND
+- **LAB-1408** (SHOULD) `/labeller?job=<id>` is job mode: a bar shows `job frame k / N, clip, stratum`; `J` / the button
+  jumps to the next job frame that is not done (wrapping, switching clip), `K` to the previous one. Drawing a ball box,
+  or marking no-ball (`N`) / not-broadcast (`B`), saves and advances (checkbox `auto-advance`). No auto-detect (Q and
+  the button are off, frame 0 is not detected on load) and no forward propagation, so every mark on a job frame is a
+  human `labeller` mark. Without `job=` nothing changes.
+  - Tests (server half): `::test_ball_place_url_opens_job_mode_and_other_kinds_do_not`,
+    `::test_frames_endpoint_expands_items_in_job_order_with_the_progress_rule`; the page itself is UNTESTED-FRONTEND
+    (driven by hand in headless Chromium).
 
 ## 15. Traceability summary
 
