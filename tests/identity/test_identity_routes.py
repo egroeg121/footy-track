@@ -95,8 +95,8 @@ def client(tmp_path, monkeypatch):
     clips = tmp_path / "clips"
     clips.mkdir()
     (tmp_path / "tracklets").mkdir()
-    monkeypatch.setattr(labeller_server, "_GT_MARKS_DIR", gt)
-    monkeypatch.setattr(labeller_server, "_CLIPS_DIR", clips)
+    monkeypatch.setenv("FOOTY_GT_MARKS_DIR", str(gt))
+    monkeypatch.setenv("FOOTY_CLIPS_DIR", str(clips))
     return TestClient(labeller_server.app)
 
 

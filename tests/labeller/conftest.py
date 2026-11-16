@@ -6,7 +6,9 @@ shells):
 
 - ``fake_cv2`` replaces the ``cv2`` name inside the labeller server modules
   with a stand-in whose ``VideoCapture`` serves synthetic metadata/frames.
-- ``gt_marks_dir`` / ``clips_dir`` redirect the module-level data dirs to tmp.
+- ``gt_marks_dir`` / ``clips_dir`` / ``cand_dir`` redirect the default dataset's
+  data dirs to tmp (via the legacy ``FOOTY_*`` env overrides, see
+  ``labeller/datasets.py``).
 - ``fresh_session`` swaps the global ``SESSION`` singleton for a clean one.
 - ``client`` is a FastAPI ``TestClient`` over the real app.
 """
@@ -167,7 +169,7 @@ def patch_labeller_attr(
 def gt_marks_dir(tmp_path, monkeypatch) -> Path:
     d = tmp_path / "ball_gt_marks"
     d.mkdir()
-    patch_labeller_attr(monkeypatch, "_GT_MARKS_DIR", d)
+    monkeypatch.setenv("FOOTY_GT_MARKS_DIR", str(d))
     return d
 
 
@@ -176,7 +178,7 @@ def cand_dir(tmp_path, monkeypatch) -> Path:
     """Redirect the ball-candidates dir (detector output with confidences)."""
     d = tmp_path / "ball_candidates"
     d.mkdir()
-    patch_labeller_attr(monkeypatch, "_CANDIDATES_DIR", d)
+    monkeypatch.setenv("FOOTY_BALL_CANDIDATES_DIR", str(d))
     return d
 
 
@@ -184,7 +186,7 @@ def cand_dir(tmp_path, monkeypatch) -> Path:
 def clips_dir(tmp_path, monkeypatch) -> Path:
     d = tmp_path / "clips"
     d.mkdir()
-    patch_labeller_attr(monkeypatch, "_CLIPS_DIR", d)
+    monkeypatch.setenv("FOOTY_CLIPS_DIR", str(d))
     return d
 
 

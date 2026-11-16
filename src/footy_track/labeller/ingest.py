@@ -15,6 +15,8 @@ from pathlib import Path
 from fastapi import APIRouter, File, UploadFile
 from fastapi.responses import StreamingResponse
 
+from footy_track.labeller import datasets
+
 router = APIRouter()
 
 _INGEST_UPLOADS = Path(tempfile.gettempdir()) / "footy_ingest_uploads"
@@ -25,9 +27,7 @@ _UPLOAD_FILE = File(...)
 
 
 def _clips_dir() -> Path:
-    from footy_track.labeller import server  # noqa: PLC0415 — avoid import cycle
-
-    return server._CLIPS_DIR
+    return datasets.current().clips_dir
 
 
 @router.post("/ingest/upload")

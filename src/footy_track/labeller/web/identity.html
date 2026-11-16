@@ -14,6 +14,7 @@
 -->
 <html lang="en">
 <head>
+<script src="/static/dataset.js"></script>
 <meta charset="utf-8">
 <title>Identity review</title>
 <style>
@@ -147,8 +148,8 @@ async function loadStrip() {
         const b = c.bbox;
         const away = c.facing_away === null ? "" : ` · away ${c.facing_away}`;
         return `<figure class="fr"><img style="height:300px;background:#000;border-radius:6px"
-          src="/identity/crop/${encodeURIComponent(current)}/${c.frame}.jpg`
-          + `?x=${b.x}&y=${b.y}&w=${b.w}&h=${b.h}&pad=0.25">
+          src="${footyUrl(`/identity/crop/${encodeURIComponent(current)}/${c.frame}.jpg`
+          + `?x=${b.x}&y=${b.y}&w=${b.w}&h=${b.h}&pad=0.25`)}">
           <figcaption>${c.frame} · ${c.height_px}px${away}</figcaption></figure>`;
       }).join("") || '<span class="hint">no candidates</span>';
       // Judge the SET, not the top-ranked one: the ranking optimises for
@@ -177,7 +178,7 @@ async function loadStrip() {
     const b = boxes[i];
     const q = b ? `?x=${b.x}&y=${b.y}&w=${b.w}&h=${b.h}` : "";
     return `<figure class="fr"><img data-f="${f}" title="frame ${f}" loading="lazy"
-      src="/identity/crop/${encodeURIComponent(current)}/${f}.jpg${q}">
+      src="${footyUrl(`/identity/crop/${encodeURIComponent(current)}/${f}.jpg${q}`)}">
       <figcaption>${f}</figcaption></figure>`;
   }).join("");
   for (const fig of $("strip").children) {

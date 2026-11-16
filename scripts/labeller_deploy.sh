@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
-# Deploy / operate the labelling servers. They run ONLY from $SERVE_DIR on main.
+# Deploy / operate the labelling server. It runs ONLY from $SERVE_DIR on main.
+# ONE service (calib, :8011) serves every dataset (calib, norwich, ...): the dataset is the
+# ?dataset= query parameter and the datasets live in the registry
+# $DATA/labeller_datasets.json (see footy_track/labeller/datasets.py), created on first
+# restart/deploy by `labeller_datasets init` if missing, never overwritten.
 #
 #   scripts/labeller_deploy.sh status
 #   scripts/labeller_deploy.sh deploy  [svc...]   # ff-only to origin/main, restart, wait for sha
@@ -12,6 +16,7 @@
 # otherwise runs in the background after restarting a service in WARM_SVCS.
 #
 # Env overrides: SERVE_DIR, LABELLER_PY, TMUX_SOCKET, LABELLER_LOG_DIR, DEPLOY_TIMEOUT.
+# Retire the old norwich server (:8012) yourself after the first deploy: `tmux -L footy kill-session -t footy-norwich`.
 set -euo pipefail
 
 SERVE_DIR="${SERVE_DIR:-/home/george/footy-track-main}"
@@ -23,21 +28,17 @@ HOST="${LABELLER_HEALTH_HOST:-127.0.0.1}"
 DATA=/mnt/storage/footy_data
 
 # ---- service table: name -> port, extra env (one KEY=VALUE per line) --------
-SERVICES=(calib norwich)
-declare -A SVC_PORT=([calib]=8011 [norwich]=8012)
+SERVICES=(calib)
+declare -A SVC_PORT=([calib]=8011)
 declare -A SVC_ENV
-SVC_ENV[calib]="FOOTY_GT_MARKS_DIR=$DATA/ball_gt_marks
-FOOTY_CLIPS_DIR=$DATA/eval_clips_kf10
-FOOTY_CALIB_EXTRA_CLIPS_DIRS=$DATA/ballcheck_clips_kf10"
-SVC_ENV[norwich]="FOOTY_CLIPS_DIR=$DATA/arsenal_norwich/split_video_broadcast_frames_kf10
-FOOTY_BALL_CHECK_LIST=$DATA/norwich_label_queue/ball_check_list_v1.json
-FOOTY_BALL_CANDIDATES_DIR=$DATA/ball_candidates_norwich
-FOOTY_GT_MARKS_DIR=$DATA/ball_gt_marks_norwich"
+# No FOOTY_*_DIR here: per-dataset dirs come from the registry. (Setting FOOTY_CLIPS_DIR /
+# FOOTY_GT_MARKS_DIR / ... would override the DEFAULT dataset's fields and hide registry edits.)
+SVC_ENV[calib]=""
 # -----------------------------------------------------------------------------
 
-# Services whose Ball Check crop/clip caches are warmed after a restart (they
-# serve a FOOTY_BALL_CHECK_LIST; a restart empties the in-memory caches).
-WARM_SVCS=(norwich)
+# service -> datasets whose Ball Check crop/clip caches are warmed after a restart (they
+# serve a ball_check_list; a restart empties the in-memory caches).
+declare -A WARM_DATASETS=([calib]="norwich")
 
 DRY=0
 FORCE=0
@@ -169,6 +170,7 @@ cmd_restart() {
   check_svc "$svc"
   port="$(port_of "$svc")"; sess="$(session_of "$svc")"
   run mkdir -p "$LOG_DIR"
+  ensure_registry
   if have_session "$svc"; then
     run tm kill-session -t "$sess"
   fi
@@ -199,24 +201,33 @@ cmd_restart() {
   start_warm "$svc"
 }
 
+# Create the dataset registry from the built-in seed if it does not exist; never overwrites.
+# Aborts (before anything is restarted) if that fails, so the server cannot come up pointing
+# at the wrong data.
+ensure_registry() {
+  run bash -c 'cd "$1" && PYTHONPATH=src exec "$2" -m footy_track.scripts.labeller_datasets init --data-root "$3"' \
+    _ "$SERVE_DIR" "$PY" "$DATA" || die "could not ensure the dataset registry; nothing was restarted"
+}
+
 # Background, sequential, nice 19: GET every not-yet-verdicted Ball Check card's
 # crop + clip so the first phone to open it does not pay for the decode.
 start_warm() {
-  local svc="$1" w port log
+  local svc="$1" ds port log
   ((WARM)) || return 0
-  for w in "${WARM_SVCS[@]}"; do [[ "$w" == "$svc" ]] && break; w=""; done
-  [[ -n "${w:-}" ]] || return 0
-  port="$(port_of "$svc")"; log="$LOG_DIR/$svc-warm.log"
-  if ((DRY)); then
-    echo "# would warm $svc's Ball Check cards in the background (disable with --no-warm):"
-    printf '+ (cd %q && PYTHONPATH=src nohup nice -n 19 %q -m footy_track.scripts.warm_ball_check --base http://%s:%s >> %q 2>&1 &)\n' \
-      "$SERVE_DIR" "$PY" "$HOST" "$port" "$log"
-    return 0
-  fi
-  pkill -f "footy_track.scripts.warm_ball_check --base http://$HOST:$port" 2>/dev/null || true
-  (cd "$SERVE_DIR" && PYTHONPATH=src nohup nice -n 19 "$PY" -m footy_track.scripts.warm_ball_check \
-    --base "http://$HOST:$port" >>"$log" 2>&1 &)
-  echo "$svc: warming Ball Check caches in the background (log: $log)"
+  port="$(port_of "$svc")"
+  for ds in ${WARM_DATASETS[$svc]:-}; do
+    log="$LOG_DIR/$svc-warm-$ds.log"
+    if ((DRY)); then
+      echo "# would warm $svc's Ball Check cards for dataset $ds in the background (disable with --no-warm):"
+      printf '+ (cd %q && PYTHONPATH=src nohup nice -n 19 %q -m footy_track.scripts.warm_ball_check --base http://%s:%s --dataset %s >> %q 2>&1 &)\n' \
+        "$SERVE_DIR" "$PY" "$HOST" "$port" "$ds" "$log"
+      continue
+    fi
+    pkill -f "footy_track.scripts.warm_ball_check --base http://$HOST:$port --dataset $ds" 2>/dev/null || true
+    (cd "$SERVE_DIR" && PYTHONPATH=src nohup nice -n 19 "$PY" -m footy_track.scripts.warm_ball_check \
+      --base "http://$HOST:$port" --dataset "$ds" >>"$log" 2>&1 &)
+    echo "$svc: warming Ball Check caches of dataset $ds in the background (log: $log)"
+  done
 }
 
 wait_healthy() {

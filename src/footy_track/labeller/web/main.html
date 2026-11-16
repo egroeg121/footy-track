@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+<script src="/static/dataset.js"></script>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Footy Track</title>
@@ -52,11 +53,23 @@
   .srv.down .dot { background:var(--red); }
   .srv.dirty .sha { color:var(--amber); }
   code { font-family:ui-monospace,Menlo,monospace; }
+
+  /* dataset picker */
+  .dsbar { display:flex; flex-wrap:wrap; gap:6px 10px; align-items:center; margin:0 0 4px; font-size:13px; }
+  .dsbar[hidden] { display:none; }
+  .dsbar select { background:var(--panel); color:var(--ink); border:1px solid var(--border);
+                  border-radius:8px; padding:6px 10px; font-size:14px; }
 </style>
 </head>
 <body>
 <main>
   <h1>&#9917; Footy Track</h1>
+
+  <div class="dsbar" id="dsbar" hidden>
+    <label for="dataset" class="muted">Dataset</label>
+    <select id="dataset"></select>
+    <span class="muted" id="dsinfo"></span>
+  </div>
 
   <h2>To do now</h2>
   <div id="tasks"><div class="empty">Loading&hellip;</div></div>
@@ -104,7 +117,6 @@
 // Keep in step with scripts/labeller_services.conf.
 const SERVICES = [
   { name: "calib", port: 8011 },
-  { name: "norwich", port: 8012 },
 ];
 const DEVICE_ICON = { phone: "\u{1F4F1} phone", laptop: "\u{1F4BB} laptop", either: "phone or laptop" };
 
@@ -211,6 +223,31 @@ async function loadServers() {
   box.replaceChildren(...rows);
 }
 
+// Dataset picker: the choice lives in ?dataset= (dataset.js carries it to every link and
+// API call on the tool pages). The default dataset needs no parameter.
+async function loadDatasets() {
+  try {
+    const j = await getJSON("/api/datasets");
+    if (j.datasets.length < 2) return;
+    const sel = document.getElementById("dataset");
+    const cur = window.FOOTY_DATASET || j.default;
+    for (const d of j.datasets) {
+      const o = el("option", "", d.label || d.name);
+      o.value = d.name;
+      o.selected = d.name === cur;
+      sel.append(o);
+    }
+    const show = () => {
+      const d = j.datasets.find((x) => x.name === sel.value);
+      document.getElementById("dsinfo").textContent = d ? d.name + " \u00b7 " + d.marks_dir : "";
+    };
+    sel.onchange = () => { location.search = sel.value === j.default ? "" : "?dataset=" + encodeURIComponent(sel.value); };
+    show();
+    document.getElementById("dsbar").hidden = false;
+  } catch (e) { /* picker is optional */ }
+}
+
+loadDatasets();
 loadTasks();
 loadServers();
 </script>

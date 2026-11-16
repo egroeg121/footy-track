@@ -53,7 +53,7 @@ def test_clips_lists_videos_sorted_with_marked_flag(client, clips_dir, gt_marks_
 
 
 def test_clips_missing_dir_returns_empty(client, tmp_path, monkeypatch):
-    monkeypatch.setattr(labeller_server, "_CLIPS_DIR", tmp_path / "nope")
+    monkeypatch.setenv("FOOTY_CLIPS_DIR", str(tmp_path / "nope"))
     assert client.get("/clips").json() == {"clips": []}
 
 

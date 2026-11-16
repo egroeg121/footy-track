@@ -25,6 +25,7 @@ from fastapi import APIRouter
 from fastapi.responses import Response
 
 from footy_track.ball_eval.metrics import bbox_iou
+from footy_track.labeller import datasets
 from footy_track.labeller.constants import (
     NO_BALL_TAG,
     NOT_BROADCAST_TAG,
@@ -39,15 +40,11 @@ router = APIRouter()
 
 
 def _gt_marks_dir() -> Path:
-    from footy_track.labeller import server  # noqa: PLC0415 — avoid import cycle
-
-    return server._GT_MARKS_DIR
+    return datasets.current().marks_dir
 
 
 def _clips_dir() -> Path:
-    from footy_track.labeller import server  # noqa: PLC0415 — avoid import cycle
-
-    return server._CLIPS_DIR
+    return datasets.current().clips_dir
 
 
 # Provenance tags recognised when reading sidecar lines for review. NOTE:
@@ -56,7 +53,7 @@ def _clips_dir() -> Path:
 # src/footy_track/labeller/README.md, pinned by tests).
 _PROV_TAGS = {PROV_LABELLER, PROV_YOLO, PROV_SAM3}
 
-# LRU crop cache: key = (clip_stem, frame_idx, box_idx), value = JPEG bytes
+# LRU crop cache: key = (dataset, clip_stem, frame_idx, box_idx), value = JPEG bytes
 _CROP_CACHE: collections.OrderedDict[tuple, bytes] = collections.OrderedDict()
 _CROP_CACHE_MAX = 200
 
@@ -266,7 +263,7 @@ async def review_queue() -> dict:
 @router.get("/review/crop/{clip_stem}/{frame_idx}/{box_idx}.jpg")
 async def review_crop(clip_stem: str, frame_idx: int, box_idx: int) -> Response:
     """Return a JPEG crop of a specific box from a specific frame."""
-    cache_key = (clip_stem, frame_idx, box_idx)
+    cache_key = (datasets.current_name(), clip_stem, frame_idx, box_idx)
     cached = _get_cached_crop(cache_key)
     if cached is not None:
         return Response(content=cached, media_type="image/jpeg")
@@ -343,7 +340,7 @@ async def review_correct(body: dict) -> dict:
     marks_dir.mkdir(parents=True, exist_ok=True)
     jsonl_path.write_text("\n".join(lines) + "\n")
     # Invalidate crop cache for this box
-    _CROP_CACHE.pop((clip, frame_index, box_index), None)
+    _CROP_CACHE.pop((datasets.current_name(), clip, frame_index, box_index), None)
     return {"ok": True}
 
 
@@ -365,7 +362,7 @@ async def review_delete(body: dict) -> dict:
 
     del lines[line_indices[box_index]]
     jsonl_path.write_text("\n".join(lines) + "\n")
-    _CROP_CACHE.pop((clip, frame_index, box_index), None)
+    _CROP_CACHE.pop((datasets.current_name(), clip, frame_index, box_index), None)
     return {"ok": True}
 
 

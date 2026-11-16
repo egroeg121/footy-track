@@ -14,7 +14,7 @@ import numpy as np
 import pytest
 from PIL import Image
 
-from footy_track.labeller import ball_check, server
+from footy_track.labeller import ball_check
 
 from .conftest import FAKE_JPEG
 
@@ -282,6 +282,7 @@ def test_crop_returns_jpeg_and_caches(
     assert res.status_code == 200
     assert res.content == FAKE_JPEG
     assert (
+        "calib",
         "sidecar",
         "clip",
         0,
@@ -293,11 +294,12 @@ def test_crop_returns_jpeg_and_caches(
 
     # A different pad is a different cache entry, not a stale hit.
     client.get("/ball_check/crop/clip/0/0.jpg?pad=20")
-    assert ("sidecar", "clip", 0, 0, 20.0, True, 0) in ball_check._BC_CROP_CACHE
+    assert ("calib", "sidecar", "clip", 0, 0, 20.0, True, 0) in ball_check._BC_CROP_CACHE
 
     # reticle=false is its own entry: the page draws its own draggable box.
     client.get("/ball_check/crop/clip/0/0.jpg?reticle=false")
     assert (
+        "calib",
         "sidecar",
         "clip",
         0,
@@ -331,6 +333,7 @@ def test_pad_is_clamped_to_max(client, clips_dir, gt_marks_dir, fake_cv2, bc_cac
     _write_sidecar(gt_marks_dir, "clip", [_line(0, ["in_play_ball", "yolo"])])
     assert client.get("/ball_check/crop/clip/0/0.jpg?pad=9999").status_code == 200
     assert (
+        "calib",
         "sidecar",
         "clip",
         0,
@@ -724,7 +727,7 @@ def test_ball_check_page_is_not_cacheable(client):
 def _write_list(tmp_path, monkeypatch, items):
     path = tmp_path / "review_list.json"
     path.write_text(json.dumps({"items": items}))
-    monkeypatch.setattr(server, "_BALL_CHECK_LIST", str(path))
+    monkeypatch.setenv("FOOTY_BALL_CHECK_LIST", str(path))
 
 
 def _card(clip, frame, **kw):
@@ -771,7 +774,7 @@ def test_list_queue_file_order_skips_judged(
     # list verdicts are not a detector precision sample
     assert client.get("/ball_check/stats").json()["judged"] == 0
     # no list configured -> empty pool, never an error
-    monkeypatch.setattr(server, "_BALL_CHECK_LIST", None)
+    monkeypatch.delenv("FOOTY_BALL_CHECK_LIST")
     assert client.get("/ball_check/queue?source=list").json()["items"] == []
 
 

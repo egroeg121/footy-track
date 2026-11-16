@@ -126,7 +126,7 @@ def test_crop_serves_jpeg_and_caches(
     r = client.get("/review/crop/clip/3/0.jpg")
     assert r.status_code == 200
     assert r.content == FAKE_JPEG
-    assert ("clip", 3, 0) in crop_cache
+    assert ("calib", "clip", 3, 0) in crop_cache
     # Second hit is served from cache (no video needed at all).
     (clips_dir / "clip.mp4").unlink()
     assert client.get("/review/crop/clip/3/0.jpg").status_code == 200
@@ -215,7 +215,7 @@ def test_correct_invalidates_crop_cache(
     (clips_dir / "clip.mp4").touch()
     _write_sidecar(gt_marks_dir, "clip", [_line(0, ["player", "yolo"])])
     client.get("/review/crop/clip/0/0.jpg")
-    assert ("clip", 0, 0) in crop_cache
+    assert ("calib", "clip", 0, 0) in crop_cache
     client.post(
         "/review/correct",
         json={
@@ -226,7 +226,7 @@ def test_correct_invalidates_crop_cache(
             "bbox": {"x": 0.1, "y": 0.1, "w": 0.05, "h": 0.05},
         },
     )
-    assert ("clip", 0, 0) not in crop_cache
+    assert ("calib", "clip", 0, 0) not in crop_cache
 
 
 def test_correct_error_shapes(client, clips_dir, gt_marks_dir):

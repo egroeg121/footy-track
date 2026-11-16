@@ -23,7 +23,6 @@ import json
 
 import pytest
 
-from footy_track.labeller import server as labeller_server
 from footy_track.labeller.server import (
     PROV_LABELLER,
     PROV_SAM3,
@@ -38,7 +37,7 @@ from footy_track.schema import ObjectDetection
 def gt_marks_dir(tmp_path, monkeypatch):
     """Redirect the module-level GT-marks dir to a tmp dir for this test."""
     d = tmp_path / "ball_gt_marks"
-    monkeypatch.setattr(labeller_server, "_GT_MARKS_DIR", d)
+    monkeypatch.setenv("FOOTY_GT_MARKS_DIR", str(d))
     return d
 
 
