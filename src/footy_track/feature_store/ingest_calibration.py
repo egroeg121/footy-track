@@ -13,7 +13,8 @@ Reads, under ``--gt-dir``:
   (``source`` = the run's source, ``review_status`` = the frame's status)
 * ``frame_type/<canonical clip id>.json``            -> not-broadcast frame flags
   (``source=hand_label``, ``review_status=not_broadcast``, no H, run ``frame_type_import``);
-  such a frame (like any proposal with that status) drops out of ``frame_calibration_best``
+  such a frame (like any proposal with that status) drops out of ``frame_calibration_best``;
+  ``too_few_points`` flags import the same way (``review_status=too_few_points``, no H)
 
 into ``calibration`` + ``pitch_keypoint`` (one ``run`` row per proposal run,
 ``stage=calibration``). The file format is the shared contract described in
@@ -70,9 +71,9 @@ GT_SOURCE = "hand_label"
 FRAME_TYPE_DATASET_TAG = "frame_type"
 FRAME_TYPE_RUN_ID = "frame_type_import"
 _H_CONVENTIONS = {H_CONVENTION, "norm_image->pitch_m"}
-_PROPOSAL_STATUSES = ("proposed", "accepted", "rejected", "failed", "not_broadcast")
+_PROPOSAL_STATUSES = ("proposed", "accepted", "rejected", "failed", "not_broadcast", "too_few_points")
 #: statuses whose record has no (usable) H
-_NO_H_STATUSES = ("failed", "not_broadcast")
+_NO_H_STATUSES = ("failed", "not_broadcast", "too_few_points")
 
 
 @dataclass
@@ -227,7 +228,7 @@ def _parse_frame(
         image_height=int(h) if h else None,
         method=rec.get("method"),
         review_status=status,
-        reviewed=is_gt or status in ("accepted", "rejected", "not_broadcast"),
+        reviewed=is_gt or status in ("accepted", "rejected", "not_broadcast", "too_few_points"),
         origin_source=origin.get("source"),
         origin_run_id=origin.get("run_id"),
         origin_status=origin.get("proposal_status"),
@@ -341,15 +342,15 @@ def parse_frame_type_file(
         try:
             if not isinstance(rec, dict):
                 raise ValueError("frame record is not an object")
-            if rec.get("type") != "not_broadcast":
-                continue  # only flag type there is; unknown future types are not rows
+            if rec.get("type") not in ("not_broadcast", "too_few_points"):
+                continue  # unknown future types are not rows
             out.calib.append(
                 CalibrationRow(
                     game_id=game_id,
                     source=GT_SOURCE,
                     run_id=FRAME_TYPE_RUN_ID,
                     frame_index=_frame_index(key),
-                    review_status="not_broadcast",
+                    review_status=rec["type"],
                     reviewed=True,
                     created_at=_parse_ts(rec.get("ts")),
                     dataset_tag=FRAME_TYPE_DATASET_TAG,

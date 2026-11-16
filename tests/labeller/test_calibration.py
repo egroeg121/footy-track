@@ -121,6 +121,18 @@ def test_clips_list_counts_not_broadcast_frames(client, cal_env, clips_dir):
     assert by_name[clip]["n_not_broadcast"] == 1
 
 
+def test_too_few_points_editor_endpoint_without_proposals(client, cal_env):
+    clip = "arsenal_mancity_20250925_seg010"
+    r = client.put(f"/calibration/api/too_few_points/{clip}/4", json={"tags": ["goal_area"]})
+    assert r.status_code == 200 and r.json()["too_few_points"] == {"4": ["goal_area"]}
+    assert client.put(f"/calibration/api/too_few_points/{clip}/-1", json={}).status_code == 400
+    assert client.get(f"/calibration/api/clips/{clip}/meta").json()["too_few_points"] == {"4": ["goal_area"]}
+    c = client.get("/calibration/api/clips").json()["clips"][0]
+    assert c["n_too_few_points"] == 1 and c["n_not_broadcast"] == 0 and c["n_gt"] == 0
+    assert client.delete(f"/calibration/api/too_few_points/{clip}/4").status_code == 200
+    assert client.get("/calibration/api/clips").json()["clips"][0]["n_too_few_points"] == 0
+
+
 def test_warp_returns_raster_of_expected_size(client, cal_env):
     import cv2
 

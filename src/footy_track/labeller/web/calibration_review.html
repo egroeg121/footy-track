@@ -58,6 +58,11 @@
   button.no { background:var(--red); color:#fff; }
   button.yes { background:var(--green); }
   button.nb { background:var(--amber); color:#1c1300; flex:2; padding:12px 8px; font-size:15px; }
+  button.few { background:var(--accent); color:#06121c; flex:2; padding:12px 8px; font-size:15px; }
+  #fewTags { display:flex; gap:6px; flex-wrap:wrap; align-items:center; font-size:12px; color:var(--muted); }
+  #fewTags button { flex:none; min-height:36px; padding:6px 12px; font-size:13px; font-weight:600; border-radius:999px;
+                    background:transparent; color:var(--muted); border:1px solid var(--border); }
+  #fewTags button.on { color:var(--ink); border-color:var(--accent); background:#16314d; }
   button.mid { flex:1; padding:12px 8px; font-size:15px; }
   button.mid.skip { background:transparent; color:var(--muted); border:1px solid var(--border); font-weight:600; }
   #hint { display:none; align-self:flex-start; background:#3b2e0a; border:1px solid var(--amber); color:#ffd479;
@@ -98,6 +103,7 @@
       <option value="proposed,failed">to review + failed</option>
       <option value="accepted,edited">accepted</option><option value="rejected">rejected</option>
       <option value="not_broadcast">not broadcast</option>
+      <option value="too_few_points">too few points</option>
       <option value="all">all</option></select></label>
     <label>Order <select id="sortSel"><option value="score_asc">worst first</option>
       <option value="score_desc">best first</option></select></label>
@@ -134,8 +140,10 @@
       <button class="no" id="btnReject">Reject</button>
       <button class="yes" id="btnAccept">Accept</button>
     </div>
+    <div id="fewTags" aria-label="Optional: what is visible">Only visible (optional):</div>
     <div class="row">
       <button class="nb" id="btnNotBroadcast" title="Not a broadcast pitch view (n)">Not broadcast</button>
+      <button class="few" id="btnTooFew" title="Too few identifiable pitch points to label; kept as a PTZ-solver candidate (t)">Too few points</button>
       <button class="mid skip" id="btnSkip">Skip</button>
     </div>
     <div class="row">
@@ -143,7 +151,7 @@
       <button class="small on" id="btnWarp">Warp</button>
       <a class="small" id="editLink" href="/calibration">Open in editor</a>
     </div>
-    <div id="status">Swipe right = accept, left = reject. Not broadcast (n) = replay, close-up, crowd, graphic. Opens in the bird&rsquo;s-eye warp; hold the image for the camera view.</div>
+    <div id="status">Swipe right = accept, left = reject. Not broadcast (n) = replay, close-up, crowd, graphic. Too few points (t) = pitch view but fewer than 4 identifiable points (kept for the PTZ solver). Opens in the bird&rsquo;s-eye warp; hold the image for the camera view.</div>
   </footer>
 
 <script>
@@ -332,9 +340,12 @@ async function show() {
   const sc = it.score == null ? 0 : it.score;
   $("score").textContent = it.status === "failed" ? "failed" : `score ${sc.toFixed(2)}`;
   $("score").className = it.status === "failed" ? "bad" : scoreClass(sc);
-  $("btnAccept").disabled = it.status === "failed" || it.status === "not_broadcast";  // no H: fix the points in the editor first
+  $("btnAccept").disabled = it.status === "failed" || it.status === "not_broadcast" || it.status === "too_few_points";  // no H: fix the points in the editor first
   const nbDone = it.status === "not_broadcast";   // the button then undoes the mark
   $("btnNotBroadcast").textContent = nbDone ? "Clear not broadcast" : "Not broadcast";
+  const fewDone = it.status === "too_few_points";   // the button then undoes the mark
+  $("btnTooFew").textContent = fewDone ? "Clear too few points" : "Too few points";
+  fewTags = new Set(); drawFewTags(); $("fewTags").classList.toggle("hidden", fewDone);
   $("hint").classList.toggle("show", !nbDone && !!it.view && it.view.main_camera_wide === false);  // Claude's hint only; never auto-marks
   $("note").textContent = ""; $("conf").textContent = "";
   $("editLink").href = `/calibration?clip=${encodeURIComponent(it.clip)}&frame=${it.frame_index}&proposal=${encodeURIComponent(it.run_id)}`;
@@ -412,6 +423,18 @@ for (const id of ["runSel", "statusSel", "sortSel"]) $(id).onchange = loadQueue;
 
 // ---------------------------------------------------------------- verdicts
 function flash(ch, col) { const f = $("flash"); f.textContent = ch; f.style.color = col; f.style.opacity = "1"; setTimeout(() => (f.style.opacity = "0"), 160); }
+// optional "only these are visible" tags, sent with the next Too few points tap (reset on every item)
+const FEW_TAGS = [["centre_circle", "centre circle"], ["halfway_line", "halfway line"], ["penalty_box", "penalty box"],
+                  ["goal_area", "goal area"], ["touchline", "touchline"]];
+let fewTags = new Set();
+function drawFewTags() {
+  const box = $("fewTags"); box.textContent = "Only visible (optional):";
+  for (const [id, label] of FEW_TAGS) {
+    const b = document.createElement("button"); b.textContent = label; b.className = fewTags.has(id) ? "on" : "";
+    b.onclick = () => { fewTags.has(id) ? fewTags.delete(id) : fewTags.add(id); drawFewTags(); };
+    box.appendChild(b);
+  }
+}
 async function act(kind, overwrite) {
   if (!cur || busy) return;
   busy = true; const it = cur; clearError();
@@ -421,8 +444,11 @@ async function act(kind, overwrite) {
     else if (kind === "not_broadcast") {
       if (it.status === "not_broadcast") await getJSON(`${API}/frame_type/${encodeURIComponent(it.clip)}/${it.frame_index}`, { method: "DELETE" });
       else await post(`${base}/not_broadcast`, overwrite ? { overwrite: true } : {});
+    } else if (kind === "too_few_points") {
+      if (it.status === "too_few_points") await getJSON(`${API}/too_few_points/${encodeURIComponent(it.clip)}/${it.frame_index}`, { method: "DELETE" });
+      else await post(`${base}/too_few_points`, { tags: [...fewTags] });
     } else await post(`${base}/reject`);
-    const fl = { accept: ["✔", "#3fb950"], reject: ["✖", "#f85149"], not_broadcast: ["⊘", "#d29922"] }[kind];
+    const fl = { accept: ["✔", "#3fb950"], reject: ["✖", "#f85149"], not_broadcast: ["⊘", "#d29922"], too_few_points: ["…", "#58a6ff"] }[kind];
     flash(fl[0], fl[1]);
     items.splice(items.indexOf(it), 1); reviewed++; setStatus("");
     await show();
@@ -434,7 +460,7 @@ async function act(kind, overwrite) {
       return;
     }
     // item stays in place; say what the server said
-    showError(`${{ accept: "Accept", reject: "Reject", not_broadcast: "Not broadcast" }[kind]} failed${e.status ? ` (${e.status})` : ""}: ${e.message}`);
+    showError(`${{ accept: "Accept", reject: "Reject", not_broadcast: "Not broadcast", too_few_points: "Too few points" }[kind]} failed${e.status ? ` (${e.status})` : ""}: ${e.message}`);
   }
   busy = false;
 }
@@ -452,6 +478,7 @@ function skip() { if (items.length > 1) { idx = (idx + 1) % items.length; show()
 function back() { if (items.length > 1) { idx = (idx - 1 + items.length) % items.length; show(); } }
 $("btnAccept").onclick = () => act("accept"); $("btnReject").onclick = () => act("reject"); $("btnSkip").onclick = skip;
 $("btnNotBroadcast").onclick = () => act("not_broadcast");
+$("btnTooFew").onclick = () => act("too_few_points");
 
 // swipe: right = accept, left = reject; long-press on the image = flip to the other view while held
 (() => {
@@ -484,7 +511,7 @@ $("btnNotBroadcast").onclick = () => act("not_broadcast");
 // keyboard extras (never the only way to do anything)
 document.addEventListener("keydown", (e) => {
   if (["INPUT", "SELECT", "TEXTAREA"].includes(document.activeElement.tagName)) return;
-  if (e.key === "a") act("accept"); else if (e.key === "r") act("reject"); else if (e.key === "n") act("not_broadcast");
+  if (e.key === "a") act("accept"); else if (e.key === "r") act("reject"); else if (e.key === "n") act("not_broadcast"); else if (e.key === "t") act("too_few_points");
   else if (e.key === "j") skip(); else if (e.key === "k") back();
   else if (e.key === "e" && cur) location.href = $("editLink").href;
   else if (e.key === "o") { showOverlay = !showOverlay; syncToggles(); } else if (e.key === "w") toggleWarp();

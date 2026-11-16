@@ -1139,6 +1139,36 @@ becomes GT without a human accepting it; accepted GT carries
     `tests/calibration/test_prelabel.py::test_pipeline_skips_not_broadcast_frames`,
     `tests/feature_store/test_calibration_store.py::test_not_broadcast_frame_has_no_calibration_and_no_projection`,
     `tests/feature_store/test_ingest_calibration.py::test_frame_type_flags_and_not_broadcast_proposals_are_ingested`
+- **LAB-1223** (MUST) A frame that shows too few identifiable pitch features to place >= 4 point
+  pairs (e.g. only the centre circle / halfway line) can be marked `too_few_points` with one tap:
+  skipped by the human, kept as a candidate for the PTZ rig solver (fixed camera centre, solvable
+  from a few lines). Stored in the LAB-1222 sidecar `<gt dir>/frame_type/<canonical clip>.json` as
+  `{"type": "too_few_points", "ts", "run_id"?, "tags": [...]}` (one type per frame; atomic write, mode
+  kept). Optional `tags` say what *is* visible, from `centre_circle, halfway_line, penalty_box,
+  goal_area, touchline` (unknown -> 400). `PUT /calibration/api/too_few_points/{clip}/{idx}` (body
+  `{tags?, run_id?}`; PUT again replaces the tags), `DELETE` the same path (404 when not marked),
+  `GET .../too_few_points/{clip}` -> `{clip, frames: [{frame_index, tags, ts, run_id?}]}` and `GET
+  .../too_few_points` -> `{total, clips: {<canonical clip>: [...]}}` for the PTZ proposer (also
+  `too_few_points: {"<idx>": [tags]}` in `GET .../gt/{clip}` and `.../clips/{clip}/meta`, and
+  `n_too_few_points` in `GET .../clips`). `POST /calibration/api/proposals/{clip}/{run_id}/{idx}/too_few_points`
+  (body `{tags?}`; proposed or failed items) sets the proposal status `too_few_points` keeping the record
+  (`prev_status`, `reviewed_at`, `tags`), other still-open proposals of the frame follow, `?status=too_few_points`
+  filters it; DELETE restores the previous statuses. A frame with calibration GT or a `not_broadcast`
+  flag is 409 and nothing is written; saving GT or accepting a proposal on a marked frame clears the
+  mark. `not_broadcast` replaces a too-few mark and never clears one. The feature store ingests the
+  flag and the proposal status as `review_status=too_few_points` (no H; never wins
+  `frame_calibration_best`). The pre-label run skips these frames like not_broadcast ones (`--skip-gt`). The
+  marks live in the current dataset's marks dir (`?dataset=`), like not_broadcast. Editor: "Too few points"
+  button (key `t`, toggles; "Clear too few points" when on) next to Not broadcast, with a banner, one-tap
+  tag chips and Undo; a clip with only not-broadcast / too-few marks counts as "skipped". Review page:
+  big "Too few points" button (key `t`, "Clear" on marked items) beside Not broadcast/Skip, optional
+  tag chips, and a "too few points" status filter.
+  - Tests: `test_calibration_proposals.py::test_too_few_points_*`,
+    `::test_review_and_editor_pages_have_too_few_points_button_and_filter` (markers; flow UNTESTED-FRONTEND),
+    `test_calibration.py::test_too_few_points_editor_endpoint_without_proposals`,
+    `test_datasets.py::test_too_few_points_marks_are_per_dataset`,
+    `tests/calibration/test_prelabel.py::test_pipeline_skips_too_few_points_frames`,
+    `tests/feature_store/test_ingest_calibration.py::test_too_few_points_status_and_flags_are_ingested_without_winning_best`
 - **LAB-1219** (SHOULD) Frames are read through `footy_track.calibration.video.read_frame`
   (cv2, falling back to the ffmpeg CLI when cv2 fails or returns an all-black frame,
   frame-accurate, reader cached per video); `/calibration/api/frame` and `/warp` use it.
@@ -1457,10 +1487,10 @@ restricted to the job's cards (progress and results are).
 | 10. Review UI (LAB-9xx) | 7 | 0 | 0 | 7 |
 | 11. Ball Check (LAB-10xx) | 12 | 11 | 0 | 1 |
 | 12. Confidence sampling (LAB-11xx) | 5 | 5 | 0 | 0 |
-| 16. Pitch calibration (LAB-12xx) | 22 | 17 | 0 | 5 |
+| 16. Pitch calibration (LAB-12xx) | 23 | 18 | 0 | 5 |
 | 18. Datasets (LAB-13xx) | 6 | 5 | 0 | 1 |
 | 19. Labelling jobs (LAB-14xx) | 8 | 7 | 0 | 1 |
-| **Total** | **137** | **100** | **8** | **29** |
+| **Total** | **138** | **101** | **8** | **29** |
 
 Open items: 4 (OPEN-1..4) + 1 fixed on main (undo provenance, `95b60cc`).
 Test suite: 138 tests in `tests/labeller/` (all green), plus the

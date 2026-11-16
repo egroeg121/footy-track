@@ -241,8 +241,13 @@ async def accept_proposal(clip: str, run_id: str, idx: int, body: dict | None = 
         doc = cal._read_gt(clip)
         doc["frames"][str(idx)] = gt_rec
         cal._write_gt(clip, doc)
+        if idx in cal.too_few_points_frames(_gt_marks_dir(), clip):
+            cal.clear_too_few_points(clip, idx)   # accepted after all: it had enough points
+
         def _flip(d):
-            d["runs"][run_id]["frames"][str(idx)]["status"] = status
+            f = d["runs"][run_id]["frames"][str(idx)]
+            f["status"] = status
+            f.pop("tags", None)
 
         update_proposals(_gt_marks_dir(), clip, _flip)
 
@@ -284,3 +289,25 @@ async def not_broadcast_proposal(clip: str, run_id: str, idx: int, body: dict | 
     if "conflict" in res:
         return cal._not_broadcast_conflict(res["conflict"])
     return {"ok": True, "status": "not_broadcast", "removed_gt": res["removed_gt"]}
+
+
+@router.post("/calibration/api/proposals/{clip}/{run_id}/{idx}/too_few_points")
+async def too_few_points_proposal(clip: str, run_id: str, idx: int, body: dict | None = None):
+    """Mark the frame as showing too few identifiable pitch points (< 4 pairs) for a human to label.
+
+    Body ``{tags?}``: optional "only these are visible" tags (``centre_circle``, ``halfway_line``,
+    ``penalty_box``, ``goal_area``, ``touchline``). Works on ``proposed`` and ``failed`` items alike. Sets
+    this proposal's status to ``too_few_points`` (the record - H, points - is kept; plus ``tags``,
+    ``prev_status``, ``reviewed_at``) and writes the frame-level flag (``frame_type/<clip>.json``) the
+    PTZ solver reads; the frame's other still-open proposals follow. Undo: ``DELETE
+    /calibration/api/too_few_points/{clip}/{idx}``. A frame with GT or a not_broadcast flag -> 409.
+    """
+    if await asyncio.to_thread(_get, clip, run_id, idx) is None:
+        return cal._err(404, "no such proposal")
+    tags, err = cal._tags_or_err(body or {})
+    if err is not None:
+        return err
+    res = await asyncio.to_thread(lambda: cal.mark_too_few_points(clip, idx, tags=tags, run_id=run_id))
+    if "conflict" in res:
+        return cal._too_few_conflict(res)
+    return {"ok": True, "status": "too_few_points", "tags": tags}

@@ -283,6 +283,21 @@ def test_calibration_gt_is_per_dataset(web, two):
     ] == ["y"]
 
 
+def test_too_few_points_marks_are_per_dataset(web, two):
+    (two["calib"] / "clips" / "x.mp4").touch()
+    (two["norwich"] / "clips" / "x.mp4").touch()
+    r = web.put("/calibration/api/too_few_points/x/3", json={"tags": ["halfway_line"]})
+    assert r.status_code == 200
+    assert (two["calib"] / "marks" / "frame_type" / "x.json").exists()
+    assert not (two["norwich"] / "marks" / "frame_type").exists()
+    assert web.get("/calibration/api/too_few_points").json()["total"] == 1
+    assert web.get("/calibration/api/too_few_points?dataset=norwich").json() == {"total": 0, "clips": {}}
+    assert web.get("/calibration/api/clips").json()["clips"][0]["n_too_few_points"] == 1
+    assert web.get("/calibration/api/clips?dataset=norwich").json()["clips"][0]["n_too_few_points"] == 0
+    assert web.delete("/calibration/api/too_few_points/x/3?dataset=norwich").status_code == 404
+    assert web.delete("/calibration/api/too_few_points/x/3").status_code == 200
+
+
 def test_identity_dirs_do_not_bleed_between_datasets(two):
     calib, norwich = datasets.get("calib"), datasets.get("norwich")
     assert calib.identity_labels_dir != norwich.identity_labels_dir
