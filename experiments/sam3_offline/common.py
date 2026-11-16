@@ -46,6 +46,26 @@ def decode_window(video: str, w: int, h: int, stride: int, lo: int, hi: int) -> 
     return out
 
 
+def decode_wanted(video: str, w: int, h: int, wanted: list[int]) -> dict[int, np.ndarray]:
+    """Frames ``wanted`` (original indices, stride 1) of a clip, streaming the ffmpeg CLI decode and keeping only those (RAM proportional to len(wanted))."""
+    want = set(wanted)
+    hi = max(want)
+    nbytes = w * h * 3
+    proc = subprocess.Popen(["ffmpeg", "-v", "error", "-i", video, "-fps_mode", "passthrough", "-frames:v", str(hi + 1), "-f", "rawvideo", "-pix_fmt", "rgb24", "-"],
+                            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, bufsize=nbytes * 2)
+    out: dict[int, np.ndarray] = {}
+    for i in range(hi + 1):
+        buf = proc.stdout.read(nbytes)
+        if len(buf) < nbytes:
+            break
+        if i in want:
+            out[i] = np.frombuffer(buf, np.uint8).reshape(h, w, 3).copy()
+    proc.stdout.close()
+    proc.kill()
+    proc.wait()
+    return out
+
+
 def crop_at(frame: np.ndarray, cx: float, cy: float, c: int):
     """c x c native-pixel window centred on (cx, cy), clamped inside the frame. Returns (crop, x0, y0)."""
     h, w = frame.shape[:2]

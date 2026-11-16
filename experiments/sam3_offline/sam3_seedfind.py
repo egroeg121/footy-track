@@ -21,7 +21,7 @@ from pathlib import Path
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from common import decode_window, load_spec  # noqa: E402
+from common import decode_window, decode_wanted, load_spec  # noqa: E402
 
 PROMPTS = ["ball", "football", "soccer ball", "white ball", "small white ball", "yellow ball"]
 
@@ -151,7 +151,9 @@ def main():
             det = TextDetector()
             torch.cuda.reset_peak_memory_stats()
         lo, hi = frames[0][0], frames[-1][0]
-        vid = decode_window(str(Path(a.videos) / f"{name}.mp4"), clip["w"], clip["h"], 1, lo, hi)
+        video = str(Path(a.videos) / f"{name}.mp4")
+        # sparse probe lists (tracker-disagreement run): stream-decode keeping only the wanted frames instead of holding lo..hi (GBs of RGB)
+        vid = decode_wanted(video, clip["w"], clip["h"], [f for f, _, _ in frames]) if clip.get("sparse") else decode_window(video, clip["w"], clip["h"], 1, lo, hi)
         with open(dst, "a") as fh:
             for f, kind, box in frames:
                 for sc in schemes:
