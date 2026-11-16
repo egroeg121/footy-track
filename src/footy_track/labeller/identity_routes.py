@@ -46,6 +46,7 @@ from footy_track.identity.store import (
     load_pair_labels,
     load_tracklet_reviews,
 )
+from footy_track.labeller import datasets
 
 router = APIRouter(prefix="/identity")
 
@@ -56,22 +57,20 @@ _SAFE_CLIP = re.compile(r"^[A-Za-z0-9._-]+$")
 
 
 def _clips_dir() -> Path:
-    from footy_track.labeller import server  # noqa: PLC0415 - resolved at call time
-
-    return Path(server._CLIPS_DIR)
+    return datasets.current().clips_dir
 
 
 def _labels_dir() -> Path:
-    from footy_track.labeller import server  # noqa: PLC0415
-
-    return Path(server._GT_MARKS_DIR).parent / "identity_labels"
+    ident = datasets.current().identity_labels_dir
+    assert ident is not None
+    return ident
 
 
 def _tracklets_dir() -> Path:
     """Where tracker output lives: <clip>.jsonl of detections carrying track_id."""
-    from footy_track.labeller import server  # noqa: PLC0415
-
-    return Path(server._GT_MARKS_DIR).parent / "tracklets"
+    tracks = datasets.current().tracklets_dir
+    assert tracks is not None
+    return tracks
 
 
 def _safe_clip(clip: str) -> str | None:

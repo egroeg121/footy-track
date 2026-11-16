@@ -191,9 +191,9 @@ def test_review_page_has_an_explicit_replace_flow(client):
 
 def test_review_page_defaults_to_warp_view(client):
     html = client.get("/calibration/review").text
-    assert "showWarp = true, warpMode = true" in html            # warp on at load
-    assert "warpMode = true; showWarp = true" in html            # and reset to warp on every item
-    assert "setWarp(!warpMode)" in html and "setWarp(warpMode)" in html   # hold flips, release restores
+    assert "warpMode = true, peek = false" in html                # warp on at load
+    assert "warpMode = true; peek = false" in html                # and reset to warp on every item
+    assert "peek = true; requestView()" in html and "peek = false; requestView()" in html   # hold flips, release restores
     assert 'class="small on" id="btnWarp"' in html
 
 
@@ -373,9 +373,154 @@ def test_pipeline_skips_not_broadcast_frames(client, prop_env):
     assert not_broadcast_frames(prop_env, "mancity_seg010") == {1}   # alias -> same file
 
 
+# --- too few points (PTZ-solver candidates) ---------------------------------------------------
+
+
+def _tf(client, run, idx, **body):
+    return client.post(f"/calibration/api/proposals/{CLIP}/{run}/{idx}/too_few_points", json=body)
+
+
+def test_too_few_points_sets_status_tags_flag_and_keeps_record(client, prop_env):
+    before = read_proposals(prop_env, CLIP)["runs"][RUN]["frames"]["1"]
+    r = _tf(client, RUN, 1, tags=["halfway_line", "centre_circle", "halfway_line"])
+    assert r.status_code == 200 and r.json() == {"ok": True, "status": "too_few_points",
+                                                  "tags": ["centre_circle", "halfway_line"]}
+    f = read_proposals(prop_env, CLIP)["runs"][RUN]["frames"]["1"]
+    assert f["status"] == "too_few_points" and f["prev_status"] == "proposed" and f["reviewed_at"]
+    assert f["tags"] == ["centre_circle", "halfway_line"]
+    assert f["H"] == before["H"] and f["correspondences"] == before["correspondences"]   # record kept
+    # frame-level flag in its own sidecar (atomic, 0664, canonical name), not mixed with GT
+    p = prop_env / "frame_type" / f"{CLIP}.json"
+    rec = json.loads(p.read_text())["frames"]["1"]
+    assert rec["type"] == "too_few_points" and rec["tags"] == ["centre_circle", "halfway_line"] and rec["run_id"] == RUN
+    assert p.stat().st_mode & 0o777 == 0o664
+    assert not (prop_env / "calibration_gt" / f"{CLIP}.json").exists()
+    # not a not_broadcast frame: the editor / pipeline skip-list is unaffected
+    assert client.get(f"/calibration/api/gt/{CLIP}").json()["not_broadcast"] == []
+    assert client.get(f"/calibration/api/gt/{CLIP}").json()["too_few_points"] == {"1": ["centre_circle", "halfway_line"]}
+    # status filter / counters
+    d = client.get("/calibration/api/proposals?status=too_few_points").json()
+    assert [i["frame_index"] for i in d["items"]] == [1]
+    assert 1 not in [i["frame_index"] for i in client.get("/calibration/api/proposals").json()["items"]]
+    run = next(x for x in client.get("/calibration/api/proposals").json()["runs"] if x["run_id"] == RUN)
+    assert run["counts"]["too_few_points"] == 1 and run["counts"]["proposed"] == 2
+    # re-marking is idempotent, keeps prev_status and just replaces the tags
+    assert _tf(client, RUN, 1, tags=["touchline"]).status_code == 200
+    f = read_proposals(prop_env, CLIP)["runs"][RUN]["frames"]["1"]
+    assert f["prev_status"] == "proposed" and f["tags"] == ["touchline"]
+    assert json.loads(p.read_text())["frames"]["1"]["tags"] == ["touchline"]
+
+
+def test_too_few_points_works_on_failed_items_and_validates(client, prop_env):
+    assert _tf(client, RUN, 3).status_code == 200
+    f = read_proposals(prop_env, CLIP)["runs"][RUN]["frames"]["3"]
+    assert f["status"] == "too_few_points" and f["prev_status"] == "failed" and f["tags"] == []
+    assert _tf(client, RUN, 99).status_code == 404 and _tf(client, "nope", 1).status_code == 404
+    assert _tf(client, RUN, 1, tags=["moon"]).status_code == 400
+    assert _tf(client, RUN, 1, tags="halfway_line").status_code == 400
+    assert read_proposals(prop_env, CLIP)["runs"][RUN]["frames"]["1"]["status"] == "proposed"   # nothing written
+
+
+def test_too_few_points_undo_restores_and_lists(client, prop_env):
+    doc = read_proposals(prop_env, CLIP)
+    doc["runs"]["mock-20260102T000000"]["frames"]["1"] = _record(0.6)
+    write_proposals(prop_env, CLIP, doc)
+    assert _tf(client, RUN, 1, tags=["centre_circle"]).status_code == 200
+    assert read_proposals(prop_env, CLIP)["runs"]["mock-20260102T000000"]["frames"]["1"]["status"] == "too_few_points"
+    assert _tf(client, RUN, 3).status_code == 200
+    # per clip (any alias) and across clips, for the PTZ proposer
+    d = client.get(f"/calibration/api/too_few_points/{CLIP}").json()
+    assert d["clip"] == CLIP and [(x["frame_index"], x["tags"]) for x in d["frames"]] == [(1, ["centre_circle"]), (3, [])]
+    assert d["frames"][0]["run_id"] == RUN and d["frames"][0]["ts"]
+    allc = client.get("/calibration/api/too_few_points").json()
+    assert allc["total"] == 2 and list(allc["clips"]) == [CLIP]
+    # clear: statuses, tags and the flag all go back; not_broadcast of the same frame is untouched
+    assert client.delete(f"/calibration/api/too_few_points/{CLIP}/5").status_code == 404
+    r = client.delete(f"/calibration/api/too_few_points/{CLIP}/1")
+    assert r.status_code == 200 and list(r.json()["too_few_points"]) == ["3"]
+    runs = read_proposals(prop_env, CLIP)["runs"]
+    for rid in (RUN, "mock-20260102T000000"):
+        f = runs[rid]["frames"]["1"]
+        assert f["status"] == "proposed" and not ({"prev_status", "tags", "reviewed_at"} & set(f))
+    assert runs[RUN]["frames"]["3"]["status"] == "too_few_points"
+    assert client.get("/calibration/api/too_few_points").json()["total"] == 1
+    assert client.delete(f"/calibration/api/too_few_points/{CLIP}/3").status_code == 200
+    assert client.get("/calibration/api/too_few_points").json() == {"total": 0, "clips": {}}
+    assert runs[RUN]["frames"]["3"]["prev_status"] == "failed"
+    assert read_proposals(prop_env, CLIP)["runs"][RUN]["frames"]["3"]["status"] == "failed"
+
+
+def test_too_few_points_and_not_broadcast_do_not_clobber_each_other(client, prop_env):
+    assert _tf(client, RUN, 1).status_code == 200
+    # not_broadcast replaces the too-few flag (one type per frame); clearing too_few then 404s
+    assert _nb(client, RUN, 1).status_code == 200
+    assert client.delete(f"/calibration/api/too_few_points/{CLIP}/1").status_code == 404
+    assert client.get(f"/calibration/api/gt/{CLIP}").json()["not_broadcast"] == [1]
+    # too_few over a not_broadcast frame is refused; and clear_not_broadcast ignores too_few frames
+    assert _tf(client, RUN, 1).status_code == 409
+    assert _tf(client, RUN, 2).status_code == 200
+    assert client.delete(f"/calibration/api/frame_type/{CLIP}/2").status_code == 404
+    assert client.get(f"/calibration/api/too_few_points/{CLIP}").json()["too_few_points"] == {"2": []}
+
+
+def test_too_few_points_409_over_gt_and_gt_save_clears_the_mark(client, prop_env):
+    _human_gt(0, "hand-labelled")
+    r = _tf(client, RUN, 0)
+    assert r.status_code == 409 and r.json()["existing_gt"] == "human"
+    assert not (prop_env / "frame_type").exists()
+    assert read_proposals(prop_env, CLIP)["runs"][RUN]["frames"]["0"]["status"] == "proposed"
+    # labelled after all: saving GT / accepting drops the mark and restores the proposal status
+    assert _tf(client, RUN, 1).status_code == 200
+    assert client.put(f"/calibration/api/gt/{CLIP}/1", json={"correspondences": _record(0.9)["correspondences"],
+                                                            "image_size": [W, H]}).status_code == 200
+    assert client.get(f"/calibration/api/too_few_points/{CLIP}").json()["frames"] == []
+    assert read_proposals(prop_env, CLIP)["runs"][RUN]["frames"]["1"]["status"] == "proposed"
+    assert _tf(client, RUN, 2).status_code == 200
+    assert client.post(f"/calibration/api/proposals/{CLIP}/{RUN}/2/accept").status_code == 200
+    assert client.get(f"/calibration/api/too_few_points/{CLIP}").json()["frames"] == []
+    f = read_proposals(prop_env, CLIP)["runs"][RUN]["frames"]["2"]
+    assert f["status"] == "accepted" and "tags" not in f
+
+
+def test_review_and_editor_pages_have_too_few_points_button_and_filter(client):
+    html = client.get("/calibration/review").text
+    assert 'id="btnTooFew"' in html and ">Too few points<" in html
+    assert 'e.key === "t"' in html and "/too_few_points" in html
+    assert '<option value="too_few_points">' in html and 'id="fewTags"' in html
+    ed = client.get("/calibration").text
+    assert 'id="fewBtn"' in ed and 'id="fewUndo"' in ed and 'id="fewBanner"' in ed and "/too_few_points/" in ed
+    assert 'e.key === "t"' in ed
+
+
 def test_get_proposal_with_nan_stats_is_valid_json(client, prop_env):
     doc = read_proposals(prop_env, CLIP)
     doc["runs"][RUN]["frames"]["3"].update(mean_err_m=float("nan"), err_px=[None, float("nan")])
     write_proposals(prop_env, CLIP, doc)
     r = client.get(f"/calibration/api/proposals/{CLIP}/{RUN}/3")
     assert r.status_code == 200 and r.json()["mean_err_m"] is None
+
+
+def test_list_filters_by_clip_alias_and_run(client, prop_env):
+    """The editor asks per clip (any alias, here the date-infixed video stem) for one run's frames."""
+    run = "claude-x-p1-20260101T000000"
+    other = "arsenal_astonvilla_seg020"
+    write_proposals(prop_env, other, {"clip": other, "runs": {run: {"source": "claude", "created": "c", "params": {},
+                                                                    "frames": {"7": _record(0.6)}}}})
+    for alias in (CLIP, "mancity_seg010", "arsenal_mancity_20250925_seg010"):
+        d = client.get(f"/calibration/api/proposals?run={run}&clip={alias}&status=all&sort=score_desc").json()
+        assert [(i["clip"], i["frame_index"], i["status"]) for i in d["items"]] == [
+            (CLIP, 0, "proposed"), (CLIP, 2, "proposed"), (CLIP, 1, "proposed"), (CLIP, 3, "failed")]
+        assert d["items"][0]["score"] == 0.9 and d["items"][3]["failure"]
+    d = client.get(f"/calibration/api/proposals?run={run}&clip=astonvilla_seg020&status=all").json()
+    assert [(i["clip"], i["frame_index"]) for i in d["items"]] == [(other, 7)]
+    assert client.get("/calibration/api/proposals?clip=no_such_clip&status=all").json()["items"] == []
+    # without clip the scan still covers every clip
+    assert client.get(f"/calibration/api/proposals?run={run}&status=all").json()["total"] == 5
+
+
+def test_reject_then_list_shows_rejected_for_the_editor_chips(client, prop_env):
+    run = "claude-x-p1-20260101T000000"
+    assert client.post(f"/calibration/api/proposals/{CLIP}/{run}/0/reject").json()["status"] == "rejected"
+    d = client.get(f"/calibration/api/proposals?run={run}&clip={CLIP}&status=all&sort=score_desc").json()
+    assert {i["frame_index"]: i["status"] for i in d["items"]}[0] == "rejected"
+    assert [i["frame_index"] for i in client.get(f"/calibration/api/proposals?run={run}&clip={CLIP}").json()["items"]] == [1, 2]

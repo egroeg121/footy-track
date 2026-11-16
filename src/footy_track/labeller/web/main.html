@@ -1,32 +1,85 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+<script src="/static/dataset.js"></script>
 <meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Footy Track</title>
 <style>
   :root { --bg:#0f1419; --panel:#1a2129; --ink:#e6edf3; --muted:#9bb0c0;
-          --accent:#1e90ff; --green:#3fb950; --border:#2d3742; }
+          --accent:#1e90ff; --green:#3fb950; --amber:#d29922; --red:#f85149; --border:#2d3742; }
   * { box-sizing:border-box; }
   body { margin:0; background:var(--bg); color:var(--ink);
-         font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
-         display:flex; flex-direction:column; align-items:center;
-         justify-content:center; min-height:100vh; gap:0; }
-  h1 { font-size:28px; margin:0 0 8px; }
-  p { color:var(--muted); margin:0 0 40px; }
-  .cards { display:flex; gap:20px; flex-wrap:wrap; justify-content:center; }
-  .card { display:flex; flex-direction:column; align-items:center; gap:10px;
+         font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+  main { max-width:720px; margin:0 auto; padding:16px 16px 48px; }
+  h1 { font-size:24px; margin:4px 0 16px; }
+  h2 { font-size:12px; text-transform:uppercase; letter-spacing:.08em; color:var(--muted);
+       margin:28px 0 10px; font-weight:600; }
+  .muted { color:var(--muted); }
+  .err { color:var(--red); font-size:12px; margin:6px 0; }
+
+  /* task board */
+  .task { display:block; background:var(--panel); border:1px solid var(--border);
+          border-left:4px solid var(--accent); border-radius:10px; padding:12px 14px;
+          margin-bottom:10px; color:var(--ink); text-decoration:none; }
+  .task.p1 { border-left-color:var(--amber); }
+  .task:active, .task:hover { border-color:var(--accent); }
+  .task .top { display:flex; gap:10px; align-items:flex-start; justify-content:space-between; }
+  .task .title { font-size:15px; font-weight:600; }
+  .task .why { color:var(--muted); font-size:13px; margin-top:2px; }
+  .task .meta { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; font-size:11px; color:var(--muted); }
+  .chip { border:1px solid var(--border); border-radius:999px; padding:1px 8px; white-space:nowrap; }
+  .chip.count { color:var(--ink); border-color:var(--accent); }
+  .empty { color:var(--muted); padding:12px 0; }
+  .task.done { opacity:.55; border-left-color:var(--border); }
+  .task.done .title { text-decoration:line-through; }
+  .task .tick { color:var(--green, #3fb950); font-weight:700; }
+  details.donebox { margin-top:14px; }
+  details.donebox > summary { cursor:pointer; color:var(--muted); font-size:13px; margin-bottom:8px; }
+
+  /* tool cards */
+  .cards { display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:10px; }
+  .card { display:flex; flex-direction:column; align-items:center; gap:6px;
           background:var(--panel); border:1px solid var(--border); border-radius:12px;
-          padding:32px 40px; text-decoration:none; color:var(--ink);
-          transition:border-color .15s; min-width:180px; }
+          padding:16px 10px; text-decoration:none; color:var(--ink); text-align:center;
+          transition:border-color .15s; }
   .card:hover { border-color:var(--accent); }
-  .card .icon { font-size:36px; }
-  .card .label { font-size:15px; font-weight:600; }
-  .card .desc { font-size:12px; color:var(--muted); text-align:center; }
+  .card .icon { font-size:28px; }
+  .card .label { font-size:14px; font-weight:600; }
+  .card .desc { font-size:11px; color:var(--muted); }
+
+  /* servers */
+  .servers { display:flex; flex-direction:column; gap:6px; }
+  .srv { display:flex; flex-wrap:wrap; gap:4px 12px; align-items:baseline; background:var(--panel);
+         border:1px solid var(--border); border-radius:8px; padding:8px 12px; font-size:12px; }
+  .srv b { font-size:13px; }
+  .srv .dot { display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--muted); margin-right:6px; }
+  .srv.ok .dot { background:var(--green); }
+  .srv.down .dot { background:var(--red); }
+  .srv.dirty .sha { color:var(--amber); }
+  code { font-family:ui-monospace,Menlo,monospace; }
+
+  /* dataset picker */
+  .dsbar { display:flex; flex-wrap:wrap; gap:6px 10px; align-items:center; margin:0 0 4px; font-size:13px; }
+  .dsbar[hidden] { display:none; }
+  .dsbar select { background:var(--panel); color:var(--ink); border:1px solid var(--border);
+                  border-radius:8px; padding:6px 10px; font-size:14px; }
 </style>
 </head>
 <body>
-  <h1>⚽ Footy Track</h1>
-  <p>Annotation tools</p>
+<main>
+  <h1>&#9917; Footy Track</h1>
+
+  <div class="dsbar" id="dsbar" hidden>
+    <label for="dataset" class="muted">Dataset</label>
+    <select id="dataset"></select>
+    <span class="muted" id="dsinfo"></span>
+  </div>
+
+  <h2>To do now</h2>
+  <div id="tasks"><div class="empty">Loading&hellip;</div></div>
+
+  <h2>Tools</h2>
   <div class="cards">
     <a class="card" href="/labeller">
       <div class="icon">🏷️</div>
@@ -59,5 +112,160 @@
       <div class="desc">Upload a match video and split into broadcast clips</div>
     </a>
   </div>
+
+  <h2>Servers</h2>
+  <div class="servers" id="servers"></div>
+</main>
+
+<script>
+// Other labeller services shown under "Servers" (queried client-side, failure tolerated).
+// Keep in step with scripts/labeller_services.conf.
+const SERVICES = [
+  { name: "calib", port: 8011 },
+];
+const DEVICE_ICON = { phone: "\u{1F4F1} phone", laptop: "\u{1F4BB} laptop", either: "phone or laptop" };
+
+function el(tag, cls, text) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text != null) e.textContent = text;
+  return e;
+}
+
+function fmtUptime(s) {
+  if (s == null) return "?";
+  if (s < 90) return s + "s";
+  if (s < 5400) return Math.round(s / 60) + "m";
+  if (s < 172800) return (s / 3600).toFixed(1) + "h";
+  return Math.round(s / 86400) + "d";
+}
+
+async function getJSON(url, timeoutMs) {
+  const ctl = new AbortController();
+  const t = setTimeout(() => ctl.abort(), timeoutMs || 4000);
+  try {
+    const r = await fetch(url, { signal: ctl.signal, cache: "no-store" });
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    return await r.json();
+  } finally { clearTimeout(t); }
+}
+
+// Live "remaining" number from a count_url: first of count_path / total / count / remaining.
+function pickCount(j, path) {
+  if (typeof j === "number") return j;
+  if (path) { let v = j; for (const k of path.split(".")) v = v == null ? v : v[k]; return typeof v === "number" ? v : null; }
+  for (const k of ["total", "count", "remaining"]) if (typeof j[k] === "number") return j[k];
+  return null;
+}
+
+function renderTask(t) {
+  const a = el("a", "task p" + (t.priority || 2) + (t.done ? " done" : ""));
+  a.href = t.url || "#";
+  const top = el("div", "top");
+  top.append(el("div", "title", (t.done ? "\u2713 " : "") + t.title));
+  a.append(top);
+  if (t.why) a.append(el("div", "why", t.why));
+  const meta = el("div", "meta");
+  meta.append(el("span", "chip", DEVICE_ICON[t.device] || DEVICE_ICON.either));
+  let countChip = null;
+  if (t.done) meta.append(el("span", "chip tick", "\u2713 done" + (t.done_at ? " " + t.done_at.slice(0, 10) : "")));
+  else if (t.progress && t.progress.total != null)
+    meta.append(el("span", "chip count", t.progress.done + "/" + t.progress.total + " done"));
+  if (t.count_url && !t.done) { countChip = el("span", "chip count", "… " + (t.count_label || "left")); meta.append(countChip); }
+  if (t.job) meta.append(el("span", "chip", t.kind + " job" + (t.dataset ? " · " + t.dataset : "")));
+  if (t.owner) meta.append(el("span", "chip", t.owner));
+  if (t.added) meta.append(el("span", "chip", "added " + t.added));
+  a.append(meta);
+  if (countChip) {
+    getJSON(t.count_url).then((j) => {
+      const n = pickCount(j, t.count_path);
+      countChip.textContent = n == null ? "? " + (t.count_label || "left") : n + " " + (t.count_label || "left");
+    }).catch(() => { countChip.textContent = "count unavailable"; countChip.style.borderColor = "var(--border)"; });
+  }
+  return a;
+}
+
+async function loadTasks() {
+  const box = document.getElementById("tasks");
+  try {
+    const j = await getJSON("/api/tasks");
+    box.replaceChildren();
+    if (j.error) box.append(el("div", "err", "Tasks file problem: " + j.error));
+    const active = j.tasks.filter((t) => !t.done), done = j.tasks.filter((t) => t.done);
+    if (!active.length && !j.error) box.append(el("div", "empty", "Nothing to do right now."));
+    for (const t of active) box.append(renderTask(t));
+    if (done.length) {  // finished by themselves (done_when); kept for 2 days, collapsed
+      const d = el("details", "donebox");
+      d.append(el("summary", null, "Done (" + done.length + ")"));
+      for (const t of done) d.append(renderTask(t));
+      box.append(d);
+    }
+  } catch (e) {
+    box.replaceChildren(el("div", "err", "Could not load tasks: " + e.message));
+  }
+}
+
+function renderServer(label, info, err) {
+  const row = el("div", "srv " + (err ? "down" : "ok") + (info && info.dirty ? " dirty" : ""));
+  const name = el("b");
+  name.append(el("span", "dot"), document.createTextNode(label));
+  row.append(name);
+  if (err) { row.append(el("span", "muted", "unreachable")); return row; }
+  const port = info.port || (label.match(/:(\d+)/) || [])[1];
+  if (port) row.append(el("span", "muted", ":" + port));
+  const sha = el("code", "sha", (info.short_sha || "?") + (info.dirty ? "+dirty" : ""));
+  row.append(sha);
+  row.append(el("span", "", info.branch || "?"));
+  row.append(el("span", "muted", "up " + fmtUptime(info.uptime_s)));
+  return row;
+}
+
+async function loadServers() {
+  const box = document.getElementById("servers");
+  const ownPort = location.port || (location.protocol === "https:" ? "443" : "80");
+  const rows = [];
+  // this server (same origin), then the others cross-origin
+  const jobs = SERVICES.map(async (s) => {
+    const own = String(s.port) === ownPort;
+    const url = own ? "/api/server_info" : `${location.protocol}//${location.hostname}:${s.port}/api/server_info`;
+    try { return renderServer(s.name + (own ? " (this)" : ""), await getJSON(url), null); }
+    catch (e) { return renderServer(s.name + ":" + s.port, null, e); }
+  });
+  if (!SERVICES.some((s) => String(s.port) === ownPort)) {
+    jobs.unshift(getJSON("/api/server_info").then((i) => renderServer((i.name || "this server") + " (this)", i, null))
+      .catch((e) => renderServer("this server", null, e)));
+  }
+  for (const r of await Promise.all(jobs)) rows.push(r);
+  box.replaceChildren(...rows);
+}
+
+// Dataset picker: the choice lives in ?dataset= (dataset.js carries it to every link and
+// API call on the tool pages). The default dataset needs no parameter.
+async function loadDatasets() {
+  try {
+    const j = await getJSON("/api/datasets");
+    if (j.datasets.length < 2) return;
+    const sel = document.getElementById("dataset");
+    const cur = window.FOOTY_DATASET || j.default;
+    for (const d of j.datasets) {
+      const o = el("option", "", d.label || d.name);
+      o.value = d.name;
+      o.selected = d.name === cur;
+      sel.append(o);
+    }
+    const show = () => {
+      const d = j.datasets.find((x) => x.name === sel.value);
+      document.getElementById("dsinfo").textContent = d ? d.name + " \u00b7 " + d.marks_dir : "";
+    };
+    sel.onchange = () => { location.search = sel.value === j.default ? "" : "?dataset=" + encodeURIComponent(sel.value); };
+    show();
+    document.getElementById("dsbar").hidden = false;
+  } catch (e) { /* picker is optional */ }
+}
+
+loadDatasets();
+loadTasks();
+loadServers();
+</script>
 </body>
 </html>

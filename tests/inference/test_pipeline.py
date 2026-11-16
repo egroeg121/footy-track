@@ -9,19 +9,17 @@ import cv2
 import numpy as np
 import pytest
 
+from footy_track.inference.fake_detector import GAP, STRAY_FRAME, FakeDetector
 from footy_track.inference.pipeline import (
     InferenceConfig,
     iter_frames,
     run_inference,
     select_device,
 )
-from footy_track.schema import FrameDetections, ObjectDetection
 from footy_track.scripts.run_inference import main as run_inference_cli
 from footy_track.scripts.track_detections import label_of
 
 W, H, N = 320, 180, 30
-GAP = range(10, 14)  # frames where the fake detector misses the ball
-STRAY_FRAME = 20
 
 
 def _make_video(path: Path) -> None:
@@ -30,41 +28,6 @@ def _make_video(path: Path) -> None:
     for i in range(N):
         writer.write(np.full((H, W, 3), i * 8, dtype=np.uint8))
     writer.release()
-
-
-class FakeDetector:
-    """Two players walking right and a ball moving right; no model involved.
-
-    The frame number is recovered from the call order, not the pixels (mp4v is
-    lossy), so frames must be fed in order from frame 0.
-    """
-
-    def __init__(self) -> None:
-        self.seen = 0
-
-    def predict_frames(self, frames):
-        out = []
-        for _ in frames:
-            i = self.seen
-            self.seen += 1
-            dets = [
-                self._det("player", 0.10 + 0.002 * i, 0.5, 0.04, 0.12, 0.9),
-                self._det("player", 0.60 - 0.002 * i, 0.5, 0.04, 0.12, 0.8),
-            ]
-            if i not in GAP:
-                dets.append(
-                    self._det("in_play_ball", 0.1 + 0.02 * i, 0.3, 0.012, 0.02, 0.85)
-                )
-            if i == STRAY_FRAME:
-                dets.append(self._det("in_play_ball", 0.9, 0.9, 0.012, 0.02, 0.3))
-            out.append(
-                FrameDetections(uri=Path(f"f{i}"), width=W, height=H, detections=dets)
-            )
-        return out
-
-    @staticmethod
-    def _det(label, x, y, w, h, conf):
-        return ObjectDetection(label=label, confidence=conf, x=x, y=y, w=w, h=h)
 
 
 @pytest.fixture
@@ -123,6 +86,26 @@ def test_ball_gap_is_interpolated_and_stray_ignored(video, tmp_path):
     ] * len(GAP)
     stray = ball[STRAY_FRAME]
     assert stray["source"] == "detected" and stray["center"]["x"] < 0.8
+
+
+@pytest.mark.parametrize("kind", ["bidirectional", "viterbi"])
+def test_offline_ball_trackers_write_the_same_format(video, tmp_path, kind):
+    out = tmp_path / "out"
+    summary = run_inference(
+        video, out, FakeDetector(), InferenceConfig(ball_tracker=kind)
+    )
+    assert summary["config"]["ball_tracker"] == kind
+    ball = _read(out / "ball_track.jsonl")
+    assert len(ball) == summary["frames_processed"]
+    assert set(ball[0]) == {
+        "frame_index", "track_id", "source", "bbox", "center", "confidence"
+    }  # fmt: skip
+    assert sum(b["source"] != "none" for b in ball) > len(ball) // 2
+
+
+def test_cli_ball_tracker_choice_is_validated():
+    with pytest.raises(SystemExit):
+        run_inference_cli(["--video", "x.mp4", "--out", "o", "--ball-tracker", "nope"])
 
 
 def test_player_ids_are_stable(video, tmp_path):

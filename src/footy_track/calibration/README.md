@@ -18,6 +18,10 @@ the labeller `/calibration` page).
   and circles (`polylines()`) and named keypoints (`keypoints()`); ids such as
   `L_PEN_BOX_TOP_OUTER` are stable API (GT files reference them).
   `L`/`R` = `-x`/`+x` end, `TOP`/`BOTTOM` = `+y`/`-y` side.
+* `centre_circle.py` (halfway line / box front x circle -> 2 points + the circle's pole) and `pitch_finders.py` (the
+  editor's two finders: `find_centre` adds the touchline end and derived circle points, `find_d` fits the whole
+  penalty-area template by brute force; see the module docstrings and LAB-1224) place correspondences from the
+  line mask. Pitch width / length are inputs, never assumed.
 * `geometry.py`: `fit_homography` (DLT, optional RANSAC),
   `reprojection_errors` (px and metres), `project_polyline_to_image` (drops
   points behind the camera so lines never wrap), `warp_to_pitch` (top-down

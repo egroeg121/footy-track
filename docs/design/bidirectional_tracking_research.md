@@ -1,5 +1,7 @@
 # Research: Bidirectional + Trajectory-Aware Ball Tracking for Offline Autolabelling
 
+> **Update (2026-11).** The detection-based bidirectional tracker from this note now exists and is scored in [Ball tracking evaluation](../ball-tracking-eval.md); it works on detector candidates rather than pixel trackers seeded from human marks, so it answers a different question. The anchor-plus-fusion idea below is reused by the proposed [Claude-assisted ball labelling loop](claude_autolabel_loop.md), where Claude-confirmed detections are the anchors. The text below is unchanged and historical.
+
 **Bead:** ft-dva · **Date:** 2026-06-21 · **Researcher:** polecat flint
 **Question:** In offline video autolabelling for ball tracking, can we exploit
 *bidirectional* temporal information — track forward **and** backward from sparse

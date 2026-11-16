@@ -289,3 +289,21 @@ def test_frame_type_flags_and_not_broadcast_proposals_are_ingested(store, tmp_pa
     ingest_calibration_dir(store, tmp_path)
     assert store.query("SELECT count(*) n FROM calibration WHERE run_id='frame_type_import'")["n"][0] == 0
     assert list(_best(store)["frame_index"]) == [0, 1]
+
+
+def test_too_few_points_status_and_flags_are_ingested_without_winning_best(store, tmp_path):
+    clip = "arsenal_mancity_seg010"
+    _write(tmp_path / "calibration_proposals" / f"{clip}.json", _proposals(clip, frames={
+        "0": _frame(status="proposed", score=0.7, failure=None, view=None),
+        "1": _frame(status="too_few_points", score=0.7, failure=None, view=None),
+    }))
+    _write(tmp_path / "frame_type" / f"{clip}.json",
+           {"clip": clip, "frames": {"1": {"type": "too_few_points", "ts": "2026-11-16T10:00:00+0000",
+                                           "tags": ["halfway_line"]}}})
+    r = ingest_calibration_dir(store, tmp_path)
+    assert r.by_status["too_few_points"] == 2 and not r.skipped
+    row = store.query("SELECT * FROM calibration WHERE run_id='frame_type_import'").iloc[0]
+    assert (row["frame_index"], row["review_status"]) == (1, "too_few_points")
+    assert store.query("SELECT count(*) n FROM calibration WHERE run_id='frame_type_import' AND H IS NULL")["n"][0] == 1
+    # a too_few_points frame never gets a calibration from the view (frame 0 still does)
+    assert list(_best(store)["frame_index"]) == [0]

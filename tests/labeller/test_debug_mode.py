@@ -7,8 +7,6 @@ a real detector, startup pulls a checkpoint and the box swaps itself to death.
 
 from __future__ import annotations
 
-import importlib
-
 from footy_track.detectors.ultralytics import (
     StubObjectDetector,
     debug_mode,
@@ -58,15 +56,34 @@ def test_gt_marks_dir_honours_env(monkeypatch, tmp_path):
     monkeypatch.setenv("FOOTY_GT_MARKS_DIR", str(gt))
     monkeypatch.setenv("FOOTY_CLIPS_DIR", str(clips))
 
-    # Imported lazily on purpose: the env vars set above must be in place
-    # before the server module is first imported/reloaded.
-    from footy_track.labeller import server  # noqa: PLC0415
+    from footy_track.labeller import datasets  # noqa: PLC0415
 
-    importlib.reload(server)
-    try:
-        assert gt == server._GT_MARKS_DIR
-        assert clips == server._CLIPS_DIR
-    finally:
-        monkeypatch.delenv("FOOTY_GT_MARKS_DIR", raising=False)
-        monkeypatch.delenv("FOOTY_CLIPS_DIR", raising=False)
-        importlib.reload(server)
+    assert datasets.current().marks_dir == gt
+    assert datasets.current().clips_dir == clips
+
+
+def test_detector_checkpoint_resolution_order(monkeypatch, tmp_path):
+    """env override > project root > shared models dir > (missing) project root."""
+    from footy_track.detectors import ultralytics as det  # noqa: PLC0415
+
+    root = tmp_path / "root"
+    shared = tmp_path / "shared"
+    monkeypatch.setattr(det, "get_project_root", lambda: root)
+    monkeypatch.setattr(det, "SHARED_MODELS_DIR", shared)
+    monkeypatch.delenv("FOOTY_DETECTOR_WEIGHTS", raising=False)
+    rel = det.CURRENT_BEST_DETECTOR_CHECKPOINT
+    in_project = root / rel
+    in_shared = shared / "rtdetr_1920_v11" / "best.pt"
+
+    assert det.current_best_detector_path() == in_project  # nothing exists
+
+    in_shared.parent.mkdir(parents=True)
+    in_shared.write_bytes(b"w")
+    assert det.current_best_detector_path() == in_shared  # shared fallback
+
+    in_project.parent.mkdir(parents=True)
+    in_project.write_bytes(b"w")
+    assert det.current_best_detector_path() == in_project  # project root wins
+
+    monkeypatch.setenv("FOOTY_DETECTOR_WEIGHTS", str(tmp_path / "mine.pt"))
+    assert det.current_best_detector_path() == tmp_path / "mine.pt"

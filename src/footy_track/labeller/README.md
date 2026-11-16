@@ -93,6 +93,24 @@ persisted in the JSONL sidecar as the second tag (`tags: [label, model, *markers
   - Tests: `test_review_endpoints.py::test_queue_sam3_legacy_tag_round_trips`,
     `test_session_roundtrip.py::test_roundtrip_preserves_model_tags_label_and_geometry`
 
+The next two requirements are **PLANNED**: nothing implements them and they
+have no tests yet. They belong to the proposed Claude-assisted ball labelling
+loop (`docs/design/claude_autolabel_loop.md`); they are not counted in the
+traceability summary in section 15.
+
+- **LAB-008** (PLANNED, MUST) A Claude proposal has provenance `claude`, which
+  sits at the machine level (tier 3). It lives only in a separate candidate
+  pool, never in a GT sidecar, and it never overwrites or replaces a box at or
+  above its own level (`labeller`, or a machine box carrying `human_checked`).
+  This restates LAB-002 for the new tag. Adding `claude` to the provenance tag
+  sets (`session.py`, `review.py`, `ingest_gt.py`) is part of the work.
+  - Tests: none yet
+- **LAB-009** (PLANNED, MUST) The `claude` tag is kept on a box through every
+  later step: a person's yes (LAB-1014) writes `[label, claude, human_checked]`,
+  so the origin of a tier 2 label can always be told, and the ball eval keeps
+  ignoring it as ground truth.
+  - Tests: none yet
+
 ## 2. Persistence — JSONL sidecar (LAB-1xx)
 
 One `<clip_stem>.jsonl` per clip under the GT-marks dir
@@ -755,13 +773,36 @@ reads `<gt dir>/ball_checks/` (`--ball-checks-dir`) into the feature store's
   (clip, frame, box, pad) — a different pad is a separate entry, never a stale
   hit.
   - Tests: `test_ball_check.py::test_crop_returns_jpeg_and_caches`
+- **LAB-1009a** (SHOULD) `GET /ball_check/clip/{clip}/{frame}/{box}.mp4`
+  (same `src`/`pad` params as the crop) returns a ~3 s H.264 MP4 (frame -1.5 s
+  .. +1.5 s, clamped to the clip, every source frame up to 30 fps, subsampled
+  above that) so a spare/crowd ball can be told from the match ball by how it
+  moves. It uses the still's crop window, fixed for every frame, upscaled
+  server-side (Lanczos) to 560 px wide, full colour, CRF 20, yuv420p, main
+  profile, even dimensions, moov atom first (iOS Safari). The box (and for
+  `src=list` the magenta other box) is drawn on the centre frame only, which is
+  repeated for 500 ms so the box is visible and exact. The response honours
+  HTTP `Range` (206 / 416; iOS requires it). Raw frames are piped from one seek
+  + sequential OpenCV reads into ffmpeg; results sit in a 40-entry LRU keyed by
+  (src, clip, frame, box, pad). Headers `X-Clip-Frames` / `X-Clip-Duration-Ms`.
+  If ffmpeg is not installed the same URL serves the old small GIF
+  (`image/gif`, 240 px, 40 colours, ~10 fps).
+  - Tests: `test_ball_check.py::test_clip_endpoint_serves_mp4_with_range_and_clamps`,
+    `test_clip_frame_indices_clamp_to_the_video`, `test_parse_range`,
+    `test_parse_range_unsatisfiable`, `test_mp4_writer_output_is_ios_playable`,
+    `test_clip_endpoint_falls_back_to_gif_without_ffmpeg`,
+    `test_gif_bytes_is_a_play_once_animation`,
+    `test_clip_endpoint_list_source_and_404s`
 - **LAB-1010** (MUST) `GET /ball_check` serves the page and the hub links to
   it; the page carries a mobile viewport meta.
   - Tests: `test_ball_check.py::test_ball_check_page_served_and_linked_from_hub`
 - **LAB-1011** (SHOULD) Frontend: swipe right = ball, left = not a ball (the
   card follows the finger; vertical drags are ignored); buttons for
   unsure/zoom/undo; arrow keys and y/n/u/z on a desktop. The next crops are
-  prefetched and the queue refills below 5 cards. A failed verdict POST puts
+  prefetched (stills and the next two clips) and the queue refills below 5
+  cards. When a card appears the page first plays its context clip (LAB-1009a,
+  a muted inline `<video>`), then on its `ended` event shows the still with the draggable box; the answer buttons work while it
+  plays, and Replay / `p` plays it again (stepping or Zoom also stop/restart it). A failed verdict POST puts
   the card back rather than reporting a saved verdict.
   - Tests: UNTESTED-FRONTEND (`web/ball_check.html`; the server contract is
     LAB-1004..1009)
@@ -774,6 +815,33 @@ reads `<gt dir>/ball_checks/` (`--ball-checks-dir`) into the feature store's
   Identity rules: `footy_track.clip_id` and
   [feature store §3.1a](../../../docs/design/feature_store.md#31a-clip-identity-canonical-clip-id).
   - Tests: `test_ball_check.py::test_save_box_on_a_raw_named_candidate_writes_into_the_existing_gt_stem`
+- **LAB-1013b** (MAY) `GET /ball_check/queue?source=list` serves the explicit
+  cards of the review list named by `FOOTY_BALL_CHECK_LIST` (`{"items": [{clip,
+  frame_index, bbox, other_bbox?, label?, note?, ...}]}`, normalised boxes), in
+  file order, skipping cards that have a verdict. A card's `box_index` is its
+  position in the file and its source is `list`; `/ball_check/crop` and
+  `crop_meta` with `src=list` resolve the box from the file and draw
+  `other_bbox` in magenta. The page forwards `?source=` and `?clip=` to the
+  queue (`/ball_check?source=list`). No file configured means an empty pool.
+  List verdicts go to the normal log and are excluded from `/ball_check/stats`
+  and the confidence-band estimate (hand-picked cards are not a sample).
+  Used by the Claude-verify re-check (`docs/design/claude_autolabel_loop.md`
+  section 8); a minimal piece of T-47, not the `claude` candidate pool.
+  - Tests: `test_ball_check.py::test_list_queue_file_order_skips_judged`,
+    `test_list_crop_and_meta`
+- **LAB-1014** (PLANNED, MUST) `/ball_check` can serve cards from the `claude`
+  candidate pool, uncertain first (Claude and the detector disagree, low
+  confidence, cell corrections). A "yes" on such a proposal writes the box to
+  the GT sidecar as `[label, claude, human_checked]` (tier 2). This is the one
+  case where Ball Check writes a box for a yes; a plain `ball` verdict on a
+  detector box still writes only to the verdict log (LAB-1004). A "no" is a
+  `not_ball` verdict as today. Nothing is written until the person acts.
+  - Tests: none yet
+- **LAB-1015** (PLANNED, MUST) Tap-to-place: on a card where the ball is visible
+  but no box is on it (a Claude "cell" answer, or a miss), tapping the ball
+  writes a new box as `[label, labeller]` (tier 1), the same result as a drag.
+  The Claude cell is a hint shown on the card, never a box.
+  - Tests: none yet
 
 ## 12. Confidence sampling — candidates (LAB-11xx)
 
@@ -1071,10 +1139,387 @@ becomes GT without a human accepting it; accepted GT carries
     `tests/calibration/test_prelabel.py::test_pipeline_skips_not_broadcast_frames`,
     `tests/feature_store/test_calibration_store.py::test_not_broadcast_frame_has_no_calibration_and_no_projection`,
     `tests/feature_store/test_ingest_calibration.py::test_frame_type_flags_and_not_broadcast_proposals_are_ingested`
+- **LAB-1223** (MUST) A frame that shows too few identifiable pitch features to place >= 4 point
+  pairs (e.g. only the centre circle / halfway line) can be marked `too_few_points` with one tap:
+  skipped by the human, kept as a candidate for the PTZ rig solver (fixed camera centre, solvable
+  from a few lines). Stored in the LAB-1222 sidecar `<gt dir>/frame_type/<canonical clip>.json` as
+  `{"type": "too_few_points", "ts", "run_id"?, "tags": [...]}` (one type per frame; atomic write, mode
+  kept). Optional `tags` say what *is* visible, from `centre_circle, halfway_line, penalty_box,
+  goal_area, touchline` (unknown -> 400). `PUT /calibration/api/too_few_points/{clip}/{idx}` (body
+  `{tags?, run_id?}`; PUT again replaces the tags), `DELETE` the same path (404 when not marked),
+  `GET .../too_few_points/{clip}` -> `{clip, frames: [{frame_index, tags, ts, run_id?}]}` and `GET
+  .../too_few_points` -> `{total, clips: {<canonical clip>: [...]}}` for the PTZ proposer (also
+  `too_few_points: {"<idx>": [tags]}` in `GET .../gt/{clip}` and `.../clips/{clip}/meta`, and
+  `n_too_few_points` in `GET .../clips`). `POST /calibration/api/proposals/{clip}/{run_id}/{idx}/too_few_points`
+  (body `{tags?}`; proposed or failed items) sets the proposal status `too_few_points` keeping the record
+  (`prev_status`, `reviewed_at`, `tags`), other still-open proposals of the frame follow, `?status=too_few_points`
+  filters it; DELETE restores the previous statuses. A frame with calibration GT or a `not_broadcast`
+  flag is 409 and nothing is written; saving GT or accepting a proposal on a marked frame clears the
+  mark. `not_broadcast` replaces a too-few mark and never clears one. The feature store ingests the
+  flag and the proposal status as `review_status=too_few_points` (no H; never wins
+  `frame_calibration_best`). The pre-label run skips these frames like not_broadcast ones (`--skip-gt`). The
+  marks live in the current dataset's marks dir (`?dataset=`), like not_broadcast. Editor: "Too few points"
+  button (key `t`, toggles; "Clear too few points" when on) next to Not broadcast, with a banner, one-tap
+  tag chips and Undo; a clip with only not-broadcast / too-few marks counts as "skipped". Review page:
+  big "Too few points" button (key `t`, "Clear" on marked items) beside Not broadcast/Skip, optional
+  tag chips, and a "too few points" status filter.
+  - Tests: `test_calibration_proposals.py::test_too_few_points_*`,
+    `::test_review_and_editor_pages_have_too_few_points_button_and_filter` (markers; flow UNTESTED-FRONTEND),
+    `test_calibration.py::test_too_few_points_editor_endpoint_without_proposals`,
+    `test_datasets.py::test_too_few_points_marks_are_per_dataset`,
+    `tests/calibration/test_prelabel.py::test_pipeline_skips_too_few_points_frames`,
+    `tests/feature_store/test_ingest_calibration.py::test_too_few_points_status_and_flags_are_ingested_without_winning_best`
+- **LAB-1224** (SHOULD) Two finders place pitch points in one tap: `POST /calibration/api/auto_points` (body
+  `{clip, frame_index, kind: "centre" | "d", distortion?, pitch_dims?}`; `kind` is required, else 400) reads that
+  frame (`_find_video` + `_read_frame` in a worker thread, current `?dataset=`) and runs
+  `calibration/pitch_finders.py`. A hit is `{ok: true, kind, confidence, correspondences: [{image: [u, v],
+  pitch_id, pitch_xy, confidence, derived}]}`; image points are observed coordinates, consistent with the given
+  `distortion`; `pitch_xy` follows `pitch_dims` (pitch length x width vary per ground and are never assumed);
+  `derived: true` marks points synthesised from fitted geometry rather than seen, and `pitch_id` is `null` for
+  the derived circle points that have no keypoint name (free points). An abstention is `{ok: false, reason}`
+  with HTTP 200, not an error. Unknown clip / unreadable frame -> 404, bad body / kind / distortion -> 400.
+  Nothing is stored. Answers (and abstentions) are cached in a 64-entry LRU keyed by dataset, video, frame,
+  distortion, kind and pitch dims; one detection runs at a time.
+  - `centre`: halfway line + centre circle give `CENTRE_CIRCLE_TOP/BOTTOM`; the pole of the line w.r.t. the
+    circle's ellipse is the vanishing point V of the pitch length axis, the touchline is the long line through
+    V crossing the halfway line beyond the circle, and its junction is `HALFWAY_TOP` (`HALFWAY_BOTTOM` for the
+    near touchline) at `(0, +-width/2)` from the request's `pitch_dims`. Circle top/bottom + that end are three
+    known points on the halfway line, whose 1-D projective map gives the vanishing point of the width axis;
+    with V that is the vanishing line, whose pole is the circle centre. Derived (`derived: true`):
+    `CENTRE_SPOT`, `CENTRE_CIRCLE_LEFT/RIGHT` and four free points on the circle at 45 degrees. The derived set is
+    re-checked by rendering halfway line, circle and touchline under the implied homography against the line
+    mask and dropped if it does not match, leaving the 2 circle points. The far touchline is found in the faint
+    far-edge strip (`candidates.far_edge_line`), used only for this step.
+  - `d`: the whole penalty-area template (goal line, 18-yard box, 6-yard box, D; sizes fixed by the Laws,
+    positioned with the request's length) is fitted by brute force over assignments of detected lines to
+    template lines (and "D + front line + one line"), scored against the line mask, refined by least squares and
+    accepted only if clearly better than any different fit; returns the in-frame template keypoints
+    (`{L,R}_PEN_BOX_*_OUTER/_GOAL`, `_GOAL_AREA_*`, `_PEN_ARC_TOP/BOTTOM/MID`, `_PEN_SPOT`). When the template
+    fit abstains it falls back to the 2 box-front x D points. Both finders assume the camera is on the -y side
+    (`+x` to the image right, far touchline `+y`) like every GT frame, and abstain rather than guess.
+  Editor: two buttons, "Centre" (key `c`) and "D" (key `d`, 36 px tall for phones), append the returned pairs to
+  the pair list exactly like hand-placed ones (`snapshot()` first, so Undo removes them; then `refit()`; pairs
+  whose `pitch_id` is already placed - or free points whose metres are - are skipped; refused while an unpaired
+  point is pending), using the frame's current `state.distortion` and pitch dims. The status line shows kind,
+  confidence, how many points are derived, or the abstain reason, and with fewer than 4 pairs says
+  "2 points placed - add 2 more (e.g. touchline / halfway line ends) to fit". Added points are ordinary
+  draggable pairs. Offline evaluation: `python -m footy_track.scripts.eval_finders`.
+  - Tests: `test_calibration.py::test_auto_points_*`, `test_datasets.py::test_auto_points_follow_the_dataset`,
+    `test_calibration.py::test_editor_page_has_the_two_auto_buttons` (markers),
+    `test_calibration_editor_js.py::test_auto_circle_helpers_under_node` (pair merge + status text; button flow
+    UNTESTED-FRONTEND), `tests/calibration/test_pitch_finders.py`, `tests/calibration/test_centre_circle.py`
 - **LAB-1219** (SHOULD) Frames are read through `footy_track.calibration.video.read_frame`
   (cv2, falling back to the ffmpeg CLI when cv2 fails or returns an all-black frame,
   frame-accurate, reader cached per video); `/calibration/api/frame` and `/warp` use it.
   - Tests: `tests/calibration/test_video.py`
+
+## 17. Labelling site (informative)
+
+**One site, always main.** Open `http://mac-mini-i7:8011/` on the tailnet. It serves
+every dataset (calib, Nottingham Forest held-out, ...) from one process: pick one with the
+dataset picker on the home page, or add `?dataset=nottinghamforest` to any page URL (section 18).
+The home page is a **task board**: a "To do now" list
+(from `GET /api/tasks`, each with title, one-line why, link, device hint and an
+optional live remaining count), then the tool cards, then a "Servers" panel (name,
+port, git sha, branch, uptime from each service's `GET /api/server_info`).
+
+**Posting a task.** The board is one shared JSON file, `$FOOTY_TASKS_FILE` (default
+`/mnt/storage/footy_data/labelling_tasks.json`), re-read on every request, so no
+redeploy is needed. It is created from a built-in seed the first time it is read.
+Edit it only through the CLI (atomic write, stable ids):
+
+```bash
+python -m footy_track.scripts.labelling_tasks add "Recheck X" --url http://mac-mini-i7:8011/ball_check \
+    --why "one line" --device phone --priority 1 \
+    --count-url 'http://mac-mini-i7:8011/ball_check/queue?source=list&limit=1' --count-label left
+python -m footy_track.scripts.labelling_tasks list
+python -m footy_track.scripts.labelling_tasks done <id>      # remove it by hand
+```
+
+`--device` is `phone|laptop|either`; lower `--priority` sorts first. A count URL
+returns JSON with `total`, `count` or `remaining` (optional `count_path` in the file
+for a dotted path). A malformed file never breaks the page: `/api/tasks` answers 200
+with `error` set and the CLI refuses to overwrite it.
+
+**Tasks complete themselves.** A task may carry `done_when`; `/api/tasks` evaluates it
+server-side (`labeller/task_done.py`, results cached 5 s) and returns `done: bool` plus
+`progress` where it has one. A task with no `done_when` (and nothing inferable, below)
+behaves as before: it stays until `done <id>`. Shapes:
+
+| `done_when` | done when | `progress` |
+|---|---|---|
+| `{"gt": {"clip", "frame"[, "since"]}}` | calibration GT exists for that frame | - |
+| `{"proposal": {"clip", "run", "frame"}, "status_in": [...]}` | that proposal's status is in `status_in` (default `accepted`, `edited`) | - |
+| `{"frames": [[clip, frame], ...][, "since"]}` | every frame has GT, a `not_broadcast` mark or a `too_few_points` mark (that mark is not written on main yet; it counts the day it lands) | `{done: k, total: n}` |
+| `{"count_zero": true}` | the task's `count_url` returns 0 (same `total`/`count`/`remaining`/`count_path` parsing as the page chip; own-host URLs are fetched through the request's base URL, 2 s timeout; an unreachable URL is never "done") | `{remaining: n}` |
+
+Clips go through `canonical_clip_id`, the same as the calibration routes, so
+`arsenal_bournemouth_1st_seg030` and `bournemouth_broadcast_seg030` are one clip. `since` is
+`"added"` or `YYYY-MM-DD` and ignores GT whose `ts` is earlier (for "recheck" tasks whose frame
+already had GT). Any shape may add `"dataset": NAME` (default: the default dataset, which a
+link without `?dataset=` opens). A malformed spec or a failing evaluation means "not done",
+never an error.
+
+*Inference at read time* (the JSON is never rewritten; the effective spec is returned as
+`done_when` with `done_when_inferred: true`), when a task has no explicit `done_when`:
+a `count_url` -> `{"count_zero": true}`; otherwise a `/calibration?clip=X&frame=N...` url
+-> `{"gt": {clip: X, frame: N, since: "added"}}` (and `dataset` from the url). Job tasks
+(`job: true`) already leave the board when their job closes and are not inferred.
+
+*Board behaviour.* Active tasks first (priority order), then done ones. The first time a
+task is seen done its timestamp (`done_at`) is stored in the sidecar
+`<tasks file>.done.json`; done tasks older than 2 days are left out of the response (never
+deleted from the tasks file). If the condition turns false again (GT deleted) the task is
+active again. The home page shows done tasks greyed with a tick in a collapsed "Done (n)"
+section at the bottom, and `k/n` on tasks with progress. CLI: `add ... --done-when-gt
+CLIP:FRAME`, `--done-when-frames CLIP:FRAME,CLIP:FRAME`, `--done-when-count-zero` (needs
+`--count-url`); `done <id>` still removes a task manually.
+
+**Deploying.** Live servers run **only** from `/home/george/footy-track-main`, on
+main. After a merge to main:
+
+```bash
+scripts/labeller_deploy.sh status          # tmux session, PID, health, served sha vs origin/main
+scripts/labeller_deploy.sh deploy          # ff-only to origin/main (refuses if dirty), restart, wait for sha
+scripts/labeller_deploy.sh restart calib   # one service;  logs <svc> [-f]
+```
+
+There is exactly one service, `calib` on :8011. The first restart/deploy creates the
+dataset registry (section 18) from a built-in seed if it is missing and never overwrites
+it. The old `nottinghamforest` server on :8012 is gone: its data is the `nottinghamforest` dataset of the
+one server (stop its tmux session, `tmux -L footy kill-session -t footy-norwich`).
+
+`--dry-run` prints the mutating commands; `--force` lets `restart` kill a non-tmux
+process still holding the port (otherwise it prints the PID and stops); `--no-warm`
+skips the background Ball Check cache warm-up (`footy_track.scripts.warm_ball_check`)
+that runs after a restart, for the `nottinghamforest` dataset of `calib` (`WARM_DATASETS`). Services are tmux sessions `footy-<svc>` on
+`tmux -L footy`, logging to `~/.cache/footy-labeller/<svc>.log`. The service table
+(ports; data dirs now live in the registry, not in env vars) is at the top of
+`scripts/labeller_deploy.sh`; keep the `SERVICES` list in `web/main.html` in step with it. Feature branches are tested in
+their own worktree on another port, never in the serving checkout.
+
+## 18. Datasets: one server, many bodies of clips (LAB-13xx)
+
+A *dataset* is a clips dir plus where its labels live. One server serves all of them;
+`footy_track/labeller/datasets.py` is the registry and the per-request resolver.
+
+- **LAB-1300** (MUST) Datasets come from a JSON registry, `$FOOTY_LABELLER_DATASETS`
+  (default `/mnt/storage/footy_data/labeller_datasets.json`), re-read when its mtime/size
+  changes (no restart to add a dataset):
+  ```json
+  {"default": "calib",
+   "datasets": {
+     "calib":   {"label": "...", "clips_dir": "...", "marks_dir": "...",
+                 "candidates_dir": "...", "ball_check_list": "...",
+                 "extra_clips_dirs": ["..."]},
+     "nottinghamforest": {"label": "...", "clips_dir": "...", "marks_dir": "..."}}}
+  ```
+  `clips_dir` and `marks_dir` are required; the rest are optional (`candidates_dir`
+  defaults to `<marks_dir>/ball_candidates`; `ball_check_list` unset = empty list pool;
+  `extra_clips_dirs` are extra places the calibration page looks for a clip's video).
+  `python -m footy_track.scripts.labeller_datasets init|list` creates (never overwrites) and
+  shows the registry. With no registry file the single dataset `calib` is built from the
+  legacy env vars (`FOOTY_CLIPS_DIR`, `FOOTY_GT_MARKS_DIR`, `FOOTY_BALL_CANDIDATES_DIR`,
+  `FOOTY_BALL_CHECK_LIST`, `FOOTY_CALIB_EXTRA_CLIPS_DIRS`) exactly as before; when set, those
+  env vars also override the *default* dataset's fields (`--clips-dir` / `--gt-dir` of
+  `python -m footy_track.labeller` rely on it). A malformed registry never takes the server
+  down: it falls back to the legacy `calib` and `GET /api/datasets` reports `error`.
+  - Tests: `test_datasets.py::test_registry_lists_datasets_and_default`,
+    `::test_missing_registry_falls_back_to_legacy_single_dataset`,
+    `::test_malformed_registry_does_not_take_the_server_down`,
+    `::test_env_overrides_apply_to_the_default_dataset_only`,
+    `::test_registry_edits_are_picked_up_without_restart`
+- **LAB-1301** (MUST) Every route (HTTP and the `/ws` WebSocket) resolves its dataset from
+  the `?dataset=<name>` query parameter; none means the registry default (`calib`), so
+  existing links and bookmarks are unchanged. An unknown name is a 404 (WebSocket close
+  4404), never a silent fall back to the default: a write must not land in the wrong dataset.
+  Pure ASGI middleware sets a `ContextVar` that asyncio tasks and `to_thread` workers inherit.
+  - Tests: `::test_unknown_dataset_is_404_not_silent_default`,
+    `::test_websocket_unknown_dataset_is_refused`, `::test_clips_follow_the_dataset`
+- **LAB-1302** (MUST) No state bleeds between datasets. Each non-default dataset has its
+  own `Session` (the default one stays the module global `SESSION`); a `Session` is bound
+  to its dataset by name because its debounced flush runs on a timer thread with no request
+  context. Verdict logs, calibration GT/proposals/frame types, the review-list pool,
+  candidate pools, identity labels/tracklets and candidate embeddings are all per dataset.
+  - Tests: `::test_labels_saved_in_one_dataset_never_appear_in_the_other`,
+    `::test_sessions_do_not_share_state_and_default_keeps_working`,
+    `::test_session_flush_thread_writes_to_its_own_dataset`,
+    `::test_ball_check_verdicts_and_stats_are_per_dataset`,
+    `::test_ball_check_list_pool_is_per_dataset`, `::test_calibration_gt_is_per_dataset`,
+    `::test_identity_dirs_do_not_bleed_between_datasets`
+- **LAB-1303** (MUST) In-memory caches are keyed by dataset name (crop LRUs in `ball_check`
+  and `review`, the clip-size cache; candidate pools by candidates dir), so the same clip
+  stem in two datasets never serves one dataset's pixels for the other.
+  - Tests: `::test_crop_cache_is_keyed_by_dataset`
+- **LAB-1304** (MUST) `GET /api/datasets` lists `{default, current, registry, datasets[]}`.
+  - Tests: `::test_registry_lists_datasets_and_default`
+- **LAB-1305** (SHOULD) Pages carry the dataset: every page loads `/static/dataset.js`, which
+  adds the page's own `?dataset=` to same-origin `fetch`, `WebSocket`, `<img>`/`<video>`
+  `src`, `<a href>` and `history.*State` URLs (use `footyUrl()` for URLs built into
+  `innerHTML`). The home page has a dataset picker. Without `?dataset=` it does nothing.
+  - UNTESTED-FRONTEND (server contract: `::test_pages_carry_the_dataset_shim`)
+
+## 19. Labelling jobs: ask main for labels (LAB-14xx)
+
+### Submitting labelling jobs from another branch
+
+Do not start your own labeller or hand-edit the task board. POST a **job** to main's labeller
+(`http://mac-mini-i7:8011`, override with `$FOOTY_LABELLER_URL`); it shows up on the home page
+task board with a deep link into the right page and dataset, and you fetch the labels later by
+job id or title.
+
+```bash
+# 1. submit (re-running with the same "key" returns the same job, never a duplicate)
+curl -s -X POST http://mac-mini-i7:8011/api/jobs -H 'Content-Type: application/json' -d '{
+  "title": "Nottingham Forest windows r1",
+  "kind": "ball_place", "dataset": "nottinghamforest",
+  "items": [{"clip": "arsenal_nottinghamforest_seg003", "frame_start": 10, "frame_end": 259, "step": 10}],
+  "why": "held-out ball placement", "device": "laptop", "priority": 2,
+  "requester": {"branch": "exp/my-branch", "commit": "abc1234", "host": "desktop"},
+  "key": "exp/my-branch/nottinghamforest-windows-r1"}'
+# -> {"id":"j-56098a576c24","url":"http://mac-mini-i7:8011/labeller?dataset=nottinghamforest&clip=...&frame=10","status":"open","created":true,...}
+
+# 2. progress (computed from the real label files) -- by id or exact title
+curl -s 'http://mac-mini-i7:8011/api/jobs/Nottingham%20Forest%20windows%20r1' | jq '.status, .progress'
+
+# 3. the labels, once done (or any time: partial results)
+curl -s 'http://mac-mini-i7:8011/api/jobs/j-56098a576c24/results' > labels.json
+```
+
+From Python / a Prefect flow, with no dependencies (`urllib` only; copy the single file, or fetch
+it from the server if your branch has not merged main: `curl -O http://mac-mini-i7:8011/api/jobs_client.py`):
+
+```python
+from jobs_client import submit, wait, results   # or footy_track.labeller.jobs_client
+job = submit("Nottingham Forest windows r1", "ball_place", items, dataset="nottinghamforest", key="exp/my-branch/nottinghamforest-windows-r1")
+wait(job["id"], poll=60)                  # blocks until the job is done or cancelled
+labels = results(job["id"])["labels"]
+```
+
+CLI (fills `requester.branch` / `commit` from git, `host` from the hostname):
+
+```bash
+python -m footy_track.scripts.labelling_jobs submit --title "Nottingham Forest windows r1" --kind ball_place \
+    --dataset nottinghamforest --items /mnt/storage/footy_data/nottinghamforest_label_queue/windows.csv --step 10 \
+    --key exp/my-branch/nottinghamforest-windows-r1
+python -m footy_track.scripts.labelling_jobs status  "Nottingham Forest windows r1"
+python -m footy_track.scripts.labelling_jobs wait    "Nottingham Forest windows r1" --poll 60
+python -m footy_track.scripts.labelling_jobs results "Nottingham Forest windows r1" -o labels.json
+```
+
+**Worked example: the Nottingham Forest windows.** `/mnt/storage/footy_data/nottinghamforest_label_queue/windows.csv`
+has header `clip,start_frame,end_frame,stratum,reason` and 24 windows of 250 frames
+(`start_frame..end_frame`, both ends inclusive). The CLI above turns each row into one window
+item (`start_frame`/`end_frame` are accepted aliases of `frame_start`/`frame_end`; `stratum` and
+`reason` ride along and come back in `items`). With `--step 10` that is 24 x 25 = 600 frames to
+label; the home page shows "600 left" and counts down as `ball_gt_marks_nottinghamforest/*.jsonl` fills in.
+The link opens the labeller on the next unlabelled frame (`/labeller?dataset=nottinghamforest&clip=..&frame=..`).
+
+**Request body** (`POST /api/jobs`, JSON; `title` is the only required field)
+
+| field | meaning |
+|---|---|
+| `title` | what the person sees on the board; also an id-like handle (`GET /api/jobs/<title>` when unique) |
+| `kind` | `ball_place`, `ball_check`, `calibration`, `frame_type`, `identity`, `other` (default `other`) |
+| `dataset` | registry name (section 18); default = the request's `?dataset=`, else the default dataset |
+| `items` | list of objects, per kind (below) |
+| `why`, `device`, `priority` | board text, `phone`/`laptop`/`either`, 1 = first |
+| `requester` | `{branch, commit, host, session}`, all optional strings |
+| `key` | idempotency key: the job id is derived from it; re-posting returns the existing job (HTTP 200, `created: false`) |
+| `url` | optional override of the deep link (a path on this server) |
+
+| kind | item | a unit counts as labelled when |
+|---|---|---|
+| `ball_place` | `{clip, frame_start, frame_end, step?}` (a window) or `{clip, frame}` | the clip's GT sidecar (`<marks>/<clip>.jsonl`, alias stems resolved) has a ball box tagged `labeller` or `human_checked`, or a `no_ball`/`not_broadcast` marker on that frame. Machine-only boxes are not labels (README section 1 tiers) |
+| `calibration` | same two shapes | `calibration_gt/<clip>.json` has the frame, or `frame_type/<clip>.json` flags it `not_broadcast` |
+| `frame_type` | same two shapes | `frame_type/<clip>.json` has an entry for the frame |
+| `ball_check` | `{clip, frame_index, box_index, source?}` (`sidecar` default, `cand`, `list`) | `ball_checks/<clip>.jsonl` has a live verdict (last line wins; a `null` verdict undoes) |
+| `identity` | `{clip}` | `identity_pairs.jsonl` / `identity_reviews.jsonl` of the dataset mention the clip |
+| `other` | anything | never: no computed progress, close it with `POST /api/jobs/{id}/done` |
+
+Windows expand to `range(frame_start, frame_end + 1, step)`; a job is limited to 200,000 units. A `ball_check` job's
+link opens Ball Check on that source (and clip, when all cards are in one clip); the page's queue is not
+restricted to the job's cards (progress and results are).
+
+**Endpoints**
+
+- `POST /api/jobs` -> `{id, url, status, created, title, dataset}` (201 new, 200 existing key, 422 on a bad body).
+- `GET /api/jobs?status=&title=&kind=&dataset=&requester.branch=` -> `{"jobs": [...]}` (`title` matches exactly or as a
+  case-insensitive substring; progress included for open/in_progress jobs, all with `progress=true`).
+- `GET /api/jobs/{id-or-title}` -> the job (`id, title, kind, dataset, status, items, requester, url, created, updated,
+  closed?, progress`). `progress` = `{supported, done, total, remaining, fraction, next}` where `next` is the first
+  unlabelled unit. A title must be unique among non-cancelled jobs (else 409 with `ids`).
+- `GET /api/jobs/{id-or-title}/frames` (`ball_place` jobs) -> `{id, title, total, done, frames: [{clip, frame, item,
+  done, stratum?, reason?}]}`: the items expanded in job order (`frame_start..frame_end` by `step`), `done` by the same
+  rule as `progress`. Feeds the labeller's job mode (`/labeller?...&job=<id>`, which a `ball_place` job's `url` carries).
+- `GET /api/jobs/{id-or-title}/results` -> the canonical results document below.
+- `POST /api/jobs/{id-or-title}/done | cancel | reopen`. Statuses: `open`, `in_progress`, `done`, `cancelled`.
+  The server moves `open -> in_progress` at the first label and `-> done` when progress reaches 100%
+  (never touches a cancelled or manually closed job).
+- Open jobs are merged into `GET /api/tasks` (`job: true`, `kind`, `dataset`, a `count_url` for the live "left" chip).
+- Storage: one JSON file per job in `$FOOTY_LABELLING_JOBS_DIR` (default `/mnt/storage/footy_data/labelling_jobs`,
+  created on the first submit), atomic writes. The label files are only read, never written.
+
+**Results schema `labelling-job-results/v1`** (`GET /api/jobs/{ref}/results`)
+
+```json
+{"schema": "labelling-job-results/v1", "generated_at": "2026-11-16T12:00:00Z",
+ "job": {"id": "...", "title": "...", "kind": "ball_place", "dataset": "nottinghamforest", "status": "in_progress",
+         "requester": {}, "url": "...", "n_items": 24},
+ "progress": {"supported": true, "done": 3, "total": 600, "remaining": 597, "fraction": 0.005, "next": {"clip": "...", "frame": 40}},
+ "items":  [{"index": 0, "item": {"clip": "...", "frame_start": 10, "frame_end": 259, "step": 10}, "total": 25, "done": 3}],
+ "stores": [{"clip": "...", "store": "ball_gt_marks_nottinghamforest/<stem>.jsonl", "store_mtime": "2026-11-16T11:58:00Z"}],
+ "labels": [ ...rows, only for labelled units inside the job's items... ]}
+```
+
+`labels` rows by kind (every row has `clip`; unlabelled units simply have no row):
+
+- `ball_place`: `{clip, frame_index, status: "ball"|"no_ball"|"not_broadcast", tags, label?, bbox?, center?, provenance?, tier?}`.
+  `bbox`/`center` are normalised (0..1) like the sidecar; `provenance` is `labeller` (a human placed it, tier 1) or
+  `machine+human_checked` (a machine box a human reviewed, tier 2). Sidecar rows carry **no per-row timestamp**: use
+  `stores[].store_mtime` (when the file last changed) as the upper bound.
+- `calibration`: `{clip, frame_index, status: "calibrated", correspondences, H, H_convention, pitch_dims, image_size,
+  method, inliers, mean_err_m, ts, origin}` or `{status: "not_broadcast", ts, run_id?, note?}`.
+- `frame_type`: `{clip, frame_index, status: <type, e.g. "not_broadcast">, ts, run_id?, note?}`.
+- `ball_check`: the verdict row: `{clip, frame_index, box_index, source, verdict, bbox, corrected_bbox, label, provenance, confidence, ts}`
+  (`ts` = epoch seconds).
+- `identity`: the raw pair/review records that mention the clip, plus `clip`.
+
+- **LAB-1400** (MUST) `POST /api/jobs` validates and stores a job (one atomic file) and returns `{id, url, status}`;
+  a repeated `key` returns the existing job, even under concurrent submits.
+  - Tests: `test_jobs.py::test_submit_returns_id_url_status_and_is_stored_one_file_per_job`,
+    `::test_same_key_returns_the_existing_job_not_a_duplicate`, `::test_same_key_concurrent_submits_create_one_job`,
+    `::test_validation_errors_are_422`
+- **LAB-1401** (MUST) `GET /api/jobs` filters by status, title (exact or substring), kind, dataset, `requester.branch`;
+  `GET /api/jobs/{id}` also resolves a unique exact title.
+  - Tests: `::test_get_by_id_and_by_exact_title_and_listing_filters`, `::test_title_with_a_slash_and_an_ambiguous_title`
+- **LAB-1402** (MUST) Progress is computed from the dataset's actual label store, per kind, never from a counter, and
+  ignores other datasets, other clips, other frames and machine-only boxes.
+  - Tests: `::test_progress_counts_only_human_labels_in_the_jobs_frames`, `::test_progress_follows_the_label_files_not_a_counter`,
+    `::test_labels_in_another_dataset_do_not_count`, `::test_ball_check_progress_and_results_from_the_verdict_log`,
+    `::test_calibration_and_frame_type_progress`, `::test_identity_progress`, `::test_window_step_and_start_end_aliases_and_extra_columns`
+- **LAB-1403** (MUST) `GET /api/jobs/{id}/results` returns exactly the job's labelled units in the schema above.
+  - Tests: `::test_results_contain_exactly_the_jobs_labels_with_provenance`
+- **LAB-1404** (MUST) Jobs close via `done`/`cancel`/`reopen`; reaching 100% auto-marks `done`.
+  - Tests: `::test_done_cancel_reopen_endpoints`, `::test_auto_done_at_full_progress_and_not_reopened_or_cancel_overridden`
+- **LAB-1405** (MUST) Open jobs appear on the task board with a deep link into the right page and dataset; manual
+  tasks keep working; a broken job file never breaks the board.
+  - Tests: `::test_open_jobs_appear_on_the_task_board_and_manual_tasks_still_work`,
+    `::test_board_link_points_at_the_next_unlabelled_frame`, `::test_a_broken_job_file_does_not_break_the_board_or_listing`
+- **LAB-1406** (SHOULD) `jobs_client.py` is stdlib-only and standalone (served at `/api/jobs_client.py`): `submit`, `get`,
+  `wait(poll)`, `results`; the CLI fills `requester` from git.
+  - Tests: `::test_client_submit_get_wait_results_roundtrip`, `::test_client_errors_are_typed`,
+    `::test_cli_submits_a_csv_of_windows_and_reports_status`, `::test_client_is_a_standalone_stdlib_only_file_and_served_by_the_server`
+- **LAB-1407** (SHOULD) The labeller page deep link `?clip=<stem>&frame=<n>` opens that clip at that frame.
+  - UNTESTED-FRONTEND
+- **LAB-1408** (SHOULD) `/labeller?job=<id>` is job mode: a bar shows `job frame k / N, clip, stratum`; `J` / the button
+  jumps to the next job frame that is not done (wrapping, switching clip), `K` to the previous one. Drawing a ball box,
+  or marking no-ball (`N`) / not-broadcast (`B`), saves and advances (checkbox `auto-advance`). No auto-detect (Q and
+  the button are off, frame 0 is not detected on load) and no forward propagation, so every mark on a job frame is a
+  human `labeller` mark. Without `job=` nothing changes.
+  - Tests (server half): `::test_ball_place_url_opens_job_mode_and_other_kinds_do_not`,
+    `::test_frames_endpoint_expands_items_in_job_order_with_the_progress_rule`; the page itself is UNTESTED-FRONTEND
+    (driven by hand in headless Chromium).
 
 ## 15. Traceability summary
 
@@ -1092,8 +1537,10 @@ becomes GT without a human accepting it; accepted GT carries
 | 10. Review UI (LAB-9xx) | 7 | 0 | 0 | 7 |
 | 11. Ball Check (LAB-10xx) | 12 | 11 | 0 | 1 |
 | 12. Confidence sampling (LAB-11xx) | 5 | 5 | 0 | 0 |
-| 16. Pitch calibration (LAB-12xx) | 22 | 17 | 0 | 5 |
-| **Total** | **123** | **88** | **8** | **27** |
+| 16. Pitch calibration (LAB-12xx) | 23 | 18 | 0 | 5 |
+| 18. Datasets (LAB-13xx) | 6 | 5 | 0 | 1 |
+| 19. Labelling jobs (LAB-14xx) | 8 | 7 | 0 | 1 |
+| **Total** | **138** | **101** | **8** | **29** |
 
 Open items: 4 (OPEN-1..4) + 1 fixed on main (undo provenance, `95b60cc`).
 Test suite: 138 tests in `tests/labeller/` (all green), plus the

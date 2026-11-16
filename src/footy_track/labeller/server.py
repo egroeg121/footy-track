@@ -16,6 +16,8 @@ import asyncio
 import contextlib
 import json
 import os
+import threading
+import time
 from pathlib import Path
 
 # Persist torch.compile (Inductor) cache before torch loads — see video_utils.
@@ -27,6 +29,7 @@ os.environ.setdefault(
 import cv2  # noqa: E402
 from fastapi import (  # noqa: E402
     FastAPI,
+    HTTPException,
     WebSocket,
     WebSocketDisconnect,
 )
@@ -34,6 +37,7 @@ from fastapi.responses import HTMLResponse, Response  # noqa: E402
 from fastapi.staticfiles import StaticFiles  # noqa: E402
 
 from footy_track.ball_eval.metrics import bbox_iou  # noqa: E402
+from footy_track.labeller import datasets  # noqa: E402
 from footy_track.labeller.ball_check import router as ball_check_router  # noqa: E402
 from footy_track.labeller.calibration import router as calibration_router  # noqa: E402
 from footy_track.labeller.calibration_proposals import router as calibration_proposals_router  # noqa: E402
@@ -46,7 +50,9 @@ from footy_track.labeller.constants import (  # noqa: E402
     PROV_YOLO,
 )
 from footy_track.labeller.ingest import router as ingest_router  # noqa: E402
+from footy_track.labeller.jobs_routes import router as jobs_router  # noqa: E402
 from footy_track.labeller.review import router as review_router  # noqa: E402
+from footy_track.labeller.tasks import router as tasks_router  # noqa: E402
 from footy_track.labeller.run_stream import stream_frames  # noqa: E402
 from footy_track.labeller.session import (  # noqa: E402
     Session,
@@ -67,53 +73,10 @@ __all__ = [
 ]
 
 app = FastAPI(title="Footy Track Labeller")
+# ?dataset=<name> -> the request's dataset (HTTP and WebSocket); unknown name = 404.
+app.add_middleware(datasets.DatasetMiddleware)
 
-# server.py is the composition root and config surface: extracted modules
-# resolve these at call time (and tests monkeypatch them here).
 _STATIC_DIR = Path(__file__).parent / "web"
-
-
-def _env_dir(var: str, *fallbacks: Path) -> Path:
-    """First existing candidate: $var, then each fallback, else fallbacks[0].
-
-    The GT/clip locations differ per machine (macOS iCloud on the laptop, plain
-    directories on Linux boxes and rented GPUs). Hardcoding the macOS path made
-    Linux hosts resolve to an empty ``~/Library/Mobile Documents/...`` directory,
-    so the labeller silently showed no existing labels and there was no way to
-    tell what still needed doing. Resolve by environment instead.
-    """
-    override = os.environ.get(var)
-    if override:
-        return Path(override).expanduser()
-    for cand in fallbacks:
-        if cand.is_dir():
-            return cand
-    return fallbacks[0]
-
-
-_CLIPS_DIR = _env_dir(
-    "FOOTY_CLIPS_DIR",
-    Path(__file__).parents[3] / "eval_data" / "clips",
-    Path.home() / "footy" / "footy_data" / "clips",
-)
-_GT_MARKS_DIR = _env_dir(
-    "FOOTY_GT_MARKS_DIR",
-    Path.home() / "footy" / "footy_data" / "ball_gt_marks",
-    Path.home()
-    / "Library"
-    / "Mobile Documents"
-    / "com~apple~CloudDocs"
-    / "footy_data"
-    / "ball_gt_marks",
-)
-#: Machine detections with real confidences (one JSONL per clip, ball rows
-#: only), pulled from s3://…/footy_data/machine_labels. The GT sidecars cannot
-#: serve this purpose: they never persist confidence (LAB-104 synthesizes
-#: 1.0/0.5), so confidence-stratified sampling is impossible from them.
-_CANDIDATES_DIR = _env_dir(
-    "FOOTY_BALL_CANDIDATES_DIR",
-    Path.home() / "footy" / "footy_data" / "ball_candidates",
-)
 
 
 from footy_track.labeller import identity_routes  # noqa: E402
@@ -123,7 +86,24 @@ from footy_track.labeller import identity_routes  # noqa: E402
 # clips at once), and append-only storage rather than whole-file rewrites.
 app.include_router(identity_routes.router)
 
+#: Session of the default dataset. Other datasets get their own Session lazily
+#: (``_session()``): one shared Session would flush clip A's timeline into the
+#: wrong dataset's marks dir the moment two datasets are in use.
 SESSION = Session()
+_SESSIONS: dict[str, Session] = {}
+_SESSIONS_LOCK = threading.Lock()
+
+
+def _session() -> Session:
+    """The Session of the request's dataset (see ``datasets.DatasetMiddleware``)."""
+    ds = datasets.current()
+    if ds.is_default:
+        return SESSION
+    with _SESSIONS_LOCK:
+        sess = _SESSIONS.get(ds.name)
+        if sess is None:
+            sess = _SESSIONS[ds.name] = Session(ds.name)
+        return sess
 
 
 # ----------------------------------------------------------------------------
@@ -132,10 +112,41 @@ SESSION = Session()
 # ----------------------------------------------------------------------------
 
 
+@app.middleware("http")
+async def _cors_for_read_only_api(request, call_next):
+    """Let the home page of one labeller server read ``/api/...`` GETs of another.
+
+    The home page lists every service's ``/api/server_info`` and task counts
+    cross-origin (:8011 <-> :8012). Read-only GETs only; no auth exists anyway.
+    """
+    response = await call_next(request)
+    if request.method == "GET" and "/api/" in request.url.path:
+        response.headers["Access-Control-Allow-Origin"] = "*"
+    return response
+
+
+@app.get("/api/datasets")
+async def api_datasets() -> dict:
+    """Registered datasets (see ``datasets.py``); the home page picker reads this."""
+    out: dict = {
+        "default": datasets.default_name(),
+        "current": datasets.current_name(),
+        "registry": str(datasets.registry_path()),
+        "datasets": [d.to_public() for d in datasets.all_datasets()],
+    }
+    if datasets.registry_error():
+        out["error"] = datasets.registry_error()
+    return out
+
+
 @app.get("/", response_class=HTMLResponse)
 @app.get("/main", response_class=HTMLResponse)
 async def root() -> HTMLResponse:
-    return HTMLResponse((_STATIC_DIR / "main.html").read_text())
+    # no-store: the task board must never be a cached copy on a phone.
+    return HTMLResponse(
+        (_STATIC_DIR / "main.html").read_text(),
+        headers={"Cache-Control": "no-store, max-age=0"},
+    )
 
 
 @app.get("/labeller", response_class=HTMLResponse)
@@ -186,7 +197,7 @@ def _clip_completion(stem: str, video_path: Path) -> dict:
     complete = reached near the last frame AND has at least one player mark.
     Ball-only clips (no player labels) are treated as in-progress.
     """
-    jsonl = _GT_MARKS_DIR / f"{stem}.jsonl"
+    jsonl = datasets.current().marks_dir / f"{stem}.jsonl"
     if not jsonl.exists():
         return {"marked": False, "complete": False, "label_count": 0}
     try:
@@ -217,11 +228,13 @@ def _clip_completion(stem: str, video_path: Path) -> dict:
 @app.get("/clips")
 async def list_clips() -> dict:
     """Return sorted list of clips immediately — no completion check."""
-    if not _CLIPS_DIR.exists():
+    if not datasets.current().clips_dir.exists():
         return {"clips": []}
     video_suffixes = {".mp4", ".mov", ".avi", ".mkv"}
     paths = sorted(
-        p for p in _CLIPS_DIR.iterdir() if p.suffix.lower() in video_suffixes
+        p
+        for p in datasets.current().clips_dir.iterdir()
+        if p.suffix.lower() in video_suffixes and not p.name.startswith(".")
     )
     # FOOTY_MAX_CLIPS keeps startup cheap on a small development box (--debug).
     max_clips = os.environ.get("FOOTY_MAX_CLIPS")
@@ -229,20 +242,22 @@ async def list_clips() -> dict:
         paths = paths[: int(max_clips)]
     # Return names fast; completion checked lazily via /clips/status
     clips = [
-        {"name": p.name, "marked": (_GT_MARKS_DIR / f"{p.stem}.jsonl").exists()}
+        {"name": p.name, "marked": (datasets.current().marks_dir / f"{p.stem}.jsonl").exists()}
         for p in paths
     ]
-    return {"clips": clips, "dir": str(_CLIPS_DIR)}
+    return {"clips": clips, "dir": str(datasets.current().clips_dir)}
 
 
 @app.get("/clips/status")
 async def clips_status() -> dict:
     """Return completion status for all clips — may be slow (reads video metadata)."""
-    if not _CLIPS_DIR.exists():
+    if not datasets.current().clips_dir.exists():
         return {"clips": []}
     video_suffixes = {".mp4", ".mov", ".avi", ".mkv"}
     paths = sorted(
-        p for p in _CLIPS_DIR.iterdir() if p.suffix.lower() in video_suffixes
+        p
+        for p in datasets.current().clips_dir.iterdir()
+        if p.suffix.lower() in video_suffixes and not p.name.startswith(".")
     )
     clips = [{"name": p.name, **_clip_completion(p.stem, p)} for p in paths]
     return {"clips": clips}
@@ -250,12 +265,18 @@ async def clips_status() -> dict:
 
 @app.post("/session/load")
 async def load_session(body: dict) -> dict:
-    return SESSION.load(body["video_path"])
+    session = _session()
+    # load() pauses the previous tracker (a thread join): keep it off the loop.
+    return await asyncio.to_thread(session.load, body["video_path"])
 
 
 @app.get("/frame/{idx}.jpg")
 async def get_frame(idx: int) -> Response:
-    data = SESSION.frame_jpeg(idx)
+    session = _session()
+    # Off the event loop: seeking + decoding a 1080p frame takes tens to
+    # hundreds of ms (more on a throttled CPU), and a live run fetches one per
+    # streamed frame — inline, that queue starves the WebSocket and Pause.
+    data = await asyncio.to_thread(session.frame_jpeg, idx)
     if data is None:
         return Response(status_code=404)
     return Response(content=data, media_type="image/jpeg")
@@ -264,10 +285,11 @@ async def get_frame(idx: int) -> Response:
 @app.get("/marks")
 async def get_marks() -> dict:
     """Return no_ball, not_broadcast, ball, and player frame sets for the current session."""
-    with SESSION._tl_lock:
+    session = _session()
+    with session._tl_lock:
         ball_frames = []
         player_frames = []
-        for idx, boxes in enumerate(SESSION.timeline):
+        for idx, boxes in enumerate(session.timeline):
             if not boxes:
                 continue
             has_ball = any(b.label in BALL_LABELS for b in boxes)
@@ -277,8 +299,8 @@ async def get_marks() -> dict:
             if has_player:
                 player_frames.append(idx)
     return {
-        "no_ball": sorted(SESSION.no_ball_frames),
-        "not_broadcast": sorted(SESSION.not_broadcast_frames),
+        "no_ball": sorted(session.no_ball_frames),
+        "not_broadcast": sorted(session.not_broadcast_frames),
         "ball": ball_frames,
         "player": player_frames,
     }
@@ -293,25 +315,32 @@ async def autodetect(body: dict) -> dict:
     This means autodetect only adds to what you can see — it never pulls in
     stale boxes from earlier sessions.
     """
-    if SESSION.video_path is None:
+    session = _session()
+    if session.video_path is None:
         return {"idx": 0, "boxes": []}
     idx = int(body.get("frame_idx", 0))
 
     # Treat whatever the client currently shows as the labeller ground truth.
     current = boxes_from_payload(body.get("current_boxes", []), PROV_LABELLER)
-    SESSION.set_frame(idx, current)
+    session.set_frame(idx, current)
 
-    seeds = await asyncio.to_thread(
-        yolo_seed_objects,
-        SESSION.video_path,
-        body.get("model_path", "") or "",
-        float(body.get("conf", 0.35)),
-        SESSION.width,
-        SESSION.height,
-        float(body.get("iou", 0.5)),
-        idx,
-    )
-    w, h = SESSION.width, SESSION.height
+    try:
+        seeds = await asyncio.to_thread(
+            yolo_seed_objects,
+            session.video_path,
+            body.get("model_path", "") or "",
+            float(body.get("conf", 0.35)),
+            session.width,
+            session.height,
+            float(body.get("iou", 0.5)),
+            idx,
+        )
+    except FileNotFoundError as exc:
+        # Detector weights are not in git; say so instead of an opaque 500.
+        raise HTTPException(
+            status_code=503, detail=f"detector weights not found: {exc.filename or exc}"
+        ) from exc
+    w, h = session.width, session.height
     yolo_boxes = [
         ObjectDetection(
             label=o.label,
@@ -335,21 +364,23 @@ async def autodetect(body: dict) -> dict:
         for yb in yolo_boxes
         if not any(bbox_iou(_xywh(yb), _xywh(cb)) > 0.3 for cb in current)
     ]
-    SESSION.set_frame(idx, current + filtered_yolo)
-    return {"idx": idx, "boxes": boxes_payload(SESSION.get_frame(idx))}
+    session.set_frame(idx, current + filtered_yolo)
+    return {"idx": idx, "boxes": boxes_payload(session.get_frame(idx))}
 
 
 @app.get("/timeline/{idx}")
 async def get_timeline(idx: int) -> dict:
     """Return the authoritative boxes (with provenance) for a frame."""
-    return {"idx": idx, "boxes": boxes_payload(SESSION.get_frame(idx))}
+    session = _session()
+    return {"idx": idx, "boxes": boxes_payload(session.get_frame(idx))}
 
 
 @app.get("/next-detection/{from_idx}")
 async def next_detection(from_idx: int) -> dict:
     """Return the next frame after from_idx that has at least one box."""
-    with SESSION._tl_lock:
-        tl = list(SESSION.timeline)
+    session = _session()
+    with session._tl_lock:
+        tl = list(session.timeline)
     for idx in range(from_idx + 1, len(tl)):
         if tl[idx]:
             return {"idx": idx}
@@ -359,52 +390,57 @@ async def next_detection(from_idx: int) -> dict:
 @app.post("/edit")
 async def edit_frame(body: dict) -> dict:
     """Overwrite a frame with the user's boxes (labeller provenance = ground truth)."""
+    session = _session()
     idx = int(body["idx"])
     boxes = boxes_from_payload(body.get("objects", []), PROV_LABELLER)
-    SESSION.set_frame(idx, boxes)
+    session.set_frame(idx, boxes)
     if boxes:
-        SESSION.no_ball_frames.discard(idx)
-        SESSION.not_broadcast_frames.discard(idx)
-    SESSION.schedule_flush()
-    return {"idx": idx, "boxes": boxes_payload(SESSION.get_frame(idx))}
+        session.no_ball_frames.discard(idx)
+        session.not_broadcast_frames.discard(idx)
+    session.schedule_flush()
+    return {"idx": idx, "boxes": boxes_payload(session.get_frame(idx))}
 
 
 @app.post("/no-ball")
 async def mark_no_ball(body: dict) -> dict:
     """Mark a frame as no-ball-visible; removes any ball boxes from that frame."""
+    session = _session()
     idx = int(body["idx"])
-    SESSION.no_ball_frames.add(idx)
+    session.no_ball_frames.add(idx)
     # Clear ball boxes from this frame so the JSONL is consistent.
-    with SESSION._tl_lock:
-        if 0 <= idx < len(SESSION.timeline) and SESSION.timeline[idx]:
-            SESSION.timeline[idx] = [
-                b for b in SESSION.timeline[idx] if b.label not in BALL_LABELS
+    with session._tl_lock:
+        if 0 <= idx < len(session.timeline) and session.timeline[idx]:
+            session.timeline[idx] = [
+                b for b in session.timeline[idx] if b.label not in BALL_LABELS
             ]
-    SESSION.schedule_flush()
+    session.schedule_flush()
     return {"idx": idx, "no_ball": True}
 
 
 @app.post("/not-broadcast")
 async def mark_not_broadcast(body: dict) -> dict:
+    session = _session()
     idx = int(body["idx"])
-    SESSION.not_broadcast_frames.add(idx)
-    SESSION.schedule_flush()
+    session.not_broadcast_frames.add(idx)
+    session.schedule_flush()
     return {"idx": idx, "not_broadcast": True}
 
 
 @app.post("/no-ball/clear")
 async def clear_no_ball(body: dict) -> dict:
+    session = _session()
     idx = int(body["idx"])
-    SESSION.no_ball_frames.discard(idx)
-    SESSION.schedule_flush()
+    session.no_ball_frames.discard(idx)
+    session.schedule_flush()
     return {"idx": idx, "no_ball": False}
 
 
 @app.post("/not-broadcast/clear")
 async def clear_not_broadcast(body: dict) -> dict:
+    session = _session()
     idx = int(body["idx"])
-    SESSION.not_broadcast_frames.discard(idx)
-    SESSION.schedule_flush()
+    session.not_broadcast_frames.discard(idx)
+    session.schedule_flush()
     return {"idx": idx, "not_broadcast": False}
 
 
@@ -423,12 +459,13 @@ async def propagate_labels(body: dict) -> dict:
     Returns:
     - propagated_to: number of frames the label was propagated to
     """
+    session = _session()
     frame_idx = int(body.get("frame_idx", 0))
     box_idx = int(body.get("box_idx", 0))
     iou_threshold = 0.3
 
     # Get the labeller box at frame_idx, box_idx
-    frame_boxes = SESSION.get_frame(frame_idx)
+    frame_boxes = session.get_frame(frame_idx)
     if box_idx >= len(frame_boxes):
         return {"propagated_to": 0}
 
@@ -442,8 +479,8 @@ async def propagate_labels(body: dict) -> dict:
     ref_label = ref_box.label
 
     # Walk forward frame by frame
-    for idx in range(frame_idx + 1, SESSION.total_frames):
-        frame_boxes = SESSION.get_frame(idx)
+    for idx in range(frame_idx + 1, session.total_frames):
+        frame_boxes = session.get_frame(idx)
         if not frame_boxes:
             continue
 
@@ -488,11 +525,11 @@ async def propagate_labels(body: dict) -> dict:
             else:
                 updated_boxes.append(b)
 
-        SESSION.set_frame(idx, updated_boxes)
+        session.set_frame(idx, updated_boxes)
         last_position = (best_box.x, best_box.y, best_box.w, best_box.h)
         propagated_count += 1
 
-    SESSION.schedule_flush()
+    session.schedule_flush()
     return {"propagated_to": propagated_count}
 
 
@@ -532,13 +569,50 @@ def _sanitize_thresholds(raw: object) -> dict[str, float]:
 
 
 @app.websocket("/ws")
-async def ws(websocket: WebSocket) -> None:
+async def ws(websocket: WebSocket) -> None:  # noqa: PLR0915 — one dispatch loop
+    session = _session()
     await websocket.accept()
-    bg = SESSION.bg
+    run_bg = session.bg  # the tracker this connection's current run drives
     streamer: asyncio.Task | None = None
+    starter: asyncio.Task | None = None  # run/restart still submitting
 
     async def _run_streamer(start_idx: int) -> None:
-        await stream_frames(websocket, SESSION, start_idx)
+        await stream_frames(websocket, session, start_idx)
+
+    async def _cancel(task: asyncio.Task | None) -> None:
+        if task is not None and not task.done():
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
+
+    def _request_stop() -> None:
+        # Non-blocking: just raises the tracker's stop flag(s). session.bg may
+        # have been swapped by a clip load since this run started.
+        for bg in {id(b): b for b in (run_bg, session.bg)}.values():
+            bg.request_stop()
+
+    async def _start_run(msg: dict, start_frame: int, objects: list) -> None:
+        nonlocal streamer
+        # Tell the client we're entering the (potentially slow) model
+        # load/warmup phase *before* blocking on it — previously this
+        # only happened inside _stream_frames, whose task wasn't
+        # created until after bg.submit() had already returned, so the
+        # "compiling" status arrived too late to be useful and the
+        # frontend had no reliable signal to show a loading overlay
+        # for the duration of the actual compile (ft-wkc).
+        await websocket.send_json({"type": "status", "state": "compiling"})
+        await asyncio.to_thread(
+            run_bg.submit,
+            session.video_path,
+            objects,
+            msg.get("model_uri") or None,
+            float(msg.get("conf", 0.25)),
+            start_frame,
+            int(msg.get("imgsz", 512)),
+            _sanitize_thresholds(msg.get("handback_thresholds")),
+            _gt_reseed_frames(session, start_frame),
+        )
+        streamer = asyncio.create_task(_run_streamer(start_frame))
 
     try:
         while True:
@@ -546,17 +620,15 @@ async def ws(websocket: WebSocket) -> None:
             mtype = msg.get("type")
 
             if mtype in ("run", "restart"):
-                if streamer and not streamer.done():
-                    SESSION.bg.pause()
-                    streamer.cancel()
-                    with contextlib.suppress(asyncio.CancelledError):
-                        await streamer
-                bg = SESSION.bg
+                _request_stop()
+                await _cancel(starter)
+                await _cancel(streamer)
+                run_bg = session.bg
                 start_frame = int(msg.get("start_frame", 0))
                 # Seed from the TIMELINE at the start frame (the single source of
                 # truth) — not from whatever the client happens to send. This is
                 # what makes "restart from frame N" deterministic.
-                objects = SESSION.seed_objects(start_frame)
+                objects = session.seed_objects(start_frame)
                 print(
                     f"[ws] {mtype}: start_frame={start_frame} "
                     f"seed_objects={len(objects)} (from timeline)",
@@ -570,39 +642,37 @@ async def ws(websocket: WebSocket) -> None:
                         }
                     )
                     continue
-                # Tell the client we're entering the (potentially slow) model
-                # load/warmup phase *before* blocking on it — previously this
-                # only happened inside _stream_frames, whose task wasn't
-                # created until after bg.submit() had already returned, so the
-                # "compiling" status arrived too late to be useful and the
-                # frontend had no reliable signal to show a loading overlay
-                # for the duration of the actual compile (ft-wkc).
-                await websocket.send_json({"type": "status", "state": "compiling"})
-                await asyncio.to_thread(
-                    bg.submit,
-                    SESSION.video_path,
-                    objects,
-                    msg.get("model_uri") or None,
-                    float(msg.get("conf", 0.25)),
-                    start_frame,
-                    int(msg.get("imgsz", 512)),
-                    _sanitize_thresholds(msg.get("handback_thresholds")),
-                    _gt_reseed_frames(SESSION, start_frame),
-                )
-                streamer = asyncio.create_task(_run_streamer(start_frame))
+                # Submit runs as a task so this loop keeps reading: a Pause sent
+                # while the run is still starting must not wait behind it.
+                starter = asyncio.create_task(_start_run(msg, start_frame, objects))
 
             elif mtype == "pause":
-                SESSION.bg.pause()
-                if streamer and not streamer.done():
-                    streamer.cancel()
-                    with contextlib.suppress(asyncio.CancelledError):
-                        await streamer
+                t0 = time.monotonic()
+                print("[ws] pause: received", flush=True)
+                # 1. Raise the stop flag now: the tracker stops within one
+                #    object's step, whatever happens next.
+                _request_stop()
+                # 2. Stop streaming: nothing further reaches the client.
+                await _cancel(starter)
+                await _cancel(streamer)
+                # 3. Wait for the tracker thread to exit, OFF the event loop
+                #    (pause() joins for up to 10 s; run inline it froze every
+                #    HTTP request and this socket's own reads meanwhile).
+                for bg in {id(b): b for b in (run_bg, session.bg)}.values():
+                    await asyncio.to_thread(bg.pause)
                 await websocket.send_json({"type": "status", "state": "paused"})
+                print(
+                    f"[ws] pause: stopped in {time.monotonic() - t0:.2f}s",
+                    flush=True,
+                )
 
     except WebSocketDisconnect:
-        SESSION.bg.pause()
-        if streamer and not streamer.done():
-            streamer.cancel()
+        print("[ws] disconnect: stopping run", flush=True)
+    finally:
+        _request_stop()
+        for task in (starter, streamer):
+            if task is not None and not task.done():
+                task.cancel()
 
 
 app.include_router(review_router)
@@ -610,6 +680,8 @@ app.include_router(ball_check_router)
 app.include_router(calibration_router)
 app.include_router(calibration_proposals_router)
 app.include_router(ingest_router)
+app.include_router(tasks_router)
+app.include_router(jobs_router)
 
 # Mount static assets (JS/CSS) if any beyond index.html.
 if _STATIC_DIR.exists():

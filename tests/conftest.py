@@ -17,6 +17,27 @@ import torch
 from footy_track.constants import ROBOFLOW_BROADCAST_PROJECT_TEST_PROJECT
 from footy_track.scripts import extract_frames
 
+_LABELLER_ENV = (
+    "FOOTY_CLIPS_DIR",
+    "FOOTY_GT_MARKS_DIR",
+    "FOOTY_BALL_CANDIDATES_DIR",
+    "FOOTY_BALL_CHECK_LIST",
+    "FOOTY_CALIB_EXTRA_CLIPS_DIRS",
+)
+
+
+@pytest.fixture(autouse=True)
+def _isolated_labeller_datasets(tmp_path, monkeypatch):
+    """No test may read the real dataset registry or the shell's FOOTY_* dirs.
+
+    The registry path points at a missing tmp file (-> the single legacy
+    ``calib`` dataset, built from the env vars the test itself sets).
+    """
+    monkeypatch.setenv("FOOTY_LABELLER_DATASETS", str(tmp_path / "no-such-registry.json"))
+    monkeypatch.setenv("FOOTY_LABELLING_JOBS_DIR", str(tmp_path / "labelling_jobs"))
+    for var in _LABELLER_ENV:
+        monkeypatch.delenv(var, raising=False)
+
 
 @pytest.fixture(scope="session")
 def repo_root() -> Path:

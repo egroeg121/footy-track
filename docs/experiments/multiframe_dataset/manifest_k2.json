@@ -1,0 +1,52 @@
+{
+ "k": 2,
+ "method": "lk",
+ "scale": 480,
+ "cut_threshold": 0.2,
+ "channels": [
+  "gray(t-k)_aligned",
+  "B(t)",
+  "G(t)",
+  "R(t)",
+  "gray(t+k)_aligned"
+ ],
+ "unmapped_v11_images": {
+  "train": 1,
+  "test": 1
+ },
+ "per_split": {
+  "train": {
+   "images": 1034,
+   "balls": 1009
+  },
+  "valid": {
+   "images": 215,
+   "balls": 211
+  },
+  "test": {
+   "images": 267,
+   "balls": 243
+  },
+  "heldout": {
+   "images": 117,
+   "balls": 117
+  }
+ },
+ "neighbour_status": {
+  "heldout/cut": 1,
+  "heldout/edge": 8,
+  "heldout/ok": 225,
+  "test/align_fail": 4,
+  "test/cut": 1,
+  "test/edge": 3,
+  "test/ok": 526,
+  "train/align_fail": 1,
+  "train/cut": 11,
+  "train/edge": 17,
+  "train/ok": 2039,
+  "valid/cut": 1,
+  "valid/edge": 11,
+  "valid/ok": 418
+ },
+ "seconds": 4024.3
+}

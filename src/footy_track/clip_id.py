@@ -23,6 +23,9 @@ ball_check)
 ``bournemouth_seg015``
 ``arsenal_mancity_example_video``,                  ``arsenal_example``
 ``arsenal_example``
+``arsenal_norwich_seg012`` (the held-out match      ``arsenal_nottinghamforest_seg012``
+before it was renamed; Roboflow image names
+still say norwich), ``nottinghamforest_seg012``
 =================================================  ===============================
 
 Canonical form: ``<match>_<kind><NNN>`` where ``match`` is ``arsenal_<opponent>``
@@ -82,6 +85,15 @@ _RULES: tuple[tuple[re.Pattern[str], str], ...] = (
         "arsenal_bournemouth_1st_{kind}{n}",
     ),
     (re.compile(r"arsenal_mancity_example_video|arsenal_example"), "arsenal_example"),
+    # The held-out match was first called "norwich" by mistake (it is Arsenal v Nottingham
+    # Forest). Disk and code were renamed (migrate_rename_match.py), but Roboflow image names,
+    # old feature-store game_ids and old experiment outputs still carry the old name.
+    (
+        re.compile(
+            r"(?:arsenal_)?(?:norwich|nottinghamforest)_(?P<kind>seg)(?P<n>\d+)"
+        ),
+        "arsenal_nottinghamforest_{kind}{n}",
+    ),
 )
 
 

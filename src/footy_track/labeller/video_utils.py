@@ -14,6 +14,7 @@ into ``BackgroundLabeller`` — VitTrack is the active backend.
 
 from __future__ import annotations
 
+import functools
 import os
 import tempfile
 import threading
@@ -745,13 +746,20 @@ class VitTrackVideoLabeller:
         start_frame: int,
         trackers: list,
         seed_bboxes: list,
+        stop_event: threading.Event | None = None,
     ) -> None:
-        """Read the seed frame and warm each tracker's template."""
+        """Read the seed frame and warm each tracker's template.
+
+        Bails between trackers once ``stop_event`` is set (each warm-up runs a
+        model forward pass; ~18 of them on a throttled CPU is not instant).
+        """
         cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
         ok, seed_bgr = cap.read()
         if ok and seed_bgr is not None:
             seed_rgb = cv2.cvtColor(seed_bgr, cv2.COLOR_BGR2RGB)
             for i, tracker in enumerate(trackers):
+                if stop_event is not None and stop_event.is_set():
+                    return
                 tracker.reset()
                 tracker.track(seed_bboxes[i], seed_rgb)
         else:
@@ -807,7 +815,9 @@ class VitTrackVideoLabeller:
 
         cap = cv2.VideoCapture(str(self.video_path))
         try:
-            self._warm_trackers(cap, start_frame, trackers, seed_bboxes)
+            self._warm_trackers(cap, start_frame, trackers, seed_bboxes, stop_event)
+            if stop_event is not None and stop_event.is_set():
+                return
 
             for abs_idx in range(start_frame + 1, total):
                 ok, frame_bgr = cap.read()
@@ -842,6 +852,12 @@ class VitTrackVideoLabeller:
                 for i, (tracker, obj) in enumerate(
                     zip(trackers, self.objects, strict=True)
                 ):
+                    # A frame tracks every object (a seed is ~18 of them) and a
+                    # slow/throttled CPU makes that seconds. Check between
+                    # objects so Pause lands within one object, not one frame;
+                    # the half-tracked frame is discarded, never yielded.
+                    if stop_event is not None and stop_event.is_set():
+                        return
                     prev_bbox = seed_bboxes[i]
                     new_bbox = tracker.track(prev_bbox, frame_rgb)
                     score = tracker.last_score
@@ -866,6 +882,17 @@ class VitTrackVideoLabeller:
             cap.release()
 
 
+def _serialised(method):
+    """Run a BackgroundLabeller control method under its ``_ctl_lock``."""
+
+    @functools.wraps(method)
+    def wrapper(self, *args, **kwargs):
+        with self._ctl_lock:
+            return method(self, *args, **kwargs)
+
+    return wrapper
+
+
 class BackgroundLabeller:
     """Run :class:`VitTrackVideoLabeller` propagation in a daemon thread.
 
@@ -880,6 +907,10 @@ class BackgroundLabeller:
         self._thread: threading.Thread | None = None
         self._stop_event = threading.Event()
         self._lock = threading.Lock()
+        # Serialises submit()/pause(): a Pause that lands while a Run is still
+        # being submitted must wait for it, then stop the thread it started
+        # (otherwise submit() would un-set the stop flag and the run goes on).
+        self._ctl_lock = threading.RLock()
         self.frames: list[FrameDetections | None] = []
         self.progress: tuple[int, int] = (0, 0)  # (done, total) for current job
         self.running: bool = False
@@ -909,6 +940,7 @@ class BackgroundLabeller:
             return _VITTRACK_HANDBACK_SCORE
         return _NONBALL_HANDBACK_SCORE
 
+    @_serialised
     def submit(
         self,
         video_path: str | Path,
@@ -958,7 +990,10 @@ class BackgroundLabeller:
             self.progress = (start_frame, total)
             self.running = True
 
-        self._stop_event.clear()
+        # A fresh Event per run (not .clear()): if the previous thread
+        # outlived pause()'s join timeout it keeps its own, still-set event
+        # and exits at its next check instead of being revived.
+        self._stop_event = threading.Event()
         self._thread = threading.Thread(
             target=self._worker,
             args=(labeller, start_frame),
@@ -967,12 +1002,27 @@ class BackgroundLabeller:
         )
         self._thread.start()
 
-    def pause(self) -> None:
-        """Signal the running thread to stop and wait for it to exit."""
+    def request_stop(self) -> None:
+        """Ask the running thread to stop; never blocks.
+
+        The thread checks the flag between objects, so it stops within one
+        object's tracking step. Use :meth:`pause` (off the event loop) to also
+        wait for it to exit.
+        """
         self._stop_event.set()
-        if self._thread is not None and self._thread.is_alive():
-            self._thread.join(timeout=10.0)
-        self.running = False
+
+    def pause(self) -> None:
+        """Signal the running thread to stop and wait for it to exit.
+
+        Blocks for up to 10 s: call it from a worker thread
+        (``asyncio.to_thread``), never directly on the event loop.
+        """
+        self._stop_event.set()
+        with self._ctl_lock:
+            self._stop_event.set()
+            if self._thread is not None and self._thread.is_alive():
+                self._thread.join(timeout=10.0)
+            self.running = False
 
     def is_done(self) -> bool:
         """True when no job is running and at least one frame has completed."""
@@ -1001,11 +1051,14 @@ class BackgroundLabeller:
             return None
 
     def _worker(self, labeller: VitTrackVideoLabeller, start_frame: int) -> None:
+        # This run's own flag: submit() swaps in a fresh Event per run, so a
+        # thread that outlived pause()'s join timeout must not read the new one.
+        stop = self._stop_event
         try:
             prev_fd: FrameDetections | None = None
             for fd in labeller.iter_frames_from(
                 start_frame=start_frame,
-                stop_event=self._stop_event,
+                stop_event=stop,
                 progress_callback=self._on_progress,
             ):
                 idx = _frame_index_from_uri(fd, default=start_frame)
@@ -1046,7 +1099,7 @@ class BackgroundLabeller:
                     with self._lock:
                         self.anomaly_frame = idx
                         self.anomaly_reason = reason
-                    self._stop_event.set()
+                    stop.set()
                     break
                 prev_fd = fd
         except Exception as exc:  # noqa: BLE001

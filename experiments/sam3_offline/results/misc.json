@@ -1,0 +1,13 @@
+{
+ "throughput_s_per_frame": {"sam2.1-small crop512": 0.142, "sam3 box crop512 (patched, fp16)": 0.420, "sam3.1 box/point crop512": 0.484, "sam3 unpatched (bf16 emulation)": 0.755, "sam3 fp32": 1.35, "sam3 frame_step2 (effective)": 0.21,
+                            "sam3 text probe 6 prompts: full / t540 / t384": [0.78, 4.49, 11.2]},
+ "peak_vram_mb": {"sam2.1-small": 981, "sam3": 4943, "sam3 (reserved up to)": 5716, "sam3.1": 6213, "sam3 fp32": 4302},
+ "gpu_hours_per_match_half_70k_frames": {"sam3_single_coverage": 8.2, "sam3_double_coverage_S1": 16.4, "sam2_single": 2.7, "sam2_double": 5.4, "sam3_gap_fill_30_to_50pct": [2.5, 4.1], "sam3_frame_step2_single": 4.1,
+                                         "seed_finding_t384_1prompt_every_100_frames": 1.1, "seed_finding_every_50_frames": 2.2},
+ "bf16_patch": {"backbone_s_before": 0.63, "backbone_s_after": 0.29, "share_of_backbone_time_in_emulated_bf16_gemm": 0.59},
+ "production_demo": {"flow": "sam3-label-match match=demo", "clip": "arsenal_bournemouth_1st_seg035", "seeds_original_frames": [58, 116, 270], "gt_frames_in_span": 39,
+                     "gate_seed": {"n": 1, "hit10": 1.0}, "gate_s1": {"n": 14, "hit10": 1.0}, "gate_score": {"n": 24, "hit10": 0.667}, "note": "seed 58 is a yellow boot (RT-DETR conf 0.818)"},
+ "text_recovery": {"clips": ["astonvilla_seg080", "arsenal_example", "arsenal_bournemouth_1st_seg035"], "recoveries_triggered": 0, "recall10_unchanged": [0.929, 0.301, 1.0]},
+ "exemplar_dev_t384": {"n_frames": 80, "top1_exemplar": 0.72, "top1_text_only_ball": 0.64, "yellow_ball_exemplar": 0.70, "yellow_ball_text_only": 0.12},
+ "seed_candidates_by_eye": {"n": 64, "real_balls": 64}
+}

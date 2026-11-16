@@ -47,7 +47,8 @@ from footy_track.scripts.calibrate_clip import (
 )
 
 ROBOFLOW_DIR = Path("/mnt/storage/footy_data/classifier_dataset")
-ROBOFLOW_MATCH = (("Arsenal-Aston-Villa", "arsenal_astonvilla"), ("arsenal_mancity", "arsenal_mancity"), ("arsenal_norwich", "arsenal_norwich"),
+ROBOFLOW_MATCH = (("Arsenal-Aston-Villa", "arsenal_astonvilla"), ("arsenal_mancity", "arsenal_mancity"), ("arsenal_nottinghamforest", "arsenal_nottinghamforest"),
+                  ("arsenal_norwich", "arsenal_nottinghamforest"),  # legacy Roboflow image names: the match was misnamed "norwich"
                   ("Bournemouth", "arsenal_bournemouth_1st"))
 
 # --------------------------------------------------------------------------

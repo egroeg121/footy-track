@@ -12,7 +12,7 @@ import cv2
 import numpy as np
 
 from footy_track.calibration import geometry as geo
-from footy_track.calibration.frame_type import not_broadcast_frames
+from footy_track.calibration.frame_type import not_broadcast_frames, too_few_points_frames
 from footy_track.calibration.pitch_model import DEFAULT_LENGTH, DEFAULT_WIDTH, PitchModel
 from footy_track.calibration.prelabel.candidates import find_candidates
 from footy_track.calibration.prelabel.fit import fit_and_score, label_xy
@@ -190,11 +190,14 @@ class RunConfig:
     clips: list[str]
     frames: list[int] | None = None  # explicit frames (applied to every clip)
     every: int = 25
-    skip_gt: bool = True  # never propose over a frame with human GT or flagged not_broadcast
+    skip_gt: bool = True  # never propose over a frame with human GT or flagged not_broadcast / too_few_points
     limit: int | None = None  # max frames processed in total
     pitch_dims: tuple[float, float] = (DEFAULT_LENGTH, DEFAULT_WIDTH)
     render_dir: Path | None = None
     verify: bool = False
+    #: a separate model that reviews the overlay (any object with ``verify(jpeg) -> dict``); implies verification.
+    #: ``None`` + ``verify=True`` = the identifier reviews its own fit (the original behaviour).
+    reviewer: object | None = None
     refine: bool = True  # line refinement of the coarse fit
     #: lens distortion: ``fit_k1`` estimates the division-model k1 per frame (jointly with H);
     #: otherwise ``k1`` (default 0 = off) is a given value, e.g. one per clip / zoom level.
@@ -240,7 +243,10 @@ def run_prelabel(cfg: RunConfig, identifier: Identifier, log=print) -> RunSummar
         if video is None:
             log(f"[{clip}] video not found in {cfg.clips_dir}; skipped")
             continue
-        skip = (gt_frames(cfg.gt_dir, clip) | not_broadcast_frames(cfg.gt_dir, clip)) if cfg.skip_gt else set()
+        skip = (
+            gt_frames(cfg.gt_dir, clip) | not_broadcast_frames(cfg.gt_dir, clip) | set(too_few_points_frames(cfg.gt_dir, clip))
+            if cfg.skip_gt else set()
+        )
         frames = select_frames(video_frame_count(video), cfg.every, cfg.frames, skip)
         if remaining is not None:
             frames = frames[:remaining]
@@ -275,11 +281,17 @@ def run_prelabel(cfg: RunConfig, identifier: Identifier, log=print) -> RunSummar
                     ov = overlay_render(frame, fit.H, pitch, fit.distortion)
                     if cfg.render_dir:
                         cv2.imwrite(str(Path(cfg.render_dir) / f"{canon}_{idx}_overlay.jpg"), ov)
-                    if cfg.verify and hasattr(identifier, "verify"):
-                        v = identifier.verify(jpeg(ov))
+                    rv = cfg.reviewer if cfg.reviewer is not None else (identifier if cfg.verify else None)
+                    if rv is not None and hasattr(rv, "verify"):
+                        v = rv.verify(jpeg(ov))
                         _add_usage(summary.usage_total, v.get("usage"))
                         usage_log.append({"clip": canon, "frame": idx, "call": "verify", **(v.get("usage") or {})})
                         rec["verify"] = {"match": v["match"], "reason": v["reason"]}
+                        for extra in ("checks", "review_version"):
+                            if v.get(extra):
+                                rec["verify"][extra] = v[extra]
+                        if cfg.reviewer is not None:
+                            rec["verify"]["reviewer"] = cfg.reviewer.run_params()
             rec["n_candidates"] = len(det.candidates)
             summary.n_frames += 1
             if rec["status"] == "proposed":

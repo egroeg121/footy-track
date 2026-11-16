@@ -21,6 +21,7 @@ import argparse
 import json
 from pathlib import Path
 
+from footy_track.ball_trackers.factory import TRACKER_KINDS
 from footy_track.detectors.ultralytics import (
     CURRENT_BEST_DETECTOR_CHECKPOINT,
     DEFAULT_IMGSZ,
@@ -59,6 +60,12 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--ball-base-radius-px", type=float, default=d.ball_base_radius_px)
     ap.add_argument("--ball-growth-px", type=float, default=d.ball_growth_px)
     ap.add_argument("--ball-max-missed", type=int, default=d.ball_max_missed)
+    ap.add_argument(
+        "--ball-tracker",
+        choices=TRACKER_KINDS,
+        default=d.ball_tracker,
+        help="online (streaming, default) or an offline tracker that sees the whole clip",
+    )
     args = ap.parse_args(argv)
 
     if not args.weights.exists():
@@ -89,6 +96,7 @@ def main(argv: list[str] | None = None) -> int:
         ball_base_radius_px=args.ball_base_radius_px,
         ball_growth_px=args.ball_growth_px,
         ball_max_missed=args.ball_max_missed,
+        ball_tracker=args.ball_tracker,
         overlay=args.overlay,
     )
     source_tag = "rtdetr" if "rtdetr" in str(args.weights).lower() else "yolo"

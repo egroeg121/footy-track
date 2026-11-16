@@ -42,6 +42,7 @@ from rich.logging import RichHandler
 from tqdm import tqdm
 
 from footy_track.classifier import get_current_best_guess_classifier
+from footy_track.inference.pipeline import select_device
 from footy_track.schema import EnumBroadcastClassification
 
 logging.basicConfig(
@@ -60,15 +61,20 @@ def _check_ffmpeg() -> str:
     return ffmpeg
 
 
-def _classify_frame(model, frame: np.ndarray) -> bool:
+def _resolve_device(device: str | None) -> str:
+    """``device`` if given, else the pipeline default (cuda, then mps, then cpu)."""
+    return device or select_device()
+
+
+def _classify_frame(model, frame: np.ndarray, device: str | None = None) -> bool:
     """Return True if the classifier labels this frame as broadcast."""
-    result = model.predict(source=frame, device="mps", verbose=False)[0]
+    result = model.predict(source=frame, device=device or select_device(), verbose=False)[0]
     label = model.names[result.probs.top1]
     return label == EnumBroadcastClassification.YES.value
 
 
 def classify_broadcast_mask(
-    video_path: Path, sample: int
+    video_path: Path, sample: int, device: str | None = None
 ) -> tuple[np.ndarray, float, int]:
     """Classify the video and return (per-frame broadcast mask, fps, total_frames).
 
@@ -104,7 +110,7 @@ def classify_broadcast_mask(
         if not ok:
             break
         if frame_idx % sample == 0:
-            cur_label = _classify_frame(model, frame)
+            cur_label = _classify_frame(model, frame, device)
             if buffer:
                 # Flush the preceding interval [prev_sample .. this_sample).
                 if cur_label == prev_sample_label:
@@ -114,7 +120,9 @@ def classify_broadcast_mask(
                 else:
                     # Change detected: classify each buffered frame to pin the
                     # exact transition frame(s) within the interval.
-                    mask_list.extend(_classify_frame(model, f) for f in buffer)
+                    mask_list.extend(
+                        _classify_frame(model, f, device) for f in buffer
+                    )
                 buffer = []
             mask_list.append(cur_label)
             prev_sample_label = cur_label
@@ -244,6 +252,11 @@ def main(argv: list[str] | None = None) -> int:
         default=2.0,
         help="Drop broadcast segments shorter than this many seconds (default 2.0).",
     )
+    parser.add_argument(
+        "--device",
+        default=None,
+        help="Torch device for the classifier (default: cuda, then mps, then cpu).",
+    )
     args = parser.parse_args(argv)
 
     if not args.input.exists():
@@ -257,7 +270,9 @@ def main(argv: list[str] | None = None) -> int:
     outdir = args.outdir or args.input.parent / f"{args.input.stem}_broadcast"
     outdir.mkdir(parents=True, exist_ok=True)
 
-    mask, fps, total = classify_broadcast_mask(args.input, args.sample)
+    mask, fps, total = classify_broadcast_mask(
+        args.input, args.sample, _resolve_device(args.device)
+    )
     if total == 0:
         logger.error("No frames read from video.")
         return 1

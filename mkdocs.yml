@@ -14,11 +14,14 @@ nav:
       - Training: training.md
       - Notable Training Runs: training/notable_runs.md
   - Inference: inference.md
+  - Inference web app: inference-web.md
+  - Ball tracking evaluation: ball-tracking-eval.md
   - Feature store: design/feature_store.md
   - Design:
       - Pipeline Overview: design/pipeline_overview.md
       - Player Re-ID: design/player_reid.md
       - Tracking Pipeline Design: design/tracking-pipeline.md
+      - Claude-assisted Ball Labelling: design/claude_autolabel_loop.md
       - System Design: system_design.md
       - System Overview: system_overview.md
       - Pipeline Architecture: pipeline_architecture.md

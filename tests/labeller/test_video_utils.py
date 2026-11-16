@@ -266,6 +266,152 @@ def test_pause_without_thread_is_safe():
     assert bg._stop_event.is_set()
 
 
+def test_request_stop_sets_flag_without_joining():
+    bg = BackgroundLabeller()
+    release = threading.Event()
+    bg._thread = threading.Thread(target=release.wait, args=(10,), daemon=True)
+    bg._thread.start()
+    bg.running = True
+    bg.request_stop()  # must return immediately although the thread is alive
+    assert bg._stop_event.is_set()
+    assert bg.running is True  # only pause() waits for the thread and flips it
+    release.set()
+    bg._thread.join(2)
+
+
+class _BlockingLabeller:
+    """VitTrackVideoLabeller stand-in whose run lasts until its stop flag is set."""
+
+    init_gate: threading.Event | None = None
+
+    def __init__(self, *a, **k):
+        if self.init_gate is not None:
+            self.init_gate.wait(5)
+
+    def _total_frames(self):
+        return 3
+
+    def iter_frames_from(self, start_frame=0, stop_event=None, progress_callback=None):
+        stop_event.wait(5)
+        return iter(())
+
+
+def test_submit_uses_fresh_stop_event_so_old_thread_is_not_revived(monkeypatch, tmp_path):
+    """A thread that outlived pause()'s join keeps its own (set) event."""
+    import footy_track.labeller.video_utils as vu  # noqa: PLC0415
+
+    monkeypatch.setattr(vu, "VitTrackVideoLabeller", _BlockingLabeller)
+    bg = BackgroundLabeller()
+    obj = [LabelledObject(label="player", bbox_xyxy_abs=(0, 0, 1, 1))]
+    bg.submit(tmp_path / "x.mp4", obj, None, 0.25, 0)
+    first_event, first_thread = bg._stop_event, bg._thread
+    bg.submit(tmp_path / "x.mp4", obj, None, 0.25, 0)
+    assert bg._stop_event is not first_event
+    assert first_event.is_set()  # old run stays stopped
+    first_thread.join(2)
+    assert not first_thread.is_alive()
+    bg.pause()
+    assert bg._thread is not None and not bg._thread.is_alive()
+
+
+def test_pause_during_submit_waits_then_stops_the_new_thread(monkeypatch, tmp_path):
+    """Pause racing a submit must not be lost to submit's fresh stop flag."""
+    import footy_track.labeller.video_utils as vu  # noqa: PLC0415
+
+    gate = threading.Event()
+    monkeypatch.setattr(_BlockingLabeller, "init_gate", gate, raising=False)
+    monkeypatch.setattr(vu, "VitTrackVideoLabeller", _BlockingLabeller)
+    bg = BackgroundLabeller()
+    obj = [LabelledObject(label="player", bbox_xyxy_abs=(0, 0, 1, 1))]
+    submitter = threading.Thread(
+        target=bg.submit, args=(tmp_path / "x.mp4", obj, None, 0.25, 0), daemon=True
+    )
+    submitter.start()
+    pauser = threading.Thread(target=bg.pause, daemon=True)
+    pauser.start()
+    gate.set()  # let submit finish; pause must then stop the thread it started
+    submitter.join(5)
+    pauser.join(8)
+    assert not pauser.is_alive()
+    assert bg._thread is not None and not bg._thread.is_alive()
+    assert bg.running is False
+
+
+def _write_clip(path, n=6):
+    import cv2  # noqa: PLC0415
+    import numpy as np  # noqa: PLC0415
+
+    writer = cv2.VideoWriter(str(path), cv2.VideoWriter_fourcc(*"mp4v"), 25.0, (64, 48))
+    for i in range(n):
+        writer.write(np.full((48, 64, 3), i * 20, dtype=np.uint8))
+    writer.release()
+
+
+def test_tracking_stops_between_objects_not_only_between_frames(monkeypatch, tmp_path):
+    """Pause lands within one object's step; a half-tracked frame is dropped."""
+    clip = tmp_path / "clip.mp4"
+    _write_clip(clip)
+    stop = threading.Event()
+    calls = {"n": 0}
+
+    class _Tracker:
+        last_score = 0.9
+
+        def reset(self):
+            pass
+
+        def track(self, prev_bbox, _frame):
+            calls["n"] += 1
+            # 3 objects: warm-up is calls 1-3, frame 1 is 4-6. Stop during
+            # frame 1's first object.
+            if calls["n"] == 4:
+                stop.set()
+            return prev_bbox
+
+    import footy_track.ball_trackers.sot_vittrack as sot  # noqa: PLC0415
+
+    monkeypatch.setattr(sot, "VitTrackSOT", _Tracker)
+    objs = [
+        LabelledObject(label="player", bbox_xyxy_abs=(6.4, 9.6, 12.8, 19.2))
+        for _ in range(3)
+    ]
+    labeller = VitTrackVideoLabeller(video_path=clip, objects=objs)
+    out = list(labeller.iter_frames_from(start_frame=0, stop_event=stop))
+
+    assert len(out) == 1  # only the seed frame; frame 1 was abandoned mid-way
+    assert calls["n"] == 4  # objects 2 and 3 of frame 1 were never tracked
+
+
+def test_warmup_stops_when_stop_requested(monkeypatch, tmp_path):
+    clip = tmp_path / "clip.mp4"
+    _write_clip(clip, 4)
+    stop = threading.Event()
+    calls = {"n": 0}
+
+    class _Tracker:
+        last_score = 0.9
+
+        def reset(self):
+            pass
+
+        def track(self, prev_bbox, _frame):
+            calls["n"] += 1
+            stop.set()
+            return prev_bbox
+
+    import footy_track.ball_trackers.sot_vittrack as sot  # noqa: PLC0415
+
+    monkeypatch.setattr(sot, "VitTrackSOT", _Tracker)
+    objs = [
+        LabelledObject(label="player", bbox_xyxy_abs=(6.4, 9.6, 12.8, 19.2))
+        for _ in range(5)
+    ]
+    labeller = VitTrackVideoLabeller(video_path=clip, objects=objs)
+    out = list(labeller.iter_frames_from(start_frame=0, stop_event=stop))
+    assert len(out) == 1
+    assert calls["n"] == 1  # only the first of 5 warm-ups ran
+
+
 def test_is_done_semantics():
     bg = BackgroundLabeller()
     assert bg.is_done() is False  # nothing completed yet

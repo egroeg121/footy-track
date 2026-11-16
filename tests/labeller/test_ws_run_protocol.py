@@ -7,6 +7,8 @@ No real propagation, videos, or inference.
 
 from __future__ import annotations
 
+import asyncio
+import threading
 from pathlib import Path
 
 import pytest
@@ -53,8 +55,26 @@ class FakeBackgroundLabeller:
         self.anomaly_reason: str | None = None
         self.submissions: list[dict] = []
         self.paused = 0
+        self.stop_requests = 0
+        self.events: list[str] = []
+        # Optional gates so a test can hold submit()/pause() mid-flight.
+        self.submit_gate: threading.Event | None = None
+        self.pause_gate: threading.Event | None = None
+        self.pause_on_event_loop: bool | None = None
+
+    def request_stop(self) -> None:
+        self.stop_requests += 1
+        self.events.append("request_stop")
 
     def pause(self) -> None:
+        self.events.append("pause")
+        try:  # a running loop in THIS thread means pause() blocked the loop
+            asyncio.get_running_loop()
+            self.pause_on_event_loop = True
+        except RuntimeError:
+            self.pause_on_event_loop = False
+        if self.pause_gate is not None:
+            self.pause_gate.wait(10)
         self.paused += 1
         self.running = False
 
@@ -69,6 +89,8 @@ class FakeBackgroundLabeller:
         handback_thresholds=None,
         reseed_frames=None,
     ) -> None:
+        if self.submit_gate is not None:
+            self.submit_gate.wait(10)
         self.submissions.append(
             {
                 "video_path": video_path,
@@ -356,3 +378,81 @@ def test_run_passes_reseed_frames_for_downstream_gt(client, ws_session):
     # machine boxes). Frame 5 is machine-only -> not a re-seed.
     assert set(reseed) == {3}
     assert len(reseed[3]) == 2
+
+
+# --- Pause must be prompt and must never block the event loop -----------------
+
+
+def test_pause_is_handled_while_run_is_still_submitting(client, ws_session):
+    """A Pause sent during a slow submit() is read and acknowledged at once.
+
+    Previously the receive loop awaited submit() inline, so the pause message
+    sat unread until the run had fully started (and then paused it late).
+    """
+    ws_session.timeline[0] = [make_box("player", PROV_LABELLER, x=0.1)]
+    fake = FakeBackgroundLabeller(frames=[None] * 8)
+    fake.submit_gate = threading.Event()
+    ws_session.bg = fake
+    try:
+        with client.websocket_connect("/ws") as ws:
+            ws.send_json({"type": "run", "start_frame": 0})
+            assert ws.receive_json() == {"type": "status", "state": "compiling"}
+            assert fake.submissions == []  # submit() is still blocked
+            ws.send_json({"type": "pause"})
+            # Answered although submit() has not returned.
+            assert ws.receive_json() == {"type": "status", "state": "paused"}
+    finally:
+        fake.submit_gate.set()
+    assert fake.stop_requests >= 1
+
+
+def test_pause_raises_stop_flag_before_waiting_and_runs_off_the_event_loop(
+    client, ws_session
+):
+    fake = FakeBackgroundLabeller(frames=[None] * 8)
+    ws_session.bg = fake
+    with client.websocket_connect("/ws") as ws:
+        ws.send_json({"type": "pause"})
+        assert ws.receive_json() == {"type": "status", "state": "paused"}
+    assert fake.events[:2] == ["request_stop", "pause"]
+    assert fake.pause_on_event_loop is False
+
+
+def test_pause_does_not_block_other_requests(client, ws_session):
+    """While pause() is joining the tracker thread, HTTP requests still answer."""
+    fake = FakeBackgroundLabeller(frames=[None] * 8)
+    fake.pause_gate = threading.Event()
+    ws_session.bg = fake
+    try:
+        with client.websocket_connect("/ws") as ws:
+            ws.send_json({"type": "pause"})
+            # pause() is parked on its gate; the loop must still serve HTTP.
+            assert client.get("/api/datasets").status_code == 200
+            fake.pause_gate.set()
+            assert ws.receive_json() == {"type": "status", "state": "paused"}
+    finally:
+        fake.pause_gate.set()
+
+
+def test_pause_logs_a_line(client, ws_session, capsys):
+    ws_session.bg = FakeBackgroundLabeller(frames=[None] * 8)
+    with client.websocket_connect("/ws") as ws:
+        ws.send_json({"type": "pause"})
+        ws.receive_json()
+    assert "[ws] pause: received" in capsys.readouterr().out
+
+
+def test_frame_endpoint_decodes_off_the_event_loop(client, ws_session, monkeypatch):
+    seen = {}
+
+    def fake_jpeg(idx):
+        try:
+            asyncio.get_running_loop()
+            seen["on_loop"] = True
+        except RuntimeError:
+            seen["on_loop"] = False
+        return b"\xff\xd8jpeg\xff\xd9"
+
+    monkeypatch.setattr(ws_session, "frame_jpeg", fake_jpeg)
+    assert client.get("/frame/3.jpg").status_code == 200
+    assert seen == {"on_loop": False}

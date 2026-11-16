@@ -1,0 +1,20 @@
+{
+ "n": 40,
+ "mean_absdiff_prev_aug": 2.1576916694641115,
+ "mean_absdiff_next_aug": 1.8996535807847976,
+ "mean_absdiff_prev_plain": 3.128311735391617,
+ "mean_absdiff_next_plain": 2.7642630651593207,
+ "img_shape_aug": [
+  1280,
+  1280,
+  5
+ ],
+ "tensor_channel_order_is_stored_order": true,
+ "means_bgr_t_first_item": [
+  103.53507595486111,
+  67.48019748263889,
+  113.57088758680555,
+  99.31153971354166,
+  104.37939561631944
+ ]
+}

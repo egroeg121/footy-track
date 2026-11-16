@@ -3,8 +3,8 @@
 ``Session`` holds the single authoritative per-frame timeline; the JSONL
 sidecar flush/restore format is specified in ``src/footy_track/labeller/README.md``
 §§2–3 (LAB-1xx/2xx). ``server.py`` is the composition root and config surface: the GT-marks
-directory is resolved through ``server._GT_MARKS_DIR`` at call time (tests
-monkeypatch it there), never captured at import time.
+directory comes from the session's dataset (``datasets.get(self.dataset)``),
+resolved at call time, never captured at import time.
 """
 
 from __future__ import annotations
@@ -18,6 +18,7 @@ from pathlib import Path
 
 import cv2
 
+from footy_track.labeller import datasets
 from footy_track.labeller.constants import (
     KNOWN_BOX_LABELS,
     NO_BALL_TAG,
@@ -27,13 +28,6 @@ from footy_track.labeller.constants import (
 )
 from footy_track.labeller.video_utils import BackgroundLabeller, LabelledObject
 from footy_track.schema import ObjectDetection
-
-
-def _gt_marks_dir() -> Path:
-    """Resolve the GT-marks dir through the server module (config surface)."""
-    from footy_track.labeller import server  # noqa: PLC0415 — avoid import cycle
-
-    return server._GT_MARKS_DIR
 
 
 class Session:
@@ -46,7 +40,11 @@ class Session:
     auto re-propagation.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, dataset: str | None = None) -> None:
+        # Bound explicitly: the debounced flush runs on a plain timer thread
+        # that does not inherit the request's dataset context. ``None`` follows
+        # the registry default at call time.
+        self.dataset = dataset
         self.bg = BackgroundLabeller()
         self.video_path: Path | None = None
         self.fps: float = 25.0
@@ -62,6 +60,9 @@ class Session:
         # debounced JSONL flush
         self._flush_timer: threading.Timer | None = None
         self._flush_lock = threading.Lock()
+
+    def _marks_dir(self) -> Path:
+        return datasets.get(self.dataset).marks_dir
 
     def load(self, video_path: str) -> dict:
         self.bg.pause()
@@ -100,7 +101,7 @@ class Session:
         """Populate timeline and no_ball/not_broadcast sets from existing JSONL sidecar."""
         if self.video_path is None:
             return
-        jsonl_path = _gt_marks_dir() / f"{self.video_path.stem}.jsonl"
+        jsonl_path = self._marks_dir() / f"{self.video_path.stem}.jsonl"
         if not jsonl_path.exists():
             return
         # Count marks we could not load. _do_flush rewrites the WHOLE file from
@@ -262,7 +263,7 @@ class Session:
     def _do_flush(self) -> None:
         if self.video_path is None:
             return
-        out_path = _gt_marks_dir() / f"{self.video_path.stem}.jsonl"
+        out_path = self._marks_dir() / f"{self.video_path.stem}.jsonl"
         # Refuse to rewrite a sidecar we could not fully load — a partial flush
         # would silently delete the marks that were dropped at load time.
         if getattr(self, "_load_dropped", 0):

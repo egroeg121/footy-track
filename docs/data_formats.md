@@ -50,7 +50,7 @@ Matches used in practice (referenced in notebooks):
 | Match | Directory name |
 |---|---|
 | Arsenal vs Manchester City | `arsenal_mancity` |
-| Arsenal vs Norwich | `arsenal_norwich` |
+| Arsenal vs Nottingham Forest | `arsenal_nottinghamforest` (was misnamed `arsenal_norwich`; Roboflow image names still say `arsenal_norwich_NNNNNN`, `footy_track.clip_id` aliases them) |
 | Arsenal vs Aston Villa | `arsenal_astonvilla` |
 | Arsenal vs Bournemouth (1st half) | `arsenal_bournmouth_1st_half` |
 | Arsenal vs Bournemouth (2nd half) | `arsenal_bournmouth_2nd_half` |

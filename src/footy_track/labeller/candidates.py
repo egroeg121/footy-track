@@ -40,6 +40,8 @@ from pathlib import Path
 
 import numpy as np
 
+from footy_track.labeller import datasets
+
 #: Ball classes as they appear in the detector's tags.
 BALL_TAGS = {"ball", "in_play_ball", "out_of_play_ball"}
 
@@ -77,9 +79,7 @@ SAMPLE_BINS = 100
 
 
 def _candidates_dir() -> Path:
-    from footy_track.labeller import server  # noqa: PLC0415 — avoid import cycle
-
-    return server._CANDIDATES_DIR
+    return datasets.current().candidates_dir
 
 
 #: Parsed rows per file, keyed by path -> (mtime_ns, size, rows). The real
@@ -166,7 +166,9 @@ def _attach_appearance(clip_stem: str, rows: list[dict]) -> None:
 
 
 def _embeddings_path(clip_stem: str) -> Path:
-    return _candidates_dir().parent / "ball_embeddings" / f"{clip_stem}.npz"
+    emb = datasets.current().embeddings_dir
+    assert emb is not None
+    return emb / f"{clip_stem}.npz"
 
 
 def _read_file(path: Path) -> list[dict]:
@@ -593,6 +595,7 @@ def binned_pool(clip: str | None = None) -> BinnedPool:
         else []
     )
     sig = (
+        str(cdir),
         clip,
         tuple(
             (
@@ -610,6 +613,8 @@ def binned_pool(clip: str | None = None) -> BinnedPool:
     pool = _POOL_CACHE.get(sig)
     if pool is None:
         pool = BinnedPool(read_candidates(clip))
-        _POOL_CACHE.clear()
+        # One live pool per candidates dir, so datasets do not evict each other.
+        for stale in [k for k in _POOL_CACHE if k[0] == sig[0]]:
+            del _POOL_CACHE[stale]
         _POOL_CACHE[sig] = pool
     return pool

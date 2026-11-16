@@ -26,6 +26,7 @@ from footy_track.calibration.prelabel.proposals import (
     read_proposals,
     update_proposals,
 )
+from footy_track.clip_id import canonical_clip_id
 from footy_track.labeller import calibration as cal
 from footy_track.labeller.review import _gt_marks_dir
 
@@ -46,10 +47,13 @@ def _summary(clip: str, run_id: str, run: dict, k: str, rec: dict) -> dict:
     }
 
 
-def _collect(gt_dir) -> tuple[list[dict], dict]:
+def _collect(gt_dir, only_clip: str | None = None) -> tuple[list[dict], dict]:
+    """Every proposal summary (and per-run info). ``only_clip`` (any alias) reads just that
+    clip's sidecar, so the per-clip editor query does not scan all ~100 files."""
     items: list[dict] = []
     runs: dict[str, dict] = {}
-    for clip in list_clips_with_proposals(gt_dir):
+    clips = [canonical_clip_id(only_clip)] if only_clip else list_clips_with_proposals(gt_dir)
+    for clip in clips:
         for rid, run in read_proposals(gt_dir, clip)["runs"].items():
             info = runs.setdefault(
                 rid, {"run_id": rid, "source": run.get("source"), "created": run.get("created"),
@@ -70,18 +74,19 @@ async def list_proposals(
     sort: str = "score_asc",
     limit: int = 1000,
 ):
-    """Queue: ``status`` is comma separated (default ``proposed``; ``all`` for every
-    status); ``sort`` is ``score_asc`` (worst first, default) or ``score_desc``.
+    """Queue: ``clip`` may be any alias of the clip (matched by canonical id); ``status`` is
+    comma separated (default ``proposed``; ``all`` for every status); ``sort`` is
+    ``score_asc`` (worst first, default) or ``score_desc``.
     Failed proposals have score 0 so they lead a worst-first list when included."""
     if sort not in ("score_asc", "score_desc"):
         return cal._err(400, "sort must be score_asc or score_desc")
     want = None if status in (None, "", "all") else set(status.split(","))
     if want and not want <= set(STATUSES):
         return cal._err(400, f"unknown status in {status!r}")
-    items, runs = await asyncio.to_thread(_collect, _gt_marks_dir())
+    items, runs = await asyncio.to_thread(_collect, _gt_marks_dir(), clip or None)
     sel = [
         i for i in items
-        if (not run or i["run_id"] == run) and (not clip or i["clip"] == clip)
+        if (not run or i["run_id"] == run)
         and (want is None or i["status"] in want)
     ]
     sel.sort(key=lambda i: (i["score"] if i["score"] is not None else 0.0, i["clip"], i["frame_index"]),
@@ -236,8 +241,13 @@ async def accept_proposal(clip: str, run_id: str, idx: int, body: dict | None = 
         doc = cal._read_gt(clip)
         doc["frames"][str(idx)] = gt_rec
         cal._write_gt(clip, doc)
+        if idx in cal.too_few_points_frames(_gt_marks_dir(), clip):
+            cal.clear_too_few_points(clip, idx)   # accepted after all: it had enough points
+
         def _flip(d):
-            d["runs"][run_id]["frames"][str(idx)]["status"] = status
+            f = d["runs"][run_id]["frames"][str(idx)]
+            f["status"] = status
+            f.pop("tags", None)
 
         update_proposals(_gt_marks_dir(), clip, _flip)
 
@@ -279,3 +289,25 @@ async def not_broadcast_proposal(clip: str, run_id: str, idx: int, body: dict | 
     if "conflict" in res:
         return cal._not_broadcast_conflict(res["conflict"])
     return {"ok": True, "status": "not_broadcast", "removed_gt": res["removed_gt"]}
+
+
+@router.post("/calibration/api/proposals/{clip}/{run_id}/{idx}/too_few_points")
+async def too_few_points_proposal(clip: str, run_id: str, idx: int, body: dict | None = None):
+    """Mark the frame as showing too few identifiable pitch points (< 4 pairs) for a human to label.
+
+    Body ``{tags?}``: optional "only these are visible" tags (``centre_circle``, ``halfway_line``,
+    ``penalty_box``, ``goal_area``, ``touchline``). Works on ``proposed`` and ``failed`` items alike. Sets
+    this proposal's status to ``too_few_points`` (the record - H, points - is kept; plus ``tags``,
+    ``prev_status``, ``reviewed_at``) and writes the frame-level flag (``frame_type/<clip>.json``) the
+    PTZ solver reads; the frame's other still-open proposals follow. Undo: ``DELETE
+    /calibration/api/too_few_points/{clip}/{idx}``. A frame with GT or a not_broadcast flag -> 409.
+    """
+    if await asyncio.to_thread(_get, clip, run_id, idx) is None:
+        return cal._err(404, "no such proposal")
+    tags, err = cal._tags_or_err(body or {})
+    if err is not None:
+        return err
+    res = await asyncio.to_thread(lambda: cal.mark_too_few_points(clip, idx, tags=tags, run_id=run_id))
+    if "conflict" in res:
+        return cal._too_few_conflict(res)
+    return {"ok": True, "status": "too_few_points", "tags": tags}

@@ -217,7 +217,9 @@ CALIBRATION_SOURCES = ("hand_label", "claude", "classical", "model")
 #: ``calibration.review_status`` values.
 #: ``not_broadcast``: the frame is not a main-camera pitch view (replay, close-up...);
 #: one such row for a (game, frame) removes the frame from ``frame_calibration_best``.
-CALIBRATION_STATUSES = ("hand", "proposed", "accepted", "rejected", "failed", "not_broadcast")
+#: ``too_few_points``: too few identifiable pitch features for >= 4 point pairs (PTZ-solver
+#: candidate); the row has no usable H and never wins ``frame_calibration_best``.
+CALIBRATION_STATUSES = ("hand", "proposed", "accepted", "rejected", "failed", "not_broadcast", "too_few_points")
 #: The only H convention the SQL views understand.
 H_CONVENTION = "normalised_image_to_pitch_m"
 
@@ -599,7 +601,7 @@ VIEWS: tuple[str, ...] = (
             -- failed/rejected rows (and anything without an H) never win; a frame
             -- flagged not_broadcast (by any row) has no calibration at all.
             WHERE c.H IS NOT NULL
-              AND c.review_status NOT IN ('failed', 'rejected', 'not_broadcast')
+              AND c.review_status NOT IN ('failed', 'rejected', 'not_broadcast', 'too_few_points')
               AND NOT EXISTS (
                   SELECT 1 FROM calibration nb
                   WHERE nb.game_id = c.game_id AND nb.frame_index = c.frame_index

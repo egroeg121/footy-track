@@ -14,6 +14,8 @@ footy-track turns broadcast football video into ball and player data. Today it i
 4. GT sidecars and Roboflow sets go into a DuckDB **feature store**, which exports a by-clip YOLO dataset for training.
 5. Serving, projection to the pitch, event extraction and output are scaffolds that nothing calls.
 
+**Planned, not built:** route J, a Claude-assisted ball labelling loop. Claude checks zoomed detector and tracker candidates, a person confirms only the doubtful ones in `/ball_check`, and the answers feed the same store and eval. The proposal is in [Claude-assisted ball labelling loop](design/claude_autolabel_loop.md); route J in [Best pipeline](pipeline-and-labels.md#4-how-labels-are-created-today).
+
 Two facts shape everything below:
 
 - **The machine-labelled corpus is one match.** All 162 clips in `machine_labels/` are `arsenal_mancity_20250925` (`docs/design/player_reid.md` section 0, M7). No corpus-level number has been shown to generalise across matches.
@@ -65,12 +67,17 @@ flowchart TB
   EMB[("ball_embeddings")]:::data --> BC
   GT --> BC
   BC -- "dragged box, tag labeller" --> GT
-  BC -- "verdicts, append-only" --> VERD[("ball_checks/&lt;clip&gt;.jsonl<br/>364 verdicts")]:::dead
+  BC -- "verdicts, append-only" --> VERD[("ball_checks/&lt;clip&gt;.jsonl<br/>364 verdicts")]:::data
+  VERD -- "ingest_gt" --> REV[("detection_review<br/>feature store")]:::data
+  CAND --> CL["Claude verify<br/>route J, planned"]:::missing
+  CL --> CPOOL[("claude candidate pool<br/>tier 3, planned")]:::missing
+  CPOOL -.-> BC
+  BC -. "yes writes human_checked, planned" .-> GT
   TL[("tracklets")]:::data --> IDR["/identity"]:::code
   IDR --> IDL[("identity_labels/")]:::dead
 ```
 
-The diagram shows the labeller server pages reading clips and candidates and writing GT sidecars. Verdicts and identity labels go to files that nothing reads.
+The diagram shows the labeller server pages reading clips and candidates and writing GT sidecars. Ball verdicts are read by `ingest_gt` into the store's `detection_review` table (`feature_store/ingest_gt.py:383`); identity labels go to files that nothing reads. The orange dashed boxes are route J (planned): Claude checks candidates, its proposals form a separate tier 3 pool that `/ball_check` shows uncertain-first, and a person's yes writes a `human_checked` box. Proposals never go straight into a sidecar.
 
 ### 2.3 From labels to a trained model
 
@@ -81,7 +88,7 @@ flowchart TB
   classDef missing fill:#ffedd5,stroke:#ea580c,stroke-dasharray:5 3,color:#111
   classDef dead fill:#fee2e2,stroke:#dc2626,color:#111
   classDef bc fill:#ede9fe,stroke:#7c3aed,color:#111
-  GT[("ball_gt_marks")]:::data --> ING["ingest_gt<br/>top-level files only"]:::code
+  GT[("ball_gt_marks")]:::data --> ING["ingest_gt<br/>sidecars and ball_checks"]:::code
   RF[("Roboflow YOLO sets")]:::data --> RFI["importers: Roboflow"]:::code
   ING --> DB[("detection table<br/>26k rows, stale since Aug 4")]:::data
   RFI --> DB
@@ -103,10 +110,10 @@ flowchart TB
   classDef ok fill:#e5e7eb,stroke:#6b7280,color:#111
 
   V["ball_check verdict:<br/>not_ball"]:::ok --> VF[("ball_checks/*.jsonl")]:::ok
-  VF -. "ingest_gt never globs ball_checks/" .-> X1["verdict ignored"]:::bad
-  SC[("sidecar still holds the box")]:::ok --> EXPQ["export filters on canonical only"]:::ok --> POS["exported as a POSITIVE ball"]:::bad
+  VF -- "FIXED: ingest_gt imports it<br/>into detection_review" --> X1["verdict stored"]:::ok
+  SC[("sidecar still holds the box")]:::ok --> EXPQ["FIXED: export drops not_ball"]:::ok --> POS["not exported as a positive"]:::ok
 
-  S1["Labeller session edit"]:::ok --> STRIP["session.py keeps only label, model<br/>drops human_checked"]:::bad --> T3["every tier-2 box in the clip<br/>reverts to tier 3"]:::bad
+  S1["Labeller session edit"]:::ok --> STRIP["FIXED: session.py keeps marker tags<br/>such as human_checked"]:::ok --> T3["tier-2 boxes stay tier 2"]:::ok
 
   RI["Re-ingest after a correction"]:::ok --> GH["old vittrack row stays canonical<br/>upsert never deletes"]:::bad --> BOTH["old and corrected box<br/>both exported"]:::bad
 
@@ -114,7 +121,7 @@ flowchart TB
   A3 --> LEAK["split and eval exclusion use exact names<br/>eval footage can leak into training"]:::bad
 ```
 
-Details and fixes are in section 7.
+The first two chains (S1, S2) are fixed on this branch; the code lines are in section 7. The last two (S3, S4) are marked done in the [TODO list](todo.md) (T-03, T-04) and were not re-checked here. Details are in section 7.
 
 ## 4. Per-stage reference
 
@@ -125,6 +132,7 @@ Details and fixes are in section 7.
 | **Shot segmentation** | `scripts/split_broadcast_segments.py` with `classifier.get_current_best_guess_classifier()` (yolo11n-cls `model_saves/classifier/20251226-yolo11n-cls/0.987.pt`). Also run by the labeller `/ingest/run`. | The "0.987" exists only in the filename (**unverified**). Output quality: 0 interior cuts in 3,175 frames over 5 clips (`player_reid.md` M1). | W&B run `aakevy06` (top1 0.981, `docs/training/notable_runs.md`); its checkpoint dir holds only a `.gitignore`. `split_video.py` makes fixed-length chunks and is superseded. |
 | **Object detection** (player, referee, `in_play_ball`) | RT-DETR-L, `CURRENT_BEST_DETECTOR_CHECKPOINT = model_saves/detector/rtdetr_1920_v11/best.pt`, `DEFAULT_IMGSZ = 1280` (`detectors/ultralytics.py:36-43`). Weights are not in git. | **Ball: mAP50 .665, recall .591** on v11-val (211 balls), trained and validated at imgsz 1920 rect (`exp5090_results.json` in the 5090 run backup, not in the repo). Not measured at the served 1280 or on the v11 test split. 74% of v11-val balls are one clip. Players: median conf 0.919 on seg002 (`player_reid.md` M8); no RT-DETR player mAP recorded. Throughput about 19.8 fps on an RTX 3060, 97,625 frames to 2,767,151 detections in 82 min (KB:footy-labeller-gotchas). | yolo11n/m/l at 1280 scored .221/.451/.364 and lost to RT-DETR-L (.668) on the same split; the old ".221" attributed to this checkpoint was yolo11n. yolo11s v3 at 640 has ball recall 0.000 (still in git). The SAM3 text-prompt detector (`UltralyticsSam3Detector`) has no metric. Full table: [Best pipeline](pipeline-and-labels.md). |
 | **Ball tracking** | **UNSOLVED.** Nothing is wired into the batch path. Only temporal component: VitTrack propagation in the labeller (`labeller/video_utils.py`). | VitTrack seeded from GT stays on the ball for 9/176 frames (5%) with a constant confidence of 0.119 (KB:footy-labeller-gotchas). | Bake-off (`docs/bakeoff_results.json`) is **invalid**: it ran the 640px checkpoint, blind to the ball, and VitTrack's `mean_fps` of 1,829,132 shows it never ran. `MotionGuidedTracker` is not wired. ByteTrack second pass, Kalman and temporal heatmap models are **untested**. |
+| **Claude-assisted ball labels** (route J) | **Planned, nothing built.** Design: [Claude-assisted ball labelling loop](design/claude_autolabel_loop.md). | None. Calibration on the 26 human-marked clips (646 ball frames, 37 no-ball frames, [Ball tracking evaluation](ball-tracking-eval.md)) comes first; no cost, agreement or error rate exists yet (**unverified**). | A person doing every card at about 3.3 s per card (route D, [Best pipeline](pipeline-and-labels.md)). |
 | **Player tracking** (within a clip) | `scripts/track_detections.py` with `trackers/lap.py::LapTracker` (IoU and Hungarian, conf 0.5, iou 0.15, max_age 90) over machine labels, CPU. | seg000: 157 tracklets, median 31 frames, 9% singletons (against 397, 5, 22% with defaults). 4.5% of 1,604,326 consecutive-frame associations fail. About 650 fps (`track_detections.py:5`). **Purity, IDF1, HOTA: unmeasured.** | `trackers/ultralytics.py` (ByteTrack, BoT-SORT) re-runs detection and has never been run against GT. |
 | **Gap bridging** | `identity/linker.py` plus `scripts/score_links.py` (ImageNet ResNet50 cosine). Merge at 0.80 or more, reject below 0.55, max gap 12 frames. | AUC by gap: 0.912 at 4 frames, 0.867 at 12, 0.761 at 25, 0.634 at 200 (`linker.py` docstring; script and data not in repo). Thresholds uncalibrated. | ReID-trained backbone **untested**. Team gate is inert: `linker.py:125` needs `team`, which no code sets. |
 | **Team assignment** | Not implemented. | k=2 on torso HSV, 1.0% ambiguous, n=1,253 crops, one clip (`player_reid.md` M6). One-off measurement; no module sets `team_id`. | None. |
@@ -160,7 +168,7 @@ One FastAPI app, `src/footy_track/labeller/server.py`. Its canonical spec is `sr
 |---|---|---|
 | `/labeller` | Hand-mark boxes, propagate with VitTrack over a WebSocket run | Works mechanically. For the ball, Run halts at frame 1 (confidence 0.119 against the 0.30 handback in `video_utils.py:51,55`). This is the safe behaviour: lowering the threshold would write off-ball boxes into GT. |
 | `/object_review` | Grid and modal crop review, edit, re-run the detector | Works. |
-| `/ball_check` | Phone-sized yes/no and drag-to-correct on RT-DETR ball candidates (356,812 over 162 clips), confidence-stratified (one card in four is uniform; the rest are weighted towards the borderline window), event dedupe | Works. Its verdicts reach nothing downstream ([T-02](todo.md)); see [Ball Check](#ball-check-verdicts-corrections-and-undo). |
+| `/ball_check` | Phone-sized yes/no and drag-to-correct on RT-DETR ball candidates (356,812 over 162 clips), confidence-stratified (one card in four is uniform; the rest are weighted towards the borderline window), event dedupe | Works. Its verdicts are imported into the store's `detection_review` table by `ingest_gt`, and `not_ball` boxes are dropped from the export (T-02, merged); a `ball` verdict does not yet create a tier 2 box. See [Ball Check](#ball-check-verdicts-corrections-and-undo). |
 | `/identity`, `/identity/merge` | Tracklet purity, jersey grounding, pairwise merges | Human side only. |
 | `/ingest` | Clip ingestion | Returns 500: `labeller/web/ingest.html` is missing (`server.py:160-162`, [T-18](todo.md)). |
 
@@ -176,6 +184,7 @@ flowchart LR
   classDef data fill:#e5e7eb,stroke:#6b7280,color:#111
   classDef dead fill:#fee2e2,stroke:#dc2626,color:#111
   classDef bc fill:#ede9fe,stroke:#7c3aed,color:#111
+  classDef missing fill:#ffedd5,stroke:#ea580c,stroke-dasharray:5 3,color:#111
 
   CARD["Card: crop of one<br/>detector box"]:::bc
   SWIPE["ball, not_ball,<br/>box_off, unsure"]:::bc
@@ -188,24 +197,29 @@ flowchart LR
   SC[("ball_gt_marks/&lt;clip&gt;.jsonl<br/>tag labeller")]:::data
   QUEUE["Queue and /stats:<br/>hide judged cards,<br/>re-estimate boundary,<br/>precision tallies"]:::code
   ING["ingest_gt<br/>top-level files only"]:::code
-  LOST["Feature store,<br/>export, training"]:::dead
+  LOST[("Feature store:<br/>detection_review, detections,<br/>then export and training")]:::data
+  PROP[("claude candidate pool<br/>tier 3, planned")]:::missing
+  YES["Yes on a proposal<br/>writes human_checked, planned"]:::missing
 
   CARD --> SWIPE --> POSTV --> VLOG
   CARD --> DRAG --> SAVE --> SC
   DRAG -- "then verdict corrected" --> POSTV
   CARD --> UNDO --> POSTU -- "null tombstone" --> VLOG
   VLOG --> QUEUE
-  VLOG -. "never read" .-> LOST
+  VLOG --> ING
   SC --> ING --> LOST
+  PROP -.-> CARD
+  SWIPE -.-> YES -.-> SC
 ```
 
-Legend: purple is the Ball Check path, blue is code in git, grey is data, red is where the work stops. The diagram shows that a yes or no only reaches the verdict log, a dragged box reaches the sidecar and so can reach training, and undo touches only the log.
+Legend: purple is the Ball Check path, blue is code in git, grey is data, orange dashed is planned (route J). The diagram shows that a verdict goes to the log and `ingest_gt` carries it into the store, a dragged box reaches the sidecar and so can reach training, and undo touches only the log. The planned part adds a pool of Claude proposals as a source of cards, and a "yes" on one of them that writes the box with `human_checked`; see [Claude-assisted ball labelling loop](design/claude_autolabel_loop.md#6-provenance-and-tiers).
 
 - **Verdicts.** One JSON line per decision: `clip`, `frame_index`, `box_index`, `source` (`cand` for a detector candidate, `sidecar` for a box already in a sidecar), `confidence`, `bbox`, `label`, `provenance`, `corrected_bbox`, `ts`. There are five verdicts: `ball`, `not_ball`, `box_off` (the ball is there but the box is wrong), `corrected` and `unsure`. The last line for a `(source, clip, frame, box)` wins.
 - **Corrections.** Dragging a box calls `save_box` first, then logs a `corrected` verdict. For a candidate (the usual case, because candidate clips mostly have no sidecar) `save_box` appends a new tier 1 line `[label, labeller]` to `<clip>.jsonl`, creating the file under the clip name the card shows. For a sidecar box it rewrites that box in place through the review endpoint, and falls back to appending if that fails.
 - **Undo.** Appends a line with `verdict: null` (a tombstone) and puts the card back in the queue. It does **not** revert a box that `save_box` wrote, and correcting the card again appends a second box ([T-05](todo.md)).
-- **What reads verdicts today.** Only the queue and `/ball_check/stats`. The queue hides judged cards and re-estimates its sampling boundary, starting at 0.25, as the confidence where measured precision crosses 0.5. The stats endpoint reports precision as (`ball` + `box_off` + `corrected`) over those plus `not_ball`, and `clean_precision` without `box_off`. The [precision bands](pipeline-and-labels.md#ball-check-precision-by-confidence-band) counted only `ball` and `corrected`; there are no `box_off` verdicts in the 364, so the two agree.
-- **What does not.** `ingest_gt` only globs top-level `*.jsonl`, so `ball_checks/` is never imported, and the export keeps `not_ball` boxes that sit in a sidecar as positives ([T-02](todo.md), seam S2).
+- **What reads verdicts today.** The queue and `/ball_check/stats`, and `ingest_gt`, which imports the logs into the store's `detection_review` table (`feature_store/ingest_gt.py:383`, `feature_store/ball_checks.py`, table at `feature_store/schema.py:330`). The queue hides judged cards and re-estimates its sampling boundary, starting at 0.25, as the confidence where measured precision crosses 0.5. The stats endpoint reports precision as (`ball` + `box_off` + `corrected`) over those plus `not_ball`, and `clean_precision` without `box_off`. The [precision bands](pipeline-and-labels.md#ball-check-precision-by-confidence-band) counted only `ball` and `corrected`; there are no `box_off` verdicts in the 364, so the two agree.
+- **What the export does with them.** It drops boxes a person marked `not_ball` (`scripts/export_training_dataset.py:85-97`, applied at `:125` and `:151`); T-02 is merged. This was the old seam S2.
+- **What is still missing.** A `ball` verdict only marks the matching detection reviewed; it does not write a tier 2 box, and no code in the repo **creates** `human_checked` (searched on this branch; the session now only **preserves** it, `labeller/session.py:173-180`, `:326-332`). The import matches a verdict to a detection by box overlap, but stores the positional `detection_id` and the export joins on it (`export_training_dataset.py:89-95`), so a re-ingest that shifts ids can mis-match ([T-25](todo.md)). Planned: a "yes" on a Claude proposal writes the box with `human_checked` (tier 2), and a drag or tap-to-place writes `labeller` (tier 1), through a separate candidate pool, never straight into the sidecar (LAB-002); see [T-47](todo.md).
 
 ### 5.2 Feature store
 
@@ -258,8 +272,8 @@ Severity: **H** silently corrupts training data or GT; **M** wrong results or lo
 
 | # | Sev | Seam | Where | TODO |
 |---|---|---|---|---|
-| S1 | H | The labeller session drops `human_checked`: it keeps only label and provenance on load and writes `[label, model]` on flush, so one edit in a clip turns every tier-2 box in it into tier 3. No test covers it. | `session.py:156-161, 309-317`; `ingest_gt.py:191-195` | T-01 |
-| S2 | H | Ball Check verdicts are not consumed. `ingest_gt` globs top-level `*.jsonl` only, and the export keeps `not_ball` and `box_off` boxes as positives (it filters on `canonical`, not on review status). | `ingest_gt.py:279`; `export_training_dataset.py:91-128` | T-02 |
+| S1 | H | **Fixed (T-01, PR #25).** The labeller session used to drop `human_checked` on load and flush. It now keeps marker tags beside the timeline and writes them back. | `session.py:173-180, 293, 326-332`; `ingest_gt.py:81` | T-01 |
+| S2 | H | **Fixed for `not_ball` (T-02, PR #26).** Ball Check verdicts are now imported into `detection_review` and the export drops `not_ball` boxes. Remaining: the export joins on the stored positional `detection_id` (T-25), and `box_off` is stored but not excluded. | `ingest_gt.py:383`; `export_training_dataset.py:85-97, 125, 151`; `ball_checks.py:170-177` | T-02, T-25 |
 | S3 | H | Clip identity is not canonical. The same footage has up to three stems (`mancity_seg050`, `arsenal_mancity_seg050`, `arsenal_mancity_20250925_seg050`); the eval exclusion and by-clip split use exact names, so eval footage can reach training and one clip can sit in both train and val. | `ball_check.py:709-728`; `export_training_dataset.py:78-80, 362-368, 385-387` | T-03 |
 | S4 | H | Re-ingest leaves ghost rows: `_upsert` never deletes, and all `gt_import_*` runs of a clip are one canonical group, so the old row stays canonical next to the corrected box. | `store.py:197-220`; `schema.py:40-48`; `review.py:312-370` | T-04 |
 | S5 | M | Undoing a `corrected` card appends a tombstone but leaves the box written by `save_box`; re-correcting appends a second box. | `ball_check.html:351-365`; `ball_check.py:771-793` | T-05 |
@@ -275,7 +289,7 @@ Severity: **H** silently corrupts training data or GT; **M** wrong results or lo
 | S15 | L | A verdict POST failure (`{ok: false}`) is silently dropped by the page. | `ball_check.html:289-308` | T-05 |
 | S16 | L | `--legacy-all-reviewed` stamps everything reviewed; harmless only while `reviewed` is unused. | `ingest_gt.py:314-322` | |
 
-Outputs nothing consumes: `ball_checks/` verdicts, `identity_labels/` (except the clusters view), `link_proposals/`, `tracklets/` (identity pages only), the `reviewed` column, `difficulty.flag_for_review`, and the 2.77M machine labels (except as the Ball Check pool).
+Outputs nothing consumes: `identity_labels/` (except the clusters view), `link_proposals/`, `tracklets/` (identity pages only), the `reviewed` column, `difficulty.flag_for_review`, and the 2.77M machine labels (except as the Ball Check pool).
 
 Test gaps at stage boundaries: no CI runs tests ([T-08](todo.md)); no sidecar-to-store test; no session round-trip test for `human_checked`; no test that a verdict affects the store or export; no test for clip-alias leakage, for re-ingest after a correction, for undo of `corrected`, for concurrent flushes, or for list-`bbox` sidecars. 22 labeller requirements are marked UNTESTED-FRONTEND.
 

@@ -167,12 +167,13 @@ def test_blob_features_tell_a_player_from_a_close_up():
 def test_roboflow_items_dedupe_and_drop_contradictions(tmp_path):
     for ds, cls, name in (("roboflow_dataset_9", "Yes", "Arsenal-Aston-Villa_000001"), ("roboflow_dataset_10", "Yes", "Arsenal-Aston-Villa_000001"),
                           ("roboflow_dataset_10", "No", "arsenal_mancity_20250925_000005"), ("roboflow_dataset_9", "Yes", "arsenal_mancity_20250925_000005"),
-                          ("roboflow_dataset_10", "No", "arsenal_norwich_000009")):
+                          ("roboflow_dataset_10", "No", "arsenal_norwich_000009"),  # Roboflow still names it "norwich"
+                          ("roboflow_dataset_10", "No", "arsenal_nottinghamforest_000010")):
         d = tmp_path / ds / "train" / cls
         d.mkdir(parents=True, exist_ok=True)
         (d / f"{name}_jpg.rf.abc.jpg").write_bytes(b"x")
     items = se.roboflow_items(tmp_path)
-    assert [(i["key"], i["y"], i["match"]) for i in items] == [("Arsenal-Aston-Villa_000001", 1, "arsenal_astonvilla"), ("arsenal_norwich_000009", 0, "arsenal_norwich")]
+    assert [(i["key"], i["y"], i["match"]) for i in items] == [("Arsenal-Aston-Villa_000001", 1, "arsenal_astonvilla"), ("arsenal_norwich_000009", 0, "arsenal_nottinghamforest"), ("arsenal_nottinghamforest_000010", 0, "arsenal_nottinghamforest")]
 
 
 def _shots(*spans):
