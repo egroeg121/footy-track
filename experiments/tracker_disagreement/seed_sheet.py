@@ -19,7 +19,7 @@ seeds = [s for s in seeds if s["source"] == a.source]
 random.Random(a.seed).shuffle(seeds)
 tiles = []
 for s in seeds[:a.n]:
-    raw = subprocess.run(["ffmpeg", "-v", "error", "-i", f"/mnt/storage/footy_data/arsenal_norwich/split_video_broadcast_frames/{s['clip']}.mp4", "-vf", f"select=eq(n\\,{s['frame']})",
+    raw = subprocess.run(["ffmpeg", "-v", "error", "-i", f"/mnt/storage/footy_data/arsenal_nottinghamforest/split_video_broadcast_frames/{s["clip"].replace("arsenal_norwich","arsenal_nottinghamforest")}.mp4", "-vf", f"select=eq(n\\,{s['frame']})",
                           "-fps_mode", "passthrough", "-frames:v", "1", "-f", "image2pipe", "-vcodec", "png", "-"], capture_output=True).stdout
     img = cv2.imdecode(np.frombuffer(raw, np.uint8), cv2.IMREAD_COLOR)
     cx, cy = (s["box"][0] + s["box"][2]) / 2, (s["box"][1] + s["box"][3]) / 2

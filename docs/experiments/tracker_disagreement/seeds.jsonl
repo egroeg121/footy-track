@@ -1,0 +1,140 @@
+{"clip": "arsenal_norwich_seg001", "frame": 15, "box": [1261.2, 782.7, 1283.2, 804.7], "source": "rtdetr", "id": "r15"}
+{"clip": "arsenal_norwich_seg001", "frame": 37, "box": [1255.0, 653.9, 1271.5, 669.4], "conf": 0.86, "source": "text", "id": "t37"}
+{"clip": "arsenal_norwich_seg001", "frame": 76, "box": [926.1, 666.1, 945.1, 686.1], "source": "rtdetr", "id": "r76"}
+{"clip": "arsenal_norwich_seg001", "frame": 112, "box": [1221.5, 773.8, 1239.1, 791.9], "conf": 0.86, "source": "text", "id": "t112"}
+{"clip": "arsenal_norwich_seg001", "frame": 186, "box": [981.4, 943.5, 1007.9, 965.5], "source": "rtdetr", "id": "r186", "text_confirms": 0.82}
+{"clip": "arsenal_norwich_seg004", "frame": 0, "box": [1381.8, 311.9, 1398.8, 326.2], "source": "rtdetr", "id": "r0"}
+{"clip": "arsenal_norwich_seg004", "frame": 37, "box": [1479.5, 338.9, 1493.5, 352.3], "conf": 0.76, "source": "text", "id": "t37"}
+{"clip": "arsenal_norwich_seg004", "frame": 59, "box": [1413.8, 323.8, 1426.8, 337.0], "source": "rtdetr", "id": "r59"}
+{"clip": "arsenal_norwich_seg004", "frame": 113, "box": [1479.3, 355.0, 1496.3, 371.2], "source": "rtdetr", "id": "r113", "text_confirms": 0.81}
+{"clip": "arsenal_norwich_seg004", "frame": 187, "box": [1102.0, 380.9, 1117.4, 395.9], "conf": 0.83, "source": "text", "id": "t187"}
+{"clip": "arsenal_norwich_seg004", "frame": 244, "box": [872.0, 409.3, 889.5, 425.5], "source": "rtdetr", "id": "r244"}
+{"clip": "arsenal_norwich_seg011", "frame": 37, "box": [1285.0, 232.7, 1296.0, 245.2], "conf": 0.71, "source": "text", "id": "t37"}
+{"clip": "arsenal_norwich_seg011", "frame": 112, "box": [799.2, 306.1, 825.3, 317.4], "conf": 0.75, "source": "text", "id": "t112"}
+{"clip": "arsenal_norwich_seg011", "frame": 123, "box": [440.3, 350.5, 460.6, 366.7], "source": "rtdetr", "id": "r123"}
+{"clip": "arsenal_norwich_seg011", "frame": 187, "box": [636.4, 576.5, 652.4, 594.5], "conf": 0.83, "source": "text", "id": "t187"}
+{"clip": "arsenal_norwich_seg011", "frame": 262, "box": [916.4, 841.4, 941.6, 860.6], "conf": 0.57, "source": "text", "id": "t262"}
+{"clip": "arsenal_norwich_seg011", "frame": 281, "box": [1295.7, 914.0, 1323.7, 938.0], "source": "rtdetr", "id": "r281"}
+{"clip": "arsenal_norwich_seg013", "frame": 2, "box": [399.4, 41.5, 416.7, 57.8], "source": "rtdetr", "id": "r2"}
+{"clip": "arsenal_norwich_seg013", "frame": 37, "box": [397.5, 457.9, 412.0, 475.6], "conf": 0.74, "source": "text", "id": "t37"}
+{"clip": "arsenal_norwich_seg013", "frame": 112, "box": [784.2, 310.5, 800.9, 324.0], "conf": 0.84, "source": "text", "id": "t112"}
+{"clip": "arsenal_norwich_seg013", "frame": 134, "box": [864.4, 424.8, 879.4, 441.1], "source": "rtdetr", "id": "r134"}
+{"clip": "arsenal_norwich_seg013", "frame": 182, "box": [811.8, 534.2, 827.8, 552.2], "source": "rtdetr", "id": "r182"}
+{"clip": "arsenal_norwich_seg013", "frame": 187, "box": [816.2, 577.1, 830.4, 592.3], "conf": 0.81, "source": "text", "id": "t187"}
+{"clip": "arsenal_norwich_seg013", "frame": 264, "box": [1548.1, 861.5, 1570.1, 884.0], "source": "rtdetr", "id": "r264", "text_confirms": 0.64}
+{"clip": "arsenal_norwich_seg013", "frame": 332, "box": [1354.9, 686.0, 1376.9, 704.0], "source": "rtdetr", "id": "r332"}
+{"clip": "arsenal_norwich_seg013", "frame": 337, "box": [1276.4, 680.8, 1295.8, 696.8], "conf": 0.81, "source": "text", "id": "t337"}
+{"clip": "arsenal_norwich_seg014", "frame": 13, "box": [435.5, 192.4, 456.5, 215.5], "source": "rtdetr", "id": "r13"}
+{"clip": "arsenal_norwich_seg014", "frame": 37, "box": [625.9, 375.1, 647.9, 391.5], "conf": 0.8, "source": "text", "id": "t37"}
+{"clip": "arsenal_norwich_seg014", "frame": 57, "box": [933.4, 497.1, 952.9, 518.6], "source": "rtdetr", "id": "r57"}
+{"clip": "arsenal_norwich_seg014", "frame": 111, "box": [1195.9, 755.6, 1220.9, 780.1], "source": "rtdetr", "id": "r111", "text_confirms": 0.64}
+{"clip": "arsenal_norwich_seg014", "frame": 187, "box": [1136.0, 1011.5, 1152.8, 1033.8], "conf": 0.78, "source": "text", "id": "t187"}
+{"clip": "arsenal_norwich_seg014", "frame": 193, "box": [1114.0, 1037.9, 1136.0, 1059.9], "source": "rtdetr", "id": "r193"}
+{"clip": "arsenal_norwich_seg016", "frame": 4, "box": [869.1, 628.6, 899.1, 648.6], "source": "rtdetr", "id": "r4"}
+{"clip": "arsenal_norwich_seg016", "frame": 37, "box": [1114.5, 667.9, 1147.8, 688.4], "conf": 0.77, "source": "text", "id": "t37"}
+{"clip": "arsenal_norwich_seg020", "frame": 4, "box": [1666.8, 657.1, 1685.7, 677.1], "source": "rtdetr", "id": "r4"}
+{"clip": "arsenal_norwich_seg020", "frame": 112, "box": [1567.8, 601.5, 1583.9, 616.8], "conf": 0.83, "source": "text", "id": "t112"}
+{"clip": "arsenal_norwich_seg021", "frame": 39, "box": [1710.2, 907.0, 1732.3, 927.1], "source": "rtdetr", "id": "r39", "text_confirms": 0.77}
+{"clip": "arsenal_norwich_seg027", "frame": 13, "box": [571.8, 334.6, 587.8, 348.3], "source": "rtdetr", "id": "r13"}
+{"clip": "arsenal_norwich_seg027", "frame": 59, "box": [152.0, 380.8, 169.1, 395.5], "source": "rtdetr", "id": "r59"}
+{"clip": "arsenal_norwich_seg027", "frame": 112, "box": [241.8, 523.6, 259.0, 540.0], "conf": 0.83, "source": "text", "id": "t112"}
+{"clip": "arsenal_norwich_seg027", "frame": 187, "box": [475.6, 675.7, 494.0, 693.5], "conf": 0.83, "source": "text", "id": "t187"}
+{"clip": "arsenal_norwich_seg029", "frame": 12, "box": [175.5, 358.3, 190.5, 370.5], "source": "rtdetr", "id": "r12"}
+{"clip": "arsenal_norwich_seg029", "frame": 79, "box": [799.2, 207.6, 814.2, 223.5], "source": "rtdetr", "id": "r79"}
+{"clip": "arsenal_norwich_seg029", "frame": 112, "box": [1174.4, 576.5, 1188.7, 590.9], "conf": 0.82, "source": "text", "id": "t112"}
+{"clip": "arsenal_norwich_seg029", "frame": 132, "box": [342.5, 762.1, 356.5, 775.6], "source": "rtdetr", "id": "r132"}
+{"clip": "arsenal_norwich_seg029", "frame": 180, "box": [1131.6, 619.5, 1144.6, 634.5], "source": "rtdetr", "id": "r180"}
+{"clip": "arsenal_norwich_seg029", "frame": 187, "box": [1089.4, 591.9, 1101.6, 602.7], "conf": 0.81, "source": "text", "id": "t187"}
+{"clip": "arsenal_norwich_seg031", "frame": 53, "box": [956.8, 96.9, 976.3, 122.8], "source": "rtdetr", "id": "r53"}
+{"clip": "arsenal_norwich_seg031", "frame": 112, "box": [1498.4, 696.3, 1515.2, 710.2], "conf": 0.63, "source": "text", "id": "t112"}
+{"clip": "arsenal_norwich_seg031", "frame": 155, "box": [1271.1, 821.6, 1292.1, 841.6], "source": "rtdetr", "id": "r155"}
+{"clip": "arsenal_norwich_seg031", "frame": 187, "box": [1391.2, 816.0, 1413.8, 838.2], "conf": 0.81, "source": "text", "id": "t187"}
+{"clip": "arsenal_norwich_seg031", "frame": 195, "box": [1498.8, 763.6, 1521.8, 783.6], "source": "rtdetr", "id": "r195"}
+{"clip": "arsenal_norwich_seg031", "frame": 250, "box": [1097.8, 676.5, 1129.7, 694.5], "source": "rtdetr", "id": "r250"}
+{"clip": "arsenal_norwich_seg031", "frame": 262, "box": [669.1, 544.0, 695.0, 562.1], "conf": 0.77, "source": "text", "id": "t262"}
+{"clip": "arsenal_norwich_seg032", "frame": 0, "box": [975.9, 552.1, 992.9, 569.1], "source": "rtdetr", "id": "r0"}
+{"clip": "arsenal_norwich_seg032", "frame": 37, "box": [918.2, 562.9, 929.2, 578.7], "conf": 0.79, "source": "text", "id": "t37"}
+{"clip": "arsenal_norwich_seg032", "frame": 48, "box": [894.4, 538.1, 909.4, 553.6], "source": "rtdetr", "id": "r48"}
+{"clip": "arsenal_norwich_seg032", "frame": 95, "box": [752.4, 367.3, 766.4, 381.5], "source": "rtdetr", "id": "r95"}
+{"clip": "arsenal_norwich_seg032", "frame": 112, "box": [709.3, 336.1, 721.0, 348.6], "conf": 0.87, "source": "text", "id": "t112"}
+{"clip": "arsenal_norwich_seg034", "frame": 37, "box": [469.8, 563.9, 484.2, 578.5], "conf": 0.85, "source": "text", "id": "t37"}
+{"clip": "arsenal_norwich_seg034", "frame": 54, "box": [469.2, 518.3, 485.2, 535.8], "source": "rtdetr", "id": "r54"}
+{"clip": "arsenal_norwich_seg034", "frame": 146, "box": [732.6, 409.0, 750.6, 423.2], "source": "rtdetr", "id": "r146"}
+{"clip": "arsenal_norwich_seg038", "frame": 28, "box": [832.0, 997.1, 856.5, 1020.6], "source": "rtdetr", "id": "r28"}
+{"clip": "arsenal_norwich_seg038", "frame": 37, "box": [493.3, 1036.1, 523.1, 1057.3], "conf": 0.8, "source": "text", "id": "t37"}
+{"clip": "arsenal_norwich_seg038", "frame": 70, "box": [398.5, 931.3, 420.5, 952.3], "source": "rtdetr", "id": "r70"}
+{"clip": "arsenal_norwich_seg038", "frame": 112, "box": [839.4, 580.1, 853.2, 595.7], "conf": 0.79, "source": "text", "id": "t112"}
+{"clip": "arsenal_norwich_seg038", "frame": 187, "box": [356.0, 185.3, 367.7, 195.8], "conf": 0.77, "source": "text", "id": "t187"}
+{"clip": "arsenal_norwich_seg038", "frame": 237, "box": [736.4, 444.6, 752.4, 459.3], "source": "rtdetr", "id": "r237"}
+{"clip": "arsenal_norwich_seg038", "frame": 262, "box": [686.9, 441.0, 700.4, 455.0], "conf": 0.76, "source": "text", "id": "t262"}
+{"clip": "arsenal_norwich_seg039", "frame": 3, "box": [568.2, 565.0, 589.7, 582.5], "source": "rtdetr", "id": "r3"}
+{"clip": "arsenal_norwich_seg039", "frame": 37, "box": [928.1, 613.0, 944.9, 628.8], "conf": 0.83, "source": "text", "id": "t37"}
+{"clip": "arsenal_norwich_seg039", "frame": 59, "box": [873.9, 605.4, 892.4, 623.4], "source": "rtdetr", "id": "r59"}
+{"clip": "arsenal_norwich_seg039", "frame": 106, "box": [406.9, 563.7, 425.1, 580.7], "source": "rtdetr", "id": "r106"}
+{"clip": "arsenal_norwich_seg039", "frame": 112, "box": [358.5, 554.5, 373.9, 569.3], "conf": 0.83, "source": "text", "id": "t112"}
+{"clip": "arsenal_norwich_seg039", "frame": 151, "box": [454.7, 491.9, 472.5, 509.0], "source": "rtdetr", "id": "r151"}
+{"clip": "arsenal_norwich_seg040", "frame": 37, "box": [563.4, 549.0, 578.2, 563.9], "conf": 0.85, "source": "text", "id": "t37"}
+{"clip": "arsenal_norwich_seg040", "frame": 112, "box": [524.4, 519.9, 538.8, 534.3], "conf": 0.85, "source": "text", "id": "t112"}
+{"clip": "arsenal_norwich_seg040", "frame": 187, "box": [352.5, 616.8, 368.4, 633.6], "conf": 0.75, "source": "text", "id": "t187"}
+{"clip": "arsenal_norwich_seg041", "frame": 10, "box": [354.9, 733.0, 373.1, 751.0], "source": "rtdetr", "id": "r10"}
+{"clip": "arsenal_norwich_seg041", "frame": 37, "box": [335.1, 560.3, 349.4, 575.1], "conf": 0.8, "source": "text", "id": "t37"}
+{"clip": "arsenal_norwich_seg045", "frame": 37, "box": [383.5, 597.1, 395.4, 614.6], "conf": 0.79, "source": "text", "id": "t37"}
+{"clip": "arsenal_norwich_seg045", "frame": 81, "box": [572.4, 716.2, 593.9, 737.2], "source": "rtdetr", "id": "r81"}
+{"clip": "arsenal_norwich_seg045", "frame": 112, "box": [731.7, 771.7, 748.5, 790.4], "conf": 0.8, "source": "text", "id": "t112"}
+{"clip": "arsenal_norwich_seg045", "frame": 150, "box": [1731.2, 739.4, 1756.3, 759.4], "source": "rtdetr", "id": "r150"}
+{"clip": "arsenal_norwich_seg048", "frame": 37, "box": [1458.8, 818.0, 1478.4, 835.9], "conf": 0.8, "source": "text", "id": "t37"}
+{"clip": "arsenal_norwich_seg048", "frame": 53, "box": [1393.9, 824.0, 1414.9, 844.5], "source": "rtdetr", "id": "r53"}
+{"clip": "arsenal_norwich_seg048", "frame": 112, "box": [1436.0, 544.3, 1449.8, 559.0], "conf": 0.83, "source": "text", "id": "t112"}
+{"clip": "arsenal_norwich_seg048", "frame": 187, "box": [1507.9, 823.1, 1526.5, 841.5], "conf": 0.56, "source": "text", "id": "t187"}
+{"clip": "arsenal_norwich_seg048", "frame": 212, "box": [1517.1, 843.0, 1541.1, 864.5], "source": "rtdetr", "id": "r212"}
+{"clip": "arsenal_norwich_seg048", "frame": 262, "box": [668.5, 937.1, 690.2, 954.7], "conf": 0.83, "source": "text", "id": "t262"}
+{"clip": "arsenal_norwich_seg048", "frame": 273, "box": [766.4, 971.4, 789.9, 993.4], "source": "rtdetr", "id": "r273"}
+{"clip": "arsenal_norwich_seg048", "frame": 337, "box": [696.3, 841.8, 714.6, 860.0], "conf": 0.86, "source": "text", "id": "t337"}
+{"clip": "arsenal_norwich_seg048", "frame": 412, "box": [924.4, 703.9, 946.8, 721.4], "conf": 0.76, "source": "text", "id": "t412"}
+{"clip": "arsenal_norwich_seg048", "frame": 427, "box": [1101.9, 746.2, 1121.9, 764.2], "source": "rtdetr", "id": "r427"}
+{"clip": "arsenal_norwich_seg048", "frame": 477, "box": [1195.1, 723.5, 1216.1, 743.5], "source": "rtdetr", "id": "r477", "text_confirms": 0.73}
+{"clip": "arsenal_norwich_seg048", "frame": 542, "box": [1360.1, 838.0, 1383.1, 860.0], "source": "rtdetr", "id": "r542"}
+{"clip": "arsenal_norwich_seg048", "frame": 562, "box": [1411.8, 805.8, 1433.1, 823.2], "conf": 0.81, "source": "text", "id": "t562"}
+{"clip": "arsenal_norwich_seg050", "frame": 10, "box": [1600.3, 669.7, 1615.3, 686.7], "source": "rtdetr", "id": "r10"}
+{"clip": "arsenal_norwich_seg050", "frame": 37, "box": [409.9, 297.5, 417.5, 305.4], "conf": 0.55, "source": "text", "id": "t37"}
+{"clip": "arsenal_norwich_seg050", "frame": 112, "box": [1702.0, 857.4, 1718.0, 873.4], "source": "rtdetr", "id": "r112", "text_confirms": 0.73}
+{"clip": "arsenal_norwich_seg053", "frame": 37, "box": [797.2, 249.3, 809.8, 261.4], "conf": 0.71, "source": "text", "id": "t37"}
+{"clip": "arsenal_norwich_seg053", "frame": 49, "box": [512.4, 299.0, 531.9, 314.8], "source": "rtdetr", "id": "r49"}
+{"clip": "arsenal_norwich_seg053", "frame": 112, "box": [591.4, 472.3, 606.4, 490.6], "conf": 0.65, "source": "text", "id": "t112"}
+{"clip": "arsenal_norwich_seg055", "frame": 30, "box": [1700.6, 432.7, 1715.6, 446.4], "source": "rtdetr", "id": "r30", "text_confirms": 0.74}
+{"clip": "arsenal_norwich_seg055", "frame": 75, "box": [1738.1, 435.0, 1753.1, 448.8], "source": "rtdetr", "id": "r75"}
+{"clip": "arsenal_norwich_seg055", "frame": 141, "box": [492.2, 277.0, 511.9, 297.8], "source": "rtdetr", "id": "r141"}
+{"clip": "arsenal_norwich_seg055", "frame": 187, "box": [632.4, 863.7, 651.0, 884.3], "conf": 0.76, "source": "text", "id": "t187"}
+{"clip": "arsenal_norwich_seg055", "frame": 251, "box": [739.2, 1044.7, 762.7, 1066.7], "source": "rtdetr", "id": "r251"}
+{"clip": "arsenal_norwich_seg055", "frame": 312, "box": [705.9, 1040.7, 728.4, 1067.7], "source": "rtdetr", "id": "r312"}
+{"clip": "arsenal_norwich_seg058", "frame": 37, "box": [535.8, 446.7, 546.3, 455.9], "conf": 0.77, "source": "text", "id": "t37"}
+{"clip": "arsenal_norwich_seg061", "frame": 25, "box": [731.5, 695.6, 753.5, 715.6], "source": "rtdetr", "id": "r25"}
+{"clip": "arsenal_norwich_seg061", "frame": 37, "box": [728.8, 862.1, 748.2, 881.0], "conf": 0.85, "source": "text", "id": "t37"}
+{"clip": "arsenal_norwich_seg061", "frame": 70, "box": [809.5, 979.9, 832.0, 1000.8], "source": "rtdetr", "id": "r70"}
+{"clip": "arsenal_norwich_seg061", "frame": 112, "box": [464.5, 873.5, 484.0, 892.4], "conf": 0.82, "source": "text", "id": "t112"}
+{"clip": "arsenal_norwich_seg061", "frame": 187, "box": [846.3, 634.9, 865.2, 650.9], "conf": 0.75, "source": "text", "id": "t187"}
+{"clip": "arsenal_norwich_seg061", "frame": 213, "box": [1052.8, 496.0, 1067.8, 511.8], "source": "rtdetr", "id": "r213"}
+{"clip": "arsenal_norwich_seg061", "frame": 261, "box": [1084.1, 549.9, 1104.1, 565.9], "source": "rtdetr", "id": "r261", "text_confirms": 0.78}
+{"clip": "arsenal_norwich_seg061", "frame": 337, "box": [713.8, 136.8, 724.7, 146.2], "conf": 0.52, "source": "text", "id": "t337"}
+{"clip": "arsenal_norwich_seg061", "frame": 346, "box": [619.6, 428.0, 636.6, 443.2], "source": "rtdetr", "id": "r346"}
+{"clip": "arsenal_norwich_seg061", "frame": 412, "box": [513.7, 401.4, 526.8, 415.2], "conf": 0.83, "source": "text", "id": "t412"}
+{"clip": "arsenal_norwich_seg061", "frame": 439, "box": [568.6, 365.4, 582.6, 379.7], "source": "rtdetr", "id": "r439"}
+{"clip": "arsenal_norwich_seg061", "frame": 487, "box": [815.5, 299.9, 826.9, 310.7], "conf": 0.78, "source": "text", "id": "t487"}
+{"clip": "arsenal_norwich_seg061", "frame": 562, "box": [626.6, 407.9, 639.6, 420.9], "conf": 0.73, "source": "text", "id": "t562"}
+{"clip": "arsenal_norwich_seg061", "frame": 587, "box": [426.2, 386.8, 443.8, 402.1], "source": "rtdetr", "id": "r587"}
+{"clip": "arsenal_norwich_seg062", "frame": 0, "box": [493.1, 471.3, 510.1, 488.5], "source": "rtdetr", "id": "r0"}
+{"clip": "arsenal_norwich_seg062", "frame": 37, "box": [518.0, 526.8, 534.2, 541.2], "conf": 0.81, "source": "text", "id": "t37"}
+{"clip": "arsenal_norwich_seg062", "frame": 112, "box": [528.6, 571.9, 543.7, 587.5], "conf": 0.83, "source": "text", "id": "t112"}
+{"clip": "arsenal_norwich_seg064", "frame": 1, "box": [1048.9, 614.8, 1067.9, 631.8], "source": "rtdetr", "id": "r1"}
+{"clip": "arsenal_norwich_seg064", "frame": 37, "box": [1167.5, 768.2, 1184.1, 784.8], "conf": 0.8, "source": "text", "id": "t37"}
+{"clip": "arsenal_norwich_seg064", "frame": 83, "box": [1347.9, 708.8, 1368.9, 728.8], "source": "rtdetr", "id": "r83"}
+{"clip": "arsenal_norwich_seg064", "frame": 112, "box": [1506.6, 623.8, 1521.7, 639.4], "conf": 0.81, "source": "text", "id": "t112"}
+{"clip": "arsenal_norwich_seg066", "frame": 1, "box": [1649.9, 687.1, 1666.9, 704.1], "source": "rtdetr", "id": "r1"}
+{"clip": "arsenal_norwich_seg072", "frame": 12, "box": [1254.1, 330.7, 1277.1, 348.5], "source": "rtdetr", "id": "r12"}
+{"clip": "arsenal_norwich_seg072", "frame": 97, "box": [510.4, 282.2, 527.4, 303.7], "source": "rtdetr", "id": "r97"}
+{"clip": "arsenal_norwich_seg072", "frame": 112, "box": [376.2, 511.7, 385.1, 523.8], "conf": 0.66, "source": "text", "id": "t112"}
+{"clip": "arsenal_norwich_seg072", "frame": 137, "box": [336.8, 459.6, 350.8, 474.3], "source": "rtdetr", "id": "r137"}
+{"clip": "arsenal_norwich_seg072", "frame": 187, "box": [323.8, 415.4, 335.8, 426.5], "conf": 0.76, "source": "text", "id": "t187"}
+{"clip": "arsenal_norwich_seg072", "frame": 190, "box": [1045.9, 1037.5, 1070.9, 1066.6], "source": "rtdetr", "id": "r190"}
+{"clip": "arsenal_norwich_seg074", "frame": 37, "box": [27.3, 626.1, 37.5, 635.8], "conf": 0.54, "source": "text", "id": "t37"}
+{"clip": "arsenal_norwich_seg074", "frame": 110, "box": [1027.6, 869.0, 1040.6, 886.0], "source": "rtdetr", "id": "r110"}

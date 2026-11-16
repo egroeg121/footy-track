@@ -10,9 +10,13 @@ import argparse, csv, glob, json, os, random
 from pathlib import Path
 
 R3 = Path("/mnt/storage/exp/temporal/round3")
-NW = "/mnt/storage/footy_data/arsenal_norwich"
-Q = Path("/mnt/storage/footy_data/norwich_label_queue")
-GT = Path("/mnt/storage/footy_data/ball_gt_marks_norwich")
+# The held-out match was renamed Norwich -> Nottingham Forest on 2026-11-16 (PR #62): data lives under the new names, but this run's artifacts (round-3 spec, seeds, tracks,
+# fused positions) keep the OLD clip ids ``arsenal_norwich_segNNN``; build_batch.py renames to ``arsenal_nottinghamforest_segNNN`` when it writes the list.
+NW = "/mnt/storage/footy_data/arsenal_nottinghamforest"
+Q = Path("/mnt/storage/footy_data/nottinghamforest_label_queue")
+GT = Path("/mnt/storage/footy_data/ball_gt_marks_nottinghamforest")
+OLD = lambda c: c.replace("arsenal_nottinghamforest", "arsenal_norwich")
+NEWN = lambda c: c.replace("arsenal_norwich", "arsenal_nottinghamforest")
 
 ap = argparse.ArgumentParser()
 ap.add_argument("--out", type=Path, required=True)
@@ -27,7 +31,7 @@ a.out.mkdir(parents=True, exist_ok=True)
 spec = json.loads((R3 / "norwich" / "spec.json").read_text())
 exclude: dict[str, list] = {}
 for r in csv.DictReader(open(Q / "windows.csv")):
-    exclude.setdefault(r["clip"], []).append([int(r["start_frame"]) - 25, int(r["end_frame"]) + 25])
+    exclude.setdefault(OLD(r["clip"]), []).append([int(r["start_frame"]) - 25, int(r["end_frame"]) + 25])
 free = sorted(c for c in spec["clips"] if c not in exclude)
 rng = random.Random(a.seed)
 rng.shuffle(free)
@@ -47,9 +51,9 @@ for p in glob.glob(str(GT / "ball_checks" / "*.jsonl")):
         except ValueError:
             continue
         if r.get("verdict") is not None:
-            judged.setdefault(r["clip"], set()).add(int(r["frame_index"]))
+            judged.setdefault(OLD(r["clip"]), set()).add(int(r["frame_index"]))
 
-clips = {c: {"n_frames": spec["clips"][c]["n_frames"], "video": f"{NW}/split_video_broadcast_frames/{c}.mp4"} for c in chosen}
+clips = {c: {"n_frames": spec["clips"][c]["n_frames"], "video": f"{NW}/split_video_broadcast_frames/{NEWN(c)}.mp4"} for c in chosen}
 (a.out / "clips.json").write_text(json.dumps({"clips": clips, "exclude": {c: exclude.get(c, []) for c in chosen},
                                               "judged": {c: sorted(judged.get(c, [])) for c in chosen}}, indent=1))
 # anchors: round-3 B1 nodes with RT-DETR conf>=0.8 (spec tracks hold one entry per direction)

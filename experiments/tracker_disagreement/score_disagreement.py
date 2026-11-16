@@ -1,7 +1,7 @@
 """Score George's blind verdicts on ball_check_list_v2_disagree.json (mini; stdlib only).
 
-    python score_disagreement.py --list /mnt/storage/footy_data/norwich_label_queue/ball_check_list_v2_disagree.json \
-        --verdicts /mnt/storage/footy_data/ball_gt_marks_norwich_disagree/ball_checks   (or --results job.json) [--out report.md] [--json report.json] [--selftest]
+    python score_disagreement.py --list /mnt/storage/footy_data/nottinghamforest_label_queue/ball_check_list_v2_disagree.json \
+        --verdicts /mnt/storage/footy_data/ball_gt_marks_nottinghamforest_disagree/ball_checks   (or --results job.json) [--out report.md] [--json report.json] [--selftest]
 
 Verdicts are read like the labeller does (``<clip>.jsonl`` append-only, last line per (source, clip, frame_index, box_index) wins, ``verdict: null`` = undo tombstone) and joined to
 the list by that key; a verdict is used only when its ``bbox`` equals the list card's bbox (guards against a re-ordered / regenerated list), otherwise it is counted as ``mismatch``.
@@ -300,8 +300,8 @@ def selftest():
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--list", type=Path, default=Path("/mnt/storage/footy_data/norwich_label_queue/ball_check_list_v2_disagree.json"))
-    ap.add_argument("--verdicts", type=Path, default=Path("/mnt/storage/footy_data/ball_gt_marks_norwich_disagree/ball_checks"))
+    ap.add_argument("--list", type=Path, default=Path("/mnt/storage/footy_data/nottinghamforest_label_queue/ball_check_list_v2_disagree.json"))
+    ap.add_argument("--verdicts", type=Path, default=Path("/mnt/storage/footy_data/ball_gt_marks_nottinghamforest_disagree/ball_checks"))
     ap.add_argument("--results", type=Path, help="`labelling_jobs results <job> -o job.json` (labelling-job-results/v1) instead of reading the verdict logs")
     ap.add_argument("--out", type=Path)
     ap.add_argument("--json", type=Path)

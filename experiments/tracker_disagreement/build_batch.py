@@ -26,7 +26,11 @@ import fusion as F
 
 BOX = 18.0
 VIEW_PX = 110.0      # the magenta box is inside the default (pad 6) 240 px crop when the pair is closer than this
-QUOTA = {"text_only": 12, "loss": 14, "single": 20, "all3_agree": 40, "pair_agree": 24}
+QUOTA = {"text_only": 12, "loss": 14, "single": 20, "all3_agree": 40, "pair_agree": 34}
+
+
+OLD = lambda c: c.replace("arsenal_nottinghamforest", "arsenal_norwich")
+NEWN = lambda c: c.replace("arsenal_norwich", "arsenal_nottinghamforest")
 
 
 def h(*parts) -> float:
@@ -60,7 +64,7 @@ def main():
     ap.add_argument("--fused", type=Path, required=True)
     ap.add_argument("--seeds", type=Path, required=True)
     ap.add_argument("--train-sel", type=Path, default=Path("/mnt/storage/exp/temporal/round3/norwich_fuse/selection.jsonl"))
-    ap.add_argument("--v1", type=Path, default=Path("/mnt/storage/footy_data/norwich_label_queue/ball_check_list_v1.json"))
+    ap.add_argument("--v1", type=Path, default=Path("/mnt/storage/footy_data/nottinghamforest_label_queue/ball_check_list_v1.json"))
     ap.add_argument("--out", type=Path, required=True)
     ap.add_argument("--salt", default="disagree-v2")
     ap.add_argument("--seed", type=int, default=11)
@@ -82,6 +86,8 @@ def main():
                 r = json.loads(line)
                 trained[r["clip"]].append(r.get("t_orig", r.get("t")))
     v1 = json.loads(a.v1.read_text())["items"]
+    for it in v1:
+        it["clip"] = OLD(it["clip"])      # work in this run's (old) clip ids; the list is written with the new ones
     v1_keys = {(it["clip"], it["frame_index"]) for it in v1}
     skip = defaultdict(set)
     for c, fr in fused["judged"].items():
@@ -247,15 +253,21 @@ def main():
     sel = select([it for it in cands["all3_agree"] if (it[1], it[2]) not in taken], QUOTA["all3_agree"], prefer=False)
     chosen += sel
     taken |= {(it[1], it[2]) for it in sel}
-    per_pair = QUOTA["pair_agree"] // 3
-    for pn in ("t1+t2", "t1+t3", "t2+t3"):
-        sel = select([it for it in cands[f"pair_agree:{pn}"] if (it[1], it[2]) not in taken], per_pair, prefer=False)
+    # pair agreement (two trackers agree, the third has no ball): almost all of it is "SAM2.1 + SAM3 agree, A++/B1 silent" (12% of frames), so that pair gets the quota
+    for pn, q in (("t1+t2", 6), ("t1+t3", 6), ("t2+t3", QUOTA["pair_agree"])):
+        sel = select([it for it in cands[f"pair_agree:{pn}"] if (it[1], it[2]) not in taken], q, prefer=False)
         chosen += sel
         taken |= {(it[1], it[2]) for it in sel}
     # disagreement segments fill the rest of the card budget; a FAR pair (> VIEW_PX: the magenta box is outside the phone's default crop) costs two single-box cards
     budget = a.cards - len(chosen)
     dsel = select([it for it in cands["disagree"] if (it[1], it[2]) not in taken], budget, cost=lambda it: 2 if it[3]["pair_far"] else 1)
     chosen += dsel
+    ncards = lambda L: sum(2 if it[3].get("pair_far") else 1 for it in L)
+    if ncards(chosen) < a.cards:     # disagreements are rare (4% of frames): top up with agreed frames (all-three sample to 44, then the SAM-pair-with-A++-silent class)
+        have = lambda: taken | {(x[1], x[2]) for x in chosen}
+        n3 = sum(1 for x in chosen if x[3]["stratum"] == "all3_agree")
+        chosen += select([it for it in cands["all3_agree"] if (it[1], it[2]) not in have()], max(0, 44 - n3), prefer=False)
+        chosen += select([it for it in cands["pair_agree:t2+t3"] if (it[1], it[2]) not in have()], a.cards - ncards(chosen), prefer=False)
 
     items = []
     for pr, c, t, m, bsrc, osrc in chosen:
@@ -279,6 +291,10 @@ def main():
     population = {"all3_agree": dict(Counter(it[1] for it in cands["all3_agree"]))}
     for pn in ("t1+t2", "t1+t3", "t2+t3"):
         population[f"pair_agree:{pn}"] = dict(Counter(it[1] for it in cands[f"pair_agree:{pn}"]))
+    for it in items:
+        it["clip_run_id"] = it["clip"]       # id used by this run's artifacts (arsenal_norwich_segNNN)
+        it["clip"] = NEWN(it["clip"])
+    population = {k: {NEWN(c): n for c, n in v.items()} for k, v in population.items()}
     doc = {"population": population, "description": "ball_check_list_v2_disagree: three-tracker disagreement batch (blind); hidden keys: src_bbox/src_other (t1=A++/B1, t2=SAM2.1, t3=SAM3), stratum, positions ...",
            "salt": a.salt, "tolerance_px": F.TOL, "box_px": BOX, "items": items}
     a.out.write_text(json.dumps(doc))

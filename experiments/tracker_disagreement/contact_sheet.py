@@ -16,7 +16,7 @@ import numpy as np
 
 COL = {"t1": (60, 200, 60), "t2": (230, 200, 40), "t3": (50, 50, 240)}     # BGR
 LAB = {"t1": "A++/B1", "t2": "SAM2.1", "t3": "SAM3"}
-VID = "/mnt/storage/footy_data/arsenal_norwich/split_video_broadcast_frames/{}.mp4"
+VID = "/mnt/storage/footy_data/arsenal_nottinghamforest/split_video_broadcast_frames/{}.mp4"
 
 
 def frame(clip: str, f: int):
@@ -60,6 +60,12 @@ def main():
     a = ap.parse_args()
     items = [it for it in json.loads(a.list.read_text())["items"] if it["stratum"] == a.stratum and sum(1 for p in it["positions"].values() if p) >= 2]
     random.Random(a.seed).shuffle(items)
+    seen, uniq = set(), []
+    for it in items:          # far pairs are two cards of one frame: show the frame once
+        if (it['clip'], it['frame_index']) not in seen:
+            seen.add((it['clip'], it['frame_index']))
+            uniq.append(it)
+    items = uniq
     tiles = [tile(it) for it in items[:a.n]]
     while len(tiles) % a.cols:
         tiles.append(np.zeros_like(tiles[0]))

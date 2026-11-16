@@ -1,8 +1,8 @@
-"""Add the ``norwich_disagree`` dataset to the live labeller registry (stdlib).  DRY RUN unless --apply.
+"""Add the ``nottinghamforest_disagree`` dataset to the live labeller registry (stdlib).  DRY RUN unless --apply.
 
 The main labeller (:8011) resolves ``?dataset=<name>`` from /mnt/storage/footy_data/labeller_datasets.json (re-read on change: no restart).  The v2 batch is a Ball Check *list*,
 and a list belongs to a dataset, so the batch gets its own dataset entry: the Norwich keyframe-dense clips, the v2 list, and an EMPTY marks dir of its own (verdict logs
-and any "corrected" boxes land there, never in ``ball_gt_marks_norwich`` = George's held-out Norwich GT).
+and any "corrected" boxes land there, never in ``ball_gt_marks_nottinghamforest`` = George's held-out Norwich GT).
 
     python register_dataset.py            # prints the entry and the diff
     python register_dataset.py --apply    # atomic write (tmp + rename), other entries untouched
@@ -12,9 +12,9 @@ from pathlib import Path
 
 REG = Path(os.environ.get("FOOTY_LABELLER_DATASETS", "/mnt/storage/footy_data/labeller_datasets.json"))
 D = "/mnt/storage/footy_data"
-NAME = "norwich_disagree"
-ENTRY = {"label": "Norwich: tracker disagreement (blind)", "clips_dir": f"{D}/arsenal_norwich/split_video_broadcast_frames_kf10",
-         "marks_dir": f"{D}/ball_gt_marks_norwich_disagree", "ball_check_list": f"{D}/norwich_label_queue/ball_check_list_v2_disagree.json"}
+NAME = "nottinghamforest_disagree"
+ENTRY = {"label": "Arsenal v Nottingham Forest: tracker disagreement (blind)", "clips_dir": f"{D}/arsenal_nottinghamforest/split_video_broadcast_frames_kf10",
+         "marks_dir": f"{D}/ball_gt_marks_nottinghamforest_disagree", "ball_check_list": f"{D}/nottinghamforest_label_queue/ball_check_list_v2_disagree.json"}
 
 ap = argparse.ArgumentParser()
 ap.add_argument("--apply", action="store_true")
