@@ -1,0 +1,1804 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Tracking players, actions, and events in football matches.">
+      
+      
+      
+        <link rel="canonical" href="https://egroeg121.github.io/footy-track/experiments/temporal_pipeline_eval/">
+      
+      
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.6.20">
+    
+    
+      
+        <title>Temporal candidates through the trajectory solver: does 5-channel input help once a solver ranks? - Footy Scan</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.e53b48f4.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+    
+  </head>
+  
+  
+    <body dir="ltr">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#temporal-candidates-through-the-trajectory-solver-does-5-channel-input-help-once-a-solver-ranks" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="Footy Scan" class="md-header__button md-logo" aria-label="Footy Scan" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Footy Scan
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Temporal candidates through the trajectory solver: does 5-channel input help once a solver ranks?
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="Footy Scan" class="md-nav__button md-logo" aria-label="Footy Scan" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Footy Scan
+  </label>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Overview
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Architecture
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../pipeline-and-labels/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Pipeline and labels
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../data/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Data
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    Training
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            Training
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../training/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Training
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../training/notable_runs/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Notable Training Runs
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../inference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Inference
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../inference-web/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Inference web app
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../ball-tracking-eval/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Ball tracking evaluation
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../design/feature_store/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Feature store
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_10" >
+        
+          
+          <label class="md-nav__link" for="__nav_10" id="__nav_10_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    Design
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_10_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_10">
+            <span class="md-nav__icon md-icon"></span>
+            Design
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../design/pipeline_overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Pipeline Overview
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../design/player_reid/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Player Re-ID
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../design/tracking-pipeline/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Tracking Pipeline Design
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../design/claude_autolabel_loop/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Claude-assisted Ball Labelling
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../system_design/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    System Design
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../system_overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    System Overview
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../pipeline_architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Pipeline Architecture
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../timings/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Time Formats
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../data_formats/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Data Formats
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_11" >
+        
+          
+          <label class="md-nav__link" for="__nav_11" id="__nav_11_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    Development
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_11_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_11">
+            <span class="md-nav__icon md-icon"></span>
+            Development
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Getting Started
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../agent_guidelines/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Agent Guidelines
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../contributing-docs/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    How to contribute to the docs
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../todo/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    TODO
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#question-and-answer" class="md-nav__link">
+    <span class="md-ellipsis">
+      Question and answer
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#pipeline-and-checks" class="md-nav__link">
+    <span class="md-ellipsis">
+      Pipeline and checks
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#test-9-clips-harness-exclusions" class="md-nav__link">
+    <span class="md-ellipsis">
+      test (9 clips, harness exclusions)
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#arsenal_example-harness-clean-frames" class="md-nav__link">
+    <span class="md-ellipsis">
+      arsenal_example, harness-clean frames
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#arsenal_example-all-labelled-frames-not-harness-clean" class="md-nav__link">
+    <span class="md-ellipsis">
+      arsenal_example, all labelled frames (NOT harness-clean)
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#checks" class="md-nav__link">
+    <span class="md-ellipsis">
+      Checks
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#union-test-do-the-5ch-candidates-add-to-rt-detr-l" class="md-nav__link">
+    <span class="md-ellipsis">
+      Union test: do the 5ch candidates add to RT-DETR-L?
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Union test: do the 5ch candidates add to RT-DETR-L?">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#test-9-clips-harness-exclusions_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      test (9 clips, harness exclusions)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#arsenal_example-all-labelled-frames-not-harness-clean_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      arsenal_example, all labelled frames (NOT harness-clean)
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+
+<h1 id="temporal-candidates-through-the-trajectory-solver-does-5-channel-input-help-once-a-solver-ranks">Temporal candidates through the trajectory solver: does 5-channel input help once a solver ranks?<a class="headerlink" href="#temporal-candidates-through-the-trajectory-solver-does-5-channel-input-help-once-a-solver-ranks" title="Permanent link">&para;</a></h1>
+<p>Branch <code>exp/temporal-detector</code>. Code: <code>experiments/temporal_detector/{clip_infer,pipeline_eval}.py</code>, Prefect flow
+<code>temporal-clip-infer/temporal-clip-infer</code> (<code>~/code/jobs/footy_temporal_clips.py</code>). Harness: <code>exp/offline-ball-tracking</code> @ fc05732
+(<code>src/footy_track/ball_offline/</code>, imported read-only; its numbers are reproduced exactly below). Follows
+<code>temporal_detector_ablation.md</code> (v1: YOLO11s, 100 epochs, 2 seeds, arm A 3ch vs arm B 5ch).</p>
+<h2 id="question-and-answer">Question and answer<a class="headerlink" href="#question-and-answer" title="Permanent link">&para;</a></h2>
+<p>Does the 5-channel detector's candidate set help once a trajectory solver (the harness's B1: offline Viterbi + short gap fill,
+camera on) does the ranking?</p>
+<p><strong>Yes, modestly, and the gain survives the solver; but the YOLO11s detectors stay below the production RT-DETR-L unless their
+confidence is recalibrated, and then only match it on the test clips.</strong></p>
+<ul>
+<li><strong>9 harness test clips (170 clean GT balls: 110 seg010, 53 seg031, 7 single frames):</strong> B1(5ch) - B1(3ch) recall@10 = <strong>+0.047 [+0.012, +0.086]</strong>
+  with the harness calibration knots applied to the YOLO confidence ("raw"), <strong>+0.029 [+0.003, +0.059]</strong> with per-model isotonic maps
+  fitted on v11 train ("iso"); per seed +0.059 / +0.035 (raw), +0.041 / +0.018 (iso). The candidate ceiling is almost unchanged
+  (+0.009 [-0.020, +0.038]): on these clips the solver gets more out of the 5ch candidates, it does not get more candidates.
+  Precision is unchanged with raw knots (-0.003 [-0.018, +0.010]) and lower with iso (-0.046 [-0.078, -0.018]): the iso map is fitted on
+  train images the detector has memorised, so it trusts almost every candidate (equal-precision <code>min_conf</code> falls to 0.10) and lets
+  the solver emit more wrong points.</li>
+<li><strong><code>arsenal_example</code> (250 frames, a clip with no train frames, 176 labelled frames):</strong> B1(5ch) - B1(3ch) recall@10 = <strong>+0.071 [+0.034, +0.111]</strong>
+  (raw; A is nearly blind: 0.139) and <strong>+0.253 [+0.202, +0.304]</strong> (iso; A 0.196 -&gt; B 0.449), ceiling <strong>+0.216 [+0.168, +0.267]</strong>
+  (0.213 -&gt; 0.429). Per seed +0.062 / +0.080 (raw), +0.261 / +0.244 (iso). Here the gain is in the candidate set itself (the same
+  clip where v1 saw +0.21 in top-1 recall) and the solver keeps it. Precision is 0.88-1.0 for both.</li>
+<li><strong>Against production RT-DETR-L (harness machine labels):</strong> B1(5ch) - B1(RT-DETR) = -0.059 [-0.092, -0.029] on the test clips with raw
+  knots (YOLO confidences sit well below RT-DETR's, so the knots mark most YOLO candidates as unreliable and the solver's
+  <code>min_conf</code> 0.3 discards them), <strong>+0.024 [-0.003, +0.053] with iso (0.782 vs 0.759) at -0.038 precision</strong>, and on <code>arsenal_example</code>
+  -0.330 raw / -0.091 [-0.145, -0.040] iso (RT-DETR 0.540, B iso 0.449). The ceiling (any candidate &gt;= 0.1 within 10 px) stays lower for
+  the YOLO arms (test 0.756 vs 0.829; arsenal_example 0.429 vs 0.631): a 5ch YOLO11s still misses balls that RT-DETR-L proposes.
+  So the temporal input narrows but does not close the gap to the production detector; the RT-DETR-L is the stronger base.</li>
+<li><strong>Exclusions.</strong> Test numbers use the harness exclusions exactly (frames within 5 of a v11 train/valid image dropped; 170 GT balls +
+  2 <code>no_ball</code> frames). <code>arsenal_example</code> is <em>not</em> a harness clip (no machine labels): applying the harness rule, 167 of its 176 labelled
+  frames lie within 5 frames of a v11 <em>valid</em> image, leaving 9 clean frames (a "dev" clip). The harness-clean table has n = 9 and
+  says nothing; the "all labelled frames" table is a <strong>deviation</strong>, defensible because the YOLO arms were neither trained on this clip
+  (0 train frames) nor selected on val (<code>last.pt</code>); RT-DETR, selected on valid, is if anything flattered there.</li>
+<li>Caveats: frames in a clip are strongly correlated and the bootstrap resamples frames (the test set is 65% one clip, seg010), so the CIs
+  are optimistic; one model size, two seeds; isotonic maps from train are over-trusting (see above); the solver parameters were tuned on
+  RT-DETR confidences and are used unchanged (B0 tau 0.4, B1 camera-on set), only <code>min_conf</code> and the B0 threshold are moved to the
+  equal-precision confidence in the iso variant.</li>
+</ul>
+<h2 id="pipeline-and-checks">Pipeline and checks<a class="headerlink" href="#pipeline-and-checks" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Decoding: ffmpeg CLI <code>-fps_mode passthrough</code> (no cv2 decoding), one sequential pass per clip, 5-frame window. All 10 clips are
+  25 fps, 1920x1080; frame counts equal the harness' (<code>ffprobe</code> packets = machine-label manifest frames). <strong>Frame indices verified
+  three ways:</strong> (1) for 37 dataset images of these clips the ffmpeg frame t equals the dataset TIFF BGR(t) exactly (mean abs diff 0.0; t+-1
+  gives 3-20), so the indices equal the dataset/GT index space; (2) RT-DETR rerun by this pipeline equals the harness' machine labels:
+  the top-1 candidate of every frame with conf &gt;= 0.3 has the same position (within 3 px) and confidence (within 0.05) in 549/549,
+  609/610, 311/312, 2293/2294, 212/212, 2126/2132, 426/426, 680/680 and 347/348 frames (seg010 ... seg140); (3) the harness' B1 / B0 on its
+  own machine labels are reproduced to the count (129/170 TP, precision 0.985 and 126/170, 0.947).</li>
+<li>5ch input built on the fly like the dataset builder: LK + RANSAC alignment of t-2 and t+2 into t (<code>calibration/temporal</code>, person
+  boxes masked: RT-DETR boxes conf &gt;= 0.3 of the same frame), cut (consecutive-frame histogram distance &gt; 0.2), clip edge and alignment
+  failure -&gt; gray(t). Neighbour slots over the 9 test clips + arsenal_example: at most 8 cut/edge slots per clip, 44 alignment
+  failures (seg115: 42).</li>
+<li>Candidates: ball class, conf &gt;= 0.1, 1280, boxes in the 1920x1080 frame; camera shift / shot cuts for the solver come from the harness' own
+  estimate (player boxes of the RT-DETR rows; for <code>arsenal_example</code> from the rerun's player boxes), identical for every detector.</li>
+<li>Isotonic maps: PAV on candidate-level correctness (within 10 px of a labelled ball) of the four YOLO runs on the 1,034 v11 train images
+  (not val/test/heldout), one map per run.</li>
+<li>GPU: 8,851 frames (10 clips) at about 0.2-0.3 s/frame with RT-DETR + 4 YOLO models + 2 LK alignments per frame, plus 4 x 1,034
+  train images; one flow run (about 40 min); the flow refuses to start with less than 2 GB of free GPU memory.</li>
+</ul>
+<h2 id="test-9-clips-harness-exclusions">test (9 clips, harness exclusions)<a class="headerlink" href="#test-9-clips-harness-exclusions" title="Permanent link">&para;</a></h2>
+<p>172 scored frames; n_gt = 170. recall@10 = emitted point within 10 px of GT (denominator: GT ball frames); precision = TP / (TP + FP) over scored frames (FP = emitted point &gt; 10 px away, or emitted on a <code>no_ball</code> frame); ceiling = any candidate with conf &gt;= 0.1 within 10 px (candidate-set recall, identical for B0 and B1).</p>
+<table>
+<thead>
+<tr>
+<th>detector</th>
+<th>calibration</th>
+<th>B0 recall / prec</th>
+<th>B1 recall / prec</th>
+<th>ceiling</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>RT-DETR-L production (frame t)</td>
+<td>raw</td>
+<td>0.741 / 0.947</td>
+<td>0.759 / 0.985</td>
+<td>0.829</td>
+</tr>
+<tr>
+<td>RT-DETR-L rerun by this pipeline</td>
+<td>raw</td>
+<td>0.741 / 0.947</td>
+<td>0.759 / 0.985</td>
+<td>0.829</td>
+</tr>
+<tr>
+<td>A 3ch A_s0</td>
+<td>raw</td>
+<td>0.647 / 1.000</td>
+<td>0.647 / 0.965</td>
+<td>0.741</td>
+</tr>
+<tr>
+<td>A 3ch A_s0</td>
+<td>iso</td>
+<td>0.735 / 0.962</td>
+<td>0.735 / 0.992</td>
+<td>0.741</td>
+</tr>
+<tr>
+<td>A 3ch A_s1</td>
+<td>raw</td>
+<td>0.653 / 0.991</td>
+<td>0.659 / 1.000</td>
+<td>0.753</td>
+</tr>
+<tr>
+<td>A 3ch A_s1</td>
+<td>iso</td>
+<td>0.712 / 0.992</td>
+<td>0.771 / 0.992</td>
+<td>0.753</td>
+</tr>
+<tr>
+<td>A 3ch mean of seeds</td>
+<td>raw</td>
+<td>0.650 / 0.996</td>
+<td>0.653 / 0.982</td>
+<td>0.747</td>
+</tr>
+<tr>
+<td>A 3ch mean of seeds</td>
+<td>iso</td>
+<td>0.724 / 0.977</td>
+<td>0.753 / 0.992</td>
+<td>0.747</td>
+</tr>
+<tr>
+<td>B 5ch B_s0</td>
+<td>raw</td>
+<td>0.682 / 0.991</td>
+<td>0.706 / 0.960</td>
+<td>0.765</td>
+</tr>
+<tr>
+<td>B 5ch B_s0</td>
+<td>iso</td>
+<td>0.759 / 0.935</td>
+<td>0.776 / 0.936</td>
+<td>0.765</td>
+</tr>
+<tr>
+<td>B 5ch B_s1</td>
+<td>raw</td>
+<td>0.700 / 1.000</td>
+<td>0.694 / 1.000</td>
+<td>0.747</td>
+</tr>
+<tr>
+<td>B 5ch B_s1</td>
+<td>iso</td>
+<td>0.747 / 1.000</td>
+<td>0.788 / 0.957</td>
+<td>0.747</td>
+</tr>
+<tr>
+<td>B 5ch mean of seeds</td>
+<td>raw</td>
+<td>0.691 / 0.996</td>
+<td>0.700 / 0.980</td>
+<td>0.756</td>
+</tr>
+<tr>
+<td>B 5ch mean of seeds</td>
+<td>iso</td>
+<td>0.753 / 0.967</td>
+<td>0.782 / 0.947</td>
+<td>0.756</td>
+</tr>
+</tbody>
+</table>
+<p>Paired bootstrap (10,000 resamples of scored frames; seed-mean per-frame outcomes for the arms), B1 camera on:</p>
+<table>
+<thead>
+<tr>
+<th>comparison</th>
+<th>calibration</th>
+<th>recall@10 diff [95% CI]</th>
+<th>precision diff [95% CI]</th>
+<th>ceiling diff [95% CI]</th>
+<th>per-seed recall diff</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>B1(5ch) - B1(3ch)</td>
+<td>raw</td>
+<td>+0.047 [+0.012, +0.086]</td>
+<td>-0.003 [-0.018, +0.010]</td>
+<td>+0.009 [-0.020, +0.038]</td>
+<td>s0: +0.059, s1: +0.035</td>
+</tr>
+<tr>
+<td>B1(5ch) - B1(3ch)</td>
+<td>iso</td>
+<td>+0.029 [+0.003, +0.059]</td>
+<td>-0.046 [-0.078, -0.018]</td>
+<td>+0.009 [-0.020, +0.038]</td>
+<td>s0: +0.041, s1: +0.018</td>
+</tr>
+<tr>
+<td>B1(5ch) - B1(RT-DETR)</td>
+<td>raw</td>
+<td>-0.059 [-0.092, -0.029]</td>
+<td>-0.005 [-0.028, +0.018]</td>
+<td>-0.074 [-0.115, -0.035]</td>
+<td></td>
+</tr>
+<tr>
+<td>B1(5ch) - B1(RT-DETR)</td>
+<td>iso</td>
+<td>+0.024 [-0.003, +0.053]</td>
+<td>-0.038 [-0.070, -0.007]</td>
+<td>-0.074 [-0.115, -0.038]</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h2 id="arsenal_example-harness-clean-frames">arsenal_example, harness-clean frames<a class="headerlink" href="#arsenal_example-harness-clean-frames" title="Permanent link">&para;</a></h2>
+<p>9 scored frames; n_gt = 9. recall@10 = emitted point within 10 px of GT (denominator: GT ball frames); precision = TP / (TP + FP) over scored frames (FP = emitted point &gt; 10 px away, or emitted on a <code>no_ball</code> frame); ceiling = any candidate with conf &gt;= 0.1 within 10 px (candidate-set recall, identical for B0 and B1).</p>
+<table>
+<thead>
+<tr>
+<th>detector</th>
+<th>calibration</th>
+<th>B0 recall / prec</th>
+<th>B1 recall / prec</th>
+<th>ceiling</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>RT-DETR-L production (frame t)</td>
+<td>raw</td>
+<td>0.111 / 0.200</td>
+<td>0.111 / 0.250</td>
+<td>0.111</td>
+</tr>
+<tr>
+<td>RT-DETR-L rerun by this pipeline</td>
+<td>raw</td>
+<td>0.111 / 0.200</td>
+<td>0.111 / 0.250</td>
+<td>0.111</td>
+</tr>
+<tr>
+<td>A 3ch A_s0</td>
+<td>raw</td>
+<td>0.000 / n/a</td>
+<td>0.000 / n/a</td>
+<td>0.111</td>
+</tr>
+<tr>
+<td>A 3ch A_s0</td>
+<td>iso</td>
+<td>0.111 / 0.500</td>
+<td>0.111 / 1.000</td>
+<td>0.111</td>
+</tr>
+<tr>
+<td>A 3ch A_s1</td>
+<td>raw</td>
+<td>0.000 / n/a</td>
+<td>0.000 / n/a</td>
+<td>0.000</td>
+</tr>
+<tr>
+<td>A 3ch A_s1</td>
+<td>iso</td>
+<td>0.000 / n/a</td>
+<td>0.000 / n/a</td>
+<td>0.000</td>
+</tr>
+<tr>
+<td>A 3ch mean of seeds</td>
+<td>raw</td>
+<td>0.000 / n/a</td>
+<td>0.000 / n/a</td>
+<td>0.056</td>
+</tr>
+<tr>
+<td>A 3ch mean of seeds</td>
+<td>iso</td>
+<td>0.056 / n/a</td>
+<td>0.056 / n/a</td>
+<td>0.056</td>
+</tr>
+<tr>
+<td>B 5ch B_s0</td>
+<td>raw</td>
+<td>0.111 / 1.000</td>
+<td>0.111 / 1.000</td>
+<td>0.111</td>
+</tr>
+<tr>
+<td>B 5ch B_s0</td>
+<td>iso</td>
+<td>0.111 / 1.000</td>
+<td>0.111 / 1.000</td>
+<td>0.111</td>
+</tr>
+<tr>
+<td>B 5ch B_s1</td>
+<td>raw</td>
+<td>0.111 / 1.000</td>
+<td>0.111 / 1.000</td>
+<td>0.111</td>
+</tr>
+<tr>
+<td>B 5ch B_s1</td>
+<td>iso</td>
+<td>0.111 / 0.500</td>
+<td>0.111 / 0.500</td>
+<td>0.111</td>
+</tr>
+<tr>
+<td>B 5ch mean of seeds</td>
+<td>raw</td>
+<td>0.111 / 1.000</td>
+<td>0.111 / 1.000</td>
+<td>0.111</td>
+</tr>
+<tr>
+<td>B 5ch mean of seeds</td>
+<td>iso</td>
+<td>0.111 / 0.750</td>
+<td>0.111 / 0.750</td>
+<td>0.111</td>
+</tr>
+</tbody>
+</table>
+<p>Paired bootstrap (10,000 resamples of scored frames; seed-mean per-frame outcomes for the arms), B1 camera on:</p>
+<table>
+<thead>
+<tr>
+<th>comparison</th>
+<th>calibration</th>
+<th>recall@10 diff [95% CI]</th>
+<th>precision diff [95% CI]</th>
+<th>ceiling diff [95% CI]</th>
+<th>per-seed recall diff</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>B1(5ch) - B1(3ch)</td>
+<td>raw</td>
+<td>+0.111 [+0.000, +0.333]</td>
+<td>+nan [+nan, +nan]</td>
+<td>+0.056 [+0.000, +0.167]</td>
+<td>s0: +0.111, s1: +0.111</td>
+</tr>
+<tr>
+<td>B1(5ch) - B1(3ch)</td>
+<td>iso</td>
+<td>+0.056 [+0.000, +0.167]</td>
+<td>-0.333 [-0.600, +0.000]</td>
+<td>+0.056 [+0.000, +0.167]</td>
+<td>s0: +0.000, s1: +0.111</td>
+</tr>
+<tr>
+<td>B1(5ch) - B1(RT-DETR)</td>
+<td>raw</td>
+<td>+0.000 [+0.000, +0.000]</td>
+<td>+0.750 [+0.000, +0.833]</td>
+<td>+0.000 [+0.000, +0.000]</td>
+<td></td>
+</tr>
+<tr>
+<td>B1(5ch) - B1(RT-DETR)</td>
+<td>iso</td>
+<td>+0.000 [+0.000, +0.000]</td>
+<td>+0.417 [+0.000, +0.800]</td>
+<td>+0.000 [+0.000, +0.000]</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h2 id="arsenal_example-all-labelled-frames-not-harness-clean">arsenal_example, all labelled frames (NOT harness-clean)<a class="headerlink" href="#arsenal_example-all-labelled-frames-not-harness-clean" title="Permanent link">&para;</a></h2>
+<p>176 scored frames; n_gt = 176. recall@10 = emitted point within 10 px of GT (denominator: GT ball frames); precision = TP / (TP + FP) over scored frames (FP = emitted point &gt; 10 px away, or emitted on a <code>no_ball</code> frame); ceiling = any candidate with conf &gt;= 0.1 within 10 px (candidate-set recall, identical for B0 and B1).</p>
+<table>
+<thead>
+<tr>
+<th>detector</th>
+<th>calibration</th>
+<th>B0 recall / prec</th>
+<th>B1 recall / prec</th>
+<th>ceiling</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>RT-DETR-L production (frame t)</td>
+<td>raw</td>
+<td>0.540 / 0.856</td>
+<td>0.540 / 0.913</td>
+<td>0.631</td>
+</tr>
+<tr>
+<td>RT-DETR-L rerun by this pipeline</td>
+<td>raw</td>
+<td>0.540 / 0.856</td>
+<td>0.540 / 0.913</td>
+<td>0.631</td>
+</tr>
+<tr>
+<td>A 3ch A_s0</td>
+<td>raw</td>
+<td>0.142 / 1.000</td>
+<td>0.153 / 1.000</td>
+<td>0.301</td>
+</tr>
+<tr>
+<td>A 3ch A_s0</td>
+<td>iso</td>
+<td>0.295 / 0.929</td>
+<td>0.267 / 1.000</td>
+<td>0.301</td>
+</tr>
+<tr>
+<td>A 3ch A_s1</td>
+<td>raw</td>
+<td>0.119 / 1.000</td>
+<td>0.125 / 1.000</td>
+<td>0.125</td>
+</tr>
+<tr>
+<td>A 3ch A_s1</td>
+<td>iso</td>
+<td>0.125 / 0.815</td>
+<td>0.125 / 0.759</td>
+<td>0.125</td>
+</tr>
+<tr>
+<td>A 3ch mean of seeds</td>
+<td>raw</td>
+<td>0.131 / 1.000</td>
+<td>0.139 / 1.000</td>
+<td>0.213</td>
+</tr>
+<tr>
+<td>A 3ch mean of seeds</td>
+<td>iso</td>
+<td>0.210 / 0.872</td>
+<td>0.196 / 0.879</td>
+<td>0.213</td>
+</tr>
+<tr>
+<td>B 5ch B_s0</td>
+<td>raw</td>
+<td>0.216 / 1.000</td>
+<td>0.216 / 1.000</td>
+<td>0.477</td>
+</tr>
+<tr>
+<td>B 5ch B_s0</td>
+<td>iso</td>
+<td>0.472 / 0.965</td>
+<td>0.528 / 1.000</td>
+<td>0.477</td>
+</tr>
+<tr>
+<td>B 5ch B_s1</td>
+<td>raw</td>
+<td>0.216 / 0.974</td>
+<td>0.205 / 1.000</td>
+<td>0.381</td>
+</tr>
+<tr>
+<td>B 5ch B_s1</td>
+<td>iso</td>
+<td>0.369 / 0.929</td>
+<td>0.369 / 0.890</td>
+<td>0.381</td>
+</tr>
+<tr>
+<td>B 5ch mean of seeds</td>
+<td>raw</td>
+<td>0.216 / 0.987</td>
+<td>0.210 / 1.000</td>
+<td>0.429</td>
+</tr>
+<tr>
+<td>B 5ch mean of seeds</td>
+<td>iso</td>
+<td>0.420 / 0.947</td>
+<td>0.449 / 0.945</td>
+<td>0.429</td>
+</tr>
+</tbody>
+</table>
+<p>Paired bootstrap (10,000 resamples of scored frames; seed-mean per-frame outcomes for the arms), B1 camera on:</p>
+<table>
+<thead>
+<tr>
+<th>comparison</th>
+<th>calibration</th>
+<th>recall@10 diff [95% CI]</th>
+<th>precision diff [95% CI]</th>
+<th>ceiling diff [95% CI]</th>
+<th>per-seed recall diff</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>B1(5ch) - B1(3ch)</td>
+<td>raw</td>
+<td>+0.071 [+0.034, +0.111]</td>
+<td>+0.000 [+0.000, +0.000]</td>
+<td>+0.216 [+0.168, +0.267]</td>
+<td>s0: +0.062, s1: +0.080</td>
+</tr>
+<tr>
+<td>B1(5ch) - B1(3ch)</td>
+<td>iso</td>
+<td>+0.253 [+0.202, +0.304]</td>
+<td>+0.044 [-0.024, +0.123]</td>
+<td>+0.216 [+0.168, +0.264]</td>
+<td>s0: +0.261, s1: +0.244</td>
+</tr>
+<tr>
+<td>B1(5ch) - B1(RT-DETR)</td>
+<td>raw</td>
+<td>-0.330 [-0.398, -0.264]</td>
+<td>+0.087 [+0.038, +0.146]</td>
+<td>-0.202 [-0.259, -0.148]</td>
+<td></td>
+</tr>
+<tr>
+<td>B1(5ch) - B1(RT-DETR)</td>
+<td>iso</td>
+<td>-0.091 [-0.145, -0.040]</td>
+<td>+0.038 [-0.019, +0.099]</td>
+<td>-0.202 [-0.259, -0.148]</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h2 id="checks">Checks<a class="headerlink" href="#checks" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Harness reproduction on the 9 test clips (RT-DETR machine labels, camera-on B1): recall 0.759 (129 TP of 170), precision 0.985; B0 tau 0.4 recall 0.741, precision 0.947 (harness doc: 0.759 / 0.985 and 0.741 / 0.947).</li>
+<li>RT-DETR rerun by this pipeline vs the harness's machine labels (top-1 per frame with conf &gt;= 0.3, same position within 3 px and conf within 0.05): seg010 549/549; seg011 609/610; seg031 311/312; seg094 2293/2294; seg101 212/212; seg115 2126/2132; seg134 426/426; seg135 680/680; seg140 347/348.</li>
+<li>Neighbour status per clip (frames, [prev, next] slots): seg010 ok:1182/edge:4/cut:4; seg011 ok:1510/edge:4/cut:4/align_fail:2; seg031 ok:742/edge:4/cut:4; seg094 ok:5032/edge:4/cut:4; seg101 ok:432/edge:4/cut:4; seg115 ok:4594/edge:4/align_fail:42; seg134 ok:866/edge:4; seg135 ok:1462/edge:4/cut:4; seg140 ok:702/edge:4/cut:4; arsenal_example ok:496/edge:4.</li>
+<li>Isotonic maps (fitted on v11 train candidates within 10 px of a labelled ball): A_s0: 1009/1102 correct, min_conf 0.10, B0 tau 0.10; A_s1: 1002/1072 correct, min_conf 0.11, B0 tau 0.14; B_s0: 992/1034 correct, min_conf 0.10, B0 tau 0.10; B_s1: 999/1054 correct, min_conf 0.10, B0 tau 0.16.</li>
+</ul>
+<p>Solver parameters (harness <code>camera_on</code>): <code>{"min_conf": 0.3, "bias": 1.0, "emit_scale": 1.0, "kappa": 1.5, "lam_pos": 0.5, "lam_vel": 0.0, "vmax": 40.0, "r0": 12.0, "dmax": 2.0, "mu": 0.02, "static_px": 3.0, "max_gap": 25, "camera": true, "fill_gap": 10, "fill_min_p": 0.8, "fill_mode": "kalman"}</code>, B0 tau 0.4.</p>
+<h2 id="union-test-do-the-5ch-candidates-add-to-rt-detr-l">Union test: do the 5ch candidates add to RT-DETR-L?<a class="headerlink" href="#union-test-do-the-5ch-candidates-add-to-rt-detr-l" title="Permanent link">&para;</a></h2>
+<p>Per frame the candidates of RT-DETR-L (harness knots -&gt; p) and of a 5ch YOLO arm (isotonic map fitted on v11 <em>valid</em> without arsenal_example -&gt; p) are merged: cross-source duplicates within 6 px collapse to one candidate (higher-p position, p = max), optionally with a +0.5 logit bonus when both agree. The merged p is fed to the harness' B0 (tau 0.4) / B1 (camera-on parameters) unchanged, through the inverse of the harness knots (RT-DETR alone is reproduced exactly). Ceiling of a union row = any candidate of either source (conf &gt;= 0.1) within 10 px. 5ch YOLO = arm B of v1, seeds 0 and 1 reported separately.</p>
+<p>Val isotonic maps (n small: B_s0: 44 candidates (40 correct) from 53 images, 4 knots, p in [0.50, 1.00]; B_s1: 43 candidates (37 correct) from 53 images, 5 knots, p in [0.00, 1.00]).</p>
+<h3 id="test-9-clips-harness-exclusions_1">test (9 clips, harness exclusions)<a class="headerlink" href="#test-9-clips-harness-exclusions_1" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>candidate set</th>
+<th>B0 recall / prec</th>
+<th>B1 recall / prec</th>
+<th>ceiling</th>
+<th>B1 emitted on no_ball frames</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>RT-DETR alone</td>
+<td>0.741 / 0.947</td>
+<td>0.759 / 0.985</td>
+<td>0.829</td>
+<td>0 / 2 (B0: 0)</td>
+</tr>
+<tr>
+<td>5ch B_s0 alone (val-iso p)</td>
+<td>0.759 / 0.935</td>
+<td>0.771 / 0.942</td>
+<td>0.765</td>
+<td>0 / 2 (B0: 0)</td>
+</tr>
+<tr>
+<td>union RT + B_s0</td>
+<td>0.776 / 0.917</td>
+<td>0.788 / 0.950</td>
+<td>0.841</td>
+<td>0 / 2 (B0: 0)</td>
+</tr>
+<tr>
+<td>union RT + B_s0, agreement bonus</td>
+<td>0.776 / 0.917</td>
+<td>0.788 / 0.944</td>
+<td>0.841</td>
+<td>0 / 2 (B0: 0)</td>
+</tr>
+<tr>
+<td>5ch B_s1 alone (val-iso p)</td>
+<td>0.747 / 1.000</td>
+<td>0.788 / 0.957</td>
+<td>0.747</td>
+<td>0 / 2 (B0: 0)</td>
+</tr>
+<tr>
+<td>union RT + B_s1</td>
+<td>0.771 / 0.956</td>
+<td>0.800 / 0.986</td>
+<td>0.835</td>
+<td>0 / 2 (B0: 0)</td>
+</tr>
+<tr>
+<td>union RT + B_s1, agreement bonus</td>
+<td>0.771 / 0.956</td>
+<td>0.800 / 0.986</td>
+<td>0.835</td>
+<td>0 / 2 (B0: 0)</td>
+</tr>
+</tbody>
+</table>
+<p>Paired bootstrap vs RT-DETR alone, B1 (95% CI over frames; over clips in brackets, test only): </p>
+<table>
+<thead>
+<tr>
+<th>candidate set</th>
+<th>recall@10 diff</th>
+<th>precision diff</th>
+<th>ceiling diff</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>5ch B_s0 alone (val-iso p)</td>
+<td>+0.012 [-0.018, 0.047] (-0.027, 0.091)</td>
+<td>-0.042 [-0.083, -0.007] (-0.089, 0.000)</td>
+<td>-0.065 [-0.111, -0.024] (-0.098, 0.000)</td>
+</tr>
+<tr>
+<td>union RT + B_s0</td>
+<td>+0.029 [0.006, 0.058] (0.000, 0.091)</td>
+<td>-0.034 [-0.068, -0.007] (-0.109, 0.000)</td>
+<td>+0.012 [0.000, 0.030] (0.000, 0.036)</td>
+</tr>
+<tr>
+<td>union RT + B_s0, agreement bonus</td>
+<td>+0.029 [0.006, 0.058] (0.000, 0.091)</td>
+<td>-0.041 [-0.077, -0.013] (-0.129, 0.000)</td>
+<td>+0.012 [0.000, 0.030] (0.000, 0.036)</td>
+</tr>
+<tr>
+<td>5ch B_s1 alone (val-iso p)</td>
+<td>+0.029 [-0.006, 0.065] (0.000, 0.073)</td>
+<td>-0.028 [-0.063, 0.002] (-0.039, 0.003)</td>
+<td>-0.082 [-0.129, -0.041] (-0.089, 0.000)</td>
+</tr>
+<tr>
+<td>union RT + B_s1</td>
+<td>+0.041 [0.012, 0.071] (0.000, 0.071)</td>
+<td>+0.001 [0.000, 0.002] (0.000, 0.003)</td>
+<td>+0.006 [0.000, 0.018] (0.000, 0.009)</td>
+</tr>
+<tr>
+<td>union RT + B_s1, agreement bonus</td>
+<td>+0.041 [0.012, 0.072] (0.000, 0.073)</td>
+<td>+0.001 [0.000, 0.002] (0.000, 0.003)</td>
+<td>+0.006 [0.000, 0.018] (0.000, 0.009)</td>
+</tr>
+</tbody>
+</table>
+<h3 id="arsenal_example-all-labelled-frames-not-harness-clean_1">arsenal_example, all labelled frames (NOT harness-clean)<a class="headerlink" href="#arsenal_example-all-labelled-frames-not-harness-clean_1" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>candidate set</th>
+<th>B0 recall / prec</th>
+<th>B1 recall / prec</th>
+<th>ceiling</th>
+<th>B1 emitted on no_ball frames</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>RT-DETR alone</td>
+<td>0.540 / 0.856</td>
+<td>0.540 / 0.913</td>
+<td>0.631</td>
+<td>0 / 0 (B0: 0)</td>
+</tr>
+<tr>
+<td>5ch B_s0 alone (val-iso p)</td>
+<td>0.472 / 0.965</td>
+<td>0.511 / 1.000</td>
+<td>0.477</td>
+<td>0 / 0 (B0: 0)</td>
+</tr>
+<tr>
+<td>union RT + B_s0</td>
+<td>0.557 / 0.852</td>
+<td>0.602 / 0.922</td>
+<td>0.636</td>
+<td>0 / 0 (B0: 0)</td>
+</tr>
+<tr>
+<td>union RT + B_s0, agreement bonus</td>
+<td>0.557 / 0.852</td>
+<td>0.602 / 0.922</td>
+<td>0.636</td>
+<td>0 / 0 (B0: 0)</td>
+</tr>
+<tr>
+<td>5ch B_s1 alone (val-iso p)</td>
+<td>0.369 / 0.915</td>
+<td>0.381 / 0.798</td>
+<td>0.381</td>
+<td>0 / 0 (B0: 0)</td>
+</tr>
+<tr>
+<td>union RT + B_s1</td>
+<td>0.557 / 0.838</td>
+<td>0.562 / 0.884</td>
+<td>0.642</td>
+<td>0 / 0 (B0: 0)</td>
+</tr>
+<tr>
+<td>union RT + B_s1, agreement bonus</td>
+<td>0.557 / 0.838</td>
+<td>0.562 / 0.892</td>
+<td>0.642</td>
+<td>0 / 0 (B0: 0)</td>
+</tr>
+</tbody>
+</table>
+<p>Paired bootstrap vs RT-DETR alone, B1 (95% CI over frames; over clips in brackets, test only): </p>
+<table>
+<thead>
+<tr>
+<th>candidate set</th>
+<th>recall@10 diff</th>
+<th>precision diff</th>
+<th>ceiling diff</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>5ch B_s0 alone (val-iso p)</td>
+<td>-0.028 [-0.085, 0.028]</td>
+<td>+0.087 [0.037, 0.145]</td>
+<td>-0.153 [-0.210, -0.102]</td>
+</tr>
+<tr>
+<td>union RT + B_s0</td>
+<td>+0.062 [0.028, 0.102]</td>
+<td>+0.008 [-0.017, 0.035]</td>
+<td>+0.006 [0.000, 0.017]</td>
+</tr>
+<tr>
+<td>union RT + B_s0, agreement bonus</td>
+<td>+0.062 [0.028, 0.102]</td>
+<td>+0.008 [-0.016, 0.035]</td>
+<td>+0.006 [0.000, 0.017]</td>
+</tr>
+<tr>
+<td>5ch B_s1 alone (val-iso p)</td>
+<td>-0.159 [-0.222, -0.097]</td>
+<td>-0.116 [-0.212, -0.024]</td>
+<td>-0.250 [-0.318, -0.182]</td>
+</tr>
+<tr>
+<td>union RT + B_s1</td>
+<td>+0.023 [0.006, 0.045]</td>
+<td>-0.030 [-0.078, 0.013]</td>
+<td>+0.011 [0.000, 0.028]</td>
+</tr>
+<tr>
+<td>union RT + B_s1, agreement bonus</td>
+<td>+0.023 [0.000, 0.051]</td>
+<td>-0.022 [-0.073, 0.028]</td>
+<td>+0.011 [0.000, 0.028]</td>
+</tr>
+</tbody>
+</table>
+<p>Reading: the 5ch candidates add to, rather than replace, the production detector, but modestly. The ceiling rises only a little (test +0.012 / +0.006 for seeds 0 / 1, arsenal_example +0.006 / +0.011) because most 5ch candidates duplicate RT-DETR's (about 6.5k agreeing candidates against about 1k YOLO-only on the test clips). B1 recall rises +0.029 / +0.041 on the test clips (frame CI excludes 0; the clip-level CI touches 0 because 7 of the 9 clips have a single GT frame and seg010 carries 65% of the frames) and +0.062 / +0.023 on arsenal_example; precision is -0.034 (seed 0) / +0.001 (seed 1) on test, so seed 0 also adds some wrong candidates. The agreement bonus changes almost nothing. On the 2 harness no_ball frames of the test clips no configuration emits a point (n = 2: uninformative). The val isotonic maps rest on 43-44 candidates (4-5 knots): too small to trust, so the union numbers are indicative; they do show that the gain over RT-DETR alone does not depend on a well-calibrated YOLO map.</p>
+<p>Merged candidate counts (all frames): test (9 clips, harness exclusions)|B_s0: agree 6575, RT-DETR only 24658, YOLO only 975; test (9 clips, harness exclusions)|B_s1: agree 6561, RT-DETR only 24672, YOLO only 1209; arsenal_example, all labelled frames (NOT harness-clean)|B_s0: agree 127, RT-DETR only 915, YOLO only 41; arsenal_example, all labelled frames (NOT harness-clean)|B_s1: agree 115, RT-DETR only 927, YOLO only 54.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      <script id="__config" type="application/json">{"base": "../..", "features": [], "search": "../../assets/javascripts/workers/search.973d3a69.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.f55a23d4.min.js"></script>
+      
+    
+  </body>
+</html>

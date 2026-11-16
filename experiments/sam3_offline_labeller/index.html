@@ -1,0 +1,1897 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Tracking players, actions, and events in football matches.">
+      
+      
+      
+        <link rel="canonical" href="https://egroeg121.github.io/footy-track/experiments/sam3_offline_labeller/">
+      
+      
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.6.20">
+    
+    
+      
+        <title>SAM 3 / SAM 3.1 as a slow, offline, background ball labeller - Footy Scan</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.e53b48f4.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+    
+  </head>
+  
+  
+    <body dir="ltr">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#sam-3-sam-31-as-a-slow-offline-background-ball-labeller" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="Footy Scan" class="md-header__button md-logo" aria-label="Footy Scan" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Footy Scan
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              SAM 3 / SAM 3.1 as a slow, offline, background ball labeller
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="Footy Scan" class="md-nav__button md-logo" aria-label="Footy Scan" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Footy Scan
+  </label>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Overview
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Architecture
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../pipeline-and-labels/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Pipeline and labels
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../data/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Data
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    Training
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            Training
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../training/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Training
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../training/notable_runs/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Notable Training Runs
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../inference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Inference
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../inference-web/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Inference web app
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../ball-tracking-eval/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Ball tracking evaluation
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../design/feature_store/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Feature store
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_10" >
+        
+          
+          <label class="md-nav__link" for="__nav_10" id="__nav_10_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    Design
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_10_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_10">
+            <span class="md-nav__icon md-icon"></span>
+            Design
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../design/pipeline_overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Pipeline Overview
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../design/player_reid/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Player Re-ID
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../design/tracking-pipeline/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Tracking Pipeline Design
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../design/claude_autolabel_loop/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Claude-assisted Ball Labelling
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../system_design/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    System Design
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../system_overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    System Overview
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../pipeline_architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Pipeline Architecture
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../timings/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Time Formats
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../data_formats/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Data Formats
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_11" >
+        
+          
+          <label class="md-nav__link" for="__nav_11" id="__nav_11_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    Development
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_11_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_11">
+            <span class="md-nav__icon md-icon"></span>
+            Development
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Getting Started
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../agent_guidelines/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Agent Guidelines
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../contributing-docs/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    How to contribute to the docs
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../todo/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    TODO
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#answers-in-brief" class="md-nav__link">
+    <span class="md-ellipsis">
+      Answers in brief
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#main-table-sam21-small-crop512-vs-sam-3-vs-sam-31-best-settings-box-seed-crop-512-fp16" class="md-nav__link">
+    <span class="md-ellipsis">
+      Main table: SAM2.1-small crop512 vs SAM 3 vs SAM 3.1 (best settings: box seed, crop 512, fp16)
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#setup-desktop-rtx-2070-8-gb" class="md-nav__link">
+    <span class="md-ellipsis">
+      Setup (desktop, RTX 2070 8 GB)
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#data-seeds-metrics" class="md-nav__link">
+    <span class="md-ellipsis">
+      Data, seeds, metrics
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dev-sweep-prompts-crops-sam-3-vs-sam-31-3-dev-clips-2-oracle-seeds-each-120-frames-each-way-488-samples-fp16" class="md-nav__link">
+    <span class="md-ellipsis">
+      Dev sweep: prompts, crops, SAM 3 vs SAM 3.1 (3 dev clips, 2 oracle seeds each, 120 frames each way, 488 samples, fp16)
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#realistic-seeds-rt-detr-conf-08-held-out-clips-reach-250" class="md-nav__link">
+    <span class="md-ellipsis">
+      Realistic seeds (RT-DETR conf &gt;= 0.8), held-out clips, reach 250
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#gating" class="md-nav__link">
+    <span class="md-ellipsis">
+      Gating
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#recovering-lost-tracks" class="md-nav__link">
+    <span class="md-ellipsis">
+      Recovering lost tracks
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#text-prompt-seed-finder-hit-rate-vs-rt-detr-on-held-out-frames" class="md-nav__link">
+    <span class="md-ellipsis">
+      Text-prompt seed finder (hit rate vs RT-DETR on held-out frames)
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#throughput-and-cost-rtx-2070-fp16-one-process" class="md-nav__link">
+    <span class="md-ellipsis">
+      Throughput and cost (RTX 2070, fp16, one process)
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#production-shape-built-and-demoed" class="md-nav__link">
+    <span class="md-ellipsis">
+      Production shape (built and demoed)
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Production shape (built and demoed)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#prefect-deployments-and-how-to-queue-a-whole-match" class="md-nav__link">
+    <span class="md-ellipsis">
+      Prefect deployments and how to queue a whole match
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#queue-a-whole-match" class="md-nav__link">
+    <span class="md-ellipsis">
+      Queue a whole match
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#visual-checks-docsexperimentssam3_offline_labeller" class="md-nav__link">
+    <span class="md-ellipsis">
+      Visual checks (docs/experiments/sam3_offline_labeller/)
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#caveats" class="md-nav__link">
+    <span class="md-ellipsis">
+      Caveats
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#recommendation-and-next-step" class="md-nav__link">
+    <span class="md-ellipsis">
+      Recommendation and next step
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+
+<h1 id="sam-3-sam-31-as-a-slow-offline-background-ball-labeller">SAM 3 / SAM 3.1 as a slow, offline, background ball labeller<a class="headerlink" href="#sam-3-sam-31-as-a-slow-offline-background-ball-labeller" title="Permanent link">&para;</a></h1>
+<p>Branch <code>exp/sam3-offline-labeller</code> (from <code>exp/temporal-detector</code> @ <code>331ae64</code>).  Code: <code>experiments/sam3_offline/</code> (README there), Prefect flows <code>~/code/jobs/footy_sam3.py</code> + <code>sam3.prefect.yaml</code>,
+numbers: <code>docs/experiments/sam3_offline_labeller.json</code> (+ <code>experiments/sam3_offline/results/</code>), sheets: <code>docs/experiments/sam3_offline_labeller/</code>.
+Builds on <code>temporal_detector_round3.md</code> (held-out list, 50 fps handling, S1 gate, SAM2.1-small crop512 tracker).  All GPU runs were Prefect flow runs on the <code>gpu</code> pool (desktop RTX 2070 8 GB), one at a time.</p>
+<p><strong>Question.</strong>  Can SAM 3 / 3.1 label balls offline: one known frame (a confident RT-DETR box, an overview, a human click) -&gt; track forwards and backwards through long stretches -&gt; labels written by a queued background job?
+Speed does not matter, offline quality and throughput do.</p>
+<h2 id="answers-in-brief">Answers in brief<a class="headerlink" href="#answers-in-brief" title="Permanent link">&para;</a></h2>
+<ol>
+<li><strong>How far does one seed carry?  SAM 3 is no better than the SAM2.1-small crop512 tracker we already have.</strong>  Held-out clips + the 359-frame Aston Villa run, oracle seeds (1 217 scored frames): recall@10 <strong>0.943 (SAM 3) vs 0.945 (SAM2.1)</strong>,
+   paired -0.002 [-0.007, +0.004]; on the six sparse held-out clips both are at <strong>1.000</strong> (251 frames, up to 100-250 frames from the seed); with RT-DETR conf &gt;= 0.8 seeds both are <strong>0.996</strong> (228 frames).  The only place SAM 3 separates is
+   <code>arsenal_example</code> (an out-of-play ball in the crowd, practically invisible): 0.301 vs 0.250 (+0.051 [+0.032, +0.072], one clip; both useless).  The set is saturated, so <strong>it cannot show a gain and does not show one</strong>; SAM 3 costs
+   3x the time (2.4 vs 7.0 frames/s) and 6x the memory (4.9 vs 0.8 GB).  SAM 3.1 (multiplex) is equal to SAM 3 here (0.928 vs 0.932 on dev) and slower (2.1 fps, 6.2 GB).</li>
+<li><strong>What helps.</strong>  A box seed (box ~ box + point &gt; point-only: -0.020), a <strong>crop that follows the ball at 512 px (round-3 size; 768 is the same, 384 -0.020, 256 -0.244, no crop -0.039)</strong>, fp16 (fp32 gives identical labels at 3.2x the time).  What does not:
+   text prompts as the tracker (0.73 / 0.63 vs 0.98, no memory), <code>frame_step 2</code> (2x faster but -0.051), the "offload state to CPU" memory setting (-0.28, a bug-like loss and no VRAM saved), crop 256.  Gating: SAM 3's object-score logit is a better gate than SAM2's
+   (score &gt; 8: precision 0.996 at 59 % coverage vs 1.0 at 37 %); the S1 gate (forward track of seed a x backward track of seed b within 5 px) was right 14/14 times in the production demo, whereas a score gate cannot catch a <strong>false seed</strong>
+   (an RT-DETR conf 0.818 "ball" on a yellow boot was tracked as a boot for ~90 frames with logit 8-10).  Recovery and the rest of the tricks: see the sections below.</li>
+<li><strong>SAM 3 as a seed finder is the real finding.</strong>  Text prompt "ball" on 384 px tiles upscaled to 1008: top-1 hit@10 <strong>0.85</strong> vs RT-DETR-L <strong>0.60</strong> on the same 94 held-out GT frames (Bournemouth 0.85 vs 0.51; Man City 0.86 vs 0.90), any-candidate recall 0.96 vs 0.71.
+   "yellow ball" is equal on Bournemouth (0.86) and useless on a white ball (0.00): the prompt must follow the match.  Whole-frame text detection (one 1008 px pass) is already 0.76; 540 px tiles are worse (0.71); "white ball" / "small white ball" fail (0.14 / 0.11).
+   It costs ~5-6 s per frame at 384 px tiles (15 tiles).  So SAM 3 <em>can</em> find its own seeds, slowly.  Caveat: on the 80 dev frames (clips RT-DETR was trained on, many blurred in-play balls) it is <em>worse</em> than RT-DETR (0.64 vs 0.85), so the claim holds for footage RT-DETR has not seen.</li>
+<li><strong>Throughput / cost on the RTX 2070.</strong>  SAM 3 tracker 0.42 s/frame (2.38 fps) after a bf16 patch (see Setup; unpatched 0.75 s), SAM 3.1 0.48 s, SAM2.1 0.14 s.  A match half (~70 k frames at 25 fps): <strong>8.2 GPU-hours</strong> for one pass over every frame with SAM 3
+   (2.7 h with SAM2.1), 16.4 h if every frame is covered twice for the S1 gate, 2.5 h if SAM 3 only fills the ~30 % of frames the detectors miss; 1.1 h of seed finding per half at one 384-tile probe every 100 frames.</li>
+</ol>
+<p><strong>Recommendation</strong> (details at the end): do <strong>not</strong> replace SAM2.1 in the pseudo-label pipeline with SAM 3 / 3.1 as the tracker.  Make SAM 3 the <em>background seed finder and seed verifier</em> (text prompt on 384 px tiles, per-match prompt), keep SAM2.1 crop512 as the track engine,
+and use S1 (two-seed agreement) rather than scores as the trust signal.  Use the SAM 3 tracker only for stretches where SAM2 is known to fail (crowd / long occlusion), where it showed its only, small, gain.</p>
+<h2 id="main-table-sam21-small-crop512-vs-sam-3-vs-sam-31-best-settings-box-seed-crop-512-fp16">Main table: SAM2.1-small crop512 vs SAM 3 vs SAM 3.1 (best settings: box seed, crop 512, fp16)<a class="headerlink" href="#main-table-sam21-small-crop512-vs-sam-3-vs-sam-31-best-settings-box-seed-crop-512-fp16" title="Permanent link">&para;</a></h2>
+<p>Oracle seeds (GT frames), reach &lt;= 400 frames each way.  recall@10 by distance of the scored GT frame from its seed (25 fps frames), coverage = fraction of GT frames with a position, no-ball = fraction of GT <code>no_ball</code> frames in
+the windows where the tracker is silent (n in brackets), first loss = mean / median frames to the first missed GT frame of a (seed, direction) track, <em>censored</em> when never lost (fraction in brackets, so the mean is a lower bound).  95 % CIs are bootstrap over frames
+(optimistic: frames of one track are correlated); clip-level cluster bootstrap CIs are in the paired lines and in the JSON (6-7 clips: wide).</p>
+<table>
+<thead>
+<tr>
+<th>method</th>
+<th>scored frames</th>
+<th>recall@10 [CI]</th>
+<th>0-25</th>
+<th>25-100</th>
+<th>100-250</th>
+<th>250+</th>
+<th>coverage</th>
+<th>no-ball silent</th>
+<th>first loss</th>
+<th>fps</th>
+<th>VRAM</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>held-out + Aston Villa dense</strong> (6 sparse held-out clips + <code>astonvilla_seg080</code>, no arsenal_example)</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>SAM2.1-small crop512</td>
+<td>1217</td>
+<td>0.945 [0.932, 0.957]</td>
+<td>1.000 (165)</td>
+<td>0.968 (347)</td>
+<td>0.973 (415)</td>
+<td>0.845 (290)</td>
+<td>0.988</td>
+<td>0.88 (26)</td>
+<td>76 / 47 (0.94)</td>
+<td>7.05</td>
+<td>0.8 GB</td>
+</tr>
+<tr>
+<td>SAM 3 box crop512</td>
+<td>1217</td>
+<td>0.943 [0.930, 0.956]</td>
+<td>1.000 (165)</td>
+<td>0.968 (347)</td>
+<td>0.969 (415)</td>
+<td>0.845 (290)</td>
+<td>0.981</td>
+<td>0.92 (26)</td>
+<td>76 / 47 (0.94)</td>
+<td>2.38</td>
+<td>4.9 GB</td>
+</tr>
+<tr>
+<td>SAM 3.1 mask-seed crop512 (dev set only, see below)</td>
+<td>488 (dev)</td>
+<td>0.928 [0.906, 0.949]</td>
+<td>1.000 (167)</td>
+<td>0.878 (238)</td>
+<td>0.928 (83, 100-120)</td>
+<td>-</td>
+<td>0.928</td>
+<td>1.00 (1)</td>
+<td>67 / 70 (0.75)</td>
+<td>2.07</td>
+<td>6.2 GB</td>
+</tr>
+<tr>
+<td><em>sparse held-out clips only</em> (Bournemouth 009 / 015 / 021 / 031 / 035, Man City part093)</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>SAM2.1-small</td>
+<td>251</td>
+<td>1.000 [1.000, 1.000]</td>
+<td>1.000 (93)</td>
+<td>1.000 (122)</td>
+<td>1.000 (36)</td>
+<td>-</td>
+<td>1.000</td>
+<td>0.95 (21)</td>
+<td>67 / 42 (1.00)</td>
+<td>7.08</td>
+<td></td>
+</tr>
+<tr>
+<td>SAM 3</td>
+<td>251</td>
+<td>1.000 [1.000, 1.000]</td>
+<td>1.000 (93)</td>
+<td>1.000 (122)</td>
+<td>1.000 (36)</td>
+<td>-</td>
+<td>1.000</td>
+<td>0.95 (21)</td>
+<td>67 / 42 (1.00)</td>
+<td>2.38</td>
+<td></td>
+</tr>
+<tr>
+<td><em>astonvilla_seg080</em> (one 359-frame run, slow dribble: 2.4 px/frame, max 23, camera pan; 720p)</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>SAM2.1-small</td>
+<td>966</td>
+<td>0.931 [0.914, 0.946]</td>
+<td>1.000 (72)</td>
+<td>0.951 (225)</td>
+<td>0.971 (379)</td>
+<td>0.845 (290)</td>
+<td>0.984</td>
+<td>0.60 (5)</td>
+<td>174 / 179 (0.33)</td>
+<td>6.98</td>
+<td></td>
+</tr>
+<tr>
+<td>SAM 3</td>
+<td>966</td>
+<td>0.929 [0.912, 0.944]</td>
+<td>1.000 (72)</td>
+<td>0.951 (225)</td>
+<td>0.966 (379)</td>
+<td>0.845 (290)</td>
+<td>0.976</td>
+<td>0.80 (5)</td>
+<td>175 / 179 (0.33)</td>
+<td>2.39</td>
+<td></td>
+</tr>
+<tr>
+<td><strong><em>arsenal_example</em></strong> (reported separately; ball in the crowd)</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>SAM2.1-small</td>
+<td>525</td>
+<td>0.250 [0.215, 0.288]</td>
+<td>0.605 (114)</td>
+<td>0.242 (256)</td>
+<td>0.000 (155)</td>
+<td>-</td>
+<td>0.701</td>
+<td>-</td>
+<td>32 / 23 (0.33)</td>
+<td>7.09</td>
+<td></td>
+</tr>
+<tr>
+<td>SAM 3</td>
+<td>525</td>
+<td>0.301 [0.263, 0.341]</td>
+<td>0.605 (114)</td>
+<td>0.246 (256)</td>
+<td>0.168 (155)</td>
+<td>-</td>
+<td>0.579</td>
+<td>-</td>
+<td>30 / 14 (0.33)</td>
+<td>2.38</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<p>Paired differences (same seeds and frames), SAM 3 - SAM2.1: all (no example) <strong>-0.002</strong> frame CI [-0.007, +0.004] / clip CI [-0.002, +0.000]; sparse held-out +0.000; Aston Villa -0.002 [-0.010, +0.005]; <strong>arsenal_example +0.051 [+0.032, +0.072]</strong> (one clip).</p>
+<p>Read it carefully:
+- <strong>Saturation.</strong>  Every held-out GT frame is a frame where a human could see the ball, and a clean seed on the same shot is enough for both trackers: 251/251 on the sparse clips.  The "250+" bin is one clip (Aston Villa, a slowly dribbled ball);
+  its 0.845 is mostly 10-11 px misses (3 px over the 10 px threshold: box-label noise at 720p).  The rows cannot rank the models; they show that <strong>tracking from one good seed is not where the remaining error is</strong> on this data.
+  The ball-in-play motion in the sparse clips is fast (median 20-38 px between consecutive GT frames in Man City) and still 100 %.
+- <strong>Drift / loss behaviour</strong> (what the misses look like).  Dev (SAM 3 box crop512): 82 % of misses are "tracker reports absent" (a camera cut ends the track: the crop follows the old position), 9 % drift 10-50 px, 9 % wrong object; SAM2: 85 % absent, 15 % wrong object.
+  The drift case in <code>track_sam3_mancity_seg010_o2_bwd_drift_to_player.jpg</code>: the crop follows a player's boot for ~30 frames while the ball is occluded (score logit 1-3 vs 7-9 on the ball), then re-acquires the ball.
+  The held-out + Aston Villa misses (69 of 1 217): 33 % absent, 67 % within 10-50 px (mostly the 10-11 px near-misses).
+- Scene cuts matter: <code>cuts.py</code> finds 1-2 cuts in the 16 clips (part093 at frame 37, bournemouth_1st_seg070 at 47, mancity_seg010 at 593).  A track must be stopped at a cut (not done here; the S1 gate would reject the frames after it).</p>
+<h2 id="setup-desktop-rtx-2070-8-gb">Setup (desktop, RTX 2070 8 GB)<a class="headerlink" href="#setup-desktop-rtx-2070-8-gb" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Separate venv <code>~/sam3-exp/venv</code> (python 3.12, torch 2.8.0+cu128, numpy 1.26.4); upstream <code>facebookresearch/sam3</code> @ <code>eef6839</code> (2026-11-13) installed editable from <code>~/sam3-exp/sam3_src</code>.  Not ultralytics 8.4.213: its <code>SAM3VideoPredictor</code>
+  is the frame-by-frame predictor pipeline, its 3.1 support is image / point only, whereas the upstream tracker has the SAM2-style <code>init_state / add_new_points_or_box / propagate_in_video</code> API the round-3 crop-following driver needs.
+  Nothing was installed into <code>~/sam2-exp/venv</code>, the jobs venv or the footy venv.</li>
+<li>Weights: <code>sam3.pt</code> (sha256 <code>9999e234...</code>, identical to the mini copy) and <code>sam3.1_multiplex.pt</code> (complete, 3 502 755 717 bytes) pulled from S3 with presigned urls.</li>
+<li><strong>Licence</strong>: SAM License (Meta, 2025-11-19): royalty-free, worldwide, non-exclusive licence to use / modify / distribute the SAM Materials; redistribution of the model or derivatives only under the same agreement (include a copy);
+  publications of research done with it must acknowledge the use; no use for ITAR / military / weapons / espionage or trade-control-prohibited ends; the licence terminates if we sue Meta over the materials; "AS IS".  Fine for an internal
+  labelling pipeline; keep the licence text with any redistributed weights.  (<code>pyproject</code> says "MIT" in a classifier, the <code>LICENSE</code> file is the SAM License.)  Dependencies: timm, ftfy, regex, iopath, huggingface_hub (unused with a local checkpoint), numpy &lt; 2; no flash-attn / triton on sm_75.</li>
+<li><strong>RTX 2070 (sm_75) patches</strong>, applied as runtime monkeypatches in <code>sam3_track.patch_turing</code> (upstream untouched):</li>
+<li><code>sam3.perflib.fused.addmm_act</code> (ViT MLP fc1 + GELU) hard-casts to <strong>bfloat16</strong>; sm_75 has no bf16 tensor cores, so cuBLAS ran an emulated <code>magma_sgemmEx&lt;bf16&gt;</code> kernel = <strong>59 % of the backbone time</strong>.  Plain fp16 autocast: backbone 0.63 -&gt; 0.29 s per 1008 px frame (<strong>2.1x</strong>), tracker 0.75 -&gt; 0.42 s per frame.</li>
+<li>The upstream constructors enter a global bf16 autocast (<code>bf16_context.__enter__()</code>); it is exited right after building and runs use <code>torch.autocast(fp16)</code>.  No fp16 overflow / NaN observed.</li>
+<li>SAM 3.1: <code>decoder.functional_attention</code> forces the FlashAttention SDPA backend ("No available kernel" on Turing) -&gt; efficient / math backends.  The standalone 3.1 tracker also needs <code>tracker.backbone = detector.backbone</code> and <code>forward_image(need_sam3_out=False)</code>;
+     the multiplex demo tracker has no box prompt: "box" = the ellipse inscribed in the box as a mask prompt, "point" = the centre point.</li>
+<li><strong>Precision / memory</strong> (2 dev clips, 1 seed each, 60 frames, 186 frames scored): fp16 autocast 0.995 recall, 2.38 fps, <strong>4.9 GB</strong> peak (fp32 weights resident + fp16 copies cached by autocast); <strong>fp32 identical labels (paired +0.000) at 0.74 fps (3.2x slower), 4.3 GB</strong>;
+  memory selection off (<code>apply_temporal_disambiguation=False</code>) 1.000 (+0.005 [+0.000, +0.019], n.s.); <code>offload_state_to_cpu</code> <strong>0.715 (-0.280)</strong>, VRAM unchanged (4.8 GB: the weights dominate) -&gt; do not use.  Weights are 3.4 GB in fp32; a half-precision copy of the backbone
+  would free ~2 GB if more headroom is needed (not needed: 8 GB fit, long clips are fine because frames are injected one at a time and per-frame state is ~1 MB; whole-match tracks prune state older than 300 frames, <code>prune_age</code>).</li>
+</ul>
+<h2 id="data-seeds-metrics">Data, seeds, metrics<a class="headerlink" href="#data-seeds-metrics" title="Permanent link">&para;</a></h2>
+<p><strong>Clips and GT</strong> (<code>spec_v2.json</code>, built by <code>spec.py</code> from <code>/mnt/storage/footy_data/ball_gt_marks</code>; human <code>labeller</code> / <code>human_checked</code> ball marks only; error in 1080p-equivalent px, hit = within 10 px):</p>
+<table>
+<thead>
+<tr>
+<th>set</th>
+<th>clips</th>
+<th>how used</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>final / held-out</td>
+<td>Bournemouth seg009, 015, 021, 031, 035, 060 (50 fps clips handled at 25 fps = every 2nd frame, as round 3); Man City part093, seg101, seg134, seg135</td>
+<td>final numbers, never used to choose a setting (the single-GT clips seg060 / 101 / 134 / 135 only enter the realistic-seed protocol)</td>
+</tr>
+<tr>
+<td>final / dense</td>
+<td><code>astonvilla_seg080</code> (568 labelled frames, 4 runs, longest 359 frames, 720p)</td>
+<td>the only clip with GT &gt; 250 frames from a seed</td>
+</tr>
+<tr>
+<td>example</td>
+<td><code>arsenal_example</code></td>
+<td>reported separately</td>
+</tr>
+<tr>
+<td>dev</td>
+<td><code>mancity_seg010</code>, <code>mancity_seg050</code>, <code>bournemouth_1st_seg070</code> (dense, yellow ball); <code>mancity_seg031</code> for seed-finder only</td>
+<td>every prompt / crop / trick search (2 oracle seeds per clip, 120 frames each way = 488 scored samples)</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li>Odd original frames of the 50 fps clips are scored against the mean of the two neighbouring processed frames (GT lies on both parities: seg009 has 2 even + 9 odd GT frames).</li>
+<li>Oracle seeds: GT frames at the 15 / 50 / 85 % quantile of the clip's GT frames (dense runs: run start + run middle); the first GT frame is avoided (<code>mancity_seg031</code> frame 0 is <strong>not</strong> on the ball: <code>gt_mancity_seg031.jpg</code>).
+  Realistic seeds: RT-DETR-L v11 @1280 ball detections with conf &gt;= 0.8, best first, &gt;= 40 frames apart, 3 per clip (Bournemouth from the round-3 <code>labels_bm_audit</code>, Man City from <code>machine_labels</code>, part093 / arsenal_example from a fresh <code>r3_detect.py</code> run).
+  RT-DETR has no conf &gt;= 0.8 ball in seg021 / seg031 (no seed there).  A random sample of 64 such candidates over the held-out clips was inspected by eye: <strong>64 / 64 real balls</strong> (<code>rtdetr_conf80_seed_candidates_64.jpg</code>; so false seeds are rare, not absent: see the production demo).</li>
+<li><strong>Norwich</strong>: <code>ball_gt_marks_norwich</code> holds only the blind-check verdicts (<code>ball_checks</code>), no window labels, so nothing could be scored on Norwich.</li>
+<li><strong>A sample</strong> = one (seed, GT frame) pair: the forward (g &gt; seed) or backward track of the seed at g; recall@10 counts absent as a miss; precision(emitted) = hits / emitted.  Intervals: 95 % percentile bootstrap over frames and (cluster) over clips; paired differences on identical samples.</li>
+<li>GT sanity (contact sheets): dev and held-out GT are on the ball except <code>mancity_seg031</code> frame 0.  <strong><code>arsenal_example</code>'s 20 held-out frames (59, 160-198) are an out-of-play ball inside the crowd</strong> (a white blob among spectators; the labels follow a smooth trajectory, so
+  they are not wrong, but the target is practically invisible: <code>gt_arsenal_example_heldout.jpg</code>).  RT-DETR (0.05), SAM 3 text detection on full frame / tiles (0.00-0.05 top-1, any prompt) and both trackers fail there: <strong>SAM 3 does not find those balls</strong>.</li>
+</ul>
+<h2 id="dev-sweep-prompts-crops-sam-3-vs-sam-31-3-dev-clips-2-oracle-seeds-each-120-frames-each-way-488-samples-fp16">Dev sweep: prompts, crops, SAM 3 vs SAM 3.1 (3 dev clips, 2 oracle seeds each, 120 frames each way, 488 samples, fp16)<a class="headerlink" href="#dev-sweep-prompts-crops-sam-3-vs-sam-31-3-dev-clips-2-oracle-seeds-each-120-frames-each-way-488-samples-fp16" title="Permanent link">&para;</a></h2>
+<p>recall@10 by distance (only 0-25 / 25-100 / 100-120 exist at this reach), coverage, precision of what is emitted; paired differences against SAM 3 box crop512 on identical (clip, seed, frame) samples (95 % CI over frames; clip-level CIs of the 3 dev clips are huge and not shown).</p>
+<table>
+<thead>
+<tr>
+<th>config</th>
+<th>recall@10 [95 % CI]</th>
+<th>0-25</th>
+<th>25-100</th>
+<th>100-120</th>
+<th>coverage</th>
+<th>prec. emitted</th>
+<th>paired vs SAM 3 box crop512</th>
+<th>s/frame</th>
+<th>VRAM</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>SAM2.1-small crop512 (round-3 baseline)</td>
+<td>0.918 [0.891, 0.943]</td>
+<td>1.000</td>
+<td>0.950</td>
+<td>0.663 (n=83)</td>
+<td>0.930</td>
+<td>0.987</td>
+<td>-0.014 [-0.029, +0.000]</td>
+<td>0.14</td>
+<td>0.8 GB</td>
+</tr>
+<tr>
+<td><strong>SAM 3 box, crop512</strong></td>
+<td><strong>0.932</strong> [0.910, 0.955]</td>
+<td>1.000</td>
+<td>0.975</td>
+<td>0.675</td>
+<td>0.945</td>
+<td>0.987</td>
+<td>-</td>
+<td>0.42</td>
+<td>4.9 GB</td>
+</tr>
+<tr>
+<td>SAM 3 box + centre point, crop512</td>
+<td>0.934 [0.912, 0.955]</td>
+<td>1.000</td>
+<td>0.979</td>
+<td>0.675</td>
+<td>0.945</td>
+<td>0.989</td>
+<td>+0.002 [+0.000, +0.006]</td>
+<td>0.42</td>
+<td>4.9 GB</td>
+</tr>
+<tr>
+<td>SAM 3 point only, crop512</td>
+<td>0.912 [0.885, 0.936]</td>
+<td>1.000</td>
+<td>0.945</td>
+<td>0.639</td>
+<td>0.932</td>
+<td>0.978</td>
+<td>-0.020 [-0.033, -0.008]</td>
+<td>0.42</td>
+<td>4.9 GB</td>
+</tr>
+<tr>
+<td>SAM 3 box, crop768 (1.3x up to 1008)</td>
+<td>0.928 [0.906, 0.951]</td>
+<td>1.000</td>
+<td>0.966</td>
+<td>0.675</td>
+<td>0.945</td>
+<td>0.983</td>
+<td>-0.004 [-0.010, +0.000]</td>
+<td>0.42</td>
+<td>4.9 GB</td>
+</tr>
+<tr>
+<td>SAM 3 box, crop384 (2.6x up)</td>
+<td>0.912 [0.885, 0.936]</td>
+<td>1.000</td>
+<td>0.945</td>
+<td>0.639</td>
+<td>0.930</td>
+<td>0.980</td>
+<td>-0.020 [-0.033, -0.008]</td>
+<td>0.42</td>
+<td>4.9 GB</td>
+</tr>
+<tr>
+<td>SAM 3 box, crop256 (3.9x up)</td>
+<td>0.689 [0.648, 0.732]</td>
+<td>1.000</td>
+<td>0.647</td>
+<td>0.181</td>
+<td>0.695</td>
+<td>0.991</td>
+<td>-0.244 [-0.283, -0.203]</td>
+<td>0.42</td>
+<td>4.9 GB</td>
+</tr>
+<tr>
+<td>SAM 3 box, whole 1080p frame squashed to 1008</td>
+<td>0.893 [0.867, 0.920]</td>
+<td>1.000</td>
+<td>0.899</td>
+<td>0.663</td>
+<td>0.932</td>
+<td>0.958</td>
+<td>-0.039 [-0.059, -0.020]</td>
+<td>0.42</td>
+<td>5.0 GB</td>
+</tr>
+<tr>
+<td>SAM 3.1 mask seed (ellipse in the box), crop512</td>
+<td>0.928 [0.906, 0.949]</td>
+<td>1.000</td>
+<td>0.878</td>
+<td>0.928</td>
+<td>0.928</td>
+<td>1.000</td>
+<td>-0.004 [-0.035, +0.027]</td>
+<td>0.49</td>
+<td>6.2 GB</td>
+</tr>
+<tr>
+<td>SAM 3.1 point seed, crop512</td>
+<td>0.928 [0.906, 0.949]</td>
+<td>1.000</td>
+<td>0.878</td>
+<td>0.928</td>
+<td>0.928</td>
+<td>1.000</td>
+<td>-0.004 [-0.035, +0.027]</td>
+<td>0.49</td>
+<td>6.2 GB</td>
+</tr>
+<tr>
+<td>SAM 3 box crop512, <code>frame_step 2</code> (track every 2nd frame, interpolate)</td>
+<td>0.881 [0.852, 0.908]</td>
+<td>0.982</td>
+<td>0.895</td>
+<td>0.639</td>
+<td>0.904</td>
+<td>0.975</td>
+<td>-0.051 [-0.072, -0.033]</td>
+<td>0.21 (eff.)</td>
+<td>4.9 GB</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li><strong>The crop is the biggest lever</strong>, with a plateau at 512-768 px: a 256 px window loses the ball whenever it moves fast (-0.24), 384 -0.02, no crop -0.04 (SAM 3 on the squashed 1080p frame still works: the ball is 5-6 px there).  Compute is identical for every crop (the model always sees
+  1008 px), so "upscale the crop to the native input" is free and automatic; <strong>upscaling more (smaller crops) does not help, a larger field of view does</strong>.</li>
+<li>Box seed (with or without the centre point) &gt; point only.  SAM 3.1 behaves like SAM 3 (same recall within noise, higher precision, lower coverage, +20 % time, +1.3 GB): its multiplex advantage is for many simultaneous objects, not for one ball.</li>
+<li>Text prompts as the <em>tracker</em> (no seed memory: per frame, text detection on the crop around the last position, nearest candidate, <code>text:ball</code> 0.725 [0.679, 0.775], <code>text:yellow ball</code> 0.630 (white-ball Man City clips included), reach 80, 346 samples) lose 0.26-0.35 against the box-seeded tracker (0.983):
+  the detector alone drops the ball (coverage 0.73) although what it emits is 99.6 % correct.  Text belongs in seed finding / recovery, not in tracking.</li>
+<li><code>frame_step 2</code> doubles throughput (4.75 effective fps) but costs 0.051 recall: linear interpolation over the skipped frame fails on kicks.</li>
+</ul>
+<h2 id="realistic-seeds-rt-detr-conf-08-held-out-clips-reach-250">Realistic seeds (RT-DETR conf &gt;= 0.8), held-out clips, reach 250<a class="headerlink" href="#realistic-seeds-rt-detr-conf-08-held-out-clips-reach-250" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>method</th>
+<th>scored</th>
+<th>recall@10</th>
+<th>0-25</th>
+<th>25-100</th>
+<th>100-250</th>
+<th>coverage</th>
+<th>prec. emitted</th>
+<th>no-ball silent</th>
+<th>first loss</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>SAM2.1-small crop512</td>
+<td>228 (8 clips, 21 seeds)</td>
+<td>0.996 [0.987, 1.000]</td>
+<td>1.000 (57)</td>
+<td>1.000 (111)</td>
+<td>0.983 (60)</td>
+<td>1.000</td>
+<td>0.996</td>
+<td>1.00 (21)</td>
+<td>96 / 74 (0.97)</td>
+</tr>
+<tr>
+<td>SAM 3 box crop512</td>
+<td>228</td>
+<td>0.996 [0.987, 1.000]</td>
+<td>1.000 (57)</td>
+<td>1.000 (111)</td>
+<td>0.983 (60)</td>
+<td>1.000</td>
+<td>0.996</td>
+<td>1.00 (21)</td>
+<td>96 / 74 (0.97)</td>
+</tr>
+<tr>
+<td>arsenal_example, 1 seed: SAM2 / SAM 3</td>
+<td>175</td>
+<td>0.263 / 0.274</td>
+<td>1.000 (26)</td>
+<td>0.328 / 0.361</td>
+<td>0.000 / 0.000</td>
+<td>0.714 / 0.537</td>
+<td>0.368 / 0.511</td>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<p>The single miss (seg060: the only GT frame is 178 frames from the seed) is the same for both.  Seed verification with SAM 3's own text detector (<code>seed_check</code>: best IoU of any "ball" detection on a 512 px crop with the seed box): all 24 seeds had IoU 0.63-0.92 with a detection
+(text score 0.08-0.85), i.e. no seed in this set was a false positive, so the check could not be shown to separate anything.</p>
+<h2 id="gating">Gating<a class="headerlink" href="#gating" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>Object-score logit</strong> (own presence head).  Raising the gate trades coverage for precision; SAM 3's score is the more informative one.  Held-out + Aston Villa, oracle seeds: gate 0 / 4 / 6 / 8: SAM 3 coverage 0.98 / 0.94 / 0.87 / <strong>0.59</strong> with precision 0.961 / 0.964 / 0.974 / <strong>0.996</strong>;
+  SAM2 0.99 / 0.91 / 0.84 / 0.37 with 0.957 / 0.969 / 0.972 / 1.000.  On <code>arsenal_example</code> gate 8: SAM 3 coverage 0.17, precision 0.966 (recall 0.164) vs SAM2 coverage 0.02: SAM 3's scores separate the few correct frames from the crowd; SAM2's do not.
+  (The 0.96 baseline precision is the 10-11 px near-misses of one clip.)</li>
+<li><strong>S1</strong> (forward track of seed a, backward track of the next seed b, agree within 5 px): with oracle seeds all 217 GT frames between seeds pass and are correct for both models (nothing to reject).  In the production demo with RT-DETR seeds on Bournemouth seg035
+  (below) S1-gated frames were <strong>14 / 14</strong> correct while single-track score-gated frames were 24 frames at only <strong>67 %</strong>: the wrong ones come from a false seed.</li>
+<li><strong>SAM 3 x SAM2 agreement</strong> (within 5 px, oracle seeds, held-out + Aston Villa): coverage 0.974, recall 0.937, no precision gain (both make the same 10-11 px drift errors); it is a useful <em>independent-model</em> check against false seeds, not against labelling noise.</li>
+<li><strong>Lesson (production demo)</strong>: a wrong seed (RT-DETR conf 0.818 "ball" = a <strong>yellow boot</strong> at seg035 frame 58) gives a confident, consistent track (logit 8-10, 90+ frames): <code>demo_labels_bournemouth_seg035.jpg</code>.  No score gate can catch it; agreement between <em>independent seeds</em> (S1) or a seed check can.</li>
+</ul>
+<h2 id="recovering-lost-tracks">Recovering lost tracks<a class="headerlink" href="#recovering-lost-tracks" title="Permanent link">&para;</a></h2>
+<p>Implemented in <code>sam3_track.py</code> (config <code>recover</code>): after <code>loss_k = 3</code> consecutive lost frames (mask empty or score logit &lt; 0), search around the last confident position (radius 150 px, 512 px crop) and re-seed the tracker with the nearest candidate as a new
+conditioning box, then continue propagating.  Candidates from (a) SAM 3 text detection <code>text:ball</code> on the crop (score &gt;= 0.3) or (b) RT-DETR candidates (conf &gt;= 0.5, <code>cands</code>, the "re-seed from detector candidates" variant).  Ablation on the final oracle set, SAM 3 box crop512, reach 400
+(astonvilla_seg080, arsenal_example, bournemouth seg035; (b) on the last two): <strong>the recovery never fired (0 re-seeds in every track), results are identical to the baseline</strong> (0.929 / 0.301 / 1.000).  The loss events in these clips are a camera cut or a ball that
+is not visible (crowd), where there is no candidate within the search radius; the held-out set has no loss that a nearby detection could repair.  So the benefit of recovery is <strong>unmeasured</strong>, and the re-seed code path was never exercised on real data (treat it as untested);
+a test needs footage with occlusions behind players / long kicks that the tracker loses but a detector still sees (the dev drift case <code>mancity_seg010</code> o2 backward is such a case, but only 2 of the dev tracks lose the ball).  Text detection as a <em>seed finder</em> is the part that works (below).
+Not done: RT-DETR / text recovery for SAM 3.1 (its detector API differs), re-seeding on a second SAM2 opinion.</p>
+<h2 id="text-prompt-seed-finder-hit-rate-vs-rt-detr-on-held-out-frames">Text-prompt seed finder (hit rate vs RT-DETR on held-out frames)<a class="headerlink" href="#text-prompt-seed-finder-hit-rate-vs-rt-detr-on-held-out-frames" title="Permanent link">&para;</a></h2>
+<p>SAM 3 image detector, text prompt, boxes in full-frame px, scored on every GT ball frame (original frame index, both parities): "top-1" = the highest-scoring detection is within 10 px, "any" = some detection (score &gt;= 0.02, &lt;= 15 per frame after NMS) is within 10 px.
+Tilings: <code>full</code> = whole frame squashed to 1008 (ball ~5 px), <code>t540</code> = 3x2 tiles of 540 px, <code>t384</code> = 5x3 tiles of 384 px (2.6x up).  RT-DETR-L on the same frames (stride-1 labels, conf &gt;= 0.1) for reference.
+No prompt / tiling was selected on these frames beyond reading the table; a dev-set check follows.  top-1 hit@10 / any hit@10:</p>
+<table>
+<thead>
+<tr>
+<th>detector (tiling / prompt)</th>
+<th>Bournemouth (73, yellow ball)</th>
+<th>Man City (21)</th>
+<th>Aston Villa, 39 evenly spaced</th>
+<th>all held-out (no arsenal_example) incl. Aston Villa subset</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>RT-DETR-L v11</td>
+<td>0.51 / 0.63</td>
+<td>0.90 / 1.00</td>
+<td>-</td>
+<td>0.60 / 0.71 (94 frames, without Aston Villa)</td>
+</tr>
+<tr>
+<td>full / ball</td>
+<td>0.74 / 0.97</td>
+<td>0.76 / 1.00</td>
+<td>0.79 / 0.90</td>
+<td>0.76 / 0.95</td>
+</tr>
+<tr>
+<td>full / football</td>
+<td>0.70 / 0.96</td>
+<td>0.90 / 1.00</td>
+<td>0.59 / 0.90</td>
+<td>0.70 / 0.95</td>
+</tr>
+<tr>
+<td>full / soccer ball</td>
+<td>0.67 / 0.97</td>
+<td>0.76 / 1.00</td>
+<td>0.51 / 0.92</td>
+<td>0.64 / 0.96</td>
+</tr>
+<tr>
+<td>full / white ball</td>
+<td>0.03 / 0.56</td>
+<td>0.76 / 1.00</td>
+<td>0.00 / 0.33</td>
+<td>0.14 / 0.56</td>
+</tr>
+<tr>
+<td>full / small white ball</td>
+<td>0.00 / 0.19</td>
+<td>0.71 / 1.00</td>
+<td>0.00 / 0.08</td>
+<td>0.11 / 0.29</td>
+</tr>
+<tr>
+<td>full / yellow ball</td>
+<td>0.78 / 0.99</td>
+<td>0.00 / 0.00</td>
+<td>0.82 / 0.92</td>
+<td>0.67 / 0.81</td>
+</tr>
+<tr>
+<td>t540 / ball</td>
+<td>0.67 / 0.78</td>
+<td>0.57 / 0.71</td>
+<td>0.85 / 0.95</td>
+<td>0.71 / 0.82</td>
+</tr>
+<tr>
+<td>t540 / yellow ball</td>
+<td>0.75 / 0.79</td>
+<td>0.14 / 0.14</td>
+<td>0.87 / 0.92</td>
+<td>0.69 / 0.73</td>
+</tr>
+<tr>
+<td><strong>t384 / ball</strong></td>
+<td><strong>0.85 / 0.96</strong></td>
+<td>0.86 / 0.95</td>
+<td>0.85 / 0.95</td>
+<td><strong>0.85 / 0.95</strong></td>
+</tr>
+<tr>
+<td>t384 / football</td>
+<td>0.63 / 0.93</td>
+<td>0.90 / 1.00</td>
+<td>0.49 / 0.87</td>
+<td>0.63 / 0.92</td>
+</tr>
+<tr>
+<td>t384 / soccer ball</td>
+<td>0.77 / 0.96</td>
+<td>0.95 / 1.00</td>
+<td>0.59 / 0.95</td>
+<td>0.74 / 0.96</td>
+</tr>
+<tr>
+<td>t384 / white ball</td>
+<td>0.04 / 0.19</td>
+<td>0.95 / 1.00</td>
+<td>0.00 / 0.62</td>
+<td>0.17 / 0.44</td>
+</tr>
+<tr>
+<td>t384 / yellow ball</td>
+<td>0.86 / 0.97</td>
+<td>0.00 / 0.05</td>
+<td>0.92 / 0.95</td>
+<td>0.74 / 0.82</td>
+</tr>
+</tbody>
+</table>
+<p>(full table with all tilings, thresholds and the other subsets: JSON.)  At a detection-score threshold of 0.5, "t384 / ball" fires on 71 % of the ball frames and its top detection is right 95 % of the time (RT-DETR at 0.5: 73 % of frames, 75 % right; at 0.8: 31 % of frames, 100 % right;
+SAM 3's text scores are lower, essentially nothing reaches 0.8).  On the 7-8 GT <code>no_ball</code> frames the false-fire rate at 0.5 is 0.12 (SAM 3) vs 0.14 (RT-DETR): too few to separate.  <code>arsenal_example</code> held-out frames: top-1 0.05 for RT-DETR and "t384 / ball", 0.00 elsewhere.
+Whole-frame detection (0.78 s per frame for 6 prompts) is a cheap first pass (top-1 0.76); tiles cost 4.5 s (540 px) / 11.2 s (384 px) per frame for 6 prompts, ~5.6 s for one prompt at 384 px.  <strong>Yes, SAM 3 can find its own seeds, better than RT-DETR on the held-out Bournemouth frames, at ~5 s per probed frame.</strong></p>
+<p><strong>Dev check (80 GT frames: 20 each from <code>mancity_seg010</code>, <code>mancity_seg031</code>, <code>mancity_seg050</code>, <code>bournemouth_1st_seg070</code>; full / t384 tilings), and an honest limit of the result above.</strong>  On the dev frames SAM 3 text detection is <em>not</em> better than RT-DETR:
+t384 / ball top-1 0.64 (seg010 0.85, seg050 0.65, seg031 0.60, seg070 0.45), t384 / soccer ball 0.64, full / ball 0.53, vs RT-DETR 0.85 (seg070 1.00, seg010 0.85, seg050 0.90, seg031 0.65).  Two reasons: (1) the dev clips are RT-DETR training material
+(<code>bournemouth_1st_seg070</code> is memorised: 1.00) while the held-out clips are exactly the ones RT-DETR has not seen, which is where it is weak (0.60); (2) dev GT frames come from dense runs and include many fast, blurred balls (SAM 3 text on seg070: 0.45 vs 0.85 on the held-out
+Bournemouth frames), the held-out frames were picked differently.  Prompt ranking agrees between dev and final: "ball" ~ "soccer ball" best on white balls, "yellow ball" only on the yellow ball ("yellow ball" t384: 0.45 on seg070, 0.00-0.05 on the Man City clips), "white ball" /
+"small white ball" poor.  So: <strong>for a match RT-DETR has not been trained on, SAM 3 text finds more balls than RT-DETR; on footage RT-DETR was trained on it does not, and in general it is a ~10-50x slower, second, independent detector</strong> (the property that makes it useful as a seed verifier).</p>
+<p><strong>Text + exemplar box</strong> (the API supports it: <code>add_geometric_prompt</code> on the same tile; the exemplar here is a rough hint = the GT box inflated 3x, only the tile containing it is searched; dev frames, t384): top-1 <strong>0.72</strong> whatever the prompt ("ball" 0.72, "soccer ball" 0.72,
+"yellow ball" on white balls 0.70 vs 0.12 text-only: the exemplar dominates the prompt), emitted on 78 % of frames, vs 0.64 for text-only "ball" on the same frames.  Modest: a coarse click / box is only partly refined into a correct ball box; it also helps simply because the search is restricted to one tile.</p>
+<h2 id="throughput-and-cost-rtx-2070-fp16-one-process">Throughput and cost (RTX 2070, fp16, one process)<a class="headerlink" href="#throughput-and-cost-rtx-2070-fp16-one-process" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>component</th>
+<th>s / frame</th>
+<th>frames / s</th>
+<th>peak VRAM</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>SAM2.1-small crop512 track (sam2-exp driver)</td>
+<td>0.14</td>
+<td>7.05</td>
+<td>0.8-1.0 GB</td>
+</tr>
+<tr>
+<td>SAM 3 box crop512 track</td>
+<td>0.42</td>
+<td>2.38</td>
+<td>4.9 GB</td>
+</tr>
+<tr>
+<td>SAM 3.1 track</td>
+<td>0.48</td>
+<td>2.07</td>
+<td>6.2 GB</td>
+</tr>
+<tr>
+<td>SAM 3 unpatched (bf16 emulation)</td>
+<td>0.75</td>
+<td>1.3</td>
+<td>4.9 GB</td>
+</tr>
+<tr>
+<td>SAM 3 fp32</td>
+<td>1.35</td>
+<td>0.74</td>
+<td>4.3 GB</td>
+</tr>
+<tr>
+<td>SAM 3 <code>frame_step 2</code></td>
+<td>0.21 effective</td>
+<td>4.75</td>
+<td>4.9 GB</td>
+</tr>
+<tr>
+<td>SAM 3 text probe, 384 px tiles, 1 prompt</td>
+<td>~5.6 per probed frame</td>
+<td></td>
+<td>5.6 GB</td>
+</tr>
+</tbody>
+</table>
+<p>GPU-hours per match half (~70 k frames at 25 fps; Bournemouth 50 fps segments are processed every 2nd frame):
+- SAM 3, every frame, single coverage (each seed tracks to the midpoint to its neighbour): <strong>8.2 h</strong>; with S1 double coverage (forward and backward over every gap): <strong>16.4 h</strong>.  SAM2.1: 2.7 h / 5.4 h.
+- SAM 3 only on the frames the detector pipeline leaves open (round 3: ~30-50 % of balls had no confident detector candidate): <strong>~2.5-4 h</strong>; with <code>frame_step 2</code> half of that at -0.05 recall.
+- Seed finding, one 384-tile probe every 100 frames: 700 probes x 5.6 s = <strong>1.1 h</strong> (every 50 frames: 2.2 h).
+- Measured end to end: the production demo (3 seeds, ~300 tracked frames incl. overlap) ran at 2.2-2.4 fps, i.e. 0.42 s per tracked frame including decoding.</p>
+<h2 id="production-shape-built-and-demoed">Production shape (built and demoed)<a class="headerlink" href="#production-shape-built-and-demoed" title="Permanent link">&para;</a></h2>
+<h3 id="prefect-deployments-and-how-to-queue-a-whole-match">Prefect deployments and how to queue a whole match<a class="headerlink" href="#prefect-deployments-and-how-to-queue-a-whole-match" title="Permanent link">&para;</a></h3>
+<p>Flow module <code>~/code/jobs/footy_sam3.py</code>, deployments <code>~/code/jobs/sam3.prefect.yaml</code> (pool <code>gpu</code>, concurrency 1, desktop RTX 2070).  Experiment code is <em>not</em> in the jobs repo: every run rsyncs
+<code>/home/george/footy-track-sam3/experiments/sam3_offline/</code> (branch <code>exp/sam3-offline-labeller</code>) from the mini, so code edits apply to the next queued run without redeploying.  Redeploy only when a flow
+signature changes: <code>cd ~/code/jobs &amp;&amp; ~/.claude/skills/prefect-jobs/scripts/sync-desktop.sh &amp;&amp; prefect deploy --prefect-file sam3.prefect.yaml --all</code>.</p>
+<table>
+<thead>
+<tr>
+<th>deployment</th>
+<th>purpose</th>
+<th>main parameters</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>sam3-track-eval/sam3-track-eval</code></td>
+<td>seed-propagated tracks for an evaluation spec; engine <code>sam3</code> (model sam3 / sam3.1) or <code>sam2</code> (the round-3 SAM2.1-small crop512 baseline through the same seeds)</td>
+<td><code>spec</code>, <code>clips</code> (dev / final / example / names), <code>protocol</code> (oracle / rtdetr), <code>config</code> (JSON: model, prompt box / point / boxpoint / text:..., crop, recover, ...), <code>max_reach</code>, <code>n_seeds</code>, <code>exp</code></td>
+</tr>
+<tr>
+<td><code>sam3-seedfind/sam3-seedfind</code></td>
+<td>text-prompt (whole frame / 540 px tiles / 384 px tiles) ball detection on GT frames, 6 prompts, optional exemplar</td>
+<td><code>schemes</code>, <code>prompts</code>, <code>exemplar</code>, <code>only_frames</code>, <code>exp</code></td>
+</tr>
+<tr>
+<td><code>sam3-rtdetr/sam3-rtdetr</code></td>
+<td>RT-DETR-L v11 labels (round-3 <code>r3_detect.py</code>) for spec clips that have none</td>
+<td><code>clips</code>, <code>exp</code></td>
+</tr>
+<tr>
+<td><code>sam3-script/sam3-script</code></td>
+<td>run one script of the code dir with the sam3 venv (profiling, smoke tests)</td>
+<td><code>script</code>, <code>args</code></td>
+</tr>
+<tr>
+<td><strong><code>sam3-label-match/sam3-label-match</code></strong></td>
+<td><strong>production: queue a whole match (half) for background labelling</strong></td>
+<td>below</td>
+</tr>
+</tbody>
+</table>
+<p>All flows: resumable (per clip file / per track), wait for free VRAM (<code>min_free_mib</code>, default 5500) before starting, push outputs to the mini over rsync with an S3 presigned-PUT fallback (<code>footy_s3hop.py</code>
+tables), <code>retries=1-2</code>.  Zombie / crash automations of the gpu pool apply as for every gpu flow.</p>
+<h3 id="queue-a-whole-match">Queue a whole match<a class="headerlink" href="#queue-a-whole-match" title="Permanent link">&para;</a></h3>
+<ol>
+<li>Seeds file on the mini (JSONL, one row per seed; <code>box</code> or <code>xy</code>, original frame index): from RT-DETR machine labels
+   <code>python experiments/sam3_offline/make_seeds.py --labels &lt;machine_labels dir&gt; --video-dir &lt;clips dir&gt; --thr 0.8 --spacing 100 &gt; /mnt/storage/exp/sam3/&lt;match&gt;/seeds.jsonl</code>
+   (best conf &gt;= 0.8 ball per 100-frame window; Bournemouth round-3 labels: <code>--index-stride 2</code>).  Human clicks / overview seeds are appended in the same format (<code>{"clip": .., "frame": .., "xy": [x, y], "source": "human"}</code>).</li>
+<li>Segment clips named <code>&lt;clip&gt;.mp4</code> in one directory on the mini (or a <code>clip_files</code> map <code>{clip: file name}</code>).</li>
+<li><code>$PF run sam3-label-match/sam3-label-match match=&lt;name&gt; seeds=/mnt/storage/exp/sam3/&lt;name&gt;/seeds.jsonl clips_dir=&lt;mini dir&gt; reach=250 overlap=15 'config={"model":"sam3","prompt":"box","crop":512}'</code></li>
+<li>leave it: per clip the video is staged (S3 presigned GET <code>sam3/&lt;match&gt;/&lt;clip&gt;.mp4</code> when prepared, else rsync), <code>sam3_label.py</code> runs forward + backward tracks per seed (never past the neighbouring seed + <code>overlap</code>),
+     writes <code>&lt;clip&gt;.labels.jsonl</code> + <code>&lt;clip&gt;.raw.json.gz</code>, pushes them to <code>/mnt/storage/exp/sam3/&lt;match&gt;/labels/</code>, deletes the staged video.  Cancel / retry / crash-resume keeps finished clips and finished tracks.</li>
+<li>Output rows (JSONL, one per labelled frame): <code>clip, p, frame</code> (original index), <code>x, y, box, score</code> (SAM object-score logit), <code>seed, dir, dist</code> (frames from the seed), <code>gate</code>: <code>seed</code> (the seed itself) |
+   <code>s1</code> (forward track of one seed and backward track of the next agree within 5 px: position = mean) | <code>score</code> (single track, logit &gt; <code>score_gate</code>) | <code>weak</code> (the rest: do not use as a label).</li>
+</ol>
+<p><strong>Demo</strong> (<code>sam3-label-match match=demo</code>, Bournemouth seg035, 3 RT-DETR seeds at original frames 58, 116, 270, reach 150): 39 GT frames inside the labelled span: <strong>seed 1/1, <code>s1</code> 14/14 correct, <code>score</code>-gated 24 frames 66.7 % correct</strong> (the errors all come from seed 58, a yellow boot).
+<code>eval_labels.py</code> reproduces it; <code>demo_labels_bournemouth_seg035.jpg</code> shows the labels (magenta = seed, green = s1, yellow = score gate).</p>
+<h2 id="visual-checks-docsexperimentssam3_offline_labeller">Visual checks (<code>docs/experiments/sam3_offline_labeller/</code>)<a class="headerlink" href="#visual-checks-docsexperimentssam3_offline_labeller" title="Permanent link">&para;</a></h2>
+<ul>
+<li><code>track_sam3_mancity_seg050_o0_fwd_long_good.jpg</code>: 120-frame forward track through blur, a long kick and into the crowd; green = GT, red cross = SAM 3 (crop centred on its own prediction).</li>
+<li><code>track_sam2_astonvilla_o0_fwd_359_frames.jpg</code>: SAM2 over the 359-frame Aston Villa run (every 16th frame).</li>
+<li><code>track_sam3_mancity_seg010_o2_bwd_drift_to_player.jpg</code>: drift onto a player's boot while the ball is occluded, re-acquisition ~30 frames later.</li>
+<li><code>track_sam3_arsenal_example_o1_fwd_crowd_failure.jpg</code>: lost in the crowd, "absent" with logit -4..-6 (scores say so).</li>
+<li><code>demo_labels_bournemouth_seg035.jpg</code>: production output including the yellow-boot false seed.</li>
+<li><code>gt_arsenal_example_heldout.jpg</code>, <code>gt_mancity_seg031.jpg</code>, <code>rtdetr_conf80_seed_candidates_64.jpg</code>: GT / seed sanity sheets.</li>
+</ul>
+<h2 id="caveats">Caveats<a class="headerlink" href="#caveats" title="Permanent link">&para;</a></h2>
+<ul>
+<li>The held-out GT is saturated for tracking from a good seed: differences between SAM2 / SAM 3 / 3.1 are below what 251-1 217 frames of 7-8 clips can resolve (clip-level CIs are wide; frame-level CIs are optimistic).  A harder, denser GT with fast kicks / occlusions would be needed to rank trackers.</li>
+<li>The 250+ bin is one clip; <code>arsenal_example</code> is one clip; no-ball precision has n = 5-26; Norwich could not be scored (no window labels).</li>
+<li>Odd-frame GT of 50 fps clips is scored against the mean of two neighbours (adds up to a few px of interpolation error); 10 px hit threshold equals about the ball diameter.</li>
+<li>Seed-finder prompts were not tuned on a separate set before the held-out numbers were read (a dev check is reported); the "yellow ball" result is match-specific by construction.</li>
+<li>SAM 3.1 was tested with mask / point seeds only (no box prompt in the multiplex demo tracker) and only on the dev set; the text-recovery trick is implemented for SAM 3 only.</li>
+<li>fp16 autocast with fp32 resident weights; no <code>torch.compile</code>, no lower input resolution (the tracker is hard-wired to 1008 px / 72x72 features; a 504 px variant would need re-deriving the RoPE / memory sizes and was not tried).</li>
+</ul>
+<h2 id="recommendation-and-next-step">Recommendation and next step<a class="headerlink" href="#recommendation-and-next-step" title="Permanent link">&para;</a></h2>
+<ol>
+<li><strong>Keep SAM2.1-small crop512 as the track engine</strong> of the pseudo-label pipeline: same accuracy as SAM 3 / 3.1 wherever the GT can tell (saturated), 3x faster, 6x less memory, 2.7 GPU-hours per half.  SAM 3.1's multiplex gains do not apply to one ball.</li>
+<li><strong>Use SAM 3 as the slow background seed finder and verifier</strong>: (a) per match pick the text prompt (white ball: "ball" / "soccer ball"; yellow ball: "ball" / "yellow ball"; check on a few dev frames), (b) probe 384 px tiles upscaled to 1008 every ~50-100 frames (1-2 h per half) and add the top detection
+   (score &gt;= 0.5: ~95 % right) as a seed candidate next to RT-DETR conf &gt;= 0.8 seeds, (c) accept a track only where <strong>two independent seeds agree (S1, 5 px)</strong> or a second model (SAM 3 vs SAM2.1) agrees; do not trust a single track's score (false seed = confident wrong track).</li>
+<li>Use the SAM 3 tracker only on stretches where SAM2 loses the ball (crowd / long occlusion): it was the only place it beat SAM2 (+0.05 on <code>arsenal_example</code>, +0.17 at 100-250 frames, one clip) and its logit is the better gate (score &gt; 8: precision 0.97-1.0).</li>
+<li><strong>Production</strong>: <code>sam3-label-match</code> (built, demoed): ~0.42 s per tracked frame; give it seeds from (2); budget ~8 GPU-hours per half for one SAM 3 pass over every frame, ~2.5-4 h for gap filling, overnight is fine.</li>
+</ol>
+<p>Next steps, in order: (i) a harder, denser GT (fast kicks, occlusions, crowd) because the current held-out set cannot rank trackers; (ii) stop tracks at scene cuts (<code>cuts.py</code>) and add the SAM 3 text probe as a seed <em>verifier</em> in <code>sam3_label.py</code>;
+(iii) run the seed finder + SAM2 tracks on an unlabelled half (Norwich) and measure the precision of the S1-gated labels with the blind Ball Check (the study could not score Norwich: no window labels); (iv) feed the SAM 3 text detections as extra candidates to the round-3 B1 solver (union with RT-DETR gave +0.03-0.04 recall before);
+(v) only if throughput matters, try a 504 px SAM 3 input (4x fewer tokens; needs the RoPE / memory feature sizes re-derived) or half-precision weights.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      <script id="__config" type="application/json">{"base": "../..", "features": [], "search": "../../assets/javascripts/workers/search.973d3a69.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.f55a23d4.min.js"></script>
+      
+    
+  </body>
+</html>

@@ -1,0 +1,1952 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Tracking players, actions, and events in football matches.">
+      
+      
+      
+        <link rel="canonical" href="https://egroeg121.github.io/footy-track/experiments/temporal_detector_ablation/">
+      
+      
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.6.20">
+    
+    
+      
+        <title>Temporal detector ablation: single frame vs camera-aligned neighbours - Footy Scan</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.e53b48f4.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+    
+  </head>
+  
+  
+    <body dir="ltr">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#temporal-detector-ablation-single-frame-vs-camera-aligned-neighbours" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="Footy Scan" class="md-header__button md-logo" aria-label="Footy Scan" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Footy Scan
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Temporal detector ablation: single frame vs camera-aligned neighbours
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="Footy Scan" class="md-nav__button md-logo" aria-label="Footy Scan" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Footy Scan
+  </label>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Overview
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Architecture
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../pipeline-and-labels/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Pipeline and labels
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../data/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Data
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    Training
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            Training
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../training/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Training
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../training/notable_runs/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Notable Training Runs
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../inference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Inference
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../inference-web/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Inference web app
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../ball-tracking-eval/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Ball tracking evaluation
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../design/feature_store/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Feature store
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_10" >
+        
+          
+          <label class="md-nav__link" for="__nav_10" id="__nav_10_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    Design
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_10_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_10">
+            <span class="md-nav__icon md-icon"></span>
+            Design
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../design/pipeline_overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Pipeline Overview
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../design/player_reid/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Player Re-ID
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../design/tracking-pipeline/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Tracking Pipeline Design
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../design/claude_autolabel_loop/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Claude-assisted Ball Labelling
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../system_design/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    System Design
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../system_overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    System Overview
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../pipeline_architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Pipeline Architecture
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../timings/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Time Formats
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../data_formats/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Data Formats
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_11" >
+        
+          
+          <label class="md-nav__link" for="__nav_11" id="__nav_11_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    Development
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_11_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_11">
+            <span class="md-nav__icon md-icon"></span>
+            Development
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Getting Started
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../agent_guidelines/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Agent Guidelines
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../contributing-docs/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    How to contribute to the docs
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../todo/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    TODO
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#question-and-verdict" class="md-nav__link">
+    <span class="md-ellipsis">
+      Question and verdict
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#recipe-identical-in-both-arms-only-the-input-differs" class="md-nav__link">
+    <span class="md-ellipsis">
+      Recipe (identical in both arms; only the input differs)
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#augmentation-check-5-channel-input-stays-aligned" class="md-nav__link">
+    <span class="md-ellipsis">
+      Augmentation check (5-channel input stays aligned)
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-broke-or-needed-a-workaround" class="md-nav__link">
+    <span class="md-ellipsis">
+      What broke or needed a workaround
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#wall-clock" class="md-nav__link">
+    <span class="md-ellipsis">
+      Wall-clock
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#rerun" class="md-nav__link">
+    <span class="md-ellipsis">
+      Rerun
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#top-1-ball-recall-10-px-hit10" class="md-nav__link">
+    <span class="md-ellipsis">
+      Top-1 ball recall @10 px (hit@10)
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#candidate-recall-10-px-any-detection-within-10-px" class="md-nav__link">
+    <span class="md-ellipsis">
+      Candidate recall @10 px (any detection within 10 px)
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#ball-ap50" class="md-nav__link">
+    <span class="md-ellipsis">
+      Ball AP50
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#paired-difference-b-a-in-hit10-bootstrap-95-ci" class="md-nav__link">
+    <span class="md-ellipsis">
+      Paired difference B - A in hit@10 (bootstrap 95% CI)
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#paired-difference-b-a-in-candidate-recall-any10-does-the-detector-at-least-propose-the-ball" class="md-nav__link">
+    <span class="md-ellipsis">
+      Paired difference B - A in candidate recall any@10 (does the detector at least propose the ball?)
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#top-1-precision-and-false-positives-by-confidence-threshold-valtestheldout" class="md-nav__link">
+    <span class="md-ellipsis">
+      Top-1 precision and false positives by confidence threshold (val+test+heldout)
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#by-neighbour-status-and-ball-motion-hit10-testheldout" class="md-nav__link">
+    <span class="md-ellipsis">
+      By neighbour status and ball motion (hit@10, test+heldout)
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#training-curves-ball-ap50-on-val-each-epoch" class="md-nav__link">
+    <span class="md-ellipsis">
+      Training curves (ball AP50 on val, each epoch)
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#examples-where-a-and-b-disagree-test-heldout" class="md-nav__link">
+    <span class="md-ellipsis">
+      Examples where A and B disagree (test + heldout)
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+
+<h1 id="temporal-detector-ablation-single-frame-vs-camera-aligned-neighbours">Temporal detector ablation: single frame vs camera-aligned neighbours<a class="headerlink" href="#temporal-detector-ablation-single-frame-vs-camera-aligned-neighbours" title="Permanent link">&para;</a></h1>
+<p>Branch <code>exp/temporal-detector</code> (from <code>exp/multiframe-dataset</code>), 2026-11-14. Code: <code>experiments/temporal_detector/</code>, tests
+<code>tests/temporal_detector/</code>, Prefect flow <code>~/code/jobs/footy_temporal.py</code>. Dataset: <code>docs/experiments/multiframe_dataset.md</code>.
+Knowledge-base pages relied on: <code>footy-ball-detection-findings</code> (1280 px is the lever, the 44-instance benchmark trap, the
+"go temporal" research), <code>prefect-job-system</code> / skill <code>prefect-jobs</code> (pools, deployments, desktop sync), <code>footy-data-s3</code>,
+<code>wsl-gpu-training-box</code> ("Desktop as it is now": bare-metal Ubuntu, flaky Wi-Fi, <code>~/.local/bin/uv</code>).</p>
+<h2 id="question-and-verdict">Question and verdict<a class="headerlink" href="#question-and-verdict" title="Permanent link">&para;</a></h2>
+<p>Does giving the detector camera-motion-aligned neighbouring frames (t-2, t+2 as extra grey channels) improve tiny-ball
+detection over the same detector on the single frame?</p>
+<p><strong>Verdict: not shown. The input helps on one clip and does nothing measurable on the others.</strong> Same YOLO11s, same recipe, same
+frame-t pixels, COCO-pretrained, 100 epochs, 2 seeds per arm:</p>
+<ul>
+<li>Held-out clips (the cleanest arbiter, 117 balls in 11 clips; 84 balls in 6 clips that appear nowhere in train/val/test):
+  top-1 recall@10 px A 0.462 vs B 0.479, <strong>B-A = +0.017, 95% CI [-0.013, +0.047]</strong> (images) / [-0.019, +0.061] (clips);
+  strict subset +0.018 [-0.024, +0.060]. Per seed +0.043 and -0.009. The experiment can exclude a gain much larger than
+  about +0.05 on these clips, not a small one.</li>
+<li>Test split (238 balls; optimistic because v11 splits by image, 33 clips shared with train): A 0.880, B 0.878,
+  <strong>B-A = -0.002 [-0.023, +0.019]</strong> (saturated).</li>
+<li>Val split: B-A = +0.146 [+0.098, +0.191], but it is entirely one clip: <code>arsenal_example</code> (156 of 209 val balls, no train frames from
+  it, so it is a genuinely unseen clip) gives +0.208 [+0.154, +0.266] (seeds +0.167 / +0.250), the other 32 val clips give
+  -0.038 [-0.113, +0.028]. A clip-level bootstrap over val is [-0.082, +0.190]: one clip cannot establish a general effect.</li>
+<li>Where time does help: <strong>candidate recall</strong>. Fraction of balls with <em>some</em> detection within 10 px: test+heldout
+  +0.023 [+0.003, +0.044], heldout +0.056 [+0.009, +0.107], and for the fastest third of balls (test+heldout) +0.066
+  [+0.026, +0.114] while slow/medium balls show +0.000 / +0.009. So the temporal channels make the detector <em>propose</em> moving
+  balls it otherwise missed, but they do not make the top-1 pick better (hit@10 for the fastest third +0.018 [-0.009, +0.044]).
+  A re-ranking / tracking stage on top of the candidates is where this would pay, not the detector input alone.</li>
+<li>Neighbour fallback (cut / edge / alignment failure, 13 test+heldout balls): both arms 0.462, no difference (n too small).</li>
+<li>Against production: RT-DETR-L v11 at 1280, same frames, hit@10 val 0.718 / test 0.916 / heldout 0.487 vs B 0.639 / 0.878 /
+  0.479 (A 0.493 / 0.880 / 0.462). YOLO11s B is on par with RT-DETR-L on held-out clips, lower on val and test. RT-DETR is
+  trained at 1920 and is far less confident (top-1 FP rate on ball-free frames 31% at conf 0.5 vs 14-17% for YOLO), so
+  compare recall at a conf level, not only the top-1 hit rate.</li>
+<li>Seed variance is large: val recall differs by 0.15 between the two A seeds, and the held-out B-A is +0.043 for seed 0 (CI
+  just touching zero) but -0.009 for seed 1, so a single-seed comparison could have been read either way.</li>
+</ul>
+<p>Caveats: one model size (YOLO11s, not m: m is ~2.5x slower per epoch), k=2 only, one recipe, 100 epochs (val ball AP50 is
+still rising at epoch 100 for all runs; the curves are noisy, +-0.05 between neighbouring epochs, so <code>last.pt</code> is evaluated,
+no checkpoint selection on val), 2 seeds. The seed-2 runs that were queued were cancelled to bound wall-clock
+(<code>arm=A|B seed=2</code> reruns them).</p>
+<h2 id="recipe-identical-in-both-arms-only-the-input-differs">Recipe (identical in both arms; only the input differs)<a class="headerlink" href="#recipe-identical-in-both-arms-only-the-input-differs" title="Permanent link">&para;</a></h2>
+<ul>
+<li>A: 3 channels = B,G,R of frame t, losslessly re-saved as PNG from the same TIFFs (pixels identical), stock YOLO11s stem.</li>
+<li>B: all 5 TIFF channels <code>[gray(t-2) aligned, B, G, R, gray(t+2) aligned]</code>; stem inflated by
+  <code>multichannel.make_inflated_checkpoint</code> (pretrained R/G/B filters on input channels 3/2/1, channels 0 and 4 zero, so at step
+  0 the 5-channel net computes exactly the 3-channel net; unit-tested, including that changing the neighbours leaves the
+  output unchanged).</li>
+<li>YOLO11s, imgsz 1280, batch 4 (AMP), 100 epochs, seed 0 / 1, Ultralytics 8.3.241, optimiser <code>auto</code> (AdamW lr 0.00091, because
+  iterations &lt; 10k), mosaic 1.0 (close_mosaic 10), scale 0.5, translate 0.1, fliplr 0.5, HSV off in both arms (Ultralytics skips it
+  for 5 channels), Albumentations off in both, plots off, val every epoch, no early stopping, <code>last.pt</code> evaluated. All 7 classes
+  trained as in the export; the ball is class <code>in_play_ball</code>.</li>
+<li>Evaluation (<code>evaluate.py</code>, <code>report.py</code>): explicit fp16 inference at 1280 (letterbox, NMS conf 0.001 IoU 0.7 multi-label, ball
+  class only), boxes in the 1920x1080 frame (7 of the 599 eval images are 1280x720 sources; they are scaled into the
+  canonical frame). hit@10 = top-1 ball detection within 10 px of a GT ball centre; AP50 = 101-point at IoU 0.5. Cross-check
+  against Ultralytics' own validator at the last epoch (ball AP50 on val, report vs Ultralytics): A0 0.506 vs 0.509,
+  A1 0.376 vs 0.369, B0 0.620 vs 0.626, B1 0.542 vs 0.528.</li>
+<li>Reference row: production RT-DETR-L <code>rtdetr_1920_v11/best.pt</code> run through the same script on frame t at 1280 (Ultralytics
+  predictor, conf 0.001). It was trained on the v11 train split, as were A and B.</li>
+</ul>
+<h2 id="augmentation-check-5-channel-input-stays-aligned">Augmentation check (5-channel input stays aligned)<a class="headerlink" href="#augmentation-check-5-channel-input-stays-aligned" title="Permanent link">&para;</a></h2>
+<p><code>viz_aug.py</code> pulls samples from the very Ultralytics train pipeline (mosaic, affine, flip) and renders RGB(t), the temporal
+composite R=gray(t-2) G=gray(t) B=gray(t+2) and a zoom at the ball. Static, aligned content stays grey; only moving players
+and the on-screen graphics fringe; the neighbours are never displaced relative to t.</p>
+<p><img alt="augmented sample" src="aug_check_aug_00.jpg" />
+<img alt="augmented sample, flipped mosaic tile" src="aug_check_aug_03.jpg" /></p>
+<p>Quantitatively, over 40 augmented ball samples the mean |gray(t) - neighbour| is 2.16 (t-2) / 1.90 (t+2) vs 3.13 / 2.76 without
+augmentation (lower because mosaic/affine padding has zero difference; a mis-warped neighbour would raise it), and a real batch
+confirmed the tensor channel order is the stored B,G,R order (so RGB filters go to 3/2/1). A unit test pushes five identical
+channels through <code>RandomPerspective</code> + <code>RandomFlip</code> and asserts they stay identical. Files: <code>aug_check_*</code>.</p>
+<h2 id="what-broke-or-needed-a-workaround">What broke or needed a workaround<a class="headerlink" href="#what-broke-or-needed-a-workaround" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>Pretrained stem silently dropped</strong> for 5 channels (shape mismatch) -&gt; manual inflation; "Transferred 643/649 items" confirms
+  the stem is now loaded. A full <code>train()</code> epoch with val + AMP at 5 channels works (the open item from the dataset note).</li>
+<li><strong>Border value bug</strong>: <code>RandomPerspective</code> calls <code>warpAffine(..., borderValue=(114,114,114))</code>, which OpenCV expands to
+  <code>(114,114,114,0)</code>: for 5 channels the R channel is padded with 0 and the second neighbour with 114 (checked on a constant
+  image: <code>[114 114 114 0 114]</code>). Patched in <code>multichannel.patch_ultralytics_multichannel</code> so every channel pads with 114.</li>
+<li><code>cv2.resize(..., INTER_AREA)</code> does not accept 5 channels (Ultralytics' own loader uses INTER_LINEAR, so the evaluation does too);
+  the Ultralytics predictor reverses all channels of a numpy input, which scrambles the 5-channel layout, hence the explicit
+  inference path (checked equal to the dataset loader's letterbox content).</li>
+<li><code>meta.jsonl</code> calls the val split <code>valid</code>, the directories <code>val</code>: the first evaluation runs lost neighbour status / clip ids for
+  val; <code>report.py</code> re-fills them from <code>meta.jsonl</code> for every run.</li>
+<li>7 images are 1280x720; the first evaluate crashed on them (empty motion window) until coordinates were converted to the
+  1920x1080 frame.</li>
+<li><strong>Desktop / Prefect</strong>: the desktop's Wi-Fi dropped several times (signal -72 to -77 dBm); the zombie automation then marked the running
+  flow Crashed (no heartbeat) while its <code>train.py</code> kept running, and the next queued run started a second training on the same
+  8 GB GPU (OOM). A retrying flow run also bypasses the pool's concurrency slot. Another session's SAM2 jobs share this GPU
+  outside Prefect (epochs slowed from 52 s to ~105 s; one OOM at start-up). Mitigations: runs are resumable (<code>last.pt</code>,
+  <code>train_done.json</code>), the flow now waits for any orphaned <code>train.py</code> before training (<code>_wait_for_orphan_training</code>), and A seed 1
+  was resumed once at epoch 20 (kill + resume from <code>last.pt</code>).</li>
+<li><code>ball_curve.jsonl</code> has a second row at the end of training (Ultralytics re-validates best.pt); <code>report.py</code> keeps the first
+  row per epoch.</li>
+<li>Data transfer: 5.4 GB mini -&gt; desktop took about 2.2 h over the Wi-Fi (rsync, resumable).</li>
+</ul>
+<h2 id="wall-clock">Wall-clock<a class="headerlink" href="#wall-clock" title="Permanent link">&para;</a></h2>
+<p>Per 100-epoch run: A seed 0 1.35 h, B seed 0 1.40 h, B seed 1 1.40 h, A seed 1 2.17 h (GPU shared with a SAM2 job, one resume);
+evaluation of 599 images 52 s (YOLO) / 108 s (RT-DETR). About 6.3 GPU-hours for the four runs on one RTX 2070.</p>
+<h2 id="rerun">Rerun<a class="headerlink" href="#rerun" title="Permanent link">&para;</a></h2>
+<p><div class="highlight"><pre><span></span><code># code snapshot -&gt; mini (the flow pulls it); then, from the mini with the Prefect auth loaded
+rsync -a --delete --exclude __pycache__ experiments/temporal_detector /mnt/storage/exp/temporal/code/experiments/
+PF=~/.claude/skills/prefect-jobs/scripts/pf.sh
+$PF run temporal-ablation/temporal-ablation arm=A seed=0 epochs=100 model=yolo11s batch=4 exp_tag=v1   # also arm=B, seed=1, arm=ref
+# aggregate (CPU, numpy + opencv only); --meta takes the narrative text of this page
+uv run --no-project --python /usr/bin/python3 --with numpy --with opencv-python-headless python experiments/temporal_detector/report.py \
+  --runs /mnt/storage/exp/temporal/runs/v1 --dataset /mnt/storage/footy_data/multiframe_v1/k2 \
+  --out docs/experiments/temporal_detector_ablation
+</code></pre></div>
+Deployment: <code>temporal-ablation/temporal-ablation</code> (pool <code>gpu</code>, <code>~/code/jobs/temporal.prefect.yaml</code>); per-run outputs
+(<code>preds_*.json</code> per-image detections, <code>curve_*.jsonl</code>, <code>config_*.json</code>, <code>weights_*.pt</code>, <code>train_*.log</code>) in
+<code>/mnt/storage/exp/temporal/runs/v1/</code> on the mini. The tables below are generated by <code>report.py</code>; the text above is hand-written
+from them.</p>
+<p>Counts: val: 215 images, test: 267 images, heldout: 117 images, heldout_strict: 84 images, test+heldout: 384 images, val+test+heldout: 599 images.</p>
+<h2 id="top-1-ball-recall-10-px-hit10">Top-1 ball recall @10 px (hit@10)<a class="headerlink" href="#top-1-ball-recall-10-px-hit10" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>model</th>
+<th>val (n=209)</th>
+<th>test (n=238)</th>
+<th>heldout (n=117)</th>
+<th>heldout_strict (n=84)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>RT-DETR-L v11 (production, frame t)</td>
+<td>0.718</td>
+<td>0.916</td>
+<td>0.487</td>
+<td>0.524</td>
+</tr>
+<tr>
+<td>A  YOLO 3ch (frame t) seed 0</td>
+<td>0.569</td>
+<td>0.874</td>
+<td>0.444</td>
+<td>0.476</td>
+</tr>
+<tr>
+<td>A  YOLO 3ch (frame t) seed 1</td>
+<td>0.416</td>
+<td>0.887</td>
+<td>0.479</td>
+<td>0.512</td>
+</tr>
+<tr>
+<td>A  YOLO 3ch (frame t) mean of seeds</td>
+<td>0.493</td>
+<td>0.880</td>
+<td>0.462</td>
+<td>0.494</td>
+</tr>
+<tr>
+<td>B  YOLO 5ch (t, t-2, t+2) seed 0</td>
+<td>0.679</td>
+<td>0.882</td>
+<td>0.487</td>
+<td>0.524</td>
+</tr>
+<tr>
+<td>B  YOLO 5ch (t, t-2, t+2) seed 1</td>
+<td>0.598</td>
+<td>0.874</td>
+<td>0.470</td>
+<td>0.500</td>
+</tr>
+<tr>
+<td>B  YOLO 5ch (t, t-2, t+2) mean of seeds</td>
+<td>0.639</td>
+<td>0.878</td>
+<td>0.479</td>
+<td>0.512</td>
+</tr>
+</tbody>
+</table>
+<h2 id="candidate-recall-10-px-any-detection-within-10-px">Candidate recall @10 px (any detection within 10 px)<a class="headerlink" href="#candidate-recall-10-px-any-detection-within-10-px" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>model</th>
+<th>val (n=209)</th>
+<th>test (n=238)</th>
+<th>heldout (n=117)</th>
+<th>heldout_strict (n=84)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>RT-DETR-L v11 (production, frame t)</td>
+<td>0.833</td>
+<td>0.962</td>
+<td>0.675</td>
+<td>0.750</td>
+</tr>
+<tr>
+<td>A  YOLO 3ch (frame t) seed 0</td>
+<td>0.656</td>
+<td>0.929</td>
+<td>0.521</td>
+<td>0.571</td>
+</tr>
+<tr>
+<td>A  YOLO 3ch (frame t) seed 1</td>
+<td>0.536</td>
+<td>0.912</td>
+<td>0.504</td>
+<td>0.548</td>
+</tr>
+<tr>
+<td>A  YOLO 3ch (frame t) mean of seeds</td>
+<td>0.596</td>
+<td>0.920</td>
+<td>0.513</td>
+<td>0.560</td>
+</tr>
+<tr>
+<td>B  YOLO 5ch (t, t-2, t+2) seed 0</td>
+<td>0.737</td>
+<td>0.941</td>
+<td>0.573</td>
+<td>0.631</td>
+</tr>
+<tr>
+<td>B  YOLO 5ch (t, t-2, t+2) seed 1</td>
+<td>0.722</td>
+<td>0.912</td>
+<td>0.564</td>
+<td>0.619</td>
+</tr>
+<tr>
+<td>B  YOLO 5ch (t, t-2, t+2) mean of seeds</td>
+<td>0.730</td>
+<td>0.926</td>
+<td>0.568</td>
+<td>0.625</td>
+</tr>
+</tbody>
+</table>
+<h2 id="ball-ap50">Ball AP50<a class="headerlink" href="#ball-ap50" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>model</th>
+<th>val (n=209)</th>
+<th>test (n=238)</th>
+<th>heldout (n=117)</th>
+<th>heldout_strict (n=84)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>RT-DETR-L v11 (production, frame t)</td>
+<td>0.658</td>
+<td>0.881</td>
+<td>0.464</td>
+<td>0.514</td>
+</tr>
+<tr>
+<td>A  YOLO 3ch (frame t) seed 0</td>
+<td>0.506</td>
+<td>0.835</td>
+<td>0.410</td>
+<td>0.439</td>
+</tr>
+<tr>
+<td>A  YOLO 3ch (frame t) seed 1</td>
+<td>0.376</td>
+<td>0.827</td>
+<td>0.460</td>
+<td>0.501</td>
+</tr>
+<tr>
+<td>A  YOLO 3ch (frame t) mean of seeds</td>
+<td>0.441</td>
+<td>0.831</td>
+<td>0.435</td>
+<td>0.470</td>
+</tr>
+<tr>
+<td>B  YOLO 5ch (t, t-2, t+2) seed 0</td>
+<td>0.620</td>
+<td>0.840</td>
+<td>0.456</td>
+<td>0.502</td>
+</tr>
+<tr>
+<td>B  YOLO 5ch (t, t-2, t+2) seed 1</td>
+<td>0.542</td>
+<td>0.834</td>
+<td>0.435</td>
+<td>0.476</td>
+</tr>
+<tr>
+<td>B  YOLO 5ch (t, t-2, t+2) mean of seeds</td>
+<td>0.581</td>
+<td>0.837</td>
+<td>0.446</td>
+<td>0.489</td>
+</tr>
+</tbody>
+</table>
+<h2 id="paired-difference-b-a-in-hit10-bootstrap-95-ci">Paired difference B - A in hit@10 (bootstrap 95% CI)<a class="headerlink" href="#paired-difference-b-a-in-hit10-bootstrap-95-ci" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>subset</th>
+<th>n imgs</th>
+<th>n clips</th>
+<th>A</th>
+<th>B</th>
+<th>B-A</th>
+<th>95% CI (images)</th>
+<th>95% CI (clips)</th>
+<th>B-only / A-only hits</th>
+<th>per seed B-A</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>val</td>
+<td>209</td>
+<td>33</td>
+<td>0.493</td>
+<td>0.639</td>
+<td>+0.146</td>
+<td>[+0.098, +0.191]</td>
+<td>[-0.082, +0.190]</td>
+<td>41 / 5</td>
+<td>s0: +0.110, s1: +0.182</td>
+</tr>
+<tr>
+<td>test</td>
+<td>238</td>
+<td>81</td>
+<td>0.880</td>
+<td>0.878</td>
+<td>-0.002</td>
+<td>[-0.023, +0.019]</td>
+<td>[-0.024, +0.021]</td>
+<td>6 / 6</td>
+<td>s0: +0.008, s1: -0.013</td>
+</tr>
+<tr>
+<td>heldout</td>
+<td>117</td>
+<td>11</td>
+<td>0.462</td>
+<td>0.479</td>
+<td>+0.017</td>
+<td>[-0.013, +0.047]</td>
+<td>[-0.019, +0.061]</td>
+<td>4 / 2</td>
+<td>s0: +0.043, s1: -0.009</td>
+</tr>
+<tr>
+<td>val / clip arsenal_example (74% of val balls)</td>
+<td>156</td>
+<td>1</td>
+<td>0.375</td>
+<td>0.583</td>
+<td>+0.208</td>
+<td>[+0.154, +0.266]</td>
+<td>[+0.208, +0.208]</td>
+<td>41 / 2</td>
+<td>s0: +0.167, s1: +0.250</td>
+</tr>
+<tr>
+<td>val / all other clips</td>
+<td>53</td>
+<td>32</td>
+<td>0.840</td>
+<td>0.802</td>
+<td>-0.038</td>
+<td>[-0.113, +0.028]</td>
+<td>[-0.096, +0.029]</td>
+<td>0 / 3</td>
+<td>s0: -0.057, s1: -0.019</td>
+</tr>
+<tr>
+<td>heldout_strict</td>
+<td>84</td>
+<td>6</td>
+<td>0.494</td>
+<td>0.512</td>
+<td>+0.018</td>
+<td>[-0.024, +0.060]</td>
+<td>[-0.037, +0.083]</td>
+<td>3 / 2</td>
+<td>s0: +0.048, s1: -0.012</td>
+</tr>
+<tr>
+<td>test+heldout</td>
+<td>355</td>
+<td>88</td>
+<td>0.742</td>
+<td>0.746</td>
+<td>+0.004</td>
+<td>[-0.014, +0.023]</td>
+<td>[-0.015, +0.023]</td>
+<td>10 / 8</td>
+<td>s0: +0.020, s1: -0.011</td>
+</tr>
+<tr>
+<td>val+test+heldout</td>
+<td>564</td>
+<td>102</td>
+<td>0.650</td>
+<td>0.707</td>
+<td>+0.057</td>
+<td>[+0.035, +0.079]</td>
+<td>[-0.017, +0.114]</td>
+<td>51 / 13</td>
+<td>s0: +0.053, s1: +0.060</td>
+</tr>
+<tr>
+<td>test+heldout / neighbours both_ok</td>
+<td>342</td>
+<td>87</td>
+<td>0.753</td>
+<td>0.757</td>
+<td>+0.004</td>
+<td>[-0.013, +0.022]</td>
+<td>[-0.014, +0.022]</td>
+<td>10 / 7</td>
+<td>s0: +0.020, s1: -0.012</td>
+</tr>
+<tr>
+<td>test+heldout / neighbours fallback</td>
+<td>13</td>
+<td>10</td>
+<td>0.462</td>
+<td>0.462</td>
+<td>+0.000</td>
+<td>[-0.115, +0.115]</td>
+<td>[-0.100, +0.125]</td>
+<td>0 / 1</td>
+<td>s0: +0.000, s1: +0.000</td>
+</tr>
+<tr>
+<td>test+heldout / ball motion low</td>
+<td>113</td>
+<td>53</td>
+<td>0.743</td>
+<td>0.735</td>
+<td>-0.009</td>
+<td>[-0.040, +0.027]</td>
+<td>[-0.043, +0.026]</td>
+<td>4 / 5</td>
+<td>s0: +0.009, s1: -0.027</td>
+</tr>
+<tr>
+<td>test+heldout / ball motion mid</td>
+<td>115</td>
+<td>58</td>
+<td>0.822</td>
+<td>0.826</td>
+<td>+0.004</td>
+<td>[-0.030, +0.039]</td>
+<td>[-0.027, +0.035]</td>
+<td>4 / 1</td>
+<td>s0: +0.009, s1: +0.000</td>
+</tr>
+<tr>
+<td>test+heldout / ball motion high</td>
+<td>114</td>
+<td>48</td>
+<td>0.693</td>
+<td>0.711</td>
+<td>+0.018</td>
+<td>[-0.009, +0.044]</td>
+<td>[-0.006, +0.039]</td>
+<td>2 / 1</td>
+<td>s0: +0.044, s1: -0.009</td>
+</tr>
+</tbody>
+</table>
+<h2 id="paired-difference-b-a-in-candidate-recall-any10-does-the-detector-at-least-propose-the-ball">Paired difference B - A in candidate recall any@10 (does the detector at least propose the ball?)<a class="headerlink" href="#paired-difference-b-a-in-candidate-recall-any10-does-the-detector-at-least-propose-the-ball" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>subset</th>
+<th>n imgs</th>
+<th>A</th>
+<th>B</th>
+<th>B-A</th>
+<th>95% CI (images)</th>
+<th>95% CI (clips)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>val</td>
+<td>209</td>
+<td>0.596</td>
+<td>0.730</td>
+<td>+0.134</td>
+<td>[+0.096, +0.177]</td>
+<td>[-0.031, +0.168]</td>
+</tr>
+<tr>
+<td>test</td>
+<td>238</td>
+<td>0.920</td>
+<td>0.926</td>
+<td>+0.006</td>
+<td>[-0.011, +0.023]</td>
+<td>[-0.011, +0.025]</td>
+</tr>
+<tr>
+<td>heldout</td>
+<td>117</td>
+<td>0.513</td>
+<td>0.568</td>
+<td>+0.056</td>
+<td>[+0.009, +0.107]</td>
+<td>[+0.000, +0.093]</td>
+</tr>
+<tr>
+<td>val / clip arsenal_example (74% of val balls)</td>
+<td>156</td>
+<td>0.503</td>
+<td>0.683</td>
+<td>+0.179</td>
+<td>[+0.135, +0.231]</td>
+<td>[+0.179, +0.179]</td>
+</tr>
+<tr>
+<td>val / all other clips</td>
+<td>53</td>
+<td>0.868</td>
+<td>0.868</td>
+<td>+0.000</td>
+<td>[-0.047, +0.057]</td>
+<td>[-0.038, +0.071]</td>
+</tr>
+<tr>
+<td>heldout_strict</td>
+<td>84</td>
+<td>0.560</td>
+<td>0.625</td>
+<td>+0.065</td>
+<td>[+0.006, +0.131]</td>
+<td>[-0.014, +0.102]</td>
+</tr>
+<tr>
+<td>test+heldout</td>
+<td>355</td>
+<td>0.786</td>
+<td>0.808</td>
+<td>+0.023</td>
+<td>[+0.003, +0.044]</td>
+<td>[-0.001, +0.045]</td>
+</tr>
+<tr>
+<td>val+test+heldout</td>
+<td>564</td>
+<td>0.715</td>
+<td>0.779</td>
+<td>+0.064</td>
+<td>[+0.044, +0.084]</td>
+<td>[+0.000, +0.108]</td>
+</tr>
+<tr>
+<td>test+heldout / neighbours both_ok</td>
+<td>342</td>
+<td>0.797</td>
+<td>0.822</td>
+<td>+0.025</td>
+<td>[+0.006, +0.045]</td>
+<td>[+0.001, +0.047]</td>
+</tr>
+<tr>
+<td>test+heldout / neighbours fallback</td>
+<td>13</td>
+<td>0.500</td>
+<td>0.462</td>
+<td>-0.038</td>
+<td>[-0.115, +0.000]</td>
+<td>[-0.107, +0.000]</td>
+</tr>
+<tr>
+<td>test+heldout / ball motion low</td>
+<td>113</td>
+<td>0.774</td>
+<td>0.774</td>
+<td>+0.000</td>
+<td>[-0.031, +0.031]</td>
+<td>[-0.026, +0.024]</td>
+</tr>
+<tr>
+<td>test+heldout / ball motion mid</td>
+<td>115</td>
+<td>0.883</td>
+<td>0.891</td>
+<td>+0.009</td>
+<td>[-0.017, +0.039]</td>
+<td>[-0.013, +0.036]</td>
+</tr>
+<tr>
+<td>test+heldout / ball motion high</td>
+<td>114</td>
+<td>0.732</td>
+<td>0.798</td>
+<td>+0.066</td>
+<td>[+0.026, +0.114]</td>
+<td>[+0.012, +0.110]</td>
+</tr>
+</tbody>
+</table>
+<h2 id="top-1-precision-and-false-positives-by-confidence-threshold-valtestheldout">Top-1 precision and false positives by confidence threshold (val+test+heldout)<a class="headerlink" href="#top-1-precision-and-false-positives-by-confidence-threshold-valtestheldout" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>model</th>
+<th>prec@0.1 / recall@0.1</th>
+<th>prec@0.25 / recall@0.25</th>
+<th>prec@0.5 / recall@0.5</th>
+<th>FP(ball-free)@0.1</th>
+<th>FP(ball-free)@0.25</th>
+<th>FP(ball-free)@0.5</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>RT-DETR-L v11 (production, frame t)</td>
+<td>0.711 / 0.754</td>
+<td>0.772 / 0.743</td>
+<td>0.921 / 0.706</td>
+<td>1.000</td>
+<td>0.771</td>
+<td>0.314</td>
+</tr>
+<tr>
+<td>A  YOLO 3ch (frame t) seed 0</td>
+<td>0.915 / 0.590</td>
+<td>0.947 / 0.539</td>
+<td>0.956 / 0.465</td>
+<td>0.314</td>
+<td>0.229</td>
+<td>0.171</td>
+</tr>
+<tr>
+<td>A  YOLO 3ch (frame t) seed 1</td>
+<td>0.901 / 0.546</td>
+<td>0.950 / 0.507</td>
+<td>0.966 / 0.459</td>
+<td>0.400</td>
+<td>0.200</td>
+<td>0.171</td>
+</tr>
+<tr>
+<td>A  YOLO 3ch (frame t) mean of seeds</td>
+<td>0.908 / 0.568</td>
+<td>0.949 / 0.523</td>
+<td>0.961 / 0.462</td>
+<td>0.357</td>
+<td>0.214</td>
+<td>0.171</td>
+</tr>
+<tr>
+<td>B  YOLO 5ch (t, t-2, t+2) seed 0</td>
+<td>0.912 / 0.642</td>
+<td>0.951 / 0.587</td>
+<td>0.968 / 0.488</td>
+<td>0.314</td>
+<td>0.257</td>
+<td>0.171</td>
+</tr>
+<tr>
+<td>B  YOLO 5ch (t, t-2, t+2) seed 1</td>
+<td>0.891 / 0.626</td>
+<td>0.945 / 0.574</td>
+<td>0.972 / 0.496</td>
+<td>0.371</td>
+<td>0.229</td>
+<td>0.143</td>
+</tr>
+<tr>
+<td>B  YOLO 5ch (t, t-2, t+2) mean of seeds</td>
+<td>0.902 / 0.634</td>
+<td>0.948 / 0.581</td>
+<td>0.970 / 0.492</td>
+<td>0.343</td>
+<td>0.243</td>
+<td>0.157</td>
+</tr>
+</tbody>
+</table>
+<p>Ball-free images in val+test+heldout: 35 (FP rate is noisy).</p>
+<h2 id="by-neighbour-status-and-ball-motion-hit10-testheldout">By neighbour status and ball motion (hit@10, test+heldout)<a class="headerlink" href="#by-neighbour-status-and-ball-motion-hit10-testheldout" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>model</th>
+<th>test+heldout / neighbours both_ok (n=342)</th>
+<th>test+heldout / neighbours fallback (n=13)</th>
+<th>test+heldout / ball motion low (n=113)</th>
+<th>test+heldout / ball motion mid (n=115)</th>
+<th>test+heldout / ball motion high (n=114)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>RT-DETR-L v11 (production, frame t)</td>
+<td>0.784</td>
+<td>0.538</td>
+<td>0.779</td>
+<td>0.852</td>
+<td>0.719</td>
+</tr>
+<tr>
+<td>A  YOLO 3ch (frame t) seed 0</td>
+<td>0.743</td>
+<td>0.462</td>
+<td>0.735</td>
+<td>0.817</td>
+<td>0.675</td>
+</tr>
+<tr>
+<td>A  YOLO 3ch (frame t) seed 1</td>
+<td>0.763</td>
+<td>0.462</td>
+<td>0.752</td>
+<td>0.826</td>
+<td>0.711</td>
+</tr>
+<tr>
+<td>A  YOLO 3ch (frame t) mean of seeds</td>
+<td>0.753</td>
+<td>0.462</td>
+<td>0.743</td>
+<td>0.822</td>
+<td>0.693</td>
+</tr>
+<tr>
+<td>B  YOLO 5ch (t, t-2, t+2) seed 0</td>
+<td>0.763</td>
+<td>0.462</td>
+<td>0.743</td>
+<td>0.826</td>
+<td>0.719</td>
+</tr>
+<tr>
+<td>B  YOLO 5ch (t, t-2, t+2) seed 1</td>
+<td>0.751</td>
+<td>0.462</td>
+<td>0.726</td>
+<td>0.826</td>
+<td>0.702</td>
+</tr>
+<tr>
+<td>B  YOLO 5ch (t, t-2, t+2) mean of seeds</td>
+<td>0.757</td>
+<td>0.462</td>
+<td>0.735</td>
+<td>0.826</td>
+<td>0.711</td>
+</tr>
+</tbody>
+</table>
+<p>Motion score = max over the two neighbours of the p90 of |gray(t) - aligned neighbour| in a 15x15 window at the GT ball; terciles over test+heldout balls with both neighbours ok: low &lt; 81.6 &lt;= mid &lt; 101.1 &lt;= high.</p>
+<p>Paired B-A for these subsets:</p>
+<table>
+<thead>
+<tr>
+<th>subset</th>
+<th>n</th>
+<th>B-A</th>
+<th>95% CI (images)</th>
+<th>95% CI (clips)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>test+heldout / neighbours both_ok</td>
+<td>342</td>
+<td>+0.004</td>
+<td>[-0.013, +0.022]</td>
+<td>[-0.014, +0.022]</td>
+</tr>
+<tr>
+<td>test+heldout / neighbours fallback</td>
+<td>13</td>
+<td>+0.000</td>
+<td>[-0.115, +0.115]</td>
+<td>[-0.100, +0.125]</td>
+</tr>
+<tr>
+<td>test+heldout / ball motion low</td>
+<td>113</td>
+<td>-0.009</td>
+<td>[-0.040, +0.027]</td>
+<td>[-0.043, +0.026]</td>
+</tr>
+<tr>
+<td>test+heldout / ball motion mid</td>
+<td>115</td>
+<td>+0.004</td>
+<td>[-0.030, +0.039]</td>
+<td>[-0.027, +0.035]</td>
+</tr>
+<tr>
+<td>test+heldout / ball motion high</td>
+<td>114</td>
+<td>+0.018</td>
+<td>[-0.009, +0.044]</td>
+<td>[-0.006, +0.039]</td>
+</tr>
+</tbody>
+</table>
+<h2 id="training-curves-ball-ap50-on-val-each-epoch">Training curves (ball AP50 on val, each epoch)<a class="headerlink" href="#training-curves-ball-ap50-on-val-each-epoch" title="Permanent link">&para;</a></h2>
+<p>Ultralytics' own validator at the last epoch ('last') vs this report's explicit-inference AP50 on the same val split (cross-check of the evaluation code path; small differences come from letterbox padding and the AP matching).</p>
+<table>
+<thead>
+<tr>
+<th>run</th>
+<th>epochs</th>
+<th>best ball AP50 (epoch)</th>
+<th>last (Ultralytics val)</th>
+<th>last (report.py val AP50)</th>
+<th>mean last 10</th>
+<th>AP50 at epoch ...</th>
+<th>training time</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>A_s0</td>
+<td>100</td>
+<td>0.540 (93)</td>
+<td>0.509</td>
+<td>0.506</td>
+<td>0.516</td>
+<td>10: 0.276, 20: 0.351, 30: 0.371, 40: 0.357, 50: 0.417, 60: 0.380, 70: 0.410, 80: 0.444, 90: 0.484, 100: 0.509</td>
+<td>1.35 h</td>
+</tr>
+<tr>
+<td>A_s1</td>
+<td>100</td>
+<td>0.564 (48)</td>
+<td>0.369</td>
+<td>0.376</td>
+<td>0.373</td>
+<td>10: 0.285, 20: 0.299, 30: 0.366, 40: 0.330, 50: 0.436, 60: 0.325, 70: 0.428, 80: 0.436, 90: 0.378, 100: 0.369</td>
+<td>2.17 h</td>
+</tr>
+<tr>
+<td>B_s0</td>
+<td>100</td>
+<td>0.642 (98)</td>
+<td>0.626</td>
+<td>0.620</td>
+<td>0.621</td>
+<td>10: 0.289, 20: 0.304, 30: 0.393, 40: 0.399, 50: 0.412, 60: 0.422, 70: 0.461, 80: 0.584, 90: 0.596, 100: 0.626</td>
+<td>1.40 h</td>
+</tr>
+<tr>
+<td>B_s1</td>
+<td>100</td>
+<td>0.530 (98)</td>
+<td>0.528</td>
+<td>0.542</td>
+<td>0.509</td>
+<td>10: 0.321, 20: 0.351, 30: 0.425, 40: 0.366, 50: 0.462, 60: 0.418, 70: 0.438, 80: 0.476, 90: 0.427, 100: 0.528</td>
+<td>1.40 h</td>
+</tr>
+</tbody>
+</table>
+<h2 id="examples-where-a-and-b-disagree-test-heldout">Examples where A and B disagree (test + heldout)<a class="headerlink" href="#examples-where-a-and-b-disagree-test-heldout" title="Permanent link">&para;</a></h2>
+<p>Images where the seed-averaged top-1 hit differs by &gt;= 0.5: B better 17, A better 15; both miss 72 of 355. Shown: the clearest ones (all seeds agree first); the A / B markers are the seed-0 top-1 detections.</p>
+<p><img alt="B_hit_A_miss" src="example_00_B_hit_A_miss.png" /></p>
+<p><img alt="B_hit_A_miss" src="example_01_B_hit_A_miss.png" /></p>
+<p><img alt="B_hit_A_miss" src="example_02_B_hit_A_miss.png" /></p>
+<p><img alt="B_hit_A_miss" src="example_03_B_hit_A_miss.png" /></p>
+<p><img alt="B_hit_A_miss" src="example_04_B_hit_A_miss.png" /></p>
+<p><img alt="A_hit_B_miss" src="example_05_A_hit_B_miss.png" /></p>
+<p><img alt="A_hit_B_miss" src="example_06_A_hit_B_miss.png" /></p>
+<p><img alt="A_hit_B_miss" src="example_07_A_hit_B_miss.png" /></p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      <script id="__config" type="application/json">{"base": "../..", "features": [], "search": "../../assets/javascripts/workers/search.973d3a69.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.f55a23d4.min.js"></script>
+      
+    
+  </body>
+</html>

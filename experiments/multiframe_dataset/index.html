@@ -1,0 +1,1502 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Tracking players, actions, and events in football matches.">
+      
+      
+      
+        <link rel="canonical" href="https://egroeg121.github.io/footy-track/experiments/multiframe_dataset/">
+      
+      
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.6.20">
+    
+    
+      
+        <title>Multi-frame (camera-motion-compensated) dataset for a temporal ball detector - Footy Scan</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.e53b48f4.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+    
+  </head>
+  
+  
+    <body dir="ltr">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#multi-frame-camera-motion-compensated-dataset-for-a-temporal-ball-detector" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="Footy Scan" class="md-header__button md-logo" aria-label="Footy Scan" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Footy Scan
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Multi-frame (camera-motion-compensated) dataset for a temporal ball detector
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="Footy Scan" class="md-nav__button md-logo" aria-label="Footy Scan" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Footy Scan
+  </label>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Overview
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Architecture
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../pipeline-and-labels/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Pipeline and labels
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../data/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Data
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    Training
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            Training
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../training/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Training
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../training/notable_runs/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Notable Training Runs
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../inference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Inference
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../inference-web/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Inference web app
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../ball-tracking-eval/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Ball tracking evaluation
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../design/feature_store/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Feature store
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_10" >
+        
+          
+          <label class="md-nav__link" for="__nav_10" id="__nav_10_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    Design
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_10_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_10">
+            <span class="md-nav__icon md-icon"></span>
+            Design
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../design/pipeline_overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Pipeline Overview
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../design/player_reid/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Player Re-ID
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../design/tracking-pipeline/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Tracking Pipeline Design
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../design/claude_autolabel_loop/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Claude-assisted Ball Labelling
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../system_design/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    System Design
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../system_overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    System Overview
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../pipeline_architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Pipeline Architecture
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../timings/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Time Formats
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../data_formats/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Data Formats
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_11" >
+        
+          
+          <label class="md-nav__link" for="__nav_11" id="__nav_11_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    Development
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_11_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_11">
+            <span class="md-nav__icon md-icon"></span>
+            Development
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Getting Started
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../agent_guidelines/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Agent Guidelines
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../contributing-docs/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    How to contribute to the docs
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../todo/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    TODO
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-image-name-to-video-frame-mapping" class="md-nav__link">
+    <span class="md-ellipsis">
+      1. Image name to (video, frame) mapping
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-camera-motion-estimation" class="md-nav__link">
+    <span class="md-ellipsis">
+      2. Camera-motion estimation
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="2. Camera-motion estimation">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#full-run-alignment-stats-k2-lk-3266-neighbour-slots" class="md-nav__link">
+    <span class="md-ellipsis">
+      Full-run alignment stats (k=2, LK, 3,266 neighbour slots)
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-cuts" class="md-nav__link">
+    <span class="md-ellipsis">
+      3. Cuts
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-channel-format-decision-and-ultralytics-support" class="md-nav__link">
+    <span class="md-ellipsis">
+      4. Channel format decision and Ultralytics support
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-what-the-aligned-diff-images-show" class="md-nav__link">
+    <span class="md-ellipsis">
+      5. What the aligned diff images show
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-dataset" class="md-nav__link">
+    <span class="md-ellipsis">
+      6. Dataset
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-reproduce-code-map" class="md-nav__link">
+    <span class="md-ellipsis">
+      7. Reproduce / code map
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-before-gpu-training" class="md-nav__link">
+    <span class="md-ellipsis">
+      8. Before GPU training
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+
+<h1 id="multi-frame-camera-motion-compensated-dataset-for-a-temporal-ball-detector">Multi-frame (camera-motion-compensated) dataset for a temporal ball detector<a class="headerlink" href="#multi-frame-camera-motion-compensated-dataset-for-a-temporal-ball-detector" title="Permanent link">&para;</a></h1>
+<p>Status: dataset built (CPU only, no training). Branch <code>exp/multiframe-dataset</code>. Date 2026-11-14.</p>
+<p>Goal: give the ball detector frames t-k and t+k aligned into frame t's coordinates, for every
+labelled Roboflow v11 image and for human-GT frames of clips the detector never saw, so a
+temporal model can be trained and evaluated without any new annotation.</p>
+<p>KB pages relied on: <code>footy-ball-detection-findings</code> ("The key enabler": neighbours are
+recoverable from the file names, cuts are the trap; the dataset notes; the benchmark
+trap), <code>footy-data-s3</code> / <code>footy-data-plane-reconciliation</code> (where the data lives, GT tiers),
+<code>footy-labeller-gotchas</code>. Research note <code>research_notes/Offline football ball tracking
+models/tiny_object_video_detection.md</code> (YOLOMG: frame differences from t-k and t+k aligned by
+homography, best k=2; Temporal-YOLOv8 channel stacking, untested on moving cameras; "patching
+RT-DETR to 9 channels is UNVERIFIED"). Split/exclusion logic read from
+<code>scripts/export_training_dataset.py</code>, <code>ball_eval/dataset.py</code>, <code>clip_id.py</code> (T-03).</p>
+<h2 id="1-image-name-to-video-frame-mapping">1. Image name to (video, frame) mapping<a class="headerlink" href="#1-image-name-to-video-frame-mapping" title="Permanent link">&para;</a></h2>
+<p>Roboflow v11 lives at <code>/mnt/storage/footy_data/detection_dataset/roboflow_dataset_11</code>
+(<code>train 1035 / valid 215 / test 268</code>, 1920x1080, class ids <code>ball 0, coach 1, in_play_ball 2,
+person 3, player 4, player_sub 5, referee 6</code>). Two name families, both mappable
+(<code>multiframe/mapping.py</code>):</p>
+<table>
+<thead>
+<tr>
+<th>Name</th>
+<th>Meaning</th>
+<th>Mapping</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>&lt;clip_stem&gt;_&lt;NNNNNN&gt;_(png\|jpg).rf.&lt;hash&gt;</code> (stem like <code>astonvilla_seg080</code>)</td>
+<td>NNNNNN is the frame index <strong>inside the clip</strong></td>
+<td><code>ballcheck_clips/&lt;stem&gt;.mp4</code> (alias symlink), frame = NNNNNN</td>
+</tr>
+<tr>
+<td><code>arsenal_mancity_20250925_&lt;NNNNNN&gt;_png.rf...</code> (full-match frames, 388 of 1518 images)</td>
+<td>NNNNNN is the ordinal of <code>arsenal_mancity/full_video_frames/*.png</code>, a <strong>1 fps</strong> extraction</td>
+<td>absolute source frame = <code>25*NNNNNN + 12</code> (ffmpeg <code>fps=1</code> takes t+0.5 s); inside the broadcast segment clip given by <code>clips/segments.json</code> (<code>start_frame</code>), frame = absolute - start</td>
+</tr>
+</tbody>
+</table>
+<p>Gotchas found: the source <code>.webm</code> cannot be used (OpenCV returns the same frame for every
+seek), so full-match frames are located in the segment clips; the <code>+12</code> offset is not
+documented anywhere and was found by pixel search; v11 frames whose absolute frame falls in a
+non-broadcast gap have no clip (2 images). <code>eval_data/clips/</code> is <strong>empty</strong> on this machine, so
+the harness eval-exclusion list the export script builds from it is empty here too.</p>
+<p><strong>Verification:</strong> 60 random mapped images, decoded frame t vs the v11 JPEG: all 60 best-match at
+offset 0 (mean abs grey diff 0.3-2.2, i.e. JPEG noise; t+-1 is &gt;10). Includes 9/9 full-match
+images. (<code>multiframe_mapping_report --verify 60</code>.)</p>
+<p><strong>Coverage</strong> (<code>mapping_report.json</code>; ball instance = class <code>in_play_ball</code>, the only populated
+ball class; the KB's "826 train ball instances" does not match the export on disk, which has 1,010):</p>
+<table>
+<thead>
+<tr>
+<th>split</th>
+<th>images</th>
+<th>balls</th>
+<th>mapped</th>
+<th>k=1 images / balls</th>
+<th>k=2</th>
+<th>k=4</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>train</td>
+<td>1035</td>
+<td>1010</td>
+<td>1034 / 1009</td>
+<td>1020 / 1000</td>
+<td>1017 / 997</td>
+<td>1006 / 987</td>
+</tr>
+<tr>
+<td>valid</td>
+<td>215</td>
+<td>211</td>
+<td>215 / 211</td>
+<td>207 / 205</td>
+<td>204 / 202</td>
+<td>198 / 196</td>
+</tr>
+<tr>
+<td>test</td>
+<td>268</td>
+<td>243</td>
+<td>267 / 243</td>
+<td>265 / 241</td>
+<td>264 / 241</td>
+<td>261 / 239</td>
+</tr>
+</tbody>
+</table>
+<p>"k=n" = frames t-n and t+n both exist in the clip (misses are clip edges). 99.9% map; at k=2
+98.2% of train, 94.9% of valid images keep both neighbours. We still emit the edge images
+with a duplicated neighbour (below), so the split is identical to v11.</p>
+<p>Leakage note: v11's split is <strong>by image, not by clip</strong>. By canonical clip id, 18 clips
+appear in both train and valid and 33 in both train and test (mostly full-match frames that
+land in the same 101 s segments). The existing val/test numbers therefore reward scene
+memorisation (the KB already flags <code>astonvilla_seg080</code> / <code>bournemouth_1st_seg070</code>).</p>
+<h2 id="2-camera-motion-estimation">2. Camera-motion estimation<a class="headerlink" href="#2-camera-motion-estimation" title="Permanent link">&para;</a></h2>
+<p>Compared on 30 v11 frames (stratified, &lt;=6 per clip, t vs t-2) at a 480 px working width,
+single-thread CPU time per pair (the box was at load 20-50, wall time is meaningless). Quality
+= mean abs grey error (blurred, 480 px) over <strong>grass pixels of frame t not under a labelled
+person</strong>, after warping t-2 into t. Identity (no alignment) = 1.07 median; 40% of pairs have a
+moving camera (identity &gt; 1.5, median 1.98). "worse" = accepted pairs whose aligned residual
+exceeds identity.</p>
+<table>
+<thead>
+<tr>
+<th>method</th>
+<th>masking</th>
+<th>failed</th>
+<th>pitch resid. median</th>
+<th>worse than identity</th>
+<th>ms / pair (CPU)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>ORB + RANSAC @480</td>
+<td>person boxes</td>
+<td>0%</td>
+<td>1.11</td>
+<td>50%</td>
+<td>285</td>
+</tr>
+<tr>
+<td>ORB + RANSAC @480</td>
+<td>none</td>
+<td>0%</td>
+<td>1.29</td>
+<td>47%</td>
+<td>308</td>
+</tr>
+<tr>
+<td>ORB + RANSAC @960</td>
+<td>person boxes</td>
+<td>0%</td>
+<td>1.39</td>
+<td>47%</td>
+<td>467</td>
+</tr>
+<tr>
+<td>AKAZE + RANSAC @480</td>
+<td>person boxes</td>
+<td>6.7%</td>
+<td>1.10</td>
+<td>39%</td>
+<td>168</td>
+</tr>
+<tr>
+<td>AKAZE + RANSAC @480</td>
+<td>none</td>
+<td>0%</td>
+<td>0.91</td>
+<td>33%</td>
+<td>154</td>
+</tr>
+<tr>
+<td>ECC homography @480 (mine)</td>
+<td>person boxes</td>
+<td>0%</td>
+<td>0.62</td>
+<td>13%</td>
+<td>193</td>
+</tr>
+<tr>
+<td>ECC homography @480 (mine)</td>
+<td>none</td>
+<td>0-3%</td>
+<td>0.63</td>
+<td>7%</td>
+<td>195</td>
+</tr>
+<tr>
+<td>ORB then ECC @480</td>
+<td>person boxes</td>
+<td>0%</td>
+<td>0.63</td>
+<td>13%</td>
+<td>455</td>
+</tr>
+<tr>
+<td><strong>LK + RANSAC (<code>calibration/temporal</code>, whole frame minus overlay and person boxes)</strong></td>
+<td>person boxes</td>
+<td><strong>0%</strong></td>
+<td><strong>0.49</strong></td>
+<td><strong>6.7%</strong></td>
+<td><strong>57</strong></td>
+</tr>
+<tr>
+<td>same, no boxes (whole frame minus overlay)</td>
+<td>none</td>
+<td>0%</td>
+<td>0.61</td>
+<td>10%</td>
+<td>62</td>
+</tr>
+<tr>
+<td>same, grass-only mask</td>
+<td>none</td>
+<td>0%</td>
+<td>0.81</td>
+<td>20%</td>
+<td>62</td>
+</tr>
+<tr>
+<td>LK then ECC / its own ECC</td>
+<td>person boxes</td>
+<td>0%</td>
+<td>0.51</td>
+<td>3.3%</td>
+<td>520 / 499</td>
+</tr>
+</tbody>
+</table>
+<p>(<code>alignment_eval_d2.json</code>, <code>compare_temporal_d2.json</code>; ORB/AKAZE/ECC rows come from an
+earlier run of the same sample, n=30 with the identical seed. Small n; differences of
+~0.1 are within noise. d=1 and d=4 were not measured.)</p>
+<p>What the numbers say:</p>
+<ul>
+<li>Feature matching on ORB/AKAZE is <em>not</em> better than doing nothing on broadcast frames: ~1000
+  RANSAC inliers, but they sit on the stands and hoardings (different depth/plane), so the
+  homography is wrong for the pitch (50% of pairs worse than identity). Intensity-based
+  methods (ECC) and tracked-corner LK on the whole frame are clearly better; on moving-camera
+  pairs ECC gives 0.85-0.9 vs identity 1.98, on near-static pairs 0.55-0.6 vs 0.92.</li>
+<li><strong>Chosen: LK + RANSAC from <code>calibration/temporal.py</code> (shared module, see below).</strong> Best
+  residual, lowest identity-regression rate, 57 ms/pair CPU (~73 ms wall under load), 3.4x
+  faster than my ECC and 9x faster than LK+ECC, which gained nothing. This agrees with the
+  other session's measurements (LK ~45 ms, ECC 0.6-1.5 s with no accuracy gain, whole-frame
+  mask beats grass-only).</li>
+<li>Player masking: for LK, boxes help (0.49 vs 0.61 unmasked); for my ECC they did not
+  (0.62 vs 0.63; within noise). Grass-only is clearly worse (0.81, 20% worse than identity).</li>
+<li>Disagreement recorded: the shared module's cut notes say non-cuts have histogram distance
+  &lt;= 0.30; on my three 500-1400 frame scans non-cuts were &lt;= 0.09 (p99 0.057), cuts &gt;= 0.37
+  (different histogram: 8x4x4 HSV, 160 px, Bhattacharyya). I use 0.2 for the dataset.</li>
+</ul>
+<p>Shared-module provenance: <code>src/footy_track/calibration/{__init__,geometry,pitch_model,
+refine,temporal}.py</code> and <code>prelabel/{__init__,candidates}.py</code> are copied <strong>verbatim</strong> from
+branch <code>exp/calibration-temporal</code> at commit <code>7988bde</code> (temporal.py needs those files to
+import; identical blobs at identical paths merge cleanly when that branch lands). Use is
+through one adapter, <code>multiframe/align.py::estimate_pair_lk</code>, and <code>estimate_pair(a, b,
+mask_a, mask_b, scale, method)</code> returns <code>PairMotion(H_px, H_norm, ok, inliers, residual,
+method, reason)</code>, a subset of the shared API's <code>PairMotion</code> (which adds <code>n_tracked</code>, <code>score</code>). <code>H</code> maps frame a pixels to frame b pixels;
+render b into a with <code>warp_to_ref</code> (<code>warpPerspective(..., WARP_INVERSE_MAP)</code>).</p>
+<h3 id="full-run-alignment-stats-k2-lk-3266-neighbour-slots">Full-run alignment stats (k=2, LK, 3,266 neighbour slots)<a class="headerlink" href="#full-run-alignment-stats-k2-lk-3266-neighbour-slots" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>split</th>
+<th>ok</th>
+<th>edge (clip boundary)</th>
+<th>cut</th>
+<th>alignment failed</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>train (2068)</td>
+<td>2039</td>
+<td>17</td>
+<td>11</td>
+<td>1</td>
+</tr>
+<tr>
+<td>valid (430)</td>
+<td>418</td>
+<td>11</td>
+<td>1</td>
+<td>0</td>
+</tr>
+<tr>
+<td>test (534)</td>
+<td>526</td>
+<td>3</td>
+<td>1</td>
+<td>4</td>
+</tr>
+<tr>
+<td>heldout (234)</td>
+<td>225</td>
+<td>8</td>
+<td>1</td>
+<td>0</td>
+</tr>
+</tbody>
+</table>
+<p>So 98.0% aligned; 0.4% cuts, 0.15% alignment failures, 1.2% clip edges. Alignment
+failures: 2 "too few features", 3 with 17-22 inliers (&lt; 25). Alignment ms per ok pair: median
+73 wall (loaded box). Whole build: 4,024 s, single process, 2 threads, for 1,633 images.</p>
+<h2 id="3-cuts">3. Cuts<a class="headerlink" href="#3-cuts" title="Permanent link">&para;</a></h2>
+<p>Broadcast cuts make t-k a different camera: the diff turns into noise on exactly the frames
+that matter. A neighbour is replaced by <strong>a copy of gray(t)</strong> (so |diff| = 0) when, checked
+in this order: it is outside the clip (<code>edge</code>); the max Bhattacharyya distance between
+<em>consecutive</em> frames from t to t+-k exceeds 0.2 (<code>cut</code>); or alignment fails (<code>align_fail</code>:
+&lt;25 RANSAC inliers, inlier ratio, degenerate H, residual gate of the shared module).</p>
+<p>Calibration (<code>multiframe_cut_scan.py</code>, 2,531 frames of three clips): consecutive-frame
+distance is bimodal; ordinary frames have median 0.03, p99 0.057, max 0.09; the five cuts
+found are 0.37, 0.45, 0.69, 0.72, 0.80 and ECC alignment of those pairs fails or has residual
+30-50 (ordinary pairs: &lt; 5). 14 neighbour slots were flagged as cuts in the dataset, one at
+0.24 (near threshold; may be a flash rather than a cut). Each stored image records per-side
+status, frame number, histogram distance, inliers and residual in <code>meta.jsonl</code>.</p>
+<h2 id="4-channel-format-decision-and-ultralytics-support">4. Channel format decision and Ultralytics support<a class="headerlink" href="#4-channel-format-decision-and-ultralytics-support" title="Permanent link">&para;</a></h2>
+<p><strong>Decision: (A) 5 channels <code>[gray(t-k) aligned, B, G, R of t, gray(t+k) aligned]</code>, one
+multi-page TIFF per image, 8-bit, LZW, full 1920x1080.</strong> (B) RGB + |aligned diff| is derivable
+from A in one line (<code>abs(g(t) - prev)</code>, <code>abs(next - g(t))</code>) and can be made at load time or in a
+custom dataset; A cannot be recovered from B.</p>
+<p>Reasoning:
+- The viewer shows why signed grey planes matter: a moving ball appears as a bright blob at
+  both t-k and t+k positions in A (a dipole after differencing) and the network can use the
+  sign and direction; |diff| discards both.
+- A <strong>resting ball</strong> (e.g. <code>train_astonvilla_seg080_000039_ball_static.png</code>) cancels almost
+  completely in any diff, so a pure-diff model loses the ball exactly when it is easiest.
+  A keeps the full RGB frame, so the model degrades to the single-frame detector there.
+- Extra channels can be initialised so the model starts as the pretrained single-frame
+  detector (copy the RGB stem filters, zero the other 2 input channels).
+- Cost of A over B: a model must learn differencing; with ~1,000 balls B's explicit prior
+  may train faster. Cheap to test both: B is a transform of A.</p>
+<p><strong>TIFF note:</strong> <code>cv2.imwritemulti</code> of 2-D pages; Ultralytics' <code>imread</code> reads <code>.tif/.tiff</code> with
+<code>cv2.imdecodemulti</code> and stacks 2-D pages on axis 2 -&gt; <code>(1080, 1920, 5)</code> uint8 (checked).
+Channel order is stored as B, G, R: for 5 channels Ultralytics' <code>Format</code> only reverses the
+channel order when there are exactly 3, so the tensor keeps this order. <strong>When inflating a
+pretrained RGB stem, put R/G/B filters on input channels 3/2/1</strong> (not 1/2/3).</p>
+<p><strong>Ultralytics support, pinned version 8.3.241 (<code>uv.lock</code>), source read and exercised on CPU:</strong></p>
+<table>
+<thead>
+<tr>
+<th>piece</th>
+<th>result</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>dataset yaml <code>channels: 5</code></td>
+<td>read in <code>data/utils.py:431</code> and passed to <code>YOLODataset</code> (<code>dataset.py:88</code>)</td>
+</tr>
+<tr>
+<td>YOLO model (<code>yolo11n.yaml</code>, <code>DetectionModel(ch=5)</code>)</td>
+<td>builds, first conv takes 5 channels, forward OK (checked)</td>
+</tr>
+<tr>
+<td>RT-DETR (<code>rtdetr-l.yaml</code>, <code>RTDETRDetectionModel(ch=5)</code>)</td>
+<td>builds, first conv takes 5 channels, forward OK (checked); <code>RTDETRTrainer.get_model</code> passes <code>ch=self.data["channels"]</code> (<code>models/rtdetr/train.py:55</code>)</td>
+</tr>
+<tr>
+<td>data pipeline, <code>YOLODataset</code> and <code>RTDETRDataset</code>, augment on/off</td>
+<td>returns <code>(5, H, W)</code> uint8 tensors with labels (checked); <code>RandomHSV</code> skips non-3-channel images, <code>LetterBox</code> has a multispectral branch, mosaic allocates <code>img.shape[2]</code> channels; <code>cv2.warpAffine/resize/flip</code> work on 5 channels (border fill is 114 only on the first 3 channels, 0 on the rest)</td>
+</tr>
+<tr>
+<td>pretrained weights</td>
+<td>stem shape mismatch -&gt; <code>intersect_dicts</code> silently drops it (random stem). Needs manual stem inflation.</td>
+</tr>
+<tr>
+<td>full <code>train()</code> loop with 5 channels</td>
+<td><strong>UNVERIFIED</strong>: a 1-epoch CPU run of both models was started and killed to shed load before it finished (it did get through model build, dataset build and the first epoch header). Validation, AMP and plotting code paths with 5 channels were not exercised.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="5-what-the-aligned-diff-images-show">5. What the aligned diff images show<a class="headerlink" href="#5-what-the-aligned-diff-images-show" title="Permanent link">&para;</a></h2>
+<p>Four PNGs in <code>docs/experiments/multiframe_dataset/</code> (<code>visualise_multiframe.py</code>): top
+left frame t (ball boxed), top right the aligned |t - (t-2)| x4 over the whole frame; bottom
+a 96 px crop (x3) around the GT ball: aligned prev, RGB t, aligned next, two aligned diffs
+and the same diff with <strong>no</strong> alignment.</p>
+<ul>
+<li><strong>Static structure cancels.</strong> On the pitch, field lines, mowing stripes, hoardings and
+  stands, alignment leaves only thin faint edges; players come out as bright edge outlines.
+  Crowd texture leaves a noisy residual (high-frequency, sub-pixel misregistration) but it
+  is dim and different in character from a ball. The scorebug/logo is bright (screen-static
+  graphics move relative to the aligned pitch) but is a fixed-position artefact the model
+  can learn to ignore.</li>
+<li><strong>A moving ball is a dipole / short streak</strong> in the diffs (bright disc at both its t-k
+  and t+k positions in the two diffs; <code>heldout_seg035_000287</code>, <code>_000232</code>: a clear white
+  blob under the yellow GT circle in <code>|t-prev|</code> and <code>|next-t|</code>).</li>
+<li><strong>But the ball is not isolated in the diff when it is in contact with players</strong>: in the
+  scrum (<code>train_mancity_seg030_000430</code>) and in <code>_000232</code> it sits inside a bright tangle of
+  leg and boot motion, so the diff alone does not separate it; appearance (RGB) must still do
+  that.</li>
+<li><strong>A resting ball vanishes</strong>: <code>train_astonvilla_seg080_000039</code> (ball stationary on grass,
+  player nearby) shows only a faint ring in both diffs, which is why A keeps RGB.</li>
+<li>Alignment helps but is not dramatic when the camera is nearly still (the unaligned crop in
+  <code>_000287</code> is similar), and the full-frame gap shows up when the camera pans (my 30-pair
+  numbers: residual 0.85 aligned vs 1.98 unaligned on moving-camera pairs).</li>
+</ul>
+<h2 id="6-dataset">6. Dataset<a class="headerlink" href="#6-dataset" title="Permanent link">&para;</a></h2>
+<p><code>/mnt/storage/footy_data/multiframe_v1/k2/</code> (new, nothing overwritten; not uploaded to S3
+or the desktop). <strong>5.4 GB, 1,633 TIFFs</strong> (about 3.3 MB each).</p>
+<div class="highlight"><pre><span></span><code>images/{train,val,test,heldout}/&lt;id&gt;.tiff      5 pages, 1920x1080, uint8
+labels/{train,val,test,heldout}/&lt;id&gt;.txt       YOLO, v11 class ids, copied unchanged for v11 images
+data.yaml           train/val/test, nc 7, channels 5       (v11 names, same ids as the detector)
+data_heldout.yaml   train/images/train, val -&gt; images/heldout
+meta.jsonl          per image: source video, frame, per-neighbour status/inliers/residual/hist
+manifest.json       counts and options (copy: manifest_k2.json next to this doc)
+</code></pre></div>
+<table>
+<thead>
+<tr>
+<th>split</th>
+<th>images</th>
+<th>ball instances</th>
+<th>both neighbours aligned (images / balls)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>train (= v11 train, 1 unmappable image dropped)</td>
+<td>1034</td>
+<td>1009</td>
+<td>1007 / 988</td>
+</tr>
+<tr>
+<td>val (= v11 valid)</td>
+<td>215</td>
+<td>211</td>
+<td>203 / 201</td>
+</tr>
+<tr>
+<td>test (= v11 test, 1 unmappable dropped)</td>
+<td>267</td>
+<td>243</td>
+<td>261 / 239</td>
+</tr>
+<tr>
+<td>heldout</td>
+<td>117</td>
+<td>117</td>
+<td>108 / 108</td>
+</tr>
+</tbody>
+</table>
+<p>Image ids are the v11 file stems (so <code>train/val/test</code> have the same image ids as the existing
+detector). RGB(t) is decoded from the video, not from the v11 JPEG (identical up to JPEG
+noise), so t and its neighbours share codec statistics.</p>
+<p><strong>Held-out eval set</strong>: human GT (tier 1 <code>labeller</code>, tier 2 <code>vittrack</code>+<code>human_checked</code>;
+tier 3 excluded) frames with a ball, from <code>ball_gt_marks</code>, in clips whose <strong>canonical</strong> clip id
+(<code>footy_track.clip_id</code>) is absent from v11 <em>train</em>, minus frames that are already v11 images.
+117 frames / 117 balls. Of these <strong>84 balls (6 clips: <code>arsenal_bournemouth_1st_seg035/031/015/021/060</code>,
+<code>arsenal_mancity_part093</code>) are strictly clean</strong> (clip in none of train/valid/test; flag
+<code>strict_heldout</code> in <code>meta.jsonl</code>); the other 33 come from clips present only in v11 valid/test
+(<code>arsenal_example</code> 20, <code>bournemouth_seg009</code> 10, three single frames). Labels for held-out
+frames are the tier&lt;=2 GT boxes of that frame in v11 class ids.
+<strong>84 strict balls (76 with both neighbours aligned) is a thin benchmark</strong> (the KB's 44-instance warning applies); report
+instance counts with any metric, and read the 117 as secondary. Because the repo-wide
+split-by-clip rule makes nearly every GT clip a training clip, there is little clean GT left;
+more would need new labelling in unseen clips.</p>
+<p>Build: <code>uv run python -m footy_track.scripts.build_multiframe_dataset --k 2 --method lk</code>
+(refuses to write into a non-empty directory). k=2 was chosen on coverage (98% of images
+have both neighbours; k=4 gets 97%) and because YOLOMG's best k is 2; k=1 and k=4 need only
+a re-run (about 1.1 h on this box).</p>
+<h2 id="7-reproduce-code-map">7. Reproduce / code map<a class="headerlink" href="#7-reproduce-code-map" title="Permanent link">&para;</a></h2>
+<ul>
+<li><code>src/footy_track/multiframe/</code> <code>mapping.py</code> (name -&gt; source), <code>align.py</code> (estimate_pair,
+  warp, masks, hist distance), <code>frames.py</code> (reader, labels, machine-label boxes), <code>v11.py</code>.</li>
+<li><code>scripts/</code>: <code>multiframe_mapping_report.py</code> (coverage, <code>--verify</code>), <code>multiframe_alignment_eval.py</code>,
+  <code>multiframe_cut_scan.py</code>, <code>build_multiframe_dataset.py</code>, <code>visualise_multiframe.py</code>.</li>
+<li><code>docs/experiments/multiframe_dataset/compare_temporal.py</code> documents how the shared-module
+  comparison was run (scratch tree of commit 7988bde; not importable on this branch alone).</li>
+<li><code>tests/multiframe/</code> (5 tests: name parsing, pan recovery for ECC and LK, masked box, cut
+  histogram). Run with <code>PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest -o addopts=""</code> if the hydra
+  pytest plugin is broken in the env.</li>
+</ul>
+<h2 id="8-before-gpu-training">8. Before GPU training<a class="headerlink" href="#8-before-gpu-training" title="Permanent link">&para;</a></h2>
+<ol>
+<li>Run one real <code>train()</code> epoch with <code>channels: 5</code> for YOLO and RT-DETR on the desktop GPU
+   (the part marked UNVERIFIED above), including validation and AMP.</li>
+<li>Stem inflation: copy pretrained RGB filters (R/G/B to input channels 3/2/1), zero-init
+   channels 0 and 4, scale if needed; otherwise the stem is random.</li>
+<li>Hand the dataset to the desktop (S3 or rsync; 5.4 GB) - not done here.</li>
+<li>Decide A vs B on held-out strict (84 balls) and v11 val together, always reporting
+   the instance count and the by-clip leakage caveat above. Train with <code>imgsz=1280</code>.</li>
+<li>Mosaic/translate augmentation moves the 5 channels together (good); <code>hsv_*</code> is skipped for
+   5 channels, so colour augmentation is lost.</li>
+<li>Known limits: stationary balls and balls in player contact carry little motion signal;
+   25 fps with the ball moving &lt; 1 diameter/frame gives short streaks (k=2 is 80 ms).</li>
+</ol>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      <script id="__config" type="application/json">{"base": "../..", "features": [], "search": "../../assets/javascripts/workers/search.973d3a69.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.f55a23d4.min.js"></script>
+      
+    
+  </body>
+</html>
