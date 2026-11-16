@@ -60,3 +60,30 @@ def test_gt_marks_dir_honours_env(monkeypatch, tmp_path):
 
     assert datasets.current().marks_dir == gt
     assert datasets.current().clips_dir == clips
+
+
+def test_detector_checkpoint_resolution_order(monkeypatch, tmp_path):
+    """env override > project root > shared models dir > (missing) project root."""
+    from footy_track.detectors import ultralytics as det  # noqa: PLC0415
+
+    root = tmp_path / "root"
+    shared = tmp_path / "shared"
+    monkeypatch.setattr(det, "get_project_root", lambda: root)
+    monkeypatch.setattr(det, "SHARED_MODELS_DIR", shared)
+    monkeypatch.delenv("FOOTY_DETECTOR_WEIGHTS", raising=False)
+    rel = det.CURRENT_BEST_DETECTOR_CHECKPOINT
+    in_project = root / rel
+    in_shared = shared / "rtdetr_1920_v11" / "best.pt"
+
+    assert det.current_best_detector_path() == in_project  # nothing exists
+
+    in_shared.parent.mkdir(parents=True)
+    in_shared.write_bytes(b"w")
+    assert det.current_best_detector_path() == in_shared  # shared fallback
+
+    in_project.parent.mkdir(parents=True)
+    in_project.write_bytes(b"w")
+    assert det.current_best_detector_path() == in_project  # project root wins
+
+    monkeypatch.setenv("FOOTY_DETECTOR_WEIGHTS", str(tmp_path / "mine.pt"))
+    assert det.current_best_detector_path() == tmp_path / "mine.pt"

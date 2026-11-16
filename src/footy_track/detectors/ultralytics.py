@@ -42,6 +42,33 @@ CURRENT_BEST_DETECTOR_CHECKPOINT = (
     # checkpoint. Not yet measured at 1280 or on the v11 test split (docs/todo.md T-10).
 )
 
+#: Where the weights live when they are not under the project root. They are not
+#: in git (``docs/data.md``), so a fresh checkout or a deploy checkout such as the
+#: labeller's ``footy-track-main`` has no ``model_saves/detector/rtdetr_1920_v11``;
+#: the Mac mini keeps the one real copy here.
+SHARED_MODELS_DIR = Path("/mnt/storage/models")
+
+
+def current_best_detector_path() -> Path:
+    """Where the current best detector checkpoint is, for this machine.
+
+    Order: ``$FOOTY_DETECTOR_WEIGHTS``; the project-root path
+    (``CURRENT_BEST_DETECTOR_CHECKPOINT``); the same checkpoint under
+    ``SHARED_MODELS_DIR``. If none exists the project-root path is returned, so
+    the resulting "file not found" names the canonical location.
+    """
+    override = os.environ.get("FOOTY_DETECTOR_WEIGHTS")
+    if override:
+        return Path(override).expanduser()
+    in_project = get_project_root() / CURRENT_BEST_DETECTOR_CHECKPOINT
+    if in_project.exists():
+        return in_project
+    shared = SHARED_MODELS_DIR / Path(CURRENT_BEST_DETECTOR_CHECKPOINT).relative_to(
+        "model_saves/detector"
+    )
+    return shared if shared.exists() else in_project
+
+
 # Resolution is the single biggest measured lever for ball detection (640 -> 1280 took
 # ball recall from 0.000). Keep it explicit; never inherit the library default.
 DEFAULT_IMGSZ = 1280
@@ -70,14 +97,15 @@ def get_current_best_detector(
     """Return the current best-guess object detector.
 
     Resolves CURRENT_BEST_DETECTOR_CHECKPOINT against the project root so the
-    same constant works regardless of the caller's working directory.
+    same constant works regardless of the caller's working directory, falling
+    back to the shared models dir (see :func:`current_best_detector_path`).
 
     Under ``FOOTY_DEBUG`` returns a :class:`StubObjectDetector` instead, so no
     weights are loaded on a CPU-only development box.
     """
     if debug_mode():
         return StubObjectDetector(min_confidence=min_confidence)
-    model_uri = str(get_project_root() / CURRENT_BEST_DETECTOR_CHECKPOINT)
+    model_uri = str(current_best_detector_path())
     return UltralyticsObjectDetector(
         model_uri=model_uri,
         min_confidence=min_confidence,

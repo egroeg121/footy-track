@@ -17,6 +17,7 @@ import contextlib
 import json
 import os
 import threading
+import time
 from pathlib import Path
 
 # Persist torch.compile (Inductor) cache before torch loads — see video_utils.
@@ -28,6 +29,7 @@ os.environ.setdefault(
 import cv2  # noqa: E402
 from fastapi import (  # noqa: E402
     FastAPI,
+    HTTPException,
     WebSocket,
     WebSocketDisconnect,
 )
@@ -264,13 +266,17 @@ async def clips_status() -> dict:
 @app.post("/session/load")
 async def load_session(body: dict) -> dict:
     session = _session()
-    return session.load(body["video_path"])
+    # load() pauses the previous tracker (a thread join): keep it off the loop.
+    return await asyncio.to_thread(session.load, body["video_path"])
 
 
 @app.get("/frame/{idx}.jpg")
 async def get_frame(idx: int) -> Response:
     session = _session()
-    data = session.frame_jpeg(idx)
+    # Off the event loop: seeking + decoding a 1080p frame takes tens to
+    # hundreds of ms (more on a throttled CPU), and a live run fetches one per
+    # streamed frame — inline, that queue starves the WebSocket and Pause.
+    data = await asyncio.to_thread(session.frame_jpeg, idx)
     if data is None:
         return Response(status_code=404)
     return Response(content=data, media_type="image/jpeg")
@@ -318,16 +324,22 @@ async def autodetect(body: dict) -> dict:
     current = boxes_from_payload(body.get("current_boxes", []), PROV_LABELLER)
     session.set_frame(idx, current)
 
-    seeds = await asyncio.to_thread(
-        yolo_seed_objects,
-        session.video_path,
-        body.get("model_path", "") or "",
-        float(body.get("conf", 0.35)),
-        session.width,
-        session.height,
-        float(body.get("iou", 0.5)),
-        idx,
-    )
+    try:
+        seeds = await asyncio.to_thread(
+            yolo_seed_objects,
+            session.video_path,
+            body.get("model_path", "") or "",
+            float(body.get("conf", 0.35)),
+            session.width,
+            session.height,
+            float(body.get("iou", 0.5)),
+            idx,
+        )
+    except FileNotFoundError as exc:
+        # Detector weights are not in git; say so instead of an opaque 500.
+        raise HTTPException(
+            status_code=503, detail=f"detector weights not found: {exc.filename or exc}"
+        ) from exc
     w, h = session.width, session.height
     yolo_boxes = [
         ObjectDetection(
@@ -557,14 +569,50 @@ def _sanitize_thresholds(raw: object) -> dict[str, float]:
 
 
 @app.websocket("/ws")
-async def ws(websocket: WebSocket) -> None:
+async def ws(websocket: WebSocket) -> None:  # noqa: PLR0915 — one dispatch loop
     session = _session()
     await websocket.accept()
-    bg = session.bg
+    run_bg = session.bg  # the tracker this connection's current run drives
     streamer: asyncio.Task | None = None
+    starter: asyncio.Task | None = None  # run/restart still submitting
 
     async def _run_streamer(start_idx: int) -> None:
         await stream_frames(websocket, session, start_idx)
+
+    async def _cancel(task: asyncio.Task | None) -> None:
+        if task is not None and not task.done():
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
+
+    def _request_stop() -> None:
+        # Non-blocking: just raises the tracker's stop flag(s). session.bg may
+        # have been swapped by a clip load since this run started.
+        for bg in {id(b): b for b in (run_bg, session.bg)}.values():
+            bg.request_stop()
+
+    async def _start_run(msg: dict, start_frame: int, objects: list) -> None:
+        nonlocal streamer
+        # Tell the client we're entering the (potentially slow) model
+        # load/warmup phase *before* blocking on it — previously this
+        # only happened inside _stream_frames, whose task wasn't
+        # created until after bg.submit() had already returned, so the
+        # "compiling" status arrived too late to be useful and the
+        # frontend had no reliable signal to show a loading overlay
+        # for the duration of the actual compile (ft-wkc).
+        await websocket.send_json({"type": "status", "state": "compiling"})
+        await asyncio.to_thread(
+            run_bg.submit,
+            session.video_path,
+            objects,
+            msg.get("model_uri") or None,
+            float(msg.get("conf", 0.25)),
+            start_frame,
+            int(msg.get("imgsz", 512)),
+            _sanitize_thresholds(msg.get("handback_thresholds")),
+            _gt_reseed_frames(session, start_frame),
+        )
+        streamer = asyncio.create_task(_run_streamer(start_frame))
 
     try:
         while True:
@@ -572,12 +620,10 @@ async def ws(websocket: WebSocket) -> None:
             mtype = msg.get("type")
 
             if mtype in ("run", "restart"):
-                if streamer and not streamer.done():
-                    session.bg.pause()
-                    streamer.cancel()
-                    with contextlib.suppress(asyncio.CancelledError):
-                        await streamer
-                bg = session.bg
+                _request_stop()
+                await _cancel(starter)
+                await _cancel(streamer)
+                run_bg = session.bg
                 start_frame = int(msg.get("start_frame", 0))
                 # Seed from the TIMELINE at the start frame (the single source of
                 # truth) — not from whatever the client happens to send. This is
@@ -596,39 +642,37 @@ async def ws(websocket: WebSocket) -> None:
                         }
                     )
                     continue
-                # Tell the client we're entering the (potentially slow) model
-                # load/warmup phase *before* blocking on it — previously this
-                # only happened inside _stream_frames, whose task wasn't
-                # created until after bg.submit() had already returned, so the
-                # "compiling" status arrived too late to be useful and the
-                # frontend had no reliable signal to show a loading overlay
-                # for the duration of the actual compile (ft-wkc).
-                await websocket.send_json({"type": "status", "state": "compiling"})
-                await asyncio.to_thread(
-                    bg.submit,
-                    session.video_path,
-                    objects,
-                    msg.get("model_uri") or None,
-                    float(msg.get("conf", 0.25)),
-                    start_frame,
-                    int(msg.get("imgsz", 512)),
-                    _sanitize_thresholds(msg.get("handback_thresholds")),
-                    _gt_reseed_frames(session, start_frame),
-                )
-                streamer = asyncio.create_task(_run_streamer(start_frame))
+                # Submit runs as a task so this loop keeps reading: a Pause sent
+                # while the run is still starting must not wait behind it.
+                starter = asyncio.create_task(_start_run(msg, start_frame, objects))
 
             elif mtype == "pause":
-                session.bg.pause()
-                if streamer and not streamer.done():
-                    streamer.cancel()
-                    with contextlib.suppress(asyncio.CancelledError):
-                        await streamer
+                t0 = time.monotonic()
+                print("[ws] pause: received", flush=True)
+                # 1. Raise the stop flag now: the tracker stops within one
+                #    object's step, whatever happens next.
+                _request_stop()
+                # 2. Stop streaming: nothing further reaches the client.
+                await _cancel(starter)
+                await _cancel(streamer)
+                # 3. Wait for the tracker thread to exit, OFF the event loop
+                #    (pause() joins for up to 10 s; run inline it froze every
+                #    HTTP request and this socket's own reads meanwhile).
+                for bg in {id(b): b for b in (run_bg, session.bg)}.values():
+                    await asyncio.to_thread(bg.pause)
                 await websocket.send_json({"type": "status", "state": "paused"})
+                print(
+                    f"[ws] pause: stopped in {time.monotonic() - t0:.2f}s",
+                    flush=True,
+                )
 
     except WebSocketDisconnect:
-        session.bg.pause()
-        if streamer and not streamer.done():
-            streamer.cancel()
+        print("[ws] disconnect: stopping run", flush=True)
+    finally:
+        _request_stop()
+        for task in (starter, streamer):
+            if task is not None and not task.done():
+                task.cancel()
 
 
 app.include_router(review_router)
