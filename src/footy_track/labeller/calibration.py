@@ -22,9 +22,11 @@ See ``src/footy_track/labeller/README.md`` §16 (LAB-12xx).
 from __future__ import annotations
 
 import asyncio
+import collections
 import json
 import os
 import tempfile
+import threading
 import time
 from pathlib import Path
 
@@ -702,6 +704,78 @@ async def warp(body: dict):
     if not ok:
         return _err(500, "jpeg encode failed")
     return Response(buf.tobytes(), media_type="image/jpeg")
+
+
+# ---------------------------------------------------------------------------
+# Auto circle / D points (centre circle x halfway line, penalty D x box front)
+# ---------------------------------------------------------------------------
+
+#: ``(dataset, video path, frame, distortion)`` -> ``{kind, confidence, correspondences}`` or
+#: ``{reason}``. Abstentions are cached too (the detector is deterministic). Small: one entry is
+#: a few hundred bytes, the cost being avoided is a video seek + a RANSAC ellipse fit.
+_AUTO_CACHE_MAX = 64
+_AUTO_CACHE: collections.OrderedDict[tuple, dict] = collections.OrderedDict()
+#: One detection at a time: it is CPU work on the machine the operator is labelling on.
+_AUTO_LOCK = threading.Lock()
+
+
+def _auto_points(video: Path, idx: int, dist: dict | None, key: tuple) -> dict | None:
+    """Detector verdict for one frame (cached); ``None`` when the frame cannot be read."""
+    with _AUTO_LOCK:
+        hit = _AUTO_CACHE.get(key)
+        if hit is not None:
+            _AUTO_CACHE.move_to_end(key)
+            return hit
+        frame = _read_frame(video, idx)
+        if frame is None:
+            return None
+        from footy_track.calibration.centre_circle import detect_circle_points
+
+        det = detect_circle_points(frame, dist)
+        if det.result is None:
+            out = {"reason": det.reason or "no circle/D found"}
+        else:
+            r = det.result
+            out = {"kind": r.kind, "confidence": float(r.confidence),
+                   "correspondences": r.correspondences()}
+        _AUTO_CACHE[key] = out
+        while len(_AUTO_CACHE) > _AUTO_CACHE_MAX:
+            _AUTO_CACHE.popitem(last=False)
+        return out
+
+
+@router.post("/calibration/api/auto_points")
+async def auto_points(body: dict):
+    """Find the two halfway-line x centre-circle (or box-front x penalty-D) points of a frame.
+
+    Body ``{clip, frame_index, distortion?, pitch_dims?}`` (``distortion`` as in ``/fit``: the
+    returned image points are observed coordinates, consistent with it). Answers
+    ``{ok: true, kind, confidence, correspondences: [{image, pitch_id, pitch_xy}]}``, or
+    ``{ok: false, reason}`` with HTTP 200 when the detector abstains (not an error). Nothing is
+    stored; the page adds the pairs to its working set. Respects the request's dataset.
+    """
+    try:
+        clip, idx = str(body["clip"]), int(body["frame_index"])
+        pitch = _pitch_from(body)
+        dist = _distortion_from(body)
+        if idx < 0:
+            raise _BadRequest("frame_index must be >= 0")
+    except (KeyError, TypeError, ValueError) as exc:
+        return _err(400, f"bad request: {exc}")
+    except _BadRequest as exc:
+        return _err(400, str(exc))
+    video = _find_video(clip)
+    if video is None:
+        return _err(404, f"clip not found: {clip}")
+    key = (datasets.current_name(), str(video), idx, json.dumps(dist, sort_keys=True))
+    res = await asyncio.to_thread(_auto_points, video, idx, dist, key)
+    if res is None:
+        return _err(404, f"cannot read frame {idx}")
+    if "reason" in res:
+        return {"ok": False, "reason": res["reason"]}
+    kps = pitch.keypoints()
+    corr = [{**c, "pitch_xy": list(kps[c["pitch_id"]])} for c in res["correspondences"]]
+    return {"ok": True, "kind": res["kind"], "confidence": res["confidence"], "correspondences": corr}
 
 
 @router.get("/calibration/api/gt/{clip}")

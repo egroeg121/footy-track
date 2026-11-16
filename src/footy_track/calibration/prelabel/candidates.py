@@ -181,9 +181,19 @@ def grass_mask(bgr: np.ndarray) -> np.ndarray:
     return g1
 
 
-def line_mask(bgr: np.ndarray, grass: np.ndarray, with_far: bool = True) -> np.ndarray:
+#: line pixels' saturation limit relative to the pitch's own median saturation (``sat_rel`` mode). 0.65 reproduces
+#: the fixed limit of 100 on the Emirates pitch (median S ~155); a saturated pitch (Vitality, median S ~230) gets ~150.
+LINE_SAT_REL = 0.65
+
+
+def line_mask(bgr: np.ndarray, grass: np.ndarray, with_far: bool = True, sat_rel: float | None = None) -> np.ndarray:
     """White pitch markings: bright, low-saturation, locally brighter than
-    their surroundings (top-hat), inside the grass region."""
+    their surroundings (top-hat), inside the grass region.
+
+    ``sat_rel``: relax the absolute saturation limit (100) to this fraction of the grass's own median saturation
+    (``LINE_SAT_REL``) when that is larger (never stricter than 100): chroma bleed from compression / subsampling tints thin
+    lines in proportion to how saturated the turf is, so a fixed limit loses most of the lines on a saturated pitch
+    (see ``reports/ptz_v2.md``)."""
     hsv = cv2.cvtColor(bgr, cv2.COLOR_BGR2HSV)
     _, s, v = cv2.split(hsv)
     w = bgr.shape[1]
@@ -192,7 +202,10 @@ def line_mask(bgr: np.ndarray, grass: np.ndarray, with_far: bool = True) -> np.n
     # adaptive: threshold relative to the grass's own top-hat noise
     ref = th[grass] if grass.any() else th.ravel()
     thr = max(16.0, float(np.percentile(ref, 90)) * 1.5)
-    m = (th >= thr) & (s <= 100) & (v >= 85)
+    s_max = 100.0
+    if sat_rel is not None and grass.any():
+        s_max = max(s_max, float(sat_rel * np.median(s[grass])))  # a relaxation only: never stricter than 100
+    m = (th >= thr) & (s <= s_max) & (v >= 85)
     # lines must sit inside the grass, but not at its very boundary (stands,
     # advertising boards) : erode the region a little
     e = max(3, w // 300)
