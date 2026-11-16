@@ -925,3 +925,14 @@ def test_clip_endpoint_list_source_and_404s(
     assert client.get("/ball_check/clip/clip/9/0.mp4?src=list").status_code == 200
     assert client.get("/ball_check/clip/nosuch/0/0.mp4").status_code == 404
     assert client.get("/ball_check/clip/clip/8/0.mp4?src=list").status_code == 404
+
+
+def test_spread_order_serves_one_card_per_clip_second_first():
+    dense = [{"clip": "a", "frame_index": f, "box_index": 0} for f in range(100)]
+    other = [{"clip": "b", "frame_index": f, "box_index": 0} for f in range(0, 50, 5)]
+    order = ball_check._spread_order(dense + other)
+    assert len(order) == len(dense) + len(other)
+    first = order[:6]  # a: 4 seconds, b: 2 seconds
+    seconds = {(r["clip"], r["frame_index"] // 25) for r in first}
+    assert len(seconds) == 6
+    assert order == ball_check._spread_order(list(reversed(dense + other)))

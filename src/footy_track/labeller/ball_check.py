@@ -283,8 +283,31 @@ def _build_ball_queue(
         if not playable[r["clip"]]:
             continue
         out.append(r)
-    out.sort(key=_shuffle_key)
-    return out
+    return _spread_order(out)
+
+
+#: Frames per spread bucket: one second at 25 fps.
+_SPREAD_FRAMES = 25
+
+
+def _spread_order(records: list[dict]) -> list[dict]:
+    """Coarse-to-fine order: one card per clip-second before any neighbour.
+
+    Densely labelled clips carry a box on nearly every frame, so a plain
+    shuffle serves frame 80, then 82, then 87 of the same scene: near-identical
+    cards that cost the labeller time and teach little. Within each
+    (clip, second) bucket cards are ranked by the stable hash; every bucket's
+    first card comes before any bucket's second. Nothing is dropped.
+    """
+    buckets: dict[tuple, list[dict]] = collections.defaultdict(list)
+    for r in records:
+        buckets[(r["clip"], r["frame_index"] // _SPREAD_FRAMES)].append(r)
+    keyed = []
+    for group in buckets.values():
+        group.sort(key=_shuffle_key)
+        keyed.extend(((rank, _shuffle_key(r)), r) for rank, r in enumerate(group))
+    keyed.sort(key=lambda t: t[0])
+    return [r for _, r in keyed]
 
 
 def _build_candidate_queue(
