@@ -243,6 +243,7 @@ class Sam3Tracker:
         pkw = {"propagate_preflight": True} if self.version == "sam3" else {}
         rec_mode, loss_thr, loss_k = self.cfg.get("recover", "none"), self.cfg.get("loss_thr", 0.0), self.cfg.get("loss_k", 3)
         max_rec, cooldown = self.cfg.get("max_recover", 8), self.cfg.get("recover_cooldown", 5)
+        prune_age = int(self.cfg.get("prune_age", 0))
         n_rec, lost_run, next_try = 0, 0, -1
         start = ai
         events = []
@@ -266,6 +267,10 @@ class Sam3Tracker:
                         centre = (res["cx"] + ox, res["cy"] + oy)
                     if score > 0:
                         last_good = (res["cx"] + ox, res["cy"] + oy)
+                if prune_age and fidx % 32 == 0:   # long (whole-match) tracks: drop per-frame state older than prune_age frames
+                    for dd in (st["output_dict"]["non_cond_frame_outputs"], *[o["non_cond_frame_outputs"] for o in st["output_dict_per_obj"].values()]):
+                        for kk in [kk for kk in dd if abs(kk - fidx) > prune_age]:
+                            del dd[kk]
                 lost = res is None or score < loss_thr
                 lost_run = lost_run + 1 if lost else 0
                 nxt = fidx + step

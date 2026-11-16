@@ -106,7 +106,7 @@ def main():
     ap.add_argument("--max-seeds", type=int, default=0, help="per clip (demo / smoke)")
     a = ap.parse_args()
     import torch
-    cfg = json.loads(a.config)
+    cfg = {"prune_age": 300, **json.loads(a.config)}
     out = Path(a.out)
     (out / ".tracks").mkdir(parents=True, exist_ok=True)
     seeds_by_clip: dict[str, list] = {}

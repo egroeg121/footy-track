@@ -187,7 +187,7 @@ def key_of(r: dict) -> tuple:
     return (r["clip"], r["seed"], r["g"])
 
 
-def gate_curve(rows: list[dict], thresholds=(-9, -3, -1, 0, 1, 2, 4, 8, 14)) -> list[dict]:
+def gate_curve(rows: list[dict], thresholds=(-9, -3, -1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 14)) -> list[dict]:
     """Coverage / precision-of-emitted / recall as the SAM score-logit gate is raised (own presence head, no other information)."""
     ball = [r for r in rows if r["kind"] == "ball"]
     out = []
