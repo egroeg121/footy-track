@@ -7,8 +7,6 @@ a real detector, startup pulls a checkpoint and the box swaps itself to death.
 
 from __future__ import annotations
 
-import importlib
-
 from footy_track.detectors.ultralytics import (
     StubObjectDetector,
     debug_mode,
@@ -58,15 +56,7 @@ def test_gt_marks_dir_honours_env(monkeypatch, tmp_path):
     monkeypatch.setenv("FOOTY_GT_MARKS_DIR", str(gt))
     monkeypatch.setenv("FOOTY_CLIPS_DIR", str(clips))
 
-    # Imported lazily on purpose: the env vars set above must be in place
-    # before the server module is first imported/reloaded.
-    from footy_track.labeller import server  # noqa: PLC0415
+    from footy_track.labeller import datasets  # noqa: PLC0415
 
-    importlib.reload(server)
-    try:
-        assert gt == server._GT_MARKS_DIR
-        assert clips == server._CLIPS_DIR
-    finally:
-        monkeypatch.delenv("FOOTY_GT_MARKS_DIR", raising=False)
-        monkeypatch.delenv("FOOTY_CLIPS_DIR", raising=False)
-        importlib.reload(server)
+    assert datasets.current().marks_dir == gt
+    assert datasets.current().clips_dir == clips

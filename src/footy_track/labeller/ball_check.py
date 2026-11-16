@@ -38,6 +38,7 @@ from fastapi.responses import Response
 
 from footy_track.clip_id import canonical_clip_id
 from footy_track.labeller import candidates as cand
+from footy_track.labeller import datasets
 from footy_track.labeller.constants import (
     BALL_LABELS,
     NO_BALL_TAG,
@@ -87,7 +88,7 @@ _MIN_CONTEXT_PX = 160
 _DISPLAY_W = 640
 _MAX_PAD_FACTOR = 40.0
 
-# LRU crop cache: key = (clip_stem, frame_idx, box_idx, pad), value = JPEG bytes
+# LRU crop cache: key = (dataset, src, clip_stem, frame_idx, box_idx, pad, ...), value = JPEG bytes
 _BC_CROP_CACHE: collections.OrderedDict[tuple, bytes] = collections.OrderedDict()
 # Sized to hold a whole labelling session (a JPEG is ~30 KB): an evicted card
 # is re-decoded from the video while the labeller waits.
@@ -116,8 +117,8 @@ _BC_CLIP_CACHE: collections.OrderedDict[tuple, tuple[bytes, str, int, int]] = (
 # ~0.2 MB each; 600 clips is ~120 MB and covers a 200-card list at three zooms.
 _BC_CLIP_CACHE_MAX = 600
 
-#: clip stem -> (width, height); frame size never changes within a clip.
-_CLIP_SIZES: dict[str, tuple[int, int]] = {}
+#: (dataset, clip stem) -> (width, height); frame size never changes within a clip.
+_CLIP_SIZES: dict[tuple[str, str], tuple[int, int]] = {}
 
 
 # ---------------------------------------------------------------------------
@@ -193,10 +194,7 @@ _LIST_CACHE: dict[str, tuple[float, list[dict]]] = {}
 
 
 def _list_path() -> Path | None:
-    from footy_track.labeller import server  # noqa: PLC0415 — avoid import cycle
-
-    raw = server._BALL_CHECK_LIST
-    return Path(raw).expanduser() if raw else None
+    return datasets.current().ball_check_list
 
 
 def _list_items() -> list[dict]:
@@ -574,8 +572,9 @@ async def ball_check_crop_meta(
 
 def _clip_size(clip_stem: str, video_path: Path) -> tuple[int, int] | None:
     """(width, height) in pixels, cached per clip — every card needs it."""
-    if clip_stem in _CLIP_SIZES:
-        return _CLIP_SIZES[clip_stem]
+    key = (datasets.current_name(), clip_stem)
+    if key in _CLIP_SIZES:
+        return _CLIP_SIZES[key]
     cap = cv2.VideoCapture(str(video_path))
     try:
         w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
@@ -584,7 +583,7 @@ def _clip_size(clip_stem: str, video_path: Path) -> tuple[int, int] | None:
         cap.release()
     if w <= 0 or h <= 0:
         return None
-    _CLIP_SIZES[clip_stem] = (w, h)
+    _CLIP_SIZES[key] = (w, h)
     return w, h
 
 
@@ -623,6 +622,7 @@ async def ball_check_crop(
     # stepping moves the football, not the camera.
     at_frame = frame_idx if at < 0 else at
     cache_key = (
+        datasets.current_name(),
         src,
         clip_stem,
         frame_idx,
@@ -1007,7 +1007,7 @@ async def ball_check_clip(
     Falls back to a small GIF (same URL, ``image/gif``) if ffmpeg is missing.
     """
     pad = max(0.0, min(float(pad), _MAX_PAD_FACTOR))
-    cache_key = (src, clip_stem, frame_idx, box_idx, round(pad, 2))
+    cache_key = (datasets.current_name(), src, clip_stem, frame_idx, box_idx, round(pad, 2))
     hit = _BC_CLIP_CACHE.get(cache_key)
     if hit is not None:
         _BC_CLIP_CACHE.move_to_end(cache_key)

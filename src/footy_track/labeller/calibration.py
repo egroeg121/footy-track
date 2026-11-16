@@ -47,6 +47,7 @@ from footy_track.calibration.frame_type import (
 from footy_track.calibration.prelabel.proposals import read_proposals, update_proposals
 from footy_track.calibration.video import read_frame
 from footy_track.clip_id import canonical_clip_id
+from footy_track.labeller import datasets
 from footy_track.labeller.review import _clips_dir, _gt_marks_dir
 from footy_track.labeller.review import _find_video as _find_video_exact
 
@@ -436,9 +437,9 @@ def _find_video(clip: str):
 
     video = find_video(_clips_dir(), clip)
     # extra clip dirs the pre-labeller may have read from (os.pathsep-separated)
-    for d in filter(None, os.environ.get("FOOTY_CALIB_EXTRA_CLIPS_DIRS", "").split(os.pathsep)):
-        if video is None and Path(d).is_dir():
-            video = find_video(Path(d), clip)
+    for d in datasets.current().extra_clips_dirs:
+        if video is None and d.is_dir():
+            video = find_video(d, clip)
     return video
 
 

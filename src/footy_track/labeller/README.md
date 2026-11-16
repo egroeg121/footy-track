@@ -1146,8 +1146,10 @@ becomes GT without a human accepting it; accepted GT carries
 
 ## 17. Labelling site (informative)
 
-**One site, always main.** Open `http://mac-mini-i7:8011/` (calib) on the tailnet;
-Norwich held-out is `:8012`. The home page is a **task board**: a "To do now" list
+**One site, always main.** Open `http://mac-mini-i7:8011/` on the tailnet. It serves
+every dataset (calib, Norwich held-out, ...) from one process: pick one with the
+dataset picker on the home page, or add `?dataset=norwich` to any page URL (section 18).
+The home page is a **task board**: a "To do now" list
 (from `GET /api/tasks`, each with title, one-line why, link, device hint and an
 optional live remaining count), then the tool cards, then a "Servers" panel (name,
 port, git sha, branch, uptime from each service's `GET /api/server_info`).
@@ -1176,17 +1178,83 @@ main. After a merge to main:
 ```bash
 scripts/labeller_deploy.sh status          # tmux session, PID, health, served sha vs origin/main
 scripts/labeller_deploy.sh deploy          # ff-only to origin/main (refuses if dirty), restart, wait for sha
-scripts/labeller_deploy.sh restart norwich # one service;  logs <svc> [-f]
+scripts/labeller_deploy.sh restart calib   # one service;  logs <svc> [-f]
 ```
+
+There is exactly one service, `calib` on :8011. The first restart/deploy creates the
+dataset registry (section 18) from a built-in seed if it is missing and never overwrites
+it. The old `norwich` server on :8012 is gone: its data is the `norwich` dataset of the
+one server (stop its tmux session, `tmux -L footy kill-session -t footy-norwich`).
 
 `--dry-run` prints the mutating commands; `--force` lets `restart` kill a non-tmux
 process still holding the port (otherwise it prints the PID and stops); `--no-warm`
 skips the background Ball Check cache warm-up (`footy_track.scripts.warm_ball_check`)
-that runs after restarting `norwich`. Services are tmux sessions `footy-<svc>` on
+that runs after a restart, for the `norwich` dataset of `calib` (`WARM_DATASETS`). Services are tmux sessions `footy-<svc>` on
 `tmux -L footy`, logging to `~/.cache/footy-labeller/<svc>.log`. The service table
-(ports and `FOOTY_*` dirs) is at the top of `scripts/labeller_deploy.sh`; keep the
-`SERVICES` list in `web/main.html` in step with it. Feature branches are tested in
+(ports; data dirs now live in the registry, not in env vars) is at the top of
+`scripts/labeller_deploy.sh`; keep the `SERVICES` list in `web/main.html` in step with it. Feature branches are tested in
 their own worktree on another port, never in the serving checkout.
+
+## 18. Datasets: one server, many bodies of clips (LAB-13xx)
+
+A *dataset* is a clips dir plus where its labels live. One server serves all of them;
+`footy_track/labeller/datasets.py` is the registry and the per-request resolver.
+
+- **LAB-1300** (MUST) Datasets come from a JSON registry, `$FOOTY_LABELLER_DATASETS`
+  (default `/mnt/storage/footy_data/labeller_datasets.json`), re-read when its mtime/size
+  changes (no restart to add a dataset):
+  ```json
+  {"default": "calib",
+   "datasets": {
+     "calib":   {"label": "...", "clips_dir": "...", "marks_dir": "...",
+                 "candidates_dir": "...", "ball_check_list": "...",
+                 "extra_clips_dirs": ["..."]},
+     "norwich": {"label": "...", "clips_dir": "...", "marks_dir": "..."}}}
+  ```
+  `clips_dir` and `marks_dir` are required; the rest are optional (`candidates_dir`
+  defaults to `<marks_dir>/ball_candidates`; `ball_check_list` unset = empty list pool;
+  `extra_clips_dirs` are extra places the calibration page looks for a clip's video).
+  `python -m footy_track.scripts.labeller_datasets init|list` creates (never overwrites) and
+  shows the registry. With no registry file the single dataset `calib` is built from the
+  legacy env vars (`FOOTY_CLIPS_DIR`, `FOOTY_GT_MARKS_DIR`, `FOOTY_BALL_CANDIDATES_DIR`,
+  `FOOTY_BALL_CHECK_LIST`, `FOOTY_CALIB_EXTRA_CLIPS_DIRS`) exactly as before; when set, those
+  env vars also override the *default* dataset's fields (`--clips-dir` / `--gt-dir` of
+  `python -m footy_track.labeller` rely on it). A malformed registry never takes the server
+  down: it falls back to the legacy `calib` and `GET /api/datasets` reports `error`.
+  - Tests: `test_datasets.py::test_registry_lists_datasets_and_default`,
+    `::test_missing_registry_falls_back_to_legacy_single_dataset`,
+    `::test_malformed_registry_does_not_take_the_server_down`,
+    `::test_env_overrides_apply_to_the_default_dataset_only`,
+    `::test_registry_edits_are_picked_up_without_restart`
+- **LAB-1301** (MUST) Every route (HTTP and the `/ws` WebSocket) resolves its dataset from
+  the `?dataset=<name>` query parameter; none means the registry default (`calib`), so
+  existing links and bookmarks are unchanged. An unknown name is a 404 (WebSocket close
+  4404), never a silent fall back to the default: a write must not land in the wrong dataset.
+  Pure ASGI middleware sets a `ContextVar` that asyncio tasks and `to_thread` workers inherit.
+  - Tests: `::test_unknown_dataset_is_404_not_silent_default`,
+    `::test_websocket_unknown_dataset_is_refused`, `::test_clips_follow_the_dataset`
+- **LAB-1302** (MUST) No state bleeds between datasets. Each non-default dataset has its
+  own `Session` (the default one stays the module global `SESSION`); a `Session` is bound
+  to its dataset by name because its debounced flush runs on a timer thread with no request
+  context. Verdict logs, calibration GT/proposals/frame types, the review-list pool,
+  candidate pools, identity labels/tracklets and candidate embeddings are all per dataset.
+  - Tests: `::test_labels_saved_in_one_dataset_never_appear_in_the_other`,
+    `::test_sessions_do_not_share_state_and_default_keeps_working`,
+    `::test_session_flush_thread_writes_to_its_own_dataset`,
+    `::test_ball_check_verdicts_and_stats_are_per_dataset`,
+    `::test_ball_check_list_pool_is_per_dataset`, `::test_calibration_gt_is_per_dataset`,
+    `::test_identity_dirs_do_not_bleed_between_datasets`
+- **LAB-1303** (MUST) In-memory caches are keyed by dataset name (crop LRUs in `ball_check`
+  and `review`, the clip-size cache; candidate pools by candidates dir), so the same clip
+  stem in two datasets never serves one dataset's pixels for the other.
+  - Tests: `::test_crop_cache_is_keyed_by_dataset`
+- **LAB-1304** (MUST) `GET /api/datasets` lists `{default, current, registry, datasets[]}`.
+  - Tests: `::test_registry_lists_datasets_and_default`
+- **LAB-1305** (SHOULD) Pages carry the dataset: every page loads `/static/dataset.js`, which
+  adds the page's own `?dataset=` to same-origin `fetch`, `WebSocket`, `<img>`/`<video>`
+  `src`, `<a href>` and `history.*State` URLs (use `footyUrl()` for URLs built into
+  `innerHTML`). The home page has a dataset picker. Without `?dataset=` it does nothing.
+  - UNTESTED-FRONTEND (server contract: `::test_pages_carry_the_dataset_shim`)
 
 ## 15. Traceability summary
 
@@ -1205,7 +1273,8 @@ their own worktree on another port, never in the serving checkout.
 | 11. Ball Check (LAB-10xx) | 12 | 11 | 0 | 1 |
 | 12. Confidence sampling (LAB-11xx) | 5 | 5 | 0 | 0 |
 | 16. Pitch calibration (LAB-12xx) | 22 | 17 | 0 | 5 |
-| **Total** | **123** | **88** | **8** | **27** |
+| 18. Datasets (LAB-13xx) | 6 | 5 | 0 | 1 |
+| **Total** | **129** | **93** | **8** | **28** |
 
 Open items: 4 (OPEN-1..4) + 1 fixed on main (undo provenance, `95b60cc`).
 Test suite: 138 tests in `tests/labeller/` (all green), plus the

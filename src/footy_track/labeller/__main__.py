@@ -54,17 +54,17 @@ def main(argv: list[str] | None = None) -> int:
     if args.max_clips is not None:
         os.environ["FOOTY_MAX_CLIPS"] = str(args.max_clips)
 
-    # Imported after the environment is set: server.py resolves its directories
+    # Imported after the environment is set: the dataset registry resolves its directories
     # at import time.
     import uvicorn  # noqa: PLC0415
 
-    from footy_track.labeller import server  # noqa: PLC0415
+    from footy_track.labeller import datasets, server  # noqa: PLC0415
 
     if args.debug:
         print(
             "[debug] lightweight mode: stub detector (no weights loaded)\n"
-            f"[debug] clips: {server._CLIPS_DIR}\n"
-            f"[debug] gt:    {server._GT_MARKS_DIR}\n"
+            f"[debug] clips: {datasets.current().clips_dir}\n"
+            f"[debug] gt:    {datasets.current().marks_dir}\n"
             f"[debug] max clips: {args.max_clips}",
             flush=True,
         )
