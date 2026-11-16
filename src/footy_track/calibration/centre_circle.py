@@ -118,6 +118,11 @@ class CirclePoints:
     ellipse: Ellipse
     line: tuple[np.ndarray, np.ndarray]  # endpoints, undistorted working px
     info: dict = field(default_factory=dict)
+    #: the anchor line (undistorted working px) and where it crosses the ellipse, far first (for the finders)
+    anchor: _Line | None = None
+    crossings_u: np.ndarray | None = None
+    #: sign of the arc side along the anchor normal (D only)
+    arc_side: float = 0.0
 
     def correspondences(self) -> list[dict]:
         """Records in the labeller's ``correspondences`` shape (``image`` + ``pitch_id``)."""
@@ -268,12 +273,17 @@ def _prep_points(mask: np.ndarray, dist: dict | None) -> tuple[np.ndarray, np.nd
 
 
 def _anchor_lines(
-    mask: np.ndarray, obs: np.ndarray, und: np.ndarray, tol: float, max_lines: int
+    mask: np.ndarray,
+    obs: np.ndarray,
+    und: np.ndarray,
+    tol: float,
+    max_lines: int,
+    min_len_frac: float = 0.07,
 ) -> list[_Line]:
     """Long straight lines: Hough on the observed mask, re-fitted on the undistorted pixels."""
     h, w = mask.shape
     diag = float(np.hypot(h, w))
-    segs = cand.detect_lines(mask, min_len_frac=0.07)
+    segs = cand.detect_lines(mask, min_len_frac=min_len_frac)
     out: list[_Line] = []
     for L in segs:
         # pixels near the observed segment (generous band), then robust line fit on the undistorted ones
@@ -316,7 +326,7 @@ def _anchor_lines(
         sel = (np.abs(t) < 1.6 * tol) & (s > s[sel].min() - 1) & (s < s[sel].max() + 1)
         ss = s[sel]
         length = float(ss.max() - ss.min())
-        if length < 0.07 * diag:
+        if length < min_len_frac * diag:
             continue
         # support: fraction of the span (3 px steps) with a pixel within the band
         bins = np.unique(np.floor((ss - ss.min()) / 4.0).astype(int))
@@ -617,12 +627,16 @@ def detect_from_mask(
     max_lines: int = 5,
     pitch: PitchModel | None = None,
     min_confidence: float | None = None,
+    prep: tuple[np.ndarray, np.ndarray] | None = None,
 ) -> Detection:
-    """Detect from a white-line mask (``line_mask_for``); ``dist`` is the optional labeller lens dict."""
+    """Detect from a white-line mask (``line_mask_for``); ``dist`` is the optional labeller lens dict.
+
+    ``prep`` = ``_prep_points(mask, dist)`` when the caller already has it.
+    """
     h, w = mask.shape
     det = Detection(None, size=(w, h))
     tol = max(2.5, w / 450)
-    obs, und = _prep_points(mask, dist)
+    obs, und = prep if prep is not None else _prep_points(mask, dist)
     if len(und) < 80:
         det.reason = "too few line pixels"
         return det
@@ -719,6 +733,9 @@ def _finish(
         midpoint_u=mid_n,
         ellipse=E,
         line=(L.p(L.s0), L.p(L.s1)),
+        anchor=L,
+        crossings_u=P,
+        arc_side=float(-np.sign(x["d_n"])) if kind == "pen_arc" else 0.0,
         info={
             k: x[k]
             for k in (

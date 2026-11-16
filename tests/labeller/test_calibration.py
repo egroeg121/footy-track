@@ -252,7 +252,7 @@ def test_fit_warp_and_gt_with_distortion(client, cal_env):
 
 
 # ---------------------------------------------------------------------------
-# POST /calibration/api/auto_points (centre circle / penalty D points)
+# POST /calibration/api/auto_points (centre finder / D finder)
 # ---------------------------------------------------------------------------
 
 
@@ -268,17 +268,28 @@ def _circle_frame(dist=None):
     return img, truth
 
 
+PM_SMALL = PitchModel(100.0, 64.0)
+
+
 @pytest.fixture
 def auto_env(clips_dir, gt_marks_dir, monkeypatch):
+    from ..calibration import test_pitch_finders as tpf
+
     (clips_dir / "arsenal_mancity_20250925_seg010.mp4").touch()
     cal._AUTO_CACHE.clear()
     reads = []
     img, truth = _circle_frame()
     plain = np.full(img.shape, (40, 130, 40), np.uint8)
+    frames = {
+        3: img,                                              # centre circle + halfway line (105 x 68 pitch)
+        4: plain,
+        5: tpf.centre_frame(PM_SMALL)[0],                    # + far touchline, a 100 x 64 pitch
+        6: tpf.penalty_frame(PM_SMALL, "R")[0],              # the whole right penalty area, 100 x 64
+    }
 
     def read(v, i):
         reads.append(i)
-        return img if i == 3 else plain if i == 4 else None
+        return frames.get(i)
 
     monkeypatch.setattr(cal, "_read_frame", read)
     yield {"reads": reads, "truth": truth}
@@ -288,68 +299,98 @@ def auto_env(clips_dir, gt_marks_dir, monkeypatch):
 CLIP = "arsenal_mancity_20250925_seg010"
 
 
-def test_auto_points_returns_centre_circle_pairs(client, auto_env):
-    r = client.post("/calibration/api/auto_points", json={"clip": CLIP, "frame_index": 3})
+def _post(client, **b):
+    return client.post("/calibration/api/auto_points", json=b)
+
+
+def test_auto_points_centre_returns_circle_pairs(client, auto_env):
+    r = _post(client, clip=CLIP, frame_index=3, kind="centre")
     assert r.status_code == 200
     d = r.json()
     assert d["ok"] and d["kind"] == "centre" and d["confidence"] > 0.55
     assert [c["pitch_id"] for c in d["correspondences"]] == ["CENTRE_CIRCLE_TOP", "CENTRE_CIRCLE_BOTTOM"]
     kps = PitchModel().keypoints()
     for c in d["correspondences"]:
-        assert c["pitch_xy"] == list(kps[c["pitch_id"]])
+        assert c["pitch_xy"] == list(kps[c["pitch_id"]]) and c["derived"] is False
     got = np.array([c["image"] for c in d["correspondences"]])
     assert np.linalg.norm((got - auto_env["truth"]) * [1280, 720], axis=1).max() < 8
 
 
-def test_auto_points_pitch_dims_follow_the_request(client, auto_env):
-    d = client.post("/calibration/api/auto_points",
-                    json={"clip": CLIP, "frame_index": 3, "pitch_dims": [100, 64]}).json()
+def test_auto_points_centre_with_touchline_adds_the_end_and_derived_points(client, auto_env):
+    d = _post(client, clip=CLIP, frame_index=5, kind="centre", pitch_dims=[100, 64]).json()
     assert d["ok"]
-    assert [c["pitch_xy"] for c in d["correspondences"]] == [[0.0, 9.15], [0.0, -9.15]]
+    by = {c["pitch_id"]: c for c in d["correspondences"] if c["pitch_id"]}
+    assert by["HALFWAY_TOP"]["pitch_xy"] == [0.0, 32.0] and by["HALFWAY_TOP"]["derived"] is False  # the request's width
+    assert by["CENTRE_SPOT"]["derived"] is True
+    free = [c for c in d["correspondences"] if c["pitch_id"] is None]
+    assert free and all(c["derived"] and len(c["pitch_xy"]) == 2 for c in free)
+    assert len(d["correspondences"]) >= 5
+
+
+def test_auto_points_d_returns_the_penalty_area(client, auto_env):
+    d = _post(client, clip=CLIP, frame_index=6, kind="d", pitch_dims=[100, 64]).json()
+    assert d["ok"] and d["kind"] == "d"
+    by = {c["pitch_id"]: c for c in d["correspondences"]}
+    assert {"R_PEN_ARC_TOP", "R_PEN_ARC_BOTTOM", "R_PEN_SPOT"} <= set(by)
+    assert by["R_PEN_SPOT"]["pitch_xy"] == [39.0, 0.0] and by["R_PEN_SPOT"]["derived"] is True  # 100 / 2 - 11
+    assert len(d["correspondences"]) >= 4
+    # the pair list the editor would build is fit-able with 4+ non-collinear points
+    fit = client.post("/calibration/api/fit", json={"correspondences": [
+        {"image": c["image"], "pitch_id": c["pitch_id"], "pitch_xy": c["pitch_xy"]} for c in d["correspondences"]],
+        "pitch_dims": [100, 64]}).json()
+    assert fit["ok"] and fit["mean_err_m"] < 0.5
 
 
 def test_auto_points_abstains_with_a_reason_and_http_200(client, auto_env):
-    r = client.post("/calibration/api/auto_points", json={"clip": CLIP, "frame_index": 4})
-    assert r.status_code == 200
-    d = r.json()
-    assert d["ok"] is False and d["reason"] and "correspondences" not in d
+    for kind in ("centre", "d"):
+        r = _post(client, clip=CLIP, frame_index=4, kind=kind)
+        assert r.status_code == 200
+        d = r.json()
+        assert d["ok"] is False and d["reason"] and "correspondences" not in d
 
 
 def test_auto_points_errors(client, auto_env):
-    post = lambda **b: client.post("/calibration/api/auto_points", json=b)  # noqa: E731
-    assert post(clip="nope", frame_index=3).status_code == 404
-    assert post(clip=CLIP, frame_index=99).status_code == 404          # unreadable frame
-    assert post(clip=CLIP).status_code == 400                           # no frame_index
-    assert post(clip=CLIP, frame_index=-1).status_code == 400
-    assert post(clip=CLIP, frame_index=3, distortion={"k1": "x"}).status_code == 400
+    assert _post(client, clip="nope", frame_index=3, kind="d").status_code == 404
+    assert _post(client, clip=CLIP, frame_index=99, kind="d").status_code == 404   # unreadable frame
+    assert _post(client, clip=CLIP, kind="d").status_code == 400                    # no frame_index
+    assert _post(client, clip=CLIP, frame_index=-1, kind="d").status_code == 400
+    assert _post(client, clip=CLIP, frame_index=3).status_code == 400               # kind is required
+    assert _post(client, clip=CLIP, frame_index=3, kind="circle").status_code == 400
+    assert _post(client, clip=CLIP, frame_index=3, kind="centre", distortion={"k1": "x"}).status_code == 400
 
 
-def test_auto_points_is_cached_per_frame_and_distortion(client, auto_env):
-    body = {"clip": CLIP, "frame_index": 3}
+def test_auto_points_is_cached_per_frame_kind_dims_and_distortion(client, auto_env):
+    body = {"clip": CLIP, "frame_index": 3, "kind": "centre"}
     a = client.post("/calibration/api/auto_points", json=body).json()
     b = client.post("/calibration/api/auto_points", json=body).json()
     assert a == b and auto_env["reads"] == [3]
-    client.post("/calibration/api/auto_points", json={**body, "distortion": geo.make_distortion(0.03)})
+    _post(client, **body, distortion=geo.make_distortion(0.03))
     assert auto_env["reads"] == [3, 3]          # a different lens is a different answer
-    client.post("/calibration/api/auto_points", json={"clip": CLIP, "frame_index": 4})
-    client.post("/calibration/api/auto_points", json={"clip": CLIP, "frame_index": 4})
-    assert auto_env["reads"] == [3, 3, 4]       # abstentions are cached too
+    _post(client, **{**body, "kind": "d"})
+    assert auto_env["reads"] == [3, 3, 3]       # so is the other finder
+    _post(client, **body, pitch_dims=[100, 64])
+    assert auto_env["reads"] == [3, 3, 3, 3]    # and other pitch dims (the metres / touchline end depend on them)
+    _post(client, clip=CLIP, frame_index=4, kind="centre")
+    _post(client, clip=CLIP, frame_index=4, kind="centre")
+    assert auto_env["reads"] == [3, 3, 3, 3, 4]   # abstentions are cached too
 
 
 def test_auto_points_cache_is_bounded(client, auto_env, monkeypatch):
     monkeypatch.setattr(cal, "_AUTO_CACHE_MAX", 1)
     for i in (3, 4):
-        client.post("/calibration/api/auto_points", json={"clip": CLIP, "frame_index": i})
+        _post(client, clip=CLIP, frame_index=i, kind="centre")
     assert [k[2] for k in cal._AUTO_CACHE] == [4]   # least recently used evicted
 
 
-def test_editor_page_has_auto_circle_button():
+def test_editor_page_has_the_two_auto_buttons():
     from fastapi.testclient import TestClient
 
     from footy_track.labeller import server as labeller_server
 
     html = TestClient(labeller_server.app).get("/calibration").text
-    assert 'id="autoBtn"' in html and ">Auto circle/D<" in html
-    assert "/auto_points" in html and 'e.key === "c"' in html
+    assert 'id="autoCentreBtn"' in html and ">Centre<" in html and 'id="autoDBtn"' in html and ">D<" in html
+    assert 'id="autoBtn"' not in html and ">Auto circle/D<" not in html
+    assert "/auto_points" in html and 'e.key === "c"' in html and 'e.key === "d"' in html
+    assert 'autoPoints("centre")' in html and 'autoPoints("d")' in html and "kind," in html
     assert "autoPairsToAdd" in html and "snapshot();" in html
     assert "add ${4 - total} more (e.g. touchline / halfway line ends) to fit" in html

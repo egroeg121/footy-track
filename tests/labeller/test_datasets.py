@@ -337,14 +337,14 @@ def test_auto_points_follow_the_dataset(web, two, monkeypatch):
     plain = np.full(img.shape, (40, 130, 40), np.uint8)
     # calib's x.mp4 shows the circle, norwich's x.mp4 is plain grass
     monkeypatch.setattr(cal, "_read_frame", lambda v, i: img if v.parent.parent.name == "calib" else plain)
-    body = {"clip": "x", "frame_index": 0}
+    body = {"clip": "x", "frame_index": 0, "kind": "centre"}
     assert web.post("/calibration/api/auto_points", json=body).json()["ok"] is True
     r = web.post("/calibration/api/auto_points?dataset=norwich", json=body).json()
     assert r["ok"] is False and r["reason"]
     assert web.post("/calibration/api/auto_points", json=body).json()["ok"] is True
     assert {k[0] for k in cal._AUTO_CACHE} == {"calib", "norwich"}
     # a clip only norwich has is a 404 in calib
-    only = {"clip": "only_n", "frame_index": 0}
+    only = {"clip": "only_n", "frame_index": 0, "kind": "centre"}
     assert web.post("/calibration/api/auto_points?dataset=norwich", json=only).status_code == 200
     assert web.post("/calibration/api/auto_points", json=only).status_code == 404
     assert web.post("/calibration/api/auto_points?dataset=nope", json=body).status_code == 404

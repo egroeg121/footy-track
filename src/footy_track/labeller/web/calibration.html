@@ -31,8 +31,8 @@
   #fewBanner .tag { padding:3px 10px; border-radius:12px; cursor:pointer; border:1px solid var(--border);
                     color:var(--muted); background:transparent; font-weight:400; }
   #fewBanner .tag.on { border-color:var(--accent); color:var(--accent); background:#10263d; font-weight:600; }
-  #undoBtn, #autoBtn { min-height:36px; padding:6px 16px; }   /* big enough to tap on a phone */
-  #autoBtn:disabled { opacity:.5; cursor:default; }
+  #undoBtn, .autoBtn { min-height:36px; padding:6px 16px; }   /* big enough to tap on a phone */
+  .autoBtn:disabled { opacity:.5; cursor:default; }
   #undoBtn:disabled { opacity:.4; cursor:default; }
   button.danger:hover { border-color:var(--red); color:var(--red); }
   input[type=number] { width:64px; }
@@ -110,7 +110,8 @@
   <button id="loadBtn">Load GT</button>
   <button id="delGtBtn" class="danger">Delete GT</button>
   <button id="undoBtn" title="Undo the last point edit (Ctrl/Cmd+Z)" disabled>Undo</button>
-  <button id="autoBtn" title="Detect the two points where the halfway line crosses the centre circle, or the penalty-box front edge meets the D, and add them as point pairs (skips ids already placed). Key: c">Auto circle/D</button>
+  <button id="autoCentreBtn" class="autoBtn" title="Find the centre circle and the halfway line: the two circle x line points, plus (when the touchline end is visible) the touchline end and derived circle points, and add them as point pairs (skips ids already placed). Uses the pitch size above for the touchline end. Key: c">Centre</button>
+  <button id="autoDBtn" class="autoBtn" title="Find the penalty area (box, 6-yard box, D) as a whole shape and add its corners, the D ends and the spot as point pairs (skips ids already placed). Falls back to the two box-front x D points. Key: d">D</button>
   <button id="clearBtn">Clear points</button>
   <button id="nbBtn" title="This frame is not the main broadcast pitch view (replay, close-up, crowd, graphic). Key: n">Not broadcast</button>
   <button id="fewBtn" title="Too few identifiable pitch features to place 4 point pairs (e.g. only the centre circle / halfway line). Skipped here, kept as a PTZ-solver candidate. Press again to clear. Key: t">Too few points</button>
@@ -457,21 +458,29 @@ R.stage.on("click tap", e => {
 
 
 // ---- auto circle/D helpers (pure; run under node by tests/labeller/test_calibration_editor_js.py)
-// New {imgPts, pitchPts} entries for a /auto_points answer, skipping pitch ids already placed.
+// New {imgPts, pitchPts} entries for a /auto_points answer, skipping pitch ids already placed (free points, which have no
+// id, are skipped when the same metres are already placed).
 function autoPairsToAdd(corrs, pitchPts) {
   const have = new Set((pitchPts || []).map(p => p && p.id).filter(Boolean));
+  const haveXY = (pitchPts || []).filter(p => p && !p.id).map(p => [p.x, p.y]);
   const img = [], ptc = [];
   for (const c of corrs || []) {
-    if (!c.pitch_id || have.has(c.pitch_id)) continue;
-    have.add(c.pitch_id);
+    if (c.pitch_id) {
+      if (have.has(c.pitch_id)) continue;
+      have.add(c.pitch_id);
+    } else {
+      if (!c.pitch_xy || haveXY.some(q => Math.abs(q[0] - c.pitch_xy[0]) < 1e-6 && Math.abs(q[1] - c.pitch_xy[1]) < 1e-6)) continue;
+      haveXY.push(c.pitch_xy);
+    }
     img.push({ u: c.image[0], v: c.image[1] });
-    ptc.push({ id: c.pitch_id, x: c.pitch_xy[0], y: c.pitch_xy[1] });
+    ptc.push({ id: c.pitch_id || null, x: c.pitch_xy[0], y: c.pitch_xy[1] });
   }
   return { img, ptc };
 }
-function autoStatusText(kind, confidence, added, skipped, total) {
-  const k = kind === "centre" ? "centre circle" : "penalty D";
+function autoStatusText(kind, confidence, added, skipped, total, derived) {
+  const k = kind === "centre" ? "centre circle" : "penalty area";
   let m = `${k} (confidence ${Math.round(confidence * 100)}%): added ${added} point${added === 1 ? "" : "s"}`;
+  if (derived) m += ` (${derived} derived)`;
   if (skipped) m += `, ${skipped} already placed`;
   if (total < 4) m += `. ${total} points placed \u2014 add ${4 - total} more (e.g. touchline / halfway line ends) to fit`;
   return m;
@@ -479,25 +488,28 @@ function autoStatusText(kind, confidence, added, skipped, total) {
 // ---- end auto circle/D helpers
 
 let autoBusy = false;
-async function autoCirclePoints() {
+const AUTO_LABEL = { centre: "centre", d: "D" };
+async function autoPoints(kind) {
   if (autoBusy || !state.clip || !state.frameImg) return;
   if (state.imgPts.length !== state.pitchPts.length) { status("finish or delete the unpaired point first", true); return; }
-  const clip = state.clip, frame = state.frame;
-  autoBusy = true; $("autoBtn").disabled = true; status("finding circle / D points\u2026");
+  const clip = state.clip, frame = state.frame, lab = AUTO_LABEL[kind];
+  const btns = document.querySelectorAll(".autoBtn");
+  autoBusy = true; btns.forEach(b => b.disabled = true); status(`finding ${lab} points\u2026`);
   try {
     const r = await (await api("/auto_points", jsonOpts("POST",
-      { clip, frame_index: frame, distortion: state.distortion, pitch_dims: dims() }))).json();
+      { clip, frame_index: frame, kind, distortion: state.distortion, pitch_dims: dims() }))).json();
     if (clip !== state.clip || frame !== state.frame) return;   // moved on while it ran
-    if (!r.ok) { status("auto circle/D: " + (r.reason || "nothing found"), true); return; }
+    if (!r.ok) { status(`auto ${lab}: ` + (r.reason || "nothing found"), true); return; }
     const add = autoPairsToAdd(r.correspondences, state.pitchPts);
     const skipped = r.correspondences.length - add.img.length;
-    if (!add.img.length) { status("auto circle/D: those points are already placed"); return; }
+    if (!add.img.length) { status(`auto ${lab}: those points are already placed`); return; }
     snapshot();
     state.imgPts.push(...add.img); state.pitchPts.push(...add.ptc); state.dirty = true;
     refit();
-    status(autoStatusText(r.kind, r.confidence, add.img.length, skipped, nPairs()));
-  } catch (e) { status("auto circle/D failed: " + e.message, true); }
-  finally { autoBusy = false; $("autoBtn").disabled = false; }
+    const derived = r.correspondences.filter(c => c.derived).length;
+    status(autoStatusText(r.kind, r.confidence, add.img.length, skipped, nPairs(), derived));
+  } catch (e) { status(`auto ${lab} failed: ` + e.message, true); }
+  finally { autoBusy = false; btns.forEach(b => b.disabled = false); }
 }
 
 // ---------------------------------------------------------------- data
@@ -910,7 +922,8 @@ $("saveBtn").onclick = saveGt; $("loadBtn").onclick = () => loadGt(false); $("de
 $("nbBtn").onclick = () => markNotBroadcast(false); $("nbUndo").onclick = clearNotBroadcast;
 $("fewBtn").onclick = toggleTooFew; $("fewUndo").onclick = clearTooFew;
 $("undoBtn").onclick = undo;
-$("autoBtn").onclick = autoCirclePoints;
+$("autoCentreBtn").onclick = () => autoPoints("centre");
+$("autoDBtn").onclick = () => autoPoints("d");
 $("rejectBtn").onclick = rejectProposal;
 $("clearBtn").onclick = () => { snapshot(); state.imgPts = []; state.pitchPts = []; state.dirty = true; refit(); };
 $("showOverlay").onchange = redraw;
@@ -926,7 +939,8 @@ document.addEventListener("keydown", e => {
   else if (e.key === "ArrowRight") gotoFrame(state.frame + step);
   else if (e.key === "n") markNotBroadcast(false);
   else if (e.key === "t") toggleTooFew();
-  else if (e.key === "c" && !e.ctrlKey && !e.metaKey && !e.altKey) autoCirclePoints();
+  else if (e.key === "c" && !e.ctrlKey && !e.metaKey && !e.altKey) autoPoints("centre");
+  else if (e.key === "d" && !e.ctrlKey && !e.metaKey && !e.altKey) autoPoints("d");
   else if (e.ctrlKey || e.metaKey || e.altKey) return;
   else if (e.key === "x") rejectProposal();   // no-op unless a proposal is loaded
   else if (e.key === "[") goRel(-1);
