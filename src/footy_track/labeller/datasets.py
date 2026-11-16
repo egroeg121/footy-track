@@ -5,7 +5,7 @@ marks (GT) dir, optional machine-candidate dir and ball-check review list, and
 optional extra clip dirs for pitch calibration. Every data-touching route
 resolves its dataset per request from the ``?dataset=<name>`` query parameter
 (default: the registry's default, ``calib``), so existing links and bookmarks
-keep working and one server can serve calib, norwich, ... side by side.
+keep working and one server can serve calib, nottinghamforest, ... side by side.
 
 Resolution
 ----------

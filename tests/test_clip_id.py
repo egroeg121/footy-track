@@ -35,6 +35,10 @@ from footy_track.clip_id import (
         # Man City 10 s parts: a different cut, never merged with segNNN.
         ("arsenal_mancity_20250925_part050.mp4", "arsenal_mancity_part050"),
         ("mancity_part050", "arsenal_mancity_part050"),
+        # Held-out match, first misnamed "norwich" (it is Arsenal v Nottingham Forest).
+        ("arsenal_norwich_seg012.mp4", "arsenal_nottinghamforest_seg012"),
+        ("arsenal_nottinghamforest_seg012.jsonl", "arsenal_nottinghamforest_seg012"),
+        ("nottinghamforest_seg012", "arsenal_nottinghamforest_seg012"),
         # Aston Villa.
         ("astonvilla_seg020.jsonl", "arsenal_astonvilla_seg020"),
         ("Arsenal - Aston Villa_seg020.mp4", "arsenal_astonvilla_seg020"),

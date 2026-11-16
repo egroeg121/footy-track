@@ -1,4 +1,6 @@
 # Round 3: transductive per-match self-training (3ch, A++)
+
+> Naming note: the held-out match used to be called "Norwich"; it is Arsenal v Nottingham Forest (scoreboard NFO), now `arsenal_nottinghamforest`. Old ids (`arsenal_norwich_segNNN`, `*_norwich` dirs) and experiment artifacts written under the old name (`r3_norwich`, `exp/temporal/round3/norwich*`, S3 `exp_temporal_r3/out/*_norwich`) keep it, so old numbers can still be traced.
 Branch `exp/temporal-detector`. Code: `experiments/temporal_detector/{r3_detect,r3_prep,r3_fuse,r3_build,r3_audit_bm,heldout_by_match,round2_report}.py`,
 flows `temporal-r3-{detect,sam2,build}` (`~/code/jobs/footy_temporal_r3.py`, S3 hop in `footy_s3hop.py`), training via `temporal-ablation ... extra_dirs=r3_bournemouth,r3_norwich`.
 Builds on `temporal_detector_ablation.md` (v1), `temporal_pipeline_eval.md`, `temporal_detector_round2.md`. 3-channel only; the 5-channel arm is parked (not run).
@@ -6,7 +8,7 @@ Builds on `temporal_detector_ablation.md` (v1), `temporal_pipeline_eval.md`, `te
 ## Question and answer
 
 The tool is offline, so it may pseudo-label the match it is processing, using none of that match's human labels. Round 3 trains YOLO11s 3ch on v11 train + the Man City
-round-2 pseudo set + pseudo labels of **Bournemouth** (the match 76 of the 117 held-out balls come from) and **Norwich** (a target match, no labels yet): arm **A++**, 60 epochs, 2 seeds,
+round-2 pseudo set + pseudo labels of **Bournemouth** (the match 76 of the 117 held-out balls come from) and **Nottingham Forest** (a target match, no labels yet): arm **A++**, 60 epochs, 2 seeds,
 same recipe as v1/round 2.
 
 **Held-out recall moves off 0.48, and the whole gain is in the match whose video was pseudo-labelled.**
@@ -45,44 +47,44 @@ Held-out balls by source (k2 `meta.jsonl` `clip_id`): **Bournemouth 76** (seg009
 | Bournemouth 1st half | 121 segment clips, **50 fps** 1920x1080 | 71,494 | 114 clips (67,897 frames) after removing the 7 clips that hold v11 val/test/held-out images; RT-DETR labels did not exist |
 | Bournemouth 2nd half | raw `.ts` only (1.7 GB), never segmented | - | not used |
 | Man City | 162 clips (25 fps) | 97,625 | r2 pool = 62 clips (21,340 frames); the other 100 contain v11 eval images or the trajectory test clips; unchanged here |
-| Norwich | 76 clips (25 fps), RT-DETR labels existed | 25,694 | 24 label-queue windows (19 clips): windows +-25 frames = 6,850 frames excluded, pool 18,844 |
+| Nottingham Forest | 76 clips (25 fps), RT-DETR labels existed | 25,694 | 24 label-queue windows (19 clips): windows +-25 frames = 6,850 frames excluded, pool 18,844 |
 | Aston Villa | 189 clips | 81,280 | dropped (not a target match) |
 
 ## Pseudo-labelling pipeline (per target match)
 
-RT-DETR-L v11 @1280 (Bournemouth: run here with the ffmpeg CLI `-fps_mode passthrough`, conf >= 0.1, all classes; Norwich: the existing machine labels) -> harness B1 (camera on, dev-tuned parameters, unchanged)
+RT-DETR-L v11 @1280 (Bournemouth: run here with the ffmpeg CLI `-fps_mode passthrough`, conf >= 0.1, all classes; Nottingham Forest: the existing machine labels) -> harness B1 (camera on, dev-tuned parameters, unchanged)
 -> S1 (SAM2.1-small crop512 tracks from conf >= 0.8 anchors, forward/backward agreement gate) -> filter -> stride >= 5 -> 3ch PNG + YOLO labels (pseudo ball + machine player/other boxes conf >= 0.5).
 - **Frame rate:** the Bournemouth clips are 50 fps. They are handled as 25 fps clips by taking every 2nd decoded frame, so B1's per-frame parameters (vmax 40 px/frame, max_gap 25), the +-25-frame filter window and stride 5 keep their meaning;
   subsampled index t is original frame 2t. RT-DETR runs on the original even frames, SAM2 on a 25 fps copy (crf 12), training images are the original frames 2t, so labels sit in the GT frame space (GT indices are 50 fps).
 - **Random subset for Bournemouth:** 60 of the 114 pool clips (59 used: seg092 is unreadable on the mini, I/O error after ~5 MB of the mp4); 15,722 frames at 25 fps.
-- **Exclusions:** every held-out clip and every v11 val/test clip in full (Bournemouth: seg009, 010, 015, 021, 031, 035, 060 never in the pool); Norwich queue windows +-25 frames (selected frames are >= 28 frames from any window, 0 inside, checked);
-  `ball_gt_marks_norwich` is never read: the harness root used for B1 has an empty `ball_gt_marks`, and the blind-check verdicts in `ball_gt_marks_norwich/ball_checks` were not used for anything.
-- **Selection:** easy B1 nodes (conf >= 0.8, random, cap 800) + all S1 fills, cap 1,500 per match: **Bournemouth 1,025 images (800 easy + 225 S1; 51 clips; 7 within 5 frames of a v11 train image, kept)**, **Norwich 1,138 (800 + 338; 66 clips)**.
+- **Exclusions:** every held-out clip and every v11 val/test clip in full (Bournemouth: seg009, 010, 015, 021, 031, 035, 060 never in the pool); Nottingham Forest queue windows +-25 frames (selected frames are >= 28 frames from any window, 0 inside, checked);
+  `ball_gt_marks_nottinghamforest` is never read: the harness root used for B1 has an empty `ball_gt_marks`, and the blind-check verdicts in `ball_gt_marks_nottinghamforest/ball_checks` were not used for anything.
+- **Selection:** easy B1 nodes (conf >= 0.8, random, cap 800) + all S1 fills, cap 1,500 per match: **Bournemouth 1,025 images (800 easy + 225 S1; 51 clips; 7 within 5 frames of a v11 train image, kept)**, **Nottingham Forest 1,138 (800 + 338; 66 clips)**.
 
 **No low-confidence B1 detections for either match (a change to the round-2 filter, with evidence).** Audit off Man City: the harness B1 on RT-DETR labels of the six held-out Bournemouth clips (excluded from the pool, so no leak),
 scored against their human GT on the 36 GT frames that fall on the 25 fps subsample: B1 node hit@10 by confidence band conf >= 0.8 **6/6**, 0.6-0.8 **5/9** (Man City: 98%), < 0.6 **1/8**, and the round-2 low-conf survivors **0/6**.
-George's blind check of the Norwich set agrees (Ball Check, no source shown; verdicts in `ball_gt_marks_norwich/ball_checks`, not used for training; figures supplied by the coordinator): easy B1 anchors **58/60 real (97%, CI 89-99%)**,
+George's blind check of the Nottingham Forest set agrees (Ball Check, no source shown; verdicts in `ball_gt_marks_nottinghamforest/ball_checks`, not used for training; figures supplied by the coordinator): easy B1 anchors **58/60 real (97%, CI 89-99%)**,
 S1 fills **53/60 (88%, CI 78-94%, plus 2 box_off)**, estimated set precision about **94%** (comparable to the Man City r2 set); B1 nodes with p < 0.5 outside the set 22/40 real (55%), and B1-rejected RT-DETR detections with conf >= 0.6 only 1/40 real,
 so the solver's rejections are right and **RT-DETR confidence is badly calibrated on this match**.
 
 **Contact sheets** (48 random crops each, 64 px at 3x, label box, source and confidence / fill rule and distance to the anchor):
-- Norwich easy: 48/48 clear balls; Norwich S1 fills: mostly balls, about 4 of 48 are blurred streaks or a boot (consistent with the blind check).
+- Nottingham Forest easy: 48/48 clear balls; Nottingham Forest S1 fills: mostly balls, about 4 of 48 are blurred streaks or a boot (consistent with the blind check).
 - Bournemouth easy: 48/48 clear (yellow) balls; Bournemouth S1 fills: about 5 of 48 doubtful or wrong (one box on the Premier League logo, a few on ad boards / crowd): kept, flagged as the weakest part.
 
-![Norwich easy](temporal_detector_round3/contact_sheet_norwich_easy.png)
-![Norwich hard (S1 fills)](temporal_detector_round3/contact_sheet_norwich_hard.png)
+![Nottingham Forest easy](temporal_detector_round3/contact_sheet_nottinghamforest_easy.png)
+![Nottingham Forest hard (S1 fills)](temporal_detector_round3/contact_sheet_nottinghamforest_hard.png)
 ![Bournemouth easy](temporal_detector_round3/contact_sheet_bournemouth_easy.png)
 ![Bournemouth hard (S1 fills)](temporal_detector_round3/contact_sheet_bournemouth_hard.png)
 
 ## Training and what was not done
 
-- A++: v11 train (1,034) + Man City r2 pseudo (1,617) + Bournemouth (1,025) + Norwich (1,138) = 4,816 images, YOLO11s 3ch, imgsz 1280, batch 4, 60 epochs, seeds 0 and 1, `last.pt`, HSV / Albumentations off (identical to round 2).
+- A++: v11 train (1,034) + Man City r2 pseudo (1,617) + Bournemouth (1,025) + Nottingham Forest (1,138) = 4,816 images, YOLO11s 3ch, imgsz 1280, batch 4, 60 epochs, seeds 0 and 1, `last.pt`, HSV / Albumentations off (identical to round 2).
   3.7-6 h per run (GPU-bound, 1,204 iterations per epoch).
 - **Not run:** the arm without the Man City pseudo (cancelled: not cheap at ~5 h/run, so "Man City pseudo vs target pseudo" effects are not separated); the RT-DETR-L fine-tune (not started); the 5-channel arm (parked);
-  the **Norwich preview**: at evaluation time `ball_gt_marks_norwich` held no window labels (only the blind-check verdicts), so nothing was scored on Norwich. Norwich pseudo labels are in the training data but untested.
+  the **Nottingham Forest preview**: at evaluation time `ball_gt_marks_nottinghamforest` held no window labels (only the blind-check verdicts), so nothing was scored on Nottingham Forest. Nottingham Forest pseudo labels are in the training data but untested.
 - Caveat on interpretation: the held-out Bournemouth frames come from the same match (same kit, stadium, ball) as the pseudo-labelled clips, never from the same clips or frames (disjoint segments, held-out and v11 eval clips excluded in full).
   That is exactly the transductive setting the offline tool has, but it says nothing about a match whose video was not pseudo-labelled; and Man City held-out, the only other match, was flat before and after.
-- Cost: Bournemouth RT-DETR labels for 17,282 processed frames about 17 min (18 fps); SAM2: Norwich 69 clips / 11.2k steps about 30 min, Bournemouth 42 clips / 5.7k steps about 20 min; most wall-clock went to the desktop Wi-Fi
+- Cost: Bournemouth RT-DETR labels for 17,282 processed frames about 17 min (18 fps); SAM2: Nottingham Forest 69 clips / 11.2k steps about 30 min, Bournemouth 42 clips / 5.7k steps about 20 min; most wall-clock went to the desktop Wi-Fi
   (the tailnet path fell back to a ~30 KB/s DERP relay for hours, so large transfers go through S3 with presigned URLs) and to the 3 x 4-6 h of training.
 
 ## Top-1 recall@10 px (hit@10), mean of 2 seeds [seed range]
@@ -180,7 +182,7 @@ so the solver's rejections are right and **RT-DETR confidence is badly calibrate
 | App_s0 | 60 | 0.608 | 0.576 | 0.608 |
 | App_s1 | 60 | 0.555 | 0.523 | 0.582 |
 
-# Appendix: round-3 models (A++ = 3ch with Bournemouth + Norwich pseudo) vs A+ through the harness trajectory solver (B0 / B1, camera on)
+# Appendix: round-3 models (A++ = 3ch with Bournemouth + Nottingham Forest pseudo) vs A+ through the harness trajectory solver (B0 / B1, camera on)
 Comparison columns read 'A++ r3' minus 'A+ r2' (3ch both); the production RT-DETR-L rows are as in temporal_pipeline_eval.md. Test clips and arsenal_example are Man City: no new in-domain data. arsenal_example harness-clean n = 9 is uninformative; the all-labelled-frames table is the labelled deviation.
 
 ## test (9 clips, harness exclusions)

@@ -631,6 +631,7 @@ def test_cli_classes_all_and_sources(tmp_path) -> None:
 def test_heldout_match_is_never_exportable():
     from footy_track.scripts.export_training_dataset import is_heldout_clip
 
-    assert is_heldout_clip("arsenal_norwich_seg012")
-    assert is_heldout_clip("arsenal_norwich_seg012.mp4")
+    assert is_heldout_clip("arsenal_nottinghamforest_seg012")
+    assert is_heldout_clip("arsenal_nottinghamforest_seg012.mp4")
+    assert is_heldout_clip("arsenal_norwich_seg012")  # the old, mistaken name of the same match
     assert not is_heldout_clip("arsenal_mancity_20250925_seg012")

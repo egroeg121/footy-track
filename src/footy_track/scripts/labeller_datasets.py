@@ -6,7 +6,7 @@
 The registry is ``$FOOTY_LABELLER_DATASETS`` (default
 ``/mnt/storage/footy_data/labeller_datasets.json``); see
 ``footy_track/labeller/datasets.py``. ``init`` writes the seed (``calib`` as the
-default, plus ``norwich``) only if the file does not exist yet, and never
+default, plus ``nottinghamforest``) only if the file does not exist yet, and never
 overwrites an existing registry without ``--force``. The running server
 re-reads the file when it changes, so no restart is needed to add a dataset.
 """
@@ -22,7 +22,7 @@ DEFAULT_DATA_ROOT = "/mnt/storage/footy_data"
 
 
 def seed_entries(data: str = DEFAULT_DATA_ROOT) -> dict[str, dict]:
-    """The two datasets that used to be two servers (:8011 calib, :8012 norwich)."""
+    """The two datasets that used to be two servers (:8011 calib, :8012 nottinghamforest)."""
     return {
         "calib": {
             "label": "Calibration / Ball Check (calib)",
@@ -32,12 +32,12 @@ def seed_entries(data: str = DEFAULT_DATA_ROOT) -> dict[str, dict]:
             # there serves the sidecar queue. Add "candidates_dir" to switch it on.
             "extra_clips_dirs": [f"{data}/ballcheck_clips_kf10"],
         },
-        "norwich": {
-            "label": "Arsenal v Norwich (held-out)",
-            "clips_dir": f"{data}/arsenal_norwich/split_video_broadcast_frames_kf10",
-            "marks_dir": f"{data}/ball_gt_marks_norwich",
-            "candidates_dir": f"{data}/ball_candidates_norwich",
-            "ball_check_list": f"{data}/norwich_label_queue/ball_check_list_v1.json",
+        "nottinghamforest": {
+            "label": "Arsenal v Nottingham Forest (held-out)",
+            "clips_dir": f"{data}/arsenal_nottinghamforest/split_video_broadcast_frames_kf10",
+            "marks_dir": f"{data}/ball_gt_marks_nottinghamforest",
+            "candidates_dir": f"{data}/ball_candidates_nottinghamforest",
+            "ball_check_list": f"{data}/nottinghamforest_label_queue/ball_check_list_v1.json",
         },
     }
 

@@ -2,7 +2,7 @@
 """Make a 1080p25 SDR (bt709) proxy of a match video, tone-mapping HDR sources.
 
 The training matches are 1080p25 (or 720p25) SDR. A 4K50 HDR10/PQ broadcast
-(e.g. ``arsenal_norwich.mkv``: HEVC Main10, bt2020nc, smpte2084) looks washed out if
+(e.g. ``arsenal_nottinghamforest.mkv``: HEVC Main10, bt2020nc, smpte2084) looks washed out if
 simply scaled, and is 8x the pixels and 2x the frames, so it is first converted to a
 proxy that matches the existing data, then handed to ``split_broadcast_segments``.
 

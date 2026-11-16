@@ -97,10 +97,12 @@ _NOT_REJECTED = """
 
 
 #: Matches that must NEVER reach a training export (held-out evaluation matches).
-#: ``arsenal_norwich`` is the only match absent from every detector training set; its
-#: clips are ``arsenal_norwich_segNNN``. Checked on the canonical clip id, in addition
+#: ``arsenal_nottinghamforest`` is the only match absent from every detector training set; its
+#: clips are ``arsenal_nottinghamforest_segNNN``. Checked on the canonical clip id, in addition
 #: to the eval-dir / --exclude-clip mechanism, so it holds even if nobody passes a flag.
-HELDOUT_CLIP_PREFIXES: tuple[str, ...] = ("arsenal_norwich",)
+#: (``arsenal_norwich`` is the old, mistaken name of the same match; kept as a belt-and-braces
+#: guard in case a name is ever checked without going through ``canonical_clip_id``.)
+HELDOUT_CLIP_PREFIXES: tuple[str, ...] = ("arsenal_nottinghamforest", "arsenal_norwich")
 
 
 def is_heldout_clip(name: str) -> bool:

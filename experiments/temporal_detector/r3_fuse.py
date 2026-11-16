@@ -5,11 +5,11 @@ excluded frame windows and the round-2 filter:
   * S1 fills: all kept;  easy B1 nodes (conf >= 0.8): random, capped;
   * low-conf B1 nodes (conf < 0.6): kept only if conf >= 0.45 AND a conf >= 0.8 B1 node lies within +-25 (subsampled) frames;
   * per-clip stride >= 5 subsampled frames; frames within 2 of a cut / clip end are not eligible;
-  * excluded windows (Norwich label-queue windows +-25 frames; held-out / v11 val+test clips are simply absent from the pool);
+  * excluded windows (Nottingham Forest label-queue windows +-25 frames; held-out / v11 val+test clips are simply absent from the pool);
   * total capped at --cap.
 Selected rows carry t (subsampled index) and t_orig = t * stride (frame of the source video that is trained on).
 
-    python r3_fuse.py --match norwich --prep <dir> --tracks <dir> --labels-dir <dir> --stride-orig 1 --out <dir> [--exclude-windows w.json]
+    python r3_fuse.py --match nottinghamforest --prep <dir> --tracks <dir> --labels-dir <dir> --stride-orig 1 --out <dir> [--exclude-windows w.json]
 """
 
 from __future__ import annotations

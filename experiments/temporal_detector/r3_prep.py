@@ -4,7 +4,7 @@ SAM2 track spec. Generalises experiments/pseudo_labels_v1/pseudo_prep.py (Man Ci
     OMP_NUM_THREADS=1 python r3_prep.py --match bournemouth --labels-dir <dir with <clip>.jsonl [+ <clip>.meta.json]> --out <dir>
 
 A fake harness root `<out>/root` holds machine_labels (symlinks + manifest) and an EMPTY ball_gt_marks, so no human label of any match
-(incl. Norwich) can be read. Frame indices are those of the labels (for 50 fps clips: original // stride).
+(incl. Nottingham Forest) can be read. Frame indices are those of the labels (for 50 fps clips: original // stride).
 """
 
 from __future__ import annotations
