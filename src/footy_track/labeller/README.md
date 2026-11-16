@@ -1169,6 +1169,24 @@ becomes GT without a human accepting it; accepted GT carries
     `test_datasets.py::test_too_few_points_marks_are_per_dataset`,
     `tests/calibration/test_prelabel.py::test_pipeline_skips_too_few_points_frames`,
     `tests/feature_store/test_ingest_calibration.py::test_too_few_points_status_and_flags_are_ingested_without_winning_best`
+- **LAB-1224** (SHOULD) One tap places the two circle/D points: `POST /calibration/api/auto_points` (body
+  `{clip, frame_index, distortion?, pitch_dims?}`) reads that frame (`_find_video` + `_read_frame` in a
+  worker thread, current `?dataset=`) and runs `calibration/centre_circle.py`. A hit is
+  `{ok: true, kind: "centre"|"pen_arc", confidence, correspondences: [{image: [u, v], pitch_id, pitch_xy}]}`
+  (pitch ids `CENTRE_CIRCLE_TOP/BOTTOM` or `L_/R_PEN_ARC_TOP/BOTTOM`; image points are observed coordinates,
+  consistent with the given `distortion`); an abstention is `{ok: false, reason}` with HTTP 200, not an error.
+  Unknown clip / unreadable frame -> 404, bad body or distortion -> 400. Nothing is stored. Answers (and
+  abstentions) are cached in a 64-entry LRU keyed by dataset, video, frame and distortion; one detection runs
+  at a time. Editor: "Auto circle/D" button (key `c`, 36 px tall for phones) appends the returned pairs to the
+  pair list exactly like hand-placed ones (`snapshot()` first, so Undo removes them; then `refit()`; pairs whose
+  `pitch_id` is already placed are skipped; refused while an unpaired point is pending), using the frame's
+  current `state.distortion`. The status line shows kind + confidence or the abstain reason, and with fewer
+  than 4 pairs says "2 points placed - add 2 more (e.g. touchline / halfway line ends) to fit". Added points
+  are ordinary draggable pairs.
+  - Tests: `test_calibration.py::test_auto_points_*`, `test_datasets.py::test_auto_points_follow_the_dataset`,
+    `test_calibration.py::test_editor_page_has_auto_circle_button` (markers),
+    `test_calibration_editor_js.py::test_auto_circle_helpers_under_node` (pair merge + status text; button flow
+    UNTESTED-FRONTEND), `tests/calibration/test_centre_circle.py`
 - **LAB-1219** (SHOULD) Frames are read through `footy_track.calibration.video.read_frame`
   (cv2, falling back to the ffmpeg CLI when cv2 fails or returns an all-black frame,
   frame-accurate, reader cached per video); `/calibration/api/frame` and `/warp` use it.

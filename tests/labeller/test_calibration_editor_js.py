@@ -38,3 +38,32 @@ def test_proposal_helpers_under_node(tmp_path):
     f.write_text(html[a:b] + CHECK)
     r = subprocess.run(["node", str(f)], capture_output=True, text=True, timeout=30)
     assert r.returncode == 0, r.stderr
+
+
+AUTO_CHECK = r"""
+const assert = require("assert");
+const corrs = [{image: [.4, .3], pitch_id: "CENTRE_CIRCLE_TOP", pitch_xy: [0, 9.15]},
+               {image: [.5, .6], pitch_id: "CENTRE_CIRCLE_BOTTOM", pitch_xy: [0, -9.15]}];
+let a = autoPairsToAdd(corrs, []);
+assert.deepEqual(a.img, [{u: .4, v: .3}, {u: .5, v: .6}]);
+assert.deepEqual(a.ptc[0], {id: "CENTRE_CIRCLE_TOP", x: 0, y: 9.15});
+a = autoPairsToAdd(corrs, [{id: "CENTRE_CIRCLE_TOP", x: 0, y: 9.15}, {id: null, x: 1, y: 2}]);
+assert.equal(a.img.length, 1);                                        // placed id skipped, free point ignored
+assert.equal(a.ptc[0].id, "CENTRE_CIRCLE_BOTTOM");
+assert.equal(autoPairsToAdd(corrs, a.ptc.concat([{id: "CENTRE_CIRCLE_TOP"}])).img.length, 0);
+assert.equal(autoPairsToAdd([corrs[0], corrs[0]], []).img.length, 1);  // duplicate id within the answer
+assert.equal(autoPairsToAdd(null, []).img.length, 0);
+assert.ok(autoStatusText("centre", 0.87, 2, 0, 2).includes("2 points placed — add 2 more (e.g. touchline / halfway line ends) to fit"));
+assert.ok(autoStatusText("pen_arc", 0.7, 2, 0, 5).includes("penalty D (confidence 70%)"));
+assert.ok(!autoStatusText("centre", 0.9, 2, 0, 4).includes("placed"));
+"""
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node not installed")
+def test_auto_circle_helpers_under_node(tmp_path):
+    html = PAGE.read_text()
+    a, b = html.index("// ---- auto circle/D helpers"), html.index("// ---- end auto circle/D helpers")
+    f = tmp_path / "helpers.js"
+    f.write_text(html[a:b] + AUTO_CHECK)
+    r = subprocess.run(["node", str(f)], capture_output=True, text=True, timeout=30)
+    assert r.returncode == 0, r.stderr
