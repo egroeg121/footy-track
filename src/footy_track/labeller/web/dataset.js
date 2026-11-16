@@ -2,7 +2,7 @@
 //
 // One server serves several datasets (see labeller/datasets.py); the dataset is
 // chosen per request by the `dataset` query parameter, default = the registry
-// default. Pages are opened as /ball_check?dataset=norwich; this shim (loaded
+// default. Pages are opened as /ball_check?dataset=nottinghamforest; this shim (loaded
 // first in <head>) adds the same parameter to fetch(), WebSocket, <img>/<video>
 // /<source> src, <a> href, setAttribute('src'|'href') and history.*State, so the
 // page code itself does not have to know. With no ?dataset= it does nothing.

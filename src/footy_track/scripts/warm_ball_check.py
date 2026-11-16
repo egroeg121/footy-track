@@ -6,7 +6,7 @@ each card waits for a video decode. This walks the not-yet-verdicted cards of
 file order come from the same code the page uses) and GETs each card's crop and
 clip once, sequentially, with a pause between requests so it stays out of the way.
 
-    nice -n 19 python -m footy_track.scripts.warm_ball_check --base http://127.0.0.1:8011 --dataset norwich
+    nice -n 19 python -m footy_track.scripts.warm_ball_check --base http://127.0.0.1:8011 --dataset nottinghamforest
 
 ``--dataset`` selects the labeller dataset (default: the server's default). Started
 in the background by ``scripts/labeller_deploy.sh`` after restarting the service,

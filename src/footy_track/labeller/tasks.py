@@ -1,7 +1,7 @@
 """Shared labelling task board + server info (``/api/tasks``, ``/api/server_info``).
 
 The task list is one JSON file shared by every labeller server (calib :8011,
-norwich :8012, ...). Sessions edit it with ``python -m
+nottinghamforest :8012, ...). Sessions edit it with ``python -m
 footy_track.scripts.labelling_tasks`` (atomic write, stable ids); the servers
 re-read it on every request, so no redeploy is needed to add or drop a task.
 """

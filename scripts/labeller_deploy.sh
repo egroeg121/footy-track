@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Deploy / operate the labelling server. It runs ONLY from $SERVE_DIR on main.
-# ONE service (calib, :8011) serves every dataset (calib, norwich, ...): the dataset is the
+# ONE service (calib, :8011) serves every dataset (calib, nottinghamforest, ...): the dataset is the
 # ?dataset= query parameter and the datasets live in the registry
 # $DATA/labeller_datasets.json (see footy_track/labeller/datasets.py), created on first
 # restart/deploy by `labeller_datasets init` if missing, never overwritten.
@@ -16,7 +16,7 @@
 # otherwise runs in the background after restarting a service in WARM_SVCS.
 #
 # Env overrides: SERVE_DIR, LABELLER_PY, TMUX_SOCKET, LABELLER_LOG_DIR, DEPLOY_TIMEOUT.
-# Retire the old norwich server (:8012) yourself after the first deploy: `tmux -L footy kill-session -t footy-norwich`.
+# Retire the old nottinghamforest server (:8012) yourself after the first deploy: `tmux -L footy kill-session -t footy-norwich`.
 set -euo pipefail
 
 SERVE_DIR="${SERVE_DIR:-/home/george/footy-track-main}"
@@ -38,7 +38,7 @@ SVC_ENV[calib]=""
 
 # service -> datasets whose Ball Check crop/clip caches are warmed after a restart (they
 # serve a ball_check_list; a restart empties the in-memory caches).
-declare -A WARM_DATASETS=([calib]="norwich")
+declare -A WARM_DATASETS=([calib]="nottinghamforest")
 
 DRY=0
 FORCE=0

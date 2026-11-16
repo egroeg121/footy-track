@@ -261,10 +261,10 @@ def load_fake_clip(
 
 @pytest.fixture
 def two(tmp_path, monkeypatch):
-    """Registry with ``calib`` (default) and ``norwich``, each in its own tmp tree."""
+    """Registry with ``calib`` (default) and ``nottinghamforest``, each in its own tmp tree."""
     roots = {}
     entries = {}
-    for name in ("calib", "norwich"):
+    for name in ("calib", "nottinghamforest"):
         root = tmp_path / name
         (root / "clips").mkdir(parents=True)
         (root / "marks").mkdir()

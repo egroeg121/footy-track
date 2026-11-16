@@ -7,15 +7,15 @@ for a branch / worktree / Prefect flow that has not merged main::
     curl -O http://mac-mini-i7:8011/api/jobs_client.py
 
     from jobs_client import submit, wait, results
-    job = submit("Norwich windows r1", "ball_place", [
-        {"clip": "arsenal_norwich_seg003", "frame_start": 10, "frame_end": 259, "step": 5},
-    ], dataset="norwich", key="my-branch/norwich-windows-r1")
+    job = submit("Nottingham Forest windows r1", "ball_place", [
+        {"clip": "arsenal_nottinghamforest_seg003", "frame_start": 10, "frame_end": 259, "step": 5},
+    ], dataset="nottinghamforest", key="my-branch/nottinghamforest-windows-r1")
     wait(job["id"], poll=60)                 # blocks until done / cancelled
     labels = results(job["id"])["labels"]    # canonical rows, see README section 19
 
 Command line (``python jobs_client.py`` or ``python -m footy_track.scripts.labelling_jobs``)::
 
-    submit --title T --kind ball_place --dataset norwich --items windows.csv [--step 5] [--key K]
+    submit --title T --kind ball_place --dataset nottinghamforest --items windows.csv [--step 5] [--key K]
     status REF | results REF [-o out.json] | wait REF [--poll 60] [--timeout S] | list | done REF | cancel REF
 
 REF is a job id or an exact (unique) job title. The server is ``$FOOTY_LABELLER_URL``

@@ -39,9 +39,9 @@ def _sidecar_line(frame_index: int, tags: list[str]) -> str:
 def test_registry_lists_datasets_and_default(web):
     j = web.get("/api/datasets").json()
     assert j["default"] == "calib"
-    assert [d["name"] for d in j["datasets"]] == ["calib", "norwich"]
+    assert [d["name"] for d in j["datasets"]] == ["calib", "nottinghamforest"]
     assert j["current"] == "calib"
-    assert web.get("/api/datasets?dataset=norwich").json()["current"] == "norwich"
+    assert web.get("/api/datasets?dataset=nottinghamforest").json()["current"] == "nottinghamforest"
 
 
 def test_unknown_dataset_is_404_not_silent_default(web):
@@ -62,7 +62,7 @@ def test_websocket_unknown_dataset_is_refused(web):
 
 
 def test_websocket_accepts_a_known_dataset(web):
-    with web.websocket_connect("/ws?dataset=norwich") as ws:
+    with web.websocket_connect("/ws?dataset=nottinghamforest") as ws:
         ws.send_json({"type": "pause"})
         assert ws.receive_json() == {"type": "status", "state": "paused"}
 
@@ -89,7 +89,7 @@ def test_env_overrides_apply_to_the_default_dataset_only(two, tmp_path, monkeypa
     other = tmp_path / "elsewhere"
     monkeypatch.setenv("FOOTY_GT_MARKS_DIR", str(other))
     assert datasets.get("calib").marks_dir == other
-    assert datasets.get("norwich").marks_dir == two["norwich"] / "marks"
+    assert datasets.get("nottinghamforest").marks_dir == two["nottinghamforest"] / "marks"
 
 
 def test_registry_edits_are_picked_up_without_restart(web, two, tmp_path):
@@ -113,14 +113,14 @@ def test_registry_edits_are_picked_up_without_restart(web, two, tmp_path):
 
 def test_clips_follow_the_dataset(web, two):
     (two["calib"] / "clips" / "a.mp4").touch()
-    (two["norwich"] / "clips" / "n1.mp4").touch()
-    (two["norwich"] / "clips" / "n2.mp4").touch()
+    (two["nottinghamforest"] / "clips" / "n1.mp4").touch()
+    (two["nottinghamforest"] / "clips" / "n2.mp4").touch()
     names = lambda url: [c["name"] for c in web.get(url).json()["clips"]]  # noqa: E731
     assert names("/clips") == ["a.mp4"]  # default, no parameter
     assert names("/clips?dataset=calib") == ["a.mp4"]
-    assert names("/clips?dataset=norwich") == ["n1.mp4", "n2.mp4"]
-    assert web.get("/clips?dataset=norwich").json()["dir"] == str(
-        two["norwich"] / "clips"
+    assert names("/clips?dataset=nottinghamforest") == ["n1.mp4", "n2.mp4"]
+    assert web.get("/clips?dataset=nottinghamforest").json()["dir"] == str(
+        two["nottinghamforest"] / "clips"
     )
 
 
@@ -129,20 +129,20 @@ def test_labels_saved_in_one_dataset_never_appear_in_the_other(web, two, fake_cv
     FakeVideoCapture.total_frames = 5
     for name in two:
         (two[name] / "clips" / "same.mp4").touch()
-    clip = str(two["norwich"] / "clips" / "same.mp4")
+    clip = str(two["nottinghamforest"] / "clips" / "same.mp4")
     box = {"label": "ball", "x": 0.3, "y": 0.3, "w": 0.02, "h": 0.02}
 
     assert (
-        web.post("/session/load?dataset=norwich", json={"video_path": clip}).status_code
+        web.post("/session/load?dataset=nottinghamforest", json={"video_path": clip}).status_code
         == 200
     )
     assert (
-        web.post("/edit?dataset=norwich", json={"idx": 2, "objects": [box]}).status_code
+        web.post("/edit?dataset=nottinghamforest", json={"idx": 2, "objects": [box]}).status_code
         == 200
     )
-    labeller_server._SESSIONS["norwich"]._do_flush()
+    labeller_server._SESSIONS["nottinghamforest"]._do_flush()
 
-    assert (two["norwich"] / "marks" / "same.jsonl").exists()
+    assert (two["nottinghamforest"] / "marks" / "same.jsonl").exists()
     assert not (two["calib"] / "marks" / "same.jsonl").exists()
     assert list((two["calib"] / "marks").iterdir()) == []
 
@@ -154,9 +154,9 @@ def test_labels_saved_in_one_dataset_never_appear_in_the_other(web, two, fake_cv
         "ball": [],
         "player": [],
     }
-    assert web.get("/marks?dataset=norwich").json()["ball"] == [2]
+    assert web.get("/marks?dataset=nottinghamforest").json()["ball"] == [2]
     assert [c["marked"] for c in web.get("/clips").json()["clips"]] == [False]
-    assert [c["marked"] for c in web.get("/clips?dataset=norwich").json()["clips"]] == [
+    assert [c["marked"] for c in web.get("/clips?dataset=nottinghamforest").json()["clips"]] == [
         True
     ]
 
@@ -164,7 +164,7 @@ def test_labels_saved_in_one_dataset_never_appear_in_the_other(web, two, fake_cv
 def test_sessions_do_not_share_state_and_default_keeps_working(web, two, fake_cv2):
     FakeVideoCapture.total_frames = 4
     (two["calib"] / "clips" / "c.mp4").touch()
-    (two["norwich"] / "clips" / "n.mp4").touch()
+    (two["nottinghamforest"] / "clips" / "n.mp4").touch()
     assert (
         web.post(
             "/session/load", json={"video_path": str(two["calib"] / "clips" / "c.mp4")}
@@ -173,29 +173,29 @@ def test_sessions_do_not_share_state_and_default_keeps_working(web, two, fake_cv
     )
     assert (
         web.post(
-            "/session/load?dataset=norwich",
-            json={"video_path": str(two["norwich"] / "clips" / "n.mp4")},
+            "/session/load?dataset=nottinghamforest",
+            json={"video_path": str(two["nottinghamforest"] / "clips" / "n.mp4")},
         ).status_code
         == 200
     )
     assert labeller_server.SESSION.video_path.name == "c.mp4"
-    assert labeller_server._SESSIONS["norwich"].video_path.name == "n.mp4"
-    assert labeller_server._SESSIONS["norwich"] is not labeller_server.SESSION
+    assert labeller_server._SESSIONS["nottinghamforest"].video_path.name == "n.mp4"
+    assert labeller_server._SESSIONS["nottinghamforest"] is not labeller_server.SESSION
     labeller_server.SESSION.set_frame(1, [make_box(label="ball")])
     assert web.get("/timeline/1").json()["boxes"]
-    assert web.get("/timeline/1?dataset=norwich").json()["boxes"] == []
+    assert web.get("/timeline/1?dataset=nottinghamforest").json()["boxes"] == []
 
 
 def test_session_flush_thread_writes_to_its_own_dataset(two, fake_cv2):
     """The debounced flush runs on a timer thread with no request context."""
     FakeVideoCapture.total_frames = 3
-    (two["norwich"] / "clips" / "n.mp4").touch()
-    sess = labeller_server.Session("norwich")
-    sess.load(str(two["norwich"] / "clips" / "n.mp4"))
+    (two["nottinghamforest"] / "clips" / "n.mp4").touch()
+    sess = labeller_server.Session("nottinghamforest")
+    sess.load(str(two["nottinghamforest"] / "clips" / "n.mp4"))
     sess.set_frame(0, [make_box(label="ball")])
     with datasets.using("calib"):  # a different dataset is "current" while flushing
         sess._do_flush()
-    assert (two["norwich"] / "marks" / "n.jsonl").exists()
+    assert (two["nottinghamforest"] / "marks" / "n.jsonl").exists()
     assert list((two["calib"] / "marks").iterdir()) == []
 
 
@@ -206,19 +206,19 @@ def test_ball_check_verdicts_and_stats_are_per_dataset(web, two):
             _sidecar_line(0, ["in_play_ball", "yolo"]) + "\n"
         )
     body = {"clip": "clip", "frame_index": 0, "box_index": 0, "verdict": "ball"}
-    assert web.post("/ball_check/verdict?dataset=norwich", json=body).json()["ok"]
+    assert web.post("/ball_check/verdict?dataset=nottinghamforest", json=body).json()["ok"]
 
-    assert (two["norwich"] / "marks" / "ball_checks" / "clip.jsonl").exists()
+    assert (two["nottinghamforest"] / "marks" / "ball_checks" / "clip.jsonl").exists()
     assert not (two["calib"] / "marks" / "ball_checks").exists()
-    assert web.get("/ball_check/stats?dataset=norwich").json()["judged"] == 1
+    assert web.get("/ball_check/stats?dataset=nottinghamforest").json()["judged"] == 1
     assert web.get("/ball_check/stats").json()["judged"] == 0
-    # the card is still to do in calib, already done in norwich
+    # the card is still to do in calib, already done in nottinghamforest
     assert len(web.get("/ball_check/queue").json()["items"]) == 1
-    assert web.get("/ball_check/queue?dataset=norwich").json()["items"] == []
+    assert web.get("/ball_check/queue?dataset=nottinghamforest").json()["items"] == []
 
 
 def test_ball_check_list_pool_is_per_dataset(web, two, tmp_path):
-    lst = tmp_path / "norwich_list.json"
+    lst = tmp_path / "nottinghamforest_list.json"
     lst.write_text(
         json.dumps(
             {
@@ -238,15 +238,15 @@ def test_ball_check_list_pool_is_per_dataset(web, two, tmp_path):
             "clips_dir": str(two["calib"] / "clips"),
             "marks_dir": str(two["calib"] / "marks"),
         },
-        "norwich": {
-            "clips_dir": str(two["norwich"] / "clips"),
-            "marks_dir": str(two["norwich"] / "marks"),
+        "nottinghamforest": {
+            "clips_dir": str(two["nottinghamforest"] / "clips"),
+            "marks_dir": str(two["nottinghamforest"] / "marks"),
             "ball_check_list": str(lst),
         },
     }
     datasets.write_registry(datasets.registry_path(), "calib", entries)
     assert (
-        len(web.get("/ball_check/queue?source=list&dataset=norwich").json()["items"])
+        len(web.get("/ball_check/queue?source=list&dataset=nottinghamforest").json()["items"])
         == 1
     )
     assert web.get("/ball_check/queue?source=list").json()["items"] == []
@@ -260,50 +260,50 @@ def test_crop_cache_is_keyed_by_dataset(web, two, fake_cv2):
             _sidecar_line(0, ["in_play_ball", "yolo"]) + "\n"
         )
     assert web.get("/ball_check/crop/clip/0/0.jpg").status_code == 200
-    assert web.get("/ball_check/crop/clip/0/0.jpg?dataset=norwich").status_code == 200
-    assert {k[0] for k in ball_check._BC_CROP_CACHE} == {"calib", "norwich"}
-    # a clip that exists only in norwich is a 404 in calib even once its crop is cached
-    (two["norwich"] / "clips" / "only_n.mp4").touch()
-    (two["norwich"] / "marks" / "only_n.jsonl").write_text(
+    assert web.get("/ball_check/crop/clip/0/0.jpg?dataset=nottinghamforest").status_code == 200
+    assert {k[0] for k in ball_check._BC_CROP_CACHE} == {"calib", "nottinghamforest"}
+    # a clip that exists only in nottinghamforest is a 404 in calib even once its crop is cached
+    (two["nottinghamforest"] / "clips" / "only_n.mp4").touch()
+    (two["nottinghamforest"] / "marks" / "only_n.jsonl").write_text(
         _sidecar_line(0, ["in_play_ball", "yolo"]) + "\n"
     )
-    assert web.get("/ball_check/crop/only_n/0/0.jpg?dataset=norwich").status_code == 200
+    assert web.get("/ball_check/crop/only_n/0/0.jpg?dataset=nottinghamforest").status_code == 200
     assert web.get("/ball_check/crop/only_n/0/0.jpg").status_code == 404
 
 
 def test_calibration_gt_is_per_dataset(web, two):
     (two["calib"] / "clips" / "x.mp4").touch()
-    (two["norwich"] / "clips" / "y.mp4").touch()
+    (two["nottinghamforest"] / "clips" / "y.mp4").touch()
     assert [c["name"] for c in web.get("/calibration/api/clips").json()["clips"]] == [
         "x"
     ]
     assert [
         c["name"]
-        for c in web.get("/calibration/api/clips?dataset=norwich").json()["clips"]
+        for c in web.get("/calibration/api/clips?dataset=nottinghamforest").json()["clips"]
     ] == ["y"]
 
 
 def test_too_few_points_marks_are_per_dataset(web, two):
     (two["calib"] / "clips" / "x.mp4").touch()
-    (two["norwich"] / "clips" / "x.mp4").touch()
+    (two["nottinghamforest"] / "clips" / "x.mp4").touch()
     r = web.put("/calibration/api/too_few_points/x/3", json={"tags": ["halfway_line"]})
     assert r.status_code == 200
     assert (two["calib"] / "marks" / "frame_type" / "x.json").exists()
-    assert not (two["norwich"] / "marks" / "frame_type").exists()
+    assert not (two["nottinghamforest"] / "marks" / "frame_type").exists()
     assert web.get("/calibration/api/too_few_points").json()["total"] == 1
-    assert web.get("/calibration/api/too_few_points?dataset=norwich").json() == {"total": 0, "clips": {}}
+    assert web.get("/calibration/api/too_few_points?dataset=nottinghamforest").json() == {"total": 0, "clips": {}}
     assert web.get("/calibration/api/clips").json()["clips"][0]["n_too_few_points"] == 1
-    assert web.get("/calibration/api/clips?dataset=norwich").json()["clips"][0]["n_too_few_points"] == 0
-    assert web.delete("/calibration/api/too_few_points/x/3?dataset=norwich").status_code == 404
+    assert web.get("/calibration/api/clips?dataset=nottinghamforest").json()["clips"][0]["n_too_few_points"] == 0
+    assert web.delete("/calibration/api/too_few_points/x/3?dataset=nottinghamforest").status_code == 404
     assert web.delete("/calibration/api/too_few_points/x/3").status_code == 200
 
 
 def test_identity_dirs_do_not_bleed_between_datasets(two):
-    calib, norwich = datasets.get("calib"), datasets.get("norwich")
-    assert calib.identity_labels_dir != norwich.identity_labels_dir
-    assert calib.tracklets_dir != norwich.tracklets_dir
-    assert norwich.identity_labels_dir.is_relative_to(two["norwich"])
-    assert calib.embeddings_dir != norwich.embeddings_dir
+    calib, nottinghamforest = datasets.get("calib"), datasets.get("nottinghamforest")
+    assert calib.identity_labels_dir != nottinghamforest.identity_labels_dir
+    assert calib.tracklets_dir != nottinghamforest.tracklets_dir
+    assert nottinghamforest.identity_labels_dir.is_relative_to(two["nottinghamforest"])
+    assert calib.embeddings_dir != nottinghamforest.embeddings_dir
 
 
 def test_pages_carry_the_dataset_shim(web):

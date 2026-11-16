@@ -1,5 +1,7 @@
 # SAM 3 / SAM 3.1 as a slow, offline, background ball labeller
 
+> Naming note: the held-out match used to be called "Norwich"; it is Arsenal v Nottingham Forest (scoreboard NFO), now `arsenal_nottinghamforest`. Old ids (`arsenal_norwich_segNNN`, `*_norwich` dirs) and experiment artifacts written under the old name (`r3_norwich`, `exp/temporal/round3/norwich*`, S3 `exp_temporal_r3/out/*_norwich`) keep it, so old numbers can still be traced.
+
 Branch `exp/sam3-offline-labeller` (from `exp/temporal-detector` @ `331ae64`).  Code: `experiments/sam3_offline/` (README there), Prefect flows `~/code/jobs/footy_sam3.py` + `sam3.prefect.yaml`,
 numbers: `docs/experiments/sam3_offline_labeller.json` (+ `experiments/sam3_offline/results/`), sheets: `docs/experiments/sam3_offline_labeller/`.
 Builds on `temporal_detector_round3.md` (held-out list, 50 fps handling, S1 gate, SAM2.1-small crop512 tracker).  All GPU runs were Prefect flow runs on the `gpu` pool (desktop RTX 2070 8 GB), one at a time.
@@ -92,7 +94,7 @@ Read it carefully:
 - Oracle seeds: GT frames at the 15 / 50 / 85 % quantile of the clip's GT frames (dense runs: run start + run middle); the first GT frame is avoided (`mancity_seg031` frame 0 is **not** on the ball: `gt_mancity_seg031.jpg`).
   Realistic seeds: RT-DETR-L v11 @1280 ball detections with conf >= 0.8, best first, >= 40 frames apart, 3 per clip (Bournemouth from the round-3 `labels_bm_audit`, Man City from `machine_labels`, part093 / arsenal_example from a fresh `r3_detect.py` run).
   RT-DETR has no conf >= 0.8 ball in seg021 / seg031 (no seed there).  A random sample of 64 such candidates over the held-out clips was inspected by eye: **64 / 64 real balls** (`rtdetr_conf80_seed_candidates_64.jpg`; so false seeds are rare, not absent: see the production demo).
-- **Norwich**: `ball_gt_marks_norwich` holds only the blind-check verdicts (`ball_checks`), no window labels, so nothing could be scored on Norwich.
+- **Nottingham Forest**: `ball_gt_marks_nottinghamforest` holds only the blind-check verdicts (`ball_checks`), no window labels, so nothing could be scored on Nottingham Forest.
 - **A sample** = one (seed, GT frame) pair: the forward (g > seed) or backward track of the seed at g; recall@10 counts absent as a miss; precision(emitted) = hits / emitted.  Intervals: 95 % percentile bootstrap over frames and (cluster) over clips; paired differences on identical samples.
 - GT sanity (contact sheets): dev and held-out GT are on the ball except `mancity_seg031` frame 0.  **`arsenal_example`'s 20 held-out frames (59, 160-198) are an out-of-play ball inside the crowd** (a white blob among spectators; the labels follow a smooth trajectory, so
   they are not wrong, but the target is practically invisible: `gt_arsenal_example_heldout.jpg`).  RT-DETR (0.05), SAM 3 text detection on full frame / tiles (0.00-0.05 top-1, any prompt) and both trackers fail there: **SAM 3 does not find those balls**.
@@ -254,7 +256,7 @@ tables), `retries=1-2`.  Zombie / crash automations of the gpu pool apply as for
 ## Caveats
 
 - The held-out GT is saturated for tracking from a good seed: differences between SAM2 / SAM 3 / 3.1 are below what 251-1 217 frames of 7-8 clips can resolve (clip-level CIs are wide; frame-level CIs are optimistic).  A harder, denser GT with fast kicks / occlusions would be needed to rank trackers.
-- The 250+ bin is one clip; `arsenal_example` is one clip; no-ball precision has n = 5-26; Norwich could not be scored (no window labels).
+- The 250+ bin is one clip; `arsenal_example` is one clip; no-ball precision has n = 5-26; Nottingham Forest could not be scored (no window labels).
 - Odd-frame GT of 50 fps clips is scored against the mean of two neighbours (adds up to a few px of interpolation error); 10 px hit threshold equals about the ball diameter.
 - Seed-finder prompts were not tuned on a separate set before the held-out numbers were read (a dev check is reported); the "yellow ball" result is match-specific by construction.
 - SAM 3.1 was tested with mask / point seeds only (no box prompt in the multiplex demo tracker) and only on the dev set; the text-recovery trick is implemented for SAM 3 only.
@@ -269,5 +271,5 @@ tables), `retries=1-2`.  Zombie / crash automations of the gpu pool apply as for
 4. **Production**: `sam3-label-match` (built, demoed): ~0.42 s per tracked frame; give it seeds from (2); budget ~8 GPU-hours per half for one SAM 3 pass over every frame, ~2.5-4 h for gap filling, overnight is fine.
 
 Next steps, in order: (i) a harder, denser GT (fast kicks, occlusions, crowd) because the current held-out set cannot rank trackers; (ii) stop tracks at scene cuts (`cuts.py`) and add the SAM 3 text probe as a seed *verifier* in `sam3_label.py`;
-(iii) run the seed finder + SAM2 tracks on an unlabelled half (Norwich) and measure the precision of the S1-gated labels with the blind Ball Check (the study could not score Norwich: no window labels); (iv) feed the SAM 3 text detections as extra candidates to the round-3 B1 solver (union with RT-DETR gave +0.03-0.04 recall before);
+(iii) run the seed finder + SAM2 tracks on an unlabelled half (Nottingham Forest) and measure the precision of the S1-gated labels with the blind Ball Check (the study could not score Nottingham Forest: no window labels); (iv) feed the SAM 3 text detections as extra candidates to the round-3 B1 solver (union with RT-DETR gave +0.03-0.04 recall before);
 (v) only if throughput matters, try a 504 px SAM 3 input (4x fewer tokens; needs the RoPE / memory feature sizes re-derived) or half-precision weights.

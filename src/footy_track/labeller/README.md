@@ -1195,8 +1195,8 @@ becomes GT without a human accepting it; accepted GT carries
 ## 17. Labelling site (informative)
 
 **One site, always main.** Open `http://mac-mini-i7:8011/` on the tailnet. It serves
-every dataset (calib, Norwich held-out, ...) from one process: pick one with the
-dataset picker on the home page, or add `?dataset=norwich` to any page URL (section 18).
+every dataset (calib, Nottingham Forest held-out, ...) from one process: pick one with the
+dataset picker on the home page, or add `?dataset=nottinghamforest` to any page URL (section 18).
 The home page is a **task board**: a "To do now" list
 (from `GET /api/tasks`, each with title, one-line why, link, device hint and an
 optional live remaining count), then the tool cards, then a "Servers" panel (name,
@@ -1265,13 +1265,13 @@ scripts/labeller_deploy.sh restart calib   # one service;  logs <svc> [-f]
 
 There is exactly one service, `calib` on :8011. The first restart/deploy creates the
 dataset registry (section 18) from a built-in seed if it is missing and never overwrites
-it. The old `norwich` server on :8012 is gone: its data is the `norwich` dataset of the
+it. The old `nottinghamforest` server on :8012 is gone: its data is the `nottinghamforest` dataset of the
 one server (stop its tmux session, `tmux -L footy kill-session -t footy-norwich`).
 
 `--dry-run` prints the mutating commands; `--force` lets `restart` kill a non-tmux
 process still holding the port (otherwise it prints the PID and stops); `--no-warm`
 skips the background Ball Check cache warm-up (`footy_track.scripts.warm_ball_check`)
-that runs after a restart, for the `norwich` dataset of `calib` (`WARM_DATASETS`). Services are tmux sessions `footy-<svc>` on
+that runs after a restart, for the `nottinghamforest` dataset of `calib` (`WARM_DATASETS`). Services are tmux sessions `footy-<svc>` on
 `tmux -L footy`, logging to `~/.cache/footy-labeller/<svc>.log`. The service table
 (ports; data dirs now live in the registry, not in env vars) is at the top of
 `scripts/labeller_deploy.sh`; keep the `SERVICES` list in `web/main.html` in step with it. Feature branches are tested in
@@ -1291,7 +1291,7 @@ A *dataset* is a clips dir plus where its labels live. One server serves all of 
      "calib":   {"label": "...", "clips_dir": "...", "marks_dir": "...",
                  "candidates_dir": "...", "ball_check_list": "...",
                  "extra_clips_dirs": ["..."]},
-     "norwich": {"label": "...", "clips_dir": "...", "marks_dir": "..."}}}
+     "nottinghamforest": {"label": "...", "clips_dir": "...", "marks_dir": "..."}}}
   ```
   `clips_dir` and `marks_dir` are required; the rest are optional (`candidates_dir`
   defaults to `<marks_dir>/ball_candidates`; `ball_check_list` unset = empty list pool;
@@ -1350,16 +1350,16 @@ job id or title.
 ```bash
 # 1. submit (re-running with the same "key" returns the same job, never a duplicate)
 curl -s -X POST http://mac-mini-i7:8011/api/jobs -H 'Content-Type: application/json' -d '{
-  "title": "Norwich windows r1",
-  "kind": "ball_place", "dataset": "norwich",
-  "items": [{"clip": "arsenal_norwich_seg003", "frame_start": 10, "frame_end": 259, "step": 10}],
+  "title": "Nottingham Forest windows r1",
+  "kind": "ball_place", "dataset": "nottinghamforest",
+  "items": [{"clip": "arsenal_nottinghamforest_seg003", "frame_start": 10, "frame_end": 259, "step": 10}],
   "why": "held-out ball placement", "device": "laptop", "priority": 2,
   "requester": {"branch": "exp/my-branch", "commit": "abc1234", "host": "desktop"},
-  "key": "exp/my-branch/norwich-windows-r1"}'
-# -> {"id":"j-56098a576c24","url":"http://mac-mini-i7:8011/labeller?dataset=norwich&clip=...&frame=10","status":"open","created":true,...}
+  "key": "exp/my-branch/nottinghamforest-windows-r1"}'
+# -> {"id":"j-56098a576c24","url":"http://mac-mini-i7:8011/labeller?dataset=nottinghamforest&clip=...&frame=10","status":"open","created":true,...}
 
 # 2. progress (computed from the real label files) -- by id or exact title
-curl -s 'http://mac-mini-i7:8011/api/jobs/Norwich%20windows%20r1' | jq '.status, .progress'
+curl -s 'http://mac-mini-i7:8011/api/jobs/Nottingham%20Forest%20windows%20r1' | jq '.status, .progress'
 
 # 3. the labels, once done (or any time: partial results)
 curl -s 'http://mac-mini-i7:8011/api/jobs/j-56098a576c24/results' > labels.json
@@ -1370,7 +1370,7 @@ it from the server if your branch has not merged main: `curl -O http://mac-mini-
 
 ```python
 from jobs_client import submit, wait, results   # or footy_track.labeller.jobs_client
-job = submit("Norwich windows r1", "ball_place", items, dataset="norwich", key="exp/my-branch/norwich-windows-r1")
+job = submit("Nottingham Forest windows r1", "ball_place", items, dataset="nottinghamforest", key="exp/my-branch/nottinghamforest-windows-r1")
 wait(job["id"], poll=60)                  # blocks until the job is done or cancelled
 labels = results(job["id"])["labels"]
 ```
@@ -1378,21 +1378,21 @@ labels = results(job["id"])["labels"]
 CLI (fills `requester.branch` / `commit` from git, `host` from the hostname):
 
 ```bash
-python -m footy_track.scripts.labelling_jobs submit --title "Norwich windows r1" --kind ball_place \
-    --dataset norwich --items /mnt/storage/footy_data/norwich_label_queue/windows.csv --step 10 \
-    --key exp/my-branch/norwich-windows-r1
-python -m footy_track.scripts.labelling_jobs status  "Norwich windows r1"
-python -m footy_track.scripts.labelling_jobs wait    "Norwich windows r1" --poll 60
-python -m footy_track.scripts.labelling_jobs results "Norwich windows r1" -o labels.json
+python -m footy_track.scripts.labelling_jobs submit --title "Nottingham Forest windows r1" --kind ball_place \
+    --dataset nottinghamforest --items /mnt/storage/footy_data/nottinghamforest_label_queue/windows.csv --step 10 \
+    --key exp/my-branch/nottinghamforest-windows-r1
+python -m footy_track.scripts.labelling_jobs status  "Nottingham Forest windows r1"
+python -m footy_track.scripts.labelling_jobs wait    "Nottingham Forest windows r1" --poll 60
+python -m footy_track.scripts.labelling_jobs results "Nottingham Forest windows r1" -o labels.json
 ```
 
-**Worked example: the Norwich windows.** `/mnt/storage/footy_data/norwich_label_queue/windows.csv`
+**Worked example: the Nottingham Forest windows.** `/mnt/storage/footy_data/nottinghamforest_label_queue/windows.csv`
 has header `clip,start_frame,end_frame,stratum,reason` and 24 windows of 250 frames
 (`start_frame..end_frame`, both ends inclusive). The CLI above turns each row into one window
 item (`start_frame`/`end_frame` are accepted aliases of `frame_start`/`frame_end`; `stratum` and
 `reason` ride along and come back in `items`). With `--step 10` that is 24 x 25 = 600 frames to
-label; the home page shows "600 left" and counts down as `ball_gt_marks_norwich/*.jsonl` fills in.
-The link opens the labeller on the next unlabelled frame (`/labeller?dataset=norwich&clip=..&frame=..`).
+label; the home page shows "600 left" and counts down as `ball_gt_marks_nottinghamforest/*.jsonl` fills in.
+The link opens the labeller on the next unlabelled frame (`/labeller?dataset=nottinghamforest&clip=..&frame=..`).
 
 **Request body** (`POST /api/jobs`, JSON; `title` is the only required field)
 
@@ -1440,11 +1440,11 @@ restricted to the job's cards (progress and results are).
 
 ```json
 {"schema": "labelling-job-results/v1", "generated_at": "2026-11-16T12:00:00Z",
- "job": {"id": "...", "title": "...", "kind": "ball_place", "dataset": "norwich", "status": "in_progress",
+ "job": {"id": "...", "title": "...", "kind": "ball_place", "dataset": "nottinghamforest", "status": "in_progress",
          "requester": {}, "url": "...", "n_items": 24},
  "progress": {"supported": true, "done": 3, "total": 600, "remaining": 597, "fraction": 0.005, "next": {"clip": "...", "frame": 40}},
  "items":  [{"index": 0, "item": {"clip": "...", "frame_start": 10, "frame_end": 259, "step": 10}, "total": 25, "done": 3}],
- "stores": [{"clip": "...", "store": "ball_gt_marks_norwich/<stem>.jsonl", "store_mtime": "2026-11-16T11:58:00Z"}],
+ "stores": [{"clip": "...", "store": "ball_gt_marks_nottinghamforest/<stem>.jsonl", "store_mtime": "2026-11-16T11:58:00Z"}],
  "labels": [ ...rows, only for labelled units inside the job's items... ]}
 ```
 

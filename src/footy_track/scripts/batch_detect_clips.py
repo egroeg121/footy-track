@@ -19,7 +19,7 @@ merges the ``clips`` of an earlier partial run with the same run_id file.
 
 Usage:
   uv run python -m footy_track.scripts.batch_detect_clips CLIPS_DIR --out DIR \
-      --weights best.pt [--imgsz 1280] [--conf 0.1] [--glob 'arsenal_norwich_seg*.mp4'] \
+      --weights best.pt [--imgsz 1280] [--conf 0.1] [--glob 'arsenal_nottinghamforest_seg*.mp4'] \
       [--ball-out DIR2] [--heldout] [--device 0] [--batch 4]
 """
 

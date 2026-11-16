@@ -168,7 +168,7 @@ def _int(v, what: str) -> int:
 def _clip(item: dict, i: int) -> str:
     clip = item.get("clip")
     if not isinstance(clip, str) or not re.fullmatch(r"[A-Za-z0-9._-]+", clip):
-        raise JobError(422, f"items[{i}].clip must be a clip name like 'arsenal_norwich_seg003'")
+        raise JobError(422, f"items[{i}].clip must be a clip name like 'arsenal_nottinghamforest_seg003'")
     return clip
 
 
@@ -277,7 +277,7 @@ def submit(body: dict, default_dataset: str) -> tuple[dict, bool]:
         raise JobError(422, "key must be a non-empty string")
     url = body.get("url")
     if url is not None and (not isinstance(url, str) or not url.startswith("/")):
-        raise JobError(422, "url must be a path on this server, like /ball_check?dataset=norwich")
+        raise JobError(422, "url must be a path on this server, like /ball_check?dataset=nottinghamforest")
     job = {
         "id": _sha_id(key) if key else _new_id(),
         "title": title,

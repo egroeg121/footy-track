@@ -1,7 +1,7 @@
 """Labelling jobs API: submit, list, fetch by id/title, idempotency, computed progress,
 results filtered to the job's items, task-board visibility, and the stdlib client.
 
-Fixtures ``two`` / ``web`` (conftest) give two datasets (calib default, norwich) in tmp dirs.
+Fixtures ``two`` / ``web`` (conftest) give two datasets (calib default, nottinghamforest) in tmp dirs.
 """
 
 from __future__ import annotations
@@ -19,7 +19,7 @@ from fastapi.testclient import TestClient
 from footy_track.labeller import datasets, jobs, jobs_client, server
 from footy_track.scripts import labelling_jobs as cli
 
-CLIP = "arsenal_norwich_seg003"
+CLIP = "arsenal_nottinghamforest_seg003"
 
 
 def _row(frame: int, tags: list[str], x: float = 0.5) -> str:
@@ -40,9 +40,9 @@ def _sidecar(two, ds: str, clip: str, rows: list[str]) -> None:
 
 def _submit(web, **over):
     body = {
-        "title": "Norwich windows",
+        "title": "Nottingham Forest windows",
         "kind": "ball_place",
-        "dataset": "norwich",
+        "dataset": "nottinghamforest",
         "items": [{"clip": CLIP, "frame_start": 10, "frame_end": 19}],
         **over,
     }
@@ -60,7 +60,7 @@ def test_submit_returns_id_url_status_and_is_stored_one_file_per_job(web, tmp_pa
     j = r.json()
     assert j["status"] == "open" and j["created"] is True and j["id"].startswith("j-")
     assert j["url"].startswith("http://testserver/labeller?")
-    assert "dataset=norwich" in j["url"] and f"clip={CLIP}" in j["url"] and "frame=10" in j["url"]
+    assert "dataset=nottinghamforest" in j["url"] and f"clip={CLIP}" in j["url"] and "frame=10" in j["url"]
     files = list((tmp_path / "labelling_jobs").glob("*.json"))
     assert [f.stem for f in files] == [j["id"]]
     stored = json.loads(files[0].read_text())
@@ -70,38 +70,38 @@ def test_submit_returns_id_url_status_and_is_stored_one_file_per_job(web, tmp_pa
 
 def test_dataset_defaults_to_the_request_dataset(web):
     assert web.post("/api/jobs", json={"title": "a", "kind": "other"}).json()["dataset"] == "calib"
-    assert web.post("/api/jobs?dataset=norwich", json={"title": "b", "kind": "other"}).json()["dataset"] == "norwich"
+    assert web.post("/api/jobs?dataset=nottinghamforest", json={"title": "b", "kind": "other"}).json()["dataset"] == "nottinghamforest"
 
 
 def test_get_by_id_and_by_exact_title_and_listing_filters(web):
-    a = _submit(web, title="Norwich windows", requester={"branch": "exp/a"}).json()
+    a = _submit(web, title="Nottingham Forest windows", requester={"branch": "exp/a"}).json()
     b = _submit(web, title="Calib recheck", dataset="calib", kind="calibration",
                 items=[{"clip": "x", "frame": 3}], requester={"branch": "exp/b"}).json()  # fmt: skip
-    assert web.get(f"/api/jobs/{a['id']}").json()["title"] == "Norwich windows"
-    by_title = web.get("/api/jobs/Norwich windows").json()
+    assert web.get(f"/api/jobs/{a['id']}").json()["title"] == "Nottingham Forest windows"
+    by_title = web.get("/api/jobs/Nottingham Forest windows").json()
     assert by_title["id"] == a["id"]
     assert web.get("/api/jobs/Calib%20recheck").json()["id"] == b["id"]
     assert web.get("/api/jobs/nope").status_code == 404
 
     ids = lambda **q: sorted(j["id"] for j in web.get("/api/jobs", params=q).json()["jobs"])  # noqa: E731
     assert ids() == sorted([a["id"], b["id"]])
-    assert ids(title="Norwich windows") == [a["id"]]  # exact
+    assert ids(title="Nottingham Forest windows") == [a["id"]]  # exact
     assert ids(title="recheck") == [b["id"]]  # substring, case-insensitive
     assert ids(kind="calibration") == [b["id"]]
-    assert ids(dataset="norwich") == [a["id"]]
+    assert ids(dataset="nottinghamforest") == [a["id"]]
     assert ids(**{"requester.branch": "exp/b"}) == [b["id"]]
     assert ids(status="open") == sorted([a["id"], b["id"]]) and ids(status="done") == []
 
 
 def test_title_with_a_slash_and_an_ambiguous_title(web):
-    j = _submit(web, title="norwich/windows r1").json()
-    assert web.get("/api/jobs/norwich%2Fwindows%20r1").json()["id"] == j["id"]
-    assert web.get("/api/jobs/norwich%2Fwindows%20r1/results").json()["job"]["id"] == j["id"]
-    j2 = _submit(web, title="norwich/windows r1").json()
-    r = web.get("/api/jobs/norwich%2Fwindows%20r1")
+    j = _submit(web, title="nottinghamforest/windows r1").json()
+    assert web.get("/api/jobs/nottinghamforest%2Fwindows%20r1").json()["id"] == j["id"]
+    assert web.get("/api/jobs/nottinghamforest%2Fwindows%20r1/results").json()["job"]["id"] == j["id"]
+    j2 = _submit(web, title="nottinghamforest/windows r1").json()
+    r = web.get("/api/jobs/nottinghamforest%2Fwindows%20r1")
     assert r.status_code == 409 and sorted(r.json()["ids"]) == sorted([j["id"], j2["id"]])
     web.post(f"/api/jobs/{j['id']}/cancel")  # a cancelled duplicate no longer makes the title ambiguous
-    assert web.get("/api/jobs/norwich%2Fwindows%20r1").json()["id"] == j2["id"]
+    assert web.get("/api/jobs/nottinghamforest%2Fwindows%20r1").json()["id"] == j2["id"]
 
 
 @pytest.mark.parametrize(
@@ -134,13 +134,13 @@ def test_title_is_required_and_other_kind_needs_no_items(web):
 
 
 def test_same_key_returns_the_existing_job_not_a_duplicate(web, tmp_path):
-    a = _submit(web, key="exp/x/norwich-r1")
-    b = _submit(web, key="exp/x/norwich-r1", title="a different title is ignored")
+    a = _submit(web, key="exp/x/nottinghamforest-r1")
+    b = _submit(web, key="exp/x/nottinghamforest-r1", title="a different title is ignored")
     assert (a.status_code, b.status_code) == (201, 200)
     assert a.json()["id"] == b.json()["id"] and b.json()["created"] is False
-    assert b.json()["title"] == "Norwich windows"
+    assert b.json()["title"] == "Nottingham Forest windows"
     assert len(list((tmp_path / "labelling_jobs").glob("*.json"))) == 1
-    c = _submit(web, key="exp/x/norwich-r2")
+    c = _submit(web, key="exp/x/nottinghamforest-r2")
     assert c.json()["id"] != a.json()["id"]
     assert len(web.get("/api/jobs").json()["jobs"]) == 2
 
@@ -165,7 +165,7 @@ def test_same_key_concurrent_submits_create_one_job(two, tmp_path):
 
 def test_progress_counts_only_human_labels_in_the_jobs_frames(web, two):
     _sidecar(
-        two, "norwich", CLIP,
+        two, "nottinghamforest", CLIP,
         [
             _row(10, ["in_play_ball", "labeller"]),  # human: counts
             _row(11, ["in_play_ball", "vittrack"]),  # machine only (tier 3): does not
@@ -187,9 +187,9 @@ def test_progress_counts_only_human_labels_in_the_jobs_frames(web, two):
 def test_progress_follows_the_label_files_not_a_counter(web, two):
     j = _submit(web).json()
     assert web.get(f"/api/jobs/{j['id']}").json()["progress"]["done"] == 0
-    _sidecar(two, "norwich", CLIP, [_row(10, ["in_play_ball", "labeller"])])
+    _sidecar(two, "nottinghamforest", CLIP, [_row(10, ["in_play_ball", "labeller"])])
     assert web.get(f"/api/jobs/{j['id']}").json()["progress"]["done"] == 1
-    _sidecar(two, "norwich", CLIP, [_row(10, ["in_play_ball", "labeller"]), _row(11, ["no_ball"])])
+    _sidecar(two, "nottinghamforest", CLIP, [_row(10, ["in_play_ball", "labeller"]), _row(11, ["no_ball"])])
     assert web.get(f"/api/jobs/{j['id']}").json()["progress"]["done"] == 2
 
 
@@ -203,7 +203,7 @@ def test_window_step_and_start_end_aliases_and_extra_columns(web, two):
 
 def test_labels_in_another_dataset_do_not_count(web, two):
     _sidecar(two, "calib", CLIP, [_row(f, ["in_play_ball", "labeller"]) for f in range(10, 20)])
-    j = _submit(web).json()  # dataset norwich
+    j = _submit(web).json()  # dataset nottinghamforest
     assert web.get(f"/api/jobs/{j['id']}").json()["progress"]["done"] == 0
     c = _submit(web, title="same in calib", dataset="calib").json()
     got = web.get(f"/api/jobs/{c['id']}").json()
@@ -212,13 +212,13 @@ def test_labels_in_another_dataset_do_not_count(web, two):
 
 def test_alias_sidecar_stem_is_found(web, two):
     """A clip whose GT lives under an alias stem (canonical clip id) still counts."""
-    _sidecar(two, "norwich", "arsenal_mancity_seg010", [_row(5, ["in_play_ball", "labeller"])])
+    _sidecar(two, "nottinghamforest", "arsenal_mancity_seg010", [_row(5, ["in_play_ball", "labeller"])])
     j = _submit(web, kind="ball_place", items=[{"clip": "arsenal_mancity_20250925_seg010", "frame": 5}]).json()
     assert web.get(f"/api/jobs/{j['id']}").json()["progress"]["done"] == 1
 
 
 def test_auto_done_at_full_progress_and_not_reopened_or_cancel_overridden(web, two):
-    _sidecar(two, "norwich", CLIP, [_row(f, ["in_play_ball", "labeller"]) for f in range(10, 20)])
+    _sidecar(two, "nottinghamforest", CLIP, [_row(f, ["in_play_ball", "labeller"]) for f in range(10, 20)])
     j = _submit(web).json()
     got = web.get(f"/api/jobs/{j['id']}").json()
     assert got["status"] == "done" and got["progress"]["remaining"] == 0 and got["closed_by"] == "auto"
@@ -232,9 +232,9 @@ def test_auto_done_at_full_progress_and_not_reopened_or_cancel_overridden(web, t
 def test_done_cancel_reopen_endpoints(web):
     j = _submit(web).json()
     assert web.post(f"/api/jobs/{j['id']}/done").json()["status"] == "done"
-    assert web.get("/api/jobs/Norwich windows").json()["status"] == "done"
+    assert web.get("/api/jobs/Nottingham Forest windows").json()["status"] == "done"
     assert web.post(f"/api/jobs/{j['id']}/reopen").json()["status"] == "open"
-    r = web.post("/api/jobs/Norwich windows/cancel").json()
+    r = web.post("/api/jobs/Nottingham Forest windows/cancel").json()
     assert r["status"] == "cancelled" and r["closed_by"] == "api"
     assert web.post("/api/jobs/nope/done").status_code == 404
 
@@ -248,7 +248,7 @@ def test_other_kind_has_no_computed_progress(web):
 
 
 def test_ball_check_progress_and_results_from_the_verdict_log(web, two):
-    vdir = two["norwich"] / "marks" / "ball_checks"
+    vdir = two["nottinghamforest"] / "marks" / "ball_checks"
     vdir.mkdir()
     rec = lambda f, b, v, **kw: json.dumps(  # noqa: E731
         {"clip": CLIP, "frame_index": f, "box_index": b, "source": "list", "verdict": v,
@@ -278,7 +278,7 @@ def test_ball_check_progress_and_results_from_the_verdict_log(web, two):
 
 
 def test_calibration_and_frame_type_progress(web, two):
-    marks = two["norwich"] / "marks"
+    marks = two["nottinghamforest"] / "marks"
     (marks / "calibration_gt").mkdir()
     (marks / "frame_type").mkdir()
     (marks / "calibration_gt" / f"{CLIP}.json").write_text(
@@ -301,7 +301,7 @@ def test_calibration_and_frame_type_progress(web, two):
 
 
 def test_identity_progress(web, two):
-    d = two["norwich"].parent / "norwich" / "marks" / "identity_labels"
+    d = two["nottinghamforest"].parent / "nottinghamforest" / "marks" / "identity_labels"
     d.mkdir()
     ref = lambda c, t: {"clip": c, "track_id": t, "source": "bytetrack", "run_id": None}  # noqa: E731
     (d / "identity_pairs.jsonl").write_text(
@@ -321,7 +321,7 @@ def test_identity_progress(web, two):
 
 def test_results_contain_exactly_the_jobs_labels_with_provenance(web, two):
     _sidecar(
-        two, "norwich", CLIP,
+        two, "nottinghamforest", CLIP,
         [
             _row(9, ["in_play_ball", "labeller"]),  # before the window
             _row(10, ["in_play_ball", "labeller"], x=0.25),
@@ -332,11 +332,11 @@ def test_results_contain_exactly_the_jobs_labels_with_provenance(web, two):
             _row(20, ["in_play_ball", "labeller"]),  # after the window
         ],
     )  # fmt: skip
-    _sidecar(two, "norwich", "other_clip", [_row(10, ["in_play_ball", "labeller"])])
+    _sidecar(two, "nottinghamforest", "other_clip", [_row(10, ["in_play_ball", "labeller"])])
     j = _submit(web).json()
     res = web.get(f"/api/jobs/{j['id']}/results").json()
     assert res["schema"] == "labelling-job-results/v1"
-    assert res["job"]["id"] == j["id"] and res["job"]["dataset"] == "norwich"
+    assert res["job"]["id"] == j["id"] and res["job"]["dataset"] == "nottinghamforest"
     assert res["progress"]["done"] == 3 and res["progress"]["total"] == 10
     rows = {r["frame_index"]: r for r in res["labels"]}
     assert sorted(rows) == [10, 12, 13] and {r["clip"] for r in res["labels"]} == {CLIP}
@@ -348,7 +348,7 @@ def test_results_contain_exactly_the_jobs_labels_with_provenance(web, two):
     assert store["clip"] == CLIP and store["store"].endswith(f"{CLIP}.jsonl") and store["store_mtime"]
     assert res["items"][0]["done"] == 3 and res["items"][0]["total"] == 10
     # by title works too, and nothing was written to the label store
-    assert web.get("/api/jobs/Norwich windows/results").json()["labels"] == res["labels"]
+    assert web.get("/api/jobs/Nottingham Forest windows/results").json()["labels"] == res["labels"]
 
 
 # ---------------------------------------------------------------------------
@@ -366,8 +366,8 @@ def test_open_jobs_appear_on_the_task_board_and_manual_tasks_still_work(web, two
     got = web.get("/api/tasks").json()
     assert [t["id"] for t in got["tasks"]] == [j["id"], "manual"]  # priority 1 sorts first
     t = got["tasks"][0]
-    assert t["job"] is True and t["title"] == "Norwich windows" and t["owner"] == "exp/x"
-    assert t["url"].startswith("/labeller?") and "dataset=norwich" in t["url"] and f"clip={CLIP}" in t["url"]
+    assert t["job"] is True and t["title"] == "Nottingham Forest windows" and t["owner"] == "exp/x"
+    assert t["url"].startswith("/labeller?") and "dataset=nottinghamforest" in t["url"] and f"clip={CLIP}" in t["url"]
     assert t["count_url"] == f"/api/jobs/{j['id']}" and t["count_path"] == "progress.remaining"
     assert web.get(t["count_url"]).json()["progress"]["remaining"] == 10  # what the board's chip fetches
     assert tasks_file.read_text() == json.dumps({"tasks": [{"id": "manual", "title": "A manual task", "priority": 2}]})
@@ -377,7 +377,7 @@ def test_open_jobs_appear_on_the_task_board_and_manual_tasks_still_work(web, two
 
 
 def test_board_link_points_at_the_next_unlabelled_frame(web, two):
-    _sidecar(two, "norwich", CLIP, [_row(f, ["in_play_ball", "labeller"]) for f in (10, 11, 12)])
+    _sidecar(two, "nottinghamforest", CLIP, [_row(f, ["in_play_ball", "labeller"]) for f in (10, 11, 12)])
     j = _submit(web).json()
     t = next(t for t in web.get("/api/tasks").json()["tasks"] if t["id"] == j["id"])
     assert "frame=13" in t["url"]
@@ -419,24 +419,24 @@ def test_client_submit_get_wait_results_roundtrip(live, two, monkeypatch):
     monkeypatch.setenv("FOOTY_LABELLER_URL", live)
     job = jobs_client.submit(
         "client job", "ball_place", [{"clip": CLIP, "frame_start": 10, "frame_end": 12}],
-        dataset="norwich", key="client/1", why="from a test",
+        dataset="nottinghamforest", key="client/1", why="from a test",
     )  # fmt: skip
     assert job["status"] == "open" and job["created"] and job["url"].startswith(live)
-    again = jobs_client.submit("ignored", "ball_place", [{"clip": "x", "frame": 1}], dataset="norwich", key="client/1")
+    again = jobs_client.submit("ignored", "ball_place", [{"clip": "x", "frame": 1}], dataset="nottinghamforest", key="client/1")
     assert again["id"] == job["id"] and again["created"] is False
 
     # requester auto-filled from git (this checkout), host from the hostname
     req = jobs_client.get(job["id"])["requester"]
     assert req["branch"] and req["commit"] and req["host"]
     assert jobs_client.get("client job")["id"] == job["id"]
-    assert [j["id"] for j in jobs_client.list_jobs(kind="ball_place", dataset="norwich")] == [job["id"]]
+    assert [j["id"] for j in jobs_client.list_jobs(kind="ball_place", dataset="nottinghamforest")] == [job["id"]]
 
     with pytest.raises(TimeoutError):
         jobs_client.wait(job["id"], poll=0.05, timeout=0.2)
 
     def label_later():
         time.sleep(0.3)
-        _sidecar(two, "norwich", CLIP, [_row(f, ["in_play_ball", "labeller"]) for f in (10, 11, 12)])
+        _sidecar(two, "nottinghamforest", CLIP, [_row(f, ["in_play_ball", "labeller"]) for f in (10, 11, 12)])
 
     threading.Thread(target=label_later).start()
     seen = []
@@ -461,10 +461,10 @@ def test_cli_submits_a_csv_of_windows_and_reports_status(live, two, tmp_path, ca
     csv_path.write_text(
         "clip,start_frame,end_frame,stratum,reason\n"
         f'{CLIP},10,259,easy,"B1 covers 100% of frames, mean p 0.96"\n'
-        "arsenal_norwich_seg022,10,259,easy,x\n"
+        "arsenal_nottinghamforest_seg022,10,259,easy,x\n"
     )
-    rc = cli.main(["--url", live, "submit", "--title", "Norwich windows r1", "--kind", "ball_place",
-                   "--dataset", "norwich", "--items", str(csv_path), "--step", "5", "--key", "cli/norwich-1"])  # fmt: skip
+    rc = cli.main(["--url", live, "submit", "--title", "Nottingham Forest windows r1", "--kind", "ball_place",
+                   "--dataset", "nottinghamforest", "--items", str(csv_path), "--step", "5", "--key", "cli/nottinghamforest-1"])  # fmt: skip
     assert rc == 0
     job = json.loads(capsys.readouterr().out)
     got = jobs_client.get(job["id"], url=live)
@@ -472,13 +472,13 @@ def test_cli_submits_a_csv_of_windows_and_reports_status(live, two, tmp_path, ca
                                "reason": "B1 covers 100% of frames, mean p 0.96"}  # fmt: skip
     assert got["progress"]["total"] == 2 * 50  # 10..259 step 5 = 50 frames per window
     assert got["requester"]["branch"]
-    assert cli.main(["--url", live, "status", "Norwich windows r1"]) == 0
+    assert cli.main(["--url", live, "status", "Nottingham Forest windows r1"]) == 0
     assert "0/100" in capsys.readouterr().out
     out = tmp_path / "labels.json"
-    assert cli.main(["--url", live, "results", "Norwich windows r1", "-o", str(out)]) == 0
+    assert cli.main(["--url", live, "results", "Nottingham Forest windows r1", "-o", str(out)]) == 0
     assert json.loads(out.read_text())["labels"] == []
-    assert cli.main(["--url", live, "cancel", "Norwich windows r1"]) == 0
-    assert cli.main(["--url", live, "wait", "Norwich windows r1", "--poll", "0.05"]) == 1  # cancelled, not done
+    assert cli.main(["--url", live, "cancel", "Nottingham Forest windows r1"]) == 0
+    assert cli.main(["--url", live, "wait", "Nottingham Forest windows r1", "--poll", "0.05"]) == 1  # cancelled, not done
 
 
 def test_client_is_a_standalone_stdlib_only_file_and_served_by_the_server(web):

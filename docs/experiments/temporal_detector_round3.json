@@ -1,4 +1,5 @@
 {
+ "_note": "The match 'nottinghamforest' was previously misnamed 'norwich' (Arsenal v Nottingham Forest); old ids arsenal_norwich_segNNN.",
  "models": {
   "RT-DETR": [
    "ref"
@@ -4627,7 +4628,7 @@
    "arsenal_bournemouth_1st_seg060"
   ]
  },
- "norwich_selection": {
+ "nottinghamforest_selection": {
   "rows_B1_det": 20826,
   "excluded_edge_or_near_cut": 248,
   "lowconf_dropped_no_lowconf_flag": 1342,
@@ -4653,7 +4654,7 @@
   "selected_near_v11_train_5": 0,
   "pool_clips": 76,
   "pool_frames": 25694,
-  "match": "norwich",
+  "match": "nottinghamforest",
   "stride_orig": 1
  },
  "bournemouth_selection": {
@@ -4685,7 +4686,7 @@
   "match": "bournemouth",
   "stride_orig": 2
  },
- "norwich_blind_check": {
+ "nottinghamforest_blind_check": {
   "easy_anchors": {
    "real": 58,
    "n": 60
