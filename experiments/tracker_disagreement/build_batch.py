@@ -26,7 +26,7 @@ import fusion as F
 
 BOX = 18.0
 VIEW_PX = 110.0      # the magenta box is inside the default (pad 6) 240 px crop when the pair is closer than this
-QUOTA = {"disagree": 90, "text_only": 12, "loss": 14, "single": 20, "all3_agree": 40, "pair_agree": 24}
+QUOTA = {"text_only": 12, "loss": 14, "single": 20, "all3_agree": 40, "pair_agree": 24}
 
 
 def h(*parts) -> float:
@@ -65,6 +65,7 @@ def main():
     ap.add_argument("--salt", default="disagree-v2")
     ap.add_argument("--seed", type=int, default=11)
     ap.add_argument("--skip-near", type=int, default=3)
+    ap.add_argument("--cards", type=int, default=200)
     a = ap.parse_args()
     fused = F.load(a.fused)
     tab = F.frame_table(fused)
@@ -214,15 +215,15 @@ def main():
                 cands[f"pair_agree:{'+'.join(pair)}"].append((h(a.salt, c, t, "prio"), c, t, meta(c, t, {"stratum": "pair_agree", "pair": "+".join(pair)}), bsrc, None))
 
     # ---- select (round-robin across clips, best priority first within a clip; min 2 frames apart in a clip per stratum)
-    def select(pool, n, prefer=True):
+    def select(pool, n, prefer=True, cost=lambda it: 1):
         by_clip = defaultdict(list)
         for it in pool:
             by_clip[it[1]].append(it)
         for c in by_clip:
             by_clip[c].sort(key=lambda it: -it[0] if prefer else it[0])
         order = sorted(by_clip, key=lambda c: h(a.salt, c, "clip"))
-        out, used = [], set()
-        while len(out) < n and any(by_clip.values()):
+        out, used, spent = [], set(), 0
+        while spent < n and any(by_clip.values()):
             for c in order:
                 while by_clip[c]:
                     it = by_clip[c].pop(0)
@@ -230,16 +231,17 @@ def main():
                         continue
                     used.add((it[1], it[2]))
                     out.append(it)
+                    spent += cost(it)
                     break
-                if len(out) >= n:
+                if spent >= n:
                     break
         return out
 
     chosen = []
     taken = set()
-    for stratum, quota in (("disagree", QUOTA["disagree"]), ("text_only", QUOTA["text_only"]), ("loss", QUOTA["loss"]), ("single", QUOTA["single"])):
+    for stratum, quota in (("text_only", QUOTA["text_only"]), ("loss", QUOTA["loss"]), ("single", QUOTA["single"])):
         pool = [it for it in cands[stratum] if (it[1], it[2]) not in taken]
-        sel = select(pool, quota, prefer=stratum in ("disagree",))
+        sel = select(pool, quota, prefer=False)
         chosen += sel
         taken |= {(it[1], it[2]) for it in sel}
     sel = select([it for it in cands["all3_agree"] if (it[1], it[2]) not in taken], QUOTA["all3_agree"], prefer=False)
@@ -250,21 +252,23 @@ def main():
         sel = select([it for it in cands[f"pair_agree:{pn}"] if (it[1], it[2]) not in taken], per_pair, prefer=False)
         chosen += sel
         taken |= {(it[1], it[2]) for it in sel}
-    short = sum(QUOTA.values()) - len(chosen)
-    if short > 0:    # top up with the next best disagreement segments
-        extra = select([it for it in cands["disagree"] if (it[1], it[2]) not in taken], short)
-        chosen += extra
+    # disagreement segments fill the rest of the card budget; a FAR pair (> VIEW_PX: the magenta box is outside the phone's default crop) costs two single-box cards
+    budget = a.cards - len(chosen)
+    dsel = select([it for it in cands["disagree"] if (it[1], it[2]) not in taken], budget, cost=lambda it: 2 if it[3]["pair_far"] else 1)
+    chosen += dsel
 
     items = []
     for pr, c, t, m, bsrc, osrc in chosen:
         pos = F.pos_at(fused["clips"][c], t)
-        it = {"clip": c, "frame_index": t, "bbox": box(pos[F.NAMES.index(bsrc)])}
-        if osrc is not None:
-            it["other_bbox"] = box(pos[F.NAMES.index(osrc)])
-        it["label"] = "in_play_ball"
-        it.update({"src_bbox": bsrc, "src_other": osrc, **m})
-        items.append(it)
-    items.sort(key=lambda it: h(a.salt, it["clip"], it["frame_index"], it["stratum"], "order"))
+        twins = [(bsrc, None), (osrc, None)] if m.get("pair_far") else [(bsrc, osrc)]
+        for k_, (b_, o_) in enumerate(twins):
+            it = {"clip": c, "frame_index": t, "bbox": box(pos[F.NAMES.index(b_)])}
+            if o_ is not None:
+                it["other_bbox"] = box(pos[F.NAMES.index(o_)])
+            it["label"] = "in_play_ball"
+            it.update({"src_bbox": b_, "src_other": o_, **m, "far_twin": bool(m.get("pair_far"))})
+            items.append(it)
+    items.sort(key=lambda it: h(a.salt, it["clip"], it["frame_index"], it["stratum"], it["src_bbox"], "order"))
     for i, it in enumerate(items):
         it["v2_index"] = i
         it["v2_id"] = hashlib.sha1(f"{a.salt}:{it['clip']}:{it['frame_index']}:{i}".encode()).hexdigest()[:10]

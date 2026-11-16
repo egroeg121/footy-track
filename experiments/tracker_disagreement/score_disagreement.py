@@ -1,7 +1,7 @@
 """Score George's blind verdicts on ball_check_list_v2_disagree.json (mini; stdlib only).
 
     python score_disagreement.py --list /mnt/storage/footy_data/norwich_label_queue/ball_check_list_v2_disagree.json \
-        --verdicts /mnt/storage/footy_data/ball_gt_marks_norwich/ball_checks [--out report.md] [--json report.json] [--selftest]
+        --verdicts /mnt/storage/footy_data/ball_gt_marks_norwich_disagree/ball_checks   (or --results job.json) [--out report.md] [--json report.json] [--selftest]
 
 Verdicts are read like the labeller does (``<clip>.jsonl`` append-only, last line per (source, clip, frame_index, box_index) wins, ``verdict: null`` = undo tombstone) and joined to
 the list by that key; a verdict is used only when its ``bbox`` equals the list card's bbox (guards against a re-ordered / regenerated list), otherwise it is counted as ``mismatch``.
@@ -88,8 +88,12 @@ def judge(card: dict, v: dict) -> dict:
     elif verdict == "corrected" and v.get("corrected_bbox"):
         truth = centre(v["corrected_bbox"])
     res = {}
+    shown_pts = [shown] + ([centre(card["other_bbox"])] if card.get("other_bbox") else [])
     for k in NAMES:
         p = pos[k]
+        if p is not None and not any(math.hypot(p[0] - q[0], p[1] - q[1]) <= 12 for q in shown_pts):
+            res[k] = "notshown"      # this tracker's position is not on the card (a far pair is judged by its twin card): not scored here
+            continue
         if truth is not None:
             res[k] = "absent" if p is None else ("right" if math.hypot(p[0] - truth[0], p[1] - truth[1]) <= R else "wrong")
             if p is None:
@@ -297,7 +301,8 @@ def selftest():
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--list", type=Path, default=Path("/mnt/storage/footy_data/norwich_label_queue/ball_check_list_v2_disagree.json"))
-    ap.add_argument("--verdicts", type=Path, default=Path("/mnt/storage/footy_data/ball_gt_marks_norwich/ball_checks"))
+    ap.add_argument("--verdicts", type=Path, default=Path("/mnt/storage/footy_data/ball_gt_marks_norwich_disagree/ball_checks"))
+    ap.add_argument("--results", type=Path, help="`labelling_jobs results <job> -o job.json` (labelling-job-results/v1) instead of reading the verdict logs")
     ap.add_argument("--out", type=Path)
     ap.add_argument("--json", type=Path)
     ap.add_argument("--selftest", action="store_true")
@@ -306,7 +311,12 @@ def main():
         selftest()
         return
     doc = json.loads(a.list.read_text())
-    st = build(doc, read_verdicts(a.verdicts))
+    if a.results:
+        rows = json.loads(a.results.read_text())["labels"]
+        ver = {(r.get("source") or "sidecar", r["clip"], int(r["frame_index"]), int(r["box_index"])): r for r in rows if r.get("verdict")}
+    else:
+        ver = read_verdicts(a.verdicts)
+    st = build(doc, ver)
     text, J = report(doc, st)
     print(text)
     if a.out:
