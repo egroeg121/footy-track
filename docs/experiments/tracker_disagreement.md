@@ -73,7 +73,7 @@ per-tracker right / wrong / unresolved on disagreement cards and head-to-head; p
 
 - **The match was renamed under the run** (Norwich -> Nottingham Forest, PR #62) while the SAM 3 flow was on clip 26: the flow failed on a vanished source directory (retries too); resumed with `clips_dir` + `clip_files` (old id -> new file name), finished clips and tracks were skipped.
 - **SAM trackers never lose the ball on their own** (see above), and they share seeds, so SAM2.1 - SAM3 agreement mostly measures that both follow the same seed. A++/B1 is the only seed-independent tracker; A++ saw this match's pseudo labels (derived from SAM2 fills).
-- **False seeds.** 48 random text seeds (`seeds_text_sheet.png`): ~44 on a clear ball, ~4 on ball-like graphics on LED advertising boards (a ball in a sponsor graphic, TNT / "V" logo), none on a boot; sizes 0.5-0.87 score. RT-DETR anchors were not sheeted separately (round-3 anchors were B1-filtered; 97 % real in the blind check).
+- **False seeds.** 48 random text seeds (`seeds_text_sheet.png`): ~44 on a clear ball, ~4 on ball-like graphics on LED advertising boards (a ball in a sponsor graphic, TNT / "V" logo), none obviously on a boot; scores 0.5-0.87. RT-DETR anchors were not sheeted separately (round-3 anchors were B1-filtered; 97 % real in the blind check).
   Text seeds are 46 % of seeds and feed 46 % of SAM positions.
 - Frames where several balls are in play (spare balls beside the pitch) make "two trackers on two different balls" a real third kind of disagreement; George's verdicts will show how often.
 - A++/B1 uses the harness's raw RT-DETR calibration knots on YOLO confidences (not isotonic), as in the pipeline eval; its fills (kalman) count as "has a ball".
