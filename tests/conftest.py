@@ -34,6 +34,7 @@ def _isolated_labeller_datasets(tmp_path, monkeypatch):
     ``calib`` dataset, built from the env vars the test itself sets).
     """
     monkeypatch.setenv("FOOTY_LABELLER_DATASETS", str(tmp_path / "no-such-registry.json"))
+    monkeypatch.setenv("FOOTY_LABELLING_JOBS_DIR", str(tmp_path / "labelling_jobs"))
     for var in _LABELLER_ENV:
         monkeypatch.delenv(var, raising=False)
 

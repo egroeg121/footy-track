@@ -8,6 +8,7 @@ re-read it on every request, so no redeploy is needed to add or drop a task.
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import json
 import os
@@ -18,6 +19,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from fastapi import APIRouter
+
+from footy_track.labeller import jobs
 
 DEFAULT_TASKS_FILE = "/mnt/storage/footy_data/labelling_tasks.json"
 CALIB = "http://mac-mini-i7:8011"
@@ -93,6 +96,11 @@ def write_tasks_atomic(path: Path, tasks: list[dict]) -> None:
         raise
 
 
+def _task_sort_key(t: dict) -> tuple:
+    prio = t.get("priority")
+    return (prio if isinstance(prio, (int, float)) else 2, str(t.get("added") or ""))
+
+
 def load_tasks(path: Path | None = None, *, seed: bool = True) -> tuple[list[dict], str | None]:
     """Return ``(tasks, error)``. Never raises.
 
@@ -115,7 +123,7 @@ def load_tasks(path: Path | None = None, *, seed: bool = True) -> tuple[list[dic
         tasks = [t for t in raw if isinstance(t, dict) and t.get("title")]
     except (OSError, ValueError, KeyError) as e:
         return [], f"{path}: {type(e).__name__}: {e}"
-    tasks.sort(key=lambda t: (t.get("priority") if isinstance(t.get("priority"), (int, float)) else 2, str(t.get("added") or "")))
+    tasks.sort(key=_task_sort_key)
     return tasks, None
 
 
@@ -173,6 +181,7 @@ _FOOTY_ENV_KEYS = (
     "FOOTY_BALL_CANDIDATES_DIR",
     "FOOTY_TASKS_FILE",
     "FOOTY_LABELLER_DATASETS",
+    "FOOTY_LABELLING_JOBS_DIR",
 )
 
 router = APIRouter()
@@ -181,7 +190,11 @@ router = APIRouter()
 @router.get("/api/tasks")
 async def api_tasks():
     tasks, error = load_tasks()
-    out = {"tasks": tasks, "file": str(tasks_path())}
+    # Open labelling jobs (POST /api/jobs) appear automatically, beside the hand-added tasks.
+    job_tasks = await asyncio.to_thread(jobs.board_tasks)
+    if job_tasks:
+        tasks = sorted(tasks + job_tasks, key=_task_sort_key)
+    out = {"tasks": tasks, "file": str(tasks_path()), "n_jobs": len(job_tasks)}
     if error:
         out["error"] = error
     return out
