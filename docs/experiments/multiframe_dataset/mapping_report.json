@@ -1,0 +1,523 @@
+{
+ "splits": {
+  "train": {
+   "images": 1035,
+   "balls": 1010,
+   "images_with_ball": 1006,
+   "mapped_images": 1034,
+   "mapped_balls": 1009,
+   "k1_images": 1020,
+   "k1_balls": 1000,
+   "k2_images": 1017,
+   "k2_balls": 997,
+   "k4_images": 1006,
+   "k4_balls": 987
+  },
+  "valid": {
+   "images": 215,
+   "balls": 211,
+   "images_with_ball": 209,
+   "mapped_images": 215,
+   "mapped_balls": 211,
+   "k1_images": 207,
+   "k1_balls": 205,
+   "k2_images": 204,
+   "k2_balls": 202,
+   "k4_images": 198,
+   "k4_balls": 196
+  },
+  "test": {
+   "images": 268,
+   "balls": 243,
+   "images_with_ball": 238,
+   "mapped_images": 267,
+   "mapped_balls": 243,
+   "k1_images": 265,
+   "k1_balls": 241,
+   "k2_images": 264,
+   "k2_balls": 241,
+   "k4_images": 261,
+   "k4_balls": 239
+  }
+ },
+ "unmapped_reasons": {
+  "train": {
+   "frame outside every broadcast segment": 1
+  },
+  "valid": {},
+  "test": {
+   "frame outside every broadcast segment": 1
+  }
+ },
+ "clips_by_split": {
+  "train": [
+   "arsenal_astonvilla_seg020",
+   "arsenal_astonvilla_seg080",
+   "arsenal_astonvilla_seg110",
+   "arsenal_astonvilla_seg140",
+   "arsenal_bournemouth_1st_seg040",
+   "arsenal_bournemouth_1st_seg070",
+   "arsenal_mancity_part050",
+   "arsenal_mancity_seg000",
+   "arsenal_mancity_seg001",
+   "arsenal_mancity_seg004",
+   "arsenal_mancity_seg006",
+   "arsenal_mancity_seg008",
+   "arsenal_mancity_seg009",
+   "arsenal_mancity_seg010",
+   "arsenal_mancity_seg011",
+   "arsenal_mancity_seg012",
+   "arsenal_mancity_seg016",
+   "arsenal_mancity_seg019",
+   "arsenal_mancity_seg022",
+   "arsenal_mancity_seg023",
+   "arsenal_mancity_seg024",
+   "arsenal_mancity_seg025",
+   "arsenal_mancity_seg028",
+   "arsenal_mancity_seg030",
+   "arsenal_mancity_seg031",
+   "arsenal_mancity_seg034",
+   "arsenal_mancity_seg035",
+   "arsenal_mancity_seg036",
+   "arsenal_mancity_seg038",
+   "arsenal_mancity_seg040",
+   "arsenal_mancity_seg042",
+   "arsenal_mancity_seg043",
+   "arsenal_mancity_seg045",
+   "arsenal_mancity_seg050",
+   "arsenal_mancity_seg054",
+   "arsenal_mancity_seg055",
+   "arsenal_mancity_seg057",
+   "arsenal_mancity_seg058",
+   "arsenal_mancity_seg059",
+   "arsenal_mancity_seg060",
+   "arsenal_mancity_seg061",
+   "arsenal_mancity_seg062",
+   "arsenal_mancity_seg064",
+   "arsenal_mancity_seg070",
+   "arsenal_mancity_seg072",
+   "arsenal_mancity_seg074",
+   "arsenal_mancity_seg076",
+   "arsenal_mancity_seg079",
+   "arsenal_mancity_seg083",
+   "arsenal_mancity_seg086",
+   "arsenal_mancity_seg087",
+   "arsenal_mancity_seg088",
+   "arsenal_mancity_seg090",
+   "arsenal_mancity_seg091",
+   "arsenal_mancity_seg092",
+   "arsenal_mancity_seg094",
+   "arsenal_mancity_seg095",
+   "arsenal_mancity_seg097",
+   "arsenal_mancity_seg099",
+   "arsenal_mancity_seg100",
+   "arsenal_mancity_seg102",
+   "arsenal_mancity_seg105",
+   "arsenal_mancity_seg106",
+   "arsenal_mancity_seg108",
+   "arsenal_mancity_seg110",
+   "arsenal_mancity_seg111",
+   "arsenal_mancity_seg113",
+   "arsenal_mancity_seg114",
+   "arsenal_mancity_seg115",
+   "arsenal_mancity_seg116",
+   "arsenal_mancity_seg117",
+   "arsenal_mancity_seg128",
+   "arsenal_mancity_seg150"
+  ],
+  "valid": [
+   "arsenal_astonvilla_seg050",
+   "arsenal_bournemouth_1st_seg010",
+   "arsenal_example",
+   "arsenal_mancity_seg000",
+   "arsenal_mancity_seg003",
+   "arsenal_mancity_seg009",
+   "arsenal_mancity_seg013",
+   "arsenal_mancity_seg017",
+   "arsenal_mancity_seg020",
+   "arsenal_mancity_seg023",
+   "arsenal_mancity_seg025",
+   "arsenal_mancity_seg026",
+   "arsenal_mancity_seg030",
+   "arsenal_mancity_seg041",
+   "arsenal_mancity_seg043",
+   "arsenal_mancity_seg047",
+   "arsenal_mancity_seg053",
+   "arsenal_mancity_seg054",
+   "arsenal_mancity_seg059",
+   "arsenal_mancity_seg062",
+   "arsenal_mancity_seg063",
+   "arsenal_mancity_seg072",
+   "arsenal_mancity_seg077",
+   "arsenal_mancity_seg078",
+   "arsenal_mancity_seg080",
+   "arsenal_mancity_seg087",
+   "arsenal_mancity_seg091",
+   "arsenal_mancity_seg094",
+   "arsenal_mancity_seg100",
+   "arsenal_mancity_seg110",
+   "arsenal_mancity_seg113",
+   "arsenal_mancity_seg115",
+   "arsenal_mancity_seg116",
+   "arsenal_mancity_seg120",
+   "arsenal_mancity_seg129"
+  ],
+  "test": [
+   "arsenal_bournemouth_1st_seg009",
+   "arsenal_mancity_seg000",
+   "arsenal_mancity_seg007",
+   "arsenal_mancity_seg009",
+   "arsenal_mancity_seg013",
+   "arsenal_mancity_seg017",
+   "arsenal_mancity_seg022",
+   "arsenal_mancity_seg023",
+   "arsenal_mancity_seg032",
+   "arsenal_mancity_seg033",
+   "arsenal_mancity_seg037",
+   "arsenal_mancity_seg048",
+   "arsenal_mancity_seg049",
+   "arsenal_mancity_seg054",
+   "arsenal_mancity_seg058",
+   "arsenal_mancity_seg059",
+   "arsenal_mancity_seg062",
+   "arsenal_mancity_seg065",
+   "arsenal_mancity_seg070",
+   "arsenal_mancity_seg076",
+   "arsenal_mancity_seg077",
+   "arsenal_mancity_seg083",
+   "arsenal_mancity_seg084",
+   "arsenal_mancity_seg085",
+   "arsenal_mancity_seg086",
+   "arsenal_mancity_seg087",
+   "arsenal_mancity_seg088",
+   "arsenal_mancity_seg089",
+   "arsenal_mancity_seg091",
+   "arsenal_mancity_seg094",
+   "arsenal_mancity_seg095",
+   "arsenal_mancity_seg096",
+   "arsenal_mancity_seg097",
+   "arsenal_mancity_seg099",
+   "arsenal_mancity_seg100",
+   "arsenal_mancity_seg101",
+   "arsenal_mancity_seg102",
+   "arsenal_mancity_seg105",
+   "arsenal_mancity_seg106",
+   "arsenal_mancity_seg108",
+   "arsenal_mancity_seg110",
+   "arsenal_mancity_seg111",
+   "arsenal_mancity_seg113",
+   "arsenal_mancity_seg114",
+   "arsenal_mancity_seg115",
+   "arsenal_mancity_seg116",
+   "arsenal_mancity_seg117",
+   "arsenal_mancity_seg120",
+   "arsenal_mancity_seg122",
+   "arsenal_mancity_seg124",
+   "arsenal_mancity_seg125",
+   "arsenal_mancity_seg126",
+   "arsenal_mancity_seg127",
+   "arsenal_mancity_seg128",
+   "arsenal_mancity_seg129",
+   "arsenal_mancity_seg130",
+   "arsenal_mancity_seg131",
+   "arsenal_mancity_seg132",
+   "arsenal_mancity_seg133",
+   "arsenal_mancity_seg134",
+   "arsenal_mancity_seg135",
+   "arsenal_mancity_seg136",
+   "arsenal_mancity_seg138",
+   "arsenal_mancity_seg139",
+   "arsenal_mancity_seg140",
+   "arsenal_mancity_seg141",
+   "arsenal_mancity_seg142",
+   "arsenal_mancity_seg143",
+   "arsenal_mancity_seg144",
+   "arsenal_mancity_seg145",
+   "arsenal_mancity_seg146",
+   "arsenal_mancity_seg147",
+   "arsenal_mancity_seg148",
+   "arsenal_mancity_seg149",
+   "arsenal_mancity_seg150",
+   "arsenal_mancity_seg151",
+   "arsenal_mancity_seg152",
+   "arsenal_mancity_seg153",
+   "arsenal_mancity_seg155",
+   "arsenal_mancity_seg156",
+   "arsenal_mancity_seg157",
+   "arsenal_mancity_seg158",
+   "arsenal_mancity_seg159",
+   "arsenal_mancity_seg160",
+   "arsenal_mancity_seg161"
+  ]
+ },
+ "by_prefix": {
+  "test/arsenal_mancity_20250925": {
+   "images": 265,
+   "mapped": 264,
+   "k2": 264,
+   "balls": 241
+  },
+  "test/arsenal_mancity_seg140": {
+   "images": 1,
+   "mapped": 1,
+   "k2": 0,
+   "balls": 1
+  },
+  "test/bournemouth_seg009": {
+   "images": 2,
+   "mapped": 2,
+   "k2": 0,
+   "balls": 1
+  },
+  "train/arsenal_mancity_20250925": {
+   "images": 94,
+   "mapped": 93,
+   "k2": 93,
+   "balls": 85
+  },
+  "train/arsenal_mancity_seg010": {
+   "images": 13,
+   "mapped": 13,
+   "k2": 11,
+   "balls": 13
+  },
+  "train/arsenal_mancity_seg030": {
+   "images": 29,
+   "mapped": 29,
+   "k2": 29,
+   "balls": 25
+  },
+  "train/arsenal_mancity_seg050": {
+   "images": 59,
+   "mapped": 59,
+   "k2": 57,
+   "balls": 59
+  },
+  "train/arsenal_mancity_seg060": {
+   "images": 22,
+   "mapped": 22,
+   "k2": 20,
+   "balls": 20
+  },
+  "train/arsenal_mancity_seg090": {
+   "images": 8,
+   "mapped": 8,
+   "k2": 7,
+   "balls": 8
+  },
+  "train/arsenal_mancity_seg100": {
+   "images": 24,
+   "mapped": 24,
+   "k2": 23,
+   "balls": 24
+  },
+  "train/arsenal_mancity_seg110": {
+   "images": 28,
+   "mapped": 28,
+   "k2": 28,
+   "balls": 28
+  },
+  "train/arsenal_mancity_seg150": {
+   "images": 1,
+   "mapped": 1,
+   "k2": 0,
+   "balls": 1
+  },
+  "train/astonvilla_seg020": {
+   "images": 4,
+   "mapped": 4,
+   "k2": 3,
+   "balls": 4
+  },
+  "train/astonvilla_seg080": {
+   "images": 520,
+   "mapped": 520,
+   "k2": 519,
+   "balls": 517
+  },
+  "train/astonvilla_seg110": {
+   "images": 1,
+   "mapped": 1,
+   "k2": 0,
+   "balls": 0
+  },
+  "train/astonvilla_seg140": {
+   "images": 1,
+   "mapped": 1,
+   "k2": 0,
+   "balls": 0
+  },
+  "train/bournemouth_1st_seg040": {
+   "images": 18,
+   "mapped": 18,
+   "k2": 16,
+   "balls": 13
+  },
+  "train/bournemouth_1st_seg070": {
+   "images": 212,
+   "mapped": 212,
+   "k2": 211,
+   "balls": 212
+  },
+  "train/mancity_part050": {
+   "images": 1,
+   "mapped": 1,
+   "k2": 0,
+   "balls": 1
+  },
+  "valid/arsenal_example": {
+   "images": 157,
+   "mapped": 157,
+   "k2": 153,
+   "balls": 156
+  },
+  "valid/arsenal_mancity_20250925": {
+   "images": 29,
+   "mapped": 29,
+   "k2": 29,
+   "balls": 30
+  },
+  "valid/arsenal_mancity_seg020": {
+   "images": 8,
+   "mapped": 8,
+   "k2": 8,
+   "balls": 8
+  },
+  "valid/arsenal_mancity_seg080": {
+   "images": 8,
+   "mapped": 8,
+   "k2": 6,
+   "balls": 6
+  },
+  "valid/arsenal_mancity_seg120": {
+   "images": 1,
+   "mapped": 1,
+   "k2": 0,
+   "balls": 0
+  },
+  "valid/astonvilla_seg050": {
+   "images": 7,
+   "mapped": 7,
+   "k2": 5,
+   "balls": 7
+  },
+  "valid/bournemouth_1st_seg010": {
+   "images": 5,
+   "mapped": 5,
+   "k2": 3,
+   "balls": 4
+  }
+ },
+ "duplicate_source_frames_across_splits": 0,
+ "canonical_clips_shared_train_valid": [
+  "arsenal_mancity_seg000",
+  "arsenal_mancity_seg009",
+  "arsenal_mancity_seg023",
+  "arsenal_mancity_seg025",
+  "arsenal_mancity_seg030",
+  "arsenal_mancity_seg043",
+  "arsenal_mancity_seg054",
+  "arsenal_mancity_seg059",
+  "arsenal_mancity_seg062",
+  "arsenal_mancity_seg072",
+  "arsenal_mancity_seg087",
+  "arsenal_mancity_seg091",
+  "arsenal_mancity_seg094",
+  "arsenal_mancity_seg100",
+  "arsenal_mancity_seg110",
+  "arsenal_mancity_seg113",
+  "arsenal_mancity_seg115",
+  "arsenal_mancity_seg116"
+ ],
+ "canonical_clips_shared_train_test": [
+  "arsenal_mancity_seg000",
+  "arsenal_mancity_seg009",
+  "arsenal_mancity_seg022",
+  "arsenal_mancity_seg023",
+  "arsenal_mancity_seg054",
+  "arsenal_mancity_seg058",
+  "arsenal_mancity_seg059",
+  "arsenal_mancity_seg062",
+  "arsenal_mancity_seg070",
+  "arsenal_mancity_seg076",
+  "arsenal_mancity_seg083",
+  "arsenal_mancity_seg086",
+  "arsenal_mancity_seg087",
+  "arsenal_mancity_seg088",
+  "arsenal_mancity_seg091",
+  "arsenal_mancity_seg094",
+  "arsenal_mancity_seg095",
+  "arsenal_mancity_seg097",
+  "arsenal_mancity_seg099",
+  "arsenal_mancity_seg100",
+  "arsenal_mancity_seg102",
+  "arsenal_mancity_seg105",
+  "arsenal_mancity_seg106",
+  "arsenal_mancity_seg108",
+  "arsenal_mancity_seg110",
+  "arsenal_mancity_seg111",
+  "arsenal_mancity_seg113",
+  "arsenal_mancity_seg114",
+  "arsenal_mancity_seg115",
+  "arsenal_mancity_seg116",
+  "arsenal_mancity_seg117",
+  "arsenal_mancity_seg128",
+  "arsenal_mancity_seg150"
+ ],
+ "pixel_verification": {
+  "n": 60,
+  "exact": 60,
+  "by_prefix": {
+   "bournemouth_1st_seg070": {
+    "n": 10,
+    "exact": 10,
+    "max_mad_at_t": 1.2770746946334839
+   },
+   "astonvilla_seg080": {
+    "n": 24,
+    "exact": 24,
+    "max_mad_at_t": 1.5179047584533691
+   },
+   "arsenal_example": {
+    "n": 9,
+    "exact": 9,
+    "max_mad_at_t": 1.995831847190857
+   },
+   "astonvilla_seg050": {
+    "n": 1,
+    "exact": 1,
+    "max_mad_at_t": 1.259495496749878
+   },
+   "arsenal_mancity_seg110": {
+    "n": 1,
+    "exact": 1,
+    "max_mad_at_t": 1.8860228061676025
+   },
+   "arsenal_mancity_20250925": {
+    "n": 9,
+    "exact": 9,
+    "max_mad_at_t": 2.1934971809387207
+   },
+   "arsenal_mancity_seg060": {
+    "n": 2,
+    "exact": 2,
+    "max_mad_at_t": 1.0021841526031494
+   },
+   "arsenal_mancity_seg050": {
+    "n": 2,
+    "exact": 2,
+    "max_mad_at_t": 1.1953905820846558
+   },
+   "arsenal_mancity_seg090": {
+    "n": 1,
+    "exact": 1,
+    "max_mad_at_t": 1.1421817541122437
+   },
+   "arsenal_mancity_seg030": {
+    "n": 1,
+    "exact": 1,
+    "max_mad_at_t": 1.4454692602157593
+   }
+  }
+ }
+}

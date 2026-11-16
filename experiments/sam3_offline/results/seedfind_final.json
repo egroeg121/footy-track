@@ -1,0 +1,5402 @@
+{
+ "RT-DETR | rtdetr-l v11": {
+  "held-out all (no arsenal_example)": {
+   "n_ball": 94,
+   "n_noball": 7,
+   "top1_hit10": 0.5957446808510638,
+   "any_hit10": 0.7127659574468085,
+   "by_thr": {
+    "0.05": {
+     "frames_with_det": 1.0,
+     "top1_precision": 0.5957446808510638,
+     "top1_recall": 0.5957446808510638,
+     "any_recall": 0.7127659574468085,
+     "noball_false_pos": 0.8571428571428571
+    },
+    "0.1": {
+     "frames_with_det": 1.0,
+     "top1_precision": 0.5957446808510638,
+     "top1_recall": 0.5957446808510638,
+     "any_recall": 0.7127659574468085,
+     "noball_false_pos": 0.8571428571428571
+    },
+    "0.2": {
+     "frames_with_det": 0.9680851063829787,
+     "top1_precision": 0.6153846153846154,
+     "top1_recall": 0.5957446808510638,
+     "any_recall": 0.6914893617021277,
+     "noball_false_pos": 0.5714285714285714
+    },
+    "0.3": {
+     "frames_with_det": 0.9148936170212766,
+     "top1_precision": 0.6511627906976745,
+     "top1_recall": 0.5957446808510638,
+     "any_recall": 0.6382978723404256,
+     "noball_false_pos": 0.2857142857142857
+    },
+    "0.5": {
+     "frames_with_det": 0.7340425531914894,
+     "top1_precision": 0.7536231884057971,
+     "top1_recall": 0.5531914893617021,
+     "any_recall": 0.5531914893617021,
+     "noball_false_pos": 0.14285714285714285
+    },
+    "0.7": {
+     "frames_with_det": 0.5319148936170213,
+     "top1_precision": 0.92,
+     "top1_recall": 0.48936170212765956,
+     "any_recall": 0.48936170212765956,
+     "noball_false_pos": 0.14285714285714285
+    },
+    "0.8": {
+     "frames_with_det": 0.30851063829787234,
+     "top1_precision": 1.0,
+     "top1_recall": 0.30851063829787234,
+     "any_recall": 0.30851063829787234,
+     "noball_false_pos": 0.0
+    }
+   }
+  },
+  "Bournemouth": {
+   "n_ball": 73,
+   "n_noball": 4,
+   "top1_hit10": 0.5068493150684932,
+   "any_hit10": 0.6301369863013698,
+   "by_thr": {
+    "0.05": {
+     "frames_with_det": 1.0,
+     "top1_precision": 0.5068493150684932,
+     "top1_recall": 0.5068493150684932,
+     "any_recall": 0.6301369863013698,
+     "noball_false_pos": 1.0
+    },
+    "0.1": {
+     "frames_with_det": 1.0,
+     "top1_precision": 0.5068493150684932,
+     "top1_recall": 0.5068493150684932,
+     "any_recall": 0.6301369863013698,
+     "noball_false_pos": 1.0
+    },
+    "0.2": {
+     "frames_with_det": 0.958904109589041,
+     "top1_precision": 0.5285714285714286,
+     "top1_recall": 0.5068493150684932,
+     "any_recall": 0.6027397260273972,
+     "noball_false_pos": 1.0
+    },
+    "0.3": {
+     "frames_with_det": 0.8904109589041096,
+     "top1_precision": 0.5692307692307692,
+     "top1_recall": 0.5068493150684932,
+     "any_recall": 0.5342465753424658,
+     "noball_false_pos": 0.5
+    },
+    "0.5": {
+     "frames_with_det": 0.684931506849315,
+     "top1_precision": 0.68,
+     "top1_recall": 0.4657534246575342,
+     "any_recall": 0.4657534246575342,
+     "noball_false_pos": 0.25
+    },
+    "0.7": {
+     "frames_with_det": 0.4794520547945205,
+     "top1_precision": 0.8857142857142857,
+     "top1_recall": 0.4246575342465753,
+     "any_recall": 0.4246575342465753,
+     "noball_false_pos": 0.25
+    },
+    "0.8": {
+     "frames_with_det": 0.2876712328767123,
+     "top1_precision": 1.0,
+     "top1_recall": 0.2876712328767123,
+     "any_recall": 0.2876712328767123,
+     "noball_false_pos": 0.0
+    }
+   }
+  },
+  "Man City (no arsenal_example)": {
+   "n_ball": 21,
+   "n_noball": 3,
+   "top1_hit10": 0.9047619047619048,
+   "any_hit10": 1.0,
+   "by_thr": {
+    "0.05": {
+     "frames_with_det": 1.0,
+     "top1_precision": 0.9047619047619048,
+     "top1_recall": 0.9047619047619048,
+     "any_recall": 1.0,
+     "noball_false_pos": 0.6666666666666666
+    },
+    "0.1": {
+     "frames_with_det": 1.0,
+     "top1_precision": 0.9047619047619048,
+     "top1_recall": 0.9047619047619048,
+     "any_recall": 1.0,
+     "noball_false_pos": 0.6666666666666666
+    },
+    "0.2": {
+     "frames_with_det": 1.0,
+     "top1_precision": 0.9047619047619048,
+     "top1_recall": 0.9047619047619048,
+     "any_recall": 1.0,
+     "noball_false_pos": 0.0
+    },
+    "0.3": {
+     "frames_with_det": 1.0,
+     "top1_precision": 0.9047619047619048,
+     "top1_recall": 0.9047619047619048,
+     "any_recall": 1.0,
+     "noball_false_pos": 0.0
+    },
+    "0.5": {
+     "frames_with_det": 0.9047619047619048,
+     "top1_precision": 0.9473684210526315,
+     "top1_recall": 0.8571428571428571,
+     "any_recall": 0.8571428571428571,
+     "noball_false_pos": 0.0
+    },
+    "0.7": {
+     "frames_with_det": 0.7142857142857143,
+     "top1_precision": 1.0,
+     "top1_recall": 0.7142857142857143,
+     "any_recall": 0.7142857142857143,
+     "noball_false_pos": 0.0
+    },
+    "0.8": {
+     "frames_with_det": 0.38095238095238093,
+     "top1_precision": 1.0,
+     "top1_recall": 0.38095238095238093,
+     "any_recall": 0.38095238095238093,
+     "noball_false_pos": 0.0
+    }
+   }
+  },
+  "arsenal_example (held-out frames)": {
+   "n_ball": 20,
+   "n_noball": 0,
+   "top1_hit10": 0.05,
+   "any_hit10": 0.05,
+   "by_thr": {
+    "0.05": {
+     "frames_with_det": 1.0,
+     "top1_precision": 0.05,
+     "top1_recall": 0.05,
+     "any_recall": 0.05,
+     "noball_false_pos": null
+    },
+    "0.1": {
+     "frames_with_det": 1.0,
+     "top1_precision": 0.05,
+     "top1_recall": 0.05,
+     "any_recall": 0.05,
+     "noball_false_pos": null
+    },
+    "0.2": {
+     "frames_with_det": 0.85,
+     "top1_precision": 0.058823529411764705,
+     "top1_recall": 0.05,
+     "any_recall": 0.05,
+     "noball_false_pos": null
+    },
+    "0.3": {
+     "frames_with_det": 0.65,
+     "top1_precision": 0.07692307692307693,
+     "top1_recall": 0.05,
+     "any_recall": 0.05,
+     "noball_false_pos": null
+    },
+    "0.5": {
+     "frames_with_det": 0.2,
+     "top1_precision": 0.25,
+     "top1_recall": 0.05,
+     "any_recall": 0.05,
+     "noball_false_pos": null
+    },
+    "0.7": {
+     "frames_with_det": 0.05,
+     "top1_precision": 1.0,
+     "top1_recall": 0.05,
+     "any_recall": 0.05,
+     "noball_false_pos": null
+    },
+    "0.8": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": null
+    }
+   }
+  },
+  "astonvilla_seg080 (dense)": {
+   "n_ball": 0,
+   "n_noball": 0
+  }
+ },
+ "full | ball": {
+  "held-out all (no arsenal_example)": {
+   "n_ball": 133,
+   "n_noball": 8,
+   "top1_hit10": 0.7593984962406015,
+   "any_hit10": 0.9548872180451128,
+   "by_thr": {
+    "0.05": {
+     "frames_with_det": 0.9849624060150376,
+     "top1_precision": 0.7709923664122137,
+     "top1_recall": 0.7593984962406015,
+     "any_recall": 0.9398496240601504,
+     "noball_false_pos": 0.625
+    },
+    "0.1": {
+     "frames_with_det": 0.9323308270676691,
+     "top1_precision": 0.7983870967741935,
+     "top1_recall": 0.7443609022556391,
+     "any_recall": 0.8796992481203008,
+     "noball_false_pos": 0.375
+    },
+    "0.2": {
+     "frames_with_det": 0.8345864661654135,
+     "top1_precision": 0.8468468468468469,
+     "top1_recall": 0.706766917293233,
+     "any_recall": 0.7518796992481203,
+     "noball_false_pos": 0.25
+    },
+    "0.3": {
+     "frames_with_det": 0.7819548872180451,
+     "top1_precision": 0.875,
+     "top1_recall": 0.6842105263157895,
+     "any_recall": 0.7218045112781954,
+     "noball_false_pos": 0.125
+    },
+    "0.5": {
+     "frames_with_det": 0.5338345864661654,
+     "top1_precision": 0.9577464788732394,
+     "top1_recall": 0.5112781954887218,
+     "any_recall": 0.5263157894736842,
+     "noball_false_pos": 0.125
+    },
+    "0.7": {
+     "frames_with_det": 0.08270676691729323,
+     "top1_precision": 1.0,
+     "top1_recall": 0.08270676691729323,
+     "any_recall": 0.08270676691729323,
+     "noball_false_pos": 0.0
+    },
+    "0.8": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 0.0
+    }
+   }
+  },
+  "Bournemouth": {
+   "n_ball": 73,
+   "n_noball": 4,
+   "top1_hit10": 0.7397260273972602,
+   "any_hit10": 0.9726027397260274,
+   "by_thr": {
+    "0.05": {
+     "frames_with_det": 0.9863013698630136,
+     "top1_precision": 0.75,
+     "top1_recall": 0.7397260273972602,
+     "any_recall": 0.9452054794520548,
+     "noball_false_pos": 1.0
+    },
+    "0.1": {
+     "frames_with_det": 0.9315068493150684,
+     "top1_precision": 0.7794117647058824,
+     "top1_recall": 0.726027397260274,
+     "any_recall": 0.8767123287671232,
+     "noball_false_pos": 0.5
+    },
+    "0.2": {
+     "frames_with_det": 0.7671232876712328,
+     "top1_precision": 0.8571428571428571,
+     "top1_recall": 0.6575342465753424,
+     "any_recall": 0.6712328767123288,
+     "noball_false_pos": 0.25
+    },
+    "0.3": {
+     "frames_with_det": 0.7123287671232876,
+     "top1_precision": 0.8846153846153846,
+     "top1_recall": 0.6301369863013698,
+     "any_recall": 0.6438356164383562,
+     "noball_false_pos": 0.0
+    },
+    "0.5": {
+     "frames_with_det": 0.5342465753424658,
+     "top1_precision": 0.9743589743589743,
+     "top1_recall": 0.5205479452054794,
+     "any_recall": 0.5342465753424658,
+     "noball_false_pos": 0.0
+    },
+    "0.7": {
+     "frames_with_det": 0.1095890410958904,
+     "top1_precision": 1.0,
+     "top1_recall": 0.1095890410958904,
+     "any_recall": 0.1095890410958904,
+     "noball_false_pos": 0.0
+    },
+    "0.8": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 0.0
+    }
+   }
+  },
+  "Man City (no arsenal_example)": {
+   "n_ball": 21,
+   "n_noball": 3,
+   "top1_hit10": 0.7619047619047619,
+   "any_hit10": 1.0,
+   "by_thr": {
+    "0.05": {
+     "frames_with_det": 1.0,
+     "top1_precision": 0.7619047619047619,
+     "top1_recall": 0.7619047619047619,
+     "any_recall": 1.0,
+     "noball_false_pos": 0.0
+    },
+    "0.1": {
+     "frames_with_det": 0.9047619047619048,
+     "top1_precision": 0.7894736842105263,
+     "top1_recall": 0.7142857142857143,
+     "any_recall": 0.9047619047619048,
+     "noball_false_pos": 0.0
+    },
+    "0.2": {
+     "frames_with_det": 0.9047619047619048,
+     "top1_precision": 0.7894736842105263,
+     "top1_recall": 0.7142857142857143,
+     "any_recall": 0.9047619047619048,
+     "noball_false_pos": 0.0
+    },
+    "0.3": {
+     "frames_with_det": 0.9047619047619048,
+     "top1_precision": 0.7894736842105263,
+     "top1_recall": 0.7142857142857143,
+     "any_recall": 0.9047619047619048,
+     "noball_false_pos": 0.0
+    },
+    "0.5": {
+     "frames_with_det": 0.7619047619047619,
+     "top1_precision": 0.9375,
+     "top1_recall": 0.7142857142857143,
+     "any_recall": 0.7619047619047619,
+     "noball_false_pos": 0.0
+    },
+    "0.7": {
+     "frames_with_det": 0.14285714285714285,
+     "top1_precision": 1.0,
+     "top1_recall": 0.14285714285714285,
+     "any_recall": 0.14285714285714285,
+     "noball_false_pos": 0.0
+    },
+    "0.8": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 0.0
+    }
+   }
+  },
+  "arsenal_example (held-out frames)": {
+   "n_ball": 20,
+   "n_noball": 0,
+   "top1_hit10": 0.0,
+   "any_hit10": 0.0,
+   "by_thr": {
+    "0.05": {
+     "frames_with_det": 0.5,
+     "top1_precision": 0.0,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": null
+    },
+    "0.1": {
+     "frames_with_det": 0.15,
+     "top1_precision": 0.0,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": null
+    },
+    "0.2": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": null
+    },
+    "0.3": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": null
+    },
+    "0.5": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": null
+    },
+    "0.7": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": null
+    },
+    "0.8": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": null
+    }
+   }
+  },
+  "astonvilla_seg080 (dense)": {
+   "n_ball": 39,
+   "n_noball": 1,
+   "top1_hit10": 0.7948717948717948,
+   "any_hit10": 0.8974358974358975,
+   "by_thr": {
+    "0.05": {
+     "frames_with_det": 0.9743589743589743,
+     "top1_precision": 0.8157894736842105,
+     "top1_recall": 0.7948717948717948,
+     "any_recall": 0.8974358974358975,
+     "noball_false_pos": 1.0
+    },
+    "0.1": {
+     "frames_with_det": 0.9487179487179487,
+     "top1_precision": 0.8378378378378378,
+     "top1_recall": 0.7948717948717948,
+     "any_recall": 0.8717948717948718,
+     "noball_false_pos": 1.0
+    },
+    "0.2": {
+     "frames_with_det": 0.9230769230769231,
+     "top1_precision": 0.8611111111111112,
+     "top1_recall": 0.7948717948717948,
+     "any_recall": 0.8205128205128205,
+     "noball_false_pos": 1.0
+    },
+    "0.3": {
+     "frames_with_det": 0.8461538461538461,
+     "top1_precision": 0.9090909090909091,
+     "top1_recall": 0.7692307692307693,
+     "any_recall": 0.7692307692307693,
+     "noball_false_pos": 1.0
+    },
+    "0.5": {
+     "frames_with_det": 0.41025641025641024,
+     "top1_precision": 0.9375,
+     "top1_recall": 0.38461538461538464,
+     "any_recall": 0.38461538461538464,
+     "noball_false_pos": 1.0
+    },
+    "0.7": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 0.0
+    },
+    "0.8": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 0.0
+    }
+   }
+  }
+ },
+ "full | football": {
+  "held-out all (no arsenal_example)": {
+   "n_ball": 133,
+   "n_noball": 8,
+   "top1_hit10": 0.6992481203007519,
+   "any_hit10": 0.9473684210526315,
+   "by_thr": {
+    "0.05": {
+     "frames_with_det": 0.9548872180451128,
+     "top1_precision": 0.7165354330708661,
+     "top1_recall": 0.6842105263157895,
+     "any_recall": 0.8947368421052632,
+     "noball_false_pos": 0.625
+    },
+    "0.1": {
+     "frames_with_det": 0.7969924812030075,
+     "top1_precision": 0.7547169811320755,
+     "top1_recall": 0.6015037593984962,
+     "any_recall": 0.7218045112781954,
+     "noball_false_pos": 0.375
+    },
+    "0.2": {
+     "frames_with_det": 0.5639097744360902,
+     "top1_precision": 0.76,
+     "top1_recall": 0.42857142857142855,
+     "any_recall": 0.46616541353383456,
+     "noball_false_pos": 0.125
+    },
+    "0.3": {
+     "frames_with_det": 0.39849624060150374,
+     "top1_precision": 0.8301886792452831,
+     "top1_recall": 0.3308270676691729,
+     "any_recall": 0.3533834586466165,
+     "noball_false_pos": 0.125
+    },
+    "0.5": {
+     "frames_with_det": 0.15037593984962405,
+     "top1_precision": 0.85,
+     "top1_recall": 0.12781954887218044,
+     "any_recall": 0.13533834586466165,
+     "noball_false_pos": 0.125
+    },
+    "0.7": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 0.0
+    },
+    "0.8": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 0.0
+    }
+   }
+  },
+  "Bournemouth": {
+   "n_ball": 73,
+   "n_noball": 4,
+   "top1_hit10": 0.6986301369863014,
+   "any_hit10": 0.958904109589041,
+   "by_thr": {
+    "0.05": {
+     "frames_with_det": 0.958904109589041,
+     "top1_precision": 0.7142857142857143,
+     "top1_recall": 0.684931506849315,
+     "any_recall": 0.9178082191780822,
+     "noball_false_pos": 1.0
+    },
+    "0.1": {
+     "frames_with_det": 0.8767123287671232,
+     "top1_precision": 0.734375,
+     "top1_recall": 0.6438356164383562,
+     "any_recall": 0.7808219178082192,
+     "noball_false_pos": 0.5
+    },
+    "0.2": {
+     "frames_with_det": 0.684931506849315,
+     "top1_precision": 0.76,
+     "top1_recall": 0.5205479452054794,
+     "any_recall": 0.547945205479452,
+     "noball_false_pos": 0.0
+    },
+    "0.3": {
+     "frames_with_det": 0.5205479452054794,
+     "top1_precision": 0.868421052631579,
+     "top1_recall": 0.4520547945205479,
+     "any_recall": 0.4657534246575342,
+     "noball_false_pos": 0.0
+    },
+    "0.5": {
+     "frames_with_det": 0.1917808219178082,
+     "top1_precision": 0.8571428571428571,
+     "top1_recall": 0.1643835616438356,
+     "any_recall": 0.1643835616438356,
+     "noball_false_pos": 0.0
+    },
+    "0.7": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 0.0
+    },
+    "0.8": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 0.0
+    }
+   }
+  },
+  "Man City (no arsenal_example)": {
+   "n_ball": 21,
+   "n_noball": 3,
+   "top1_hit10": 0.9047619047619048,
+   "any_hit10": 1.0,
+   "by_thr": {
+    "0.05": {
+     "frames_with_det": 1.0,
+     "top1_precision": 0.9047619047619048,
+     "top1_recall": 0.9047619047619048,
+     "any_recall": 1.0,
+     "noball_false_pos": 0.0
+    },
+    "0.1": {
+     "frames_with_det": 0.9047619047619048,
+     "top1_precision": 0.8947368421052632,
+     "top1_recall": 0.8095238095238095,
+     "any_recall": 0.9047619047619048,
+     "noball_false_pos": 0.0
+    },
+    "0.2": {
+     "frames_with_det": 0.7142857142857143,
+     "top1_precision": 0.8666666666666667,
+     "top1_recall": 0.6190476190476191,
+     "any_recall": 0.7142857142857143,
+     "noball_false_pos": 0.0
+    },
+    "0.3": {
+     "frames_with_det": 0.6190476190476191,
+     "top1_precision": 0.8461538461538461,
+     "top1_recall": 0.5238095238095238,
+     "any_recall": 0.6190476190476191,
+     "noball_false_pos": 0.0
+    },
+    "0.5": {
+     "frames_with_det": 0.2857142857142857,
+     "top1_precision": 0.8333333333333334,
+     "top1_recall": 0.23809523809523808,
+     "any_recall": 0.2857142857142857,
+     "noball_false_pos": 0.0
+    },
+    "0.7": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 0.0
+    },
+    "0.8": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 0.0
+    }
+   }
+  },
+  "arsenal_example (held-out frames)": {
+   "n_ball": 20,
+   "n_noball": 0,
+   "top1_hit10": 0.0,
+   "any_hit10": 0.0,
+   "by_thr": {
+    "0.05": {
+     "frames_with_det": 0.65,
+     "top1_precision": 0.0,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": null
+    },
+    "0.1": {
+     "frames_with_det": 0.15,
+     "top1_precision": 0.0,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": null
+    },
+    "0.2": {
+     "frames_with_det": 0.1,
+     "top1_precision": 0.0,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": null
+    },
+    "0.3": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": null
+    },
+    "0.5": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": null
+    },
+    "0.7": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": null
+    },
+    "0.8": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": null
+    }
+   }
+  },
+  "astonvilla_seg080 (dense)": {
+   "n_ball": 39,
+   "n_noball": 1,
+   "top1_hit10": 0.5897435897435898,
+   "any_hit10": 0.8974358974358975,
+   "by_thr": {
+    "0.05": {
+     "frames_with_det": 0.9230769230769231,
+     "top1_precision": 0.6111111111111112,
+     "top1_recall": 0.5641025641025641,
+     "any_recall": 0.7948717948717948,
+     "noball_false_pos": 1.0
+    },
+    "0.1": {
+     "frames_with_det": 0.5897435897435898,
+     "top1_precision": 0.6956521739130435,
+     "top1_recall": 0.41025641025641024,
+     "any_recall": 0.5128205128205128,
+     "noball_false_pos": 1.0
+    },
+    "0.2": {
+     "frames_with_det": 0.2564102564102564,
+     "top1_precision": 0.6,
+     "top1_recall": 0.15384615384615385,
+     "any_recall": 0.1794871794871795,
+     "noball_false_pos": 1.0
+    },
+    "0.3": {
+     "frames_with_det": 0.05128205128205128,
+     "top1_precision": 0.0,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 1.0
+    },
+    "0.5": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 1.0
+    },
+    "0.7": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 0.0
+    },
+    "0.8": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 0.0
+    }
+   }
+  }
+ },
+ "full | small white ball": {
+  "held-out all (no arsenal_example)": {
+   "n_ball": 133,
+   "n_noball": 8,
+   "top1_hit10": 0.11278195488721804,
+   "any_hit10": 0.2857142857142857,
+   "by_thr": {
+    "0.05": {
+     "frames_with_det": 0.3157894736842105,
+     "top1_precision": 0.35714285714285715,
+     "top1_recall": 0.11278195488721804,
+     "any_recall": 0.17293233082706766,
+     "noball_false_pos": 0.25
+    },
+    "0.1": {
+     "frames_with_det": 0.21052631578947367,
+     "top1_precision": 0.5357142857142857,
+     "top1_recall": 0.11278195488721804,
+     "any_recall": 0.15037593984962405,
+     "noball_false_pos": 0.25
+    },
+    "0.2": {
+     "frames_with_det": 0.14285714285714285,
+     "top1_precision": 0.6842105263157895,
+     "top1_recall": 0.09774436090225563,
+     "any_recall": 0.12030075187969924,
+     "noball_false_pos": 0.0
+    },
+    "0.3": {
+     "frames_with_det": 0.11278195488721804,
+     "top1_precision": 0.8666666666666667,
+     "top1_recall": 0.09774436090225563,
+     "any_recall": 0.11278195488721804,
+     "noball_false_pos": 0.0
+    },
+    "0.5": {
+     "frames_with_det": 0.06766917293233082,
+     "top1_precision": 1.0,
+     "top1_recall": 0.06766917293233082,
+     "any_recall": 0.06766917293233082,
+     "noball_false_pos": 0.0
+    },
+    "0.7": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 0.0
+    },
+    "0.8": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 0.0
+    }
+   }
+  },
+  "Bournemouth": {
+   "n_ball": 73,
+   "n_noball": 4,
+   "top1_hit10": 0.0,
+   "any_hit10": 0.1917808219178082,
+   "by_thr": {
+    "0.05": {
+     "frames_with_det": 0.1780821917808219,
+     "top1_precision": 0.0,
+     "top1_recall": 0.0,
+     "any_recall": 0.0410958904109589,
+     "noball_false_pos": 0.0
+    },
+    "0.1": {
+     "frames_with_det": 0.0684931506849315,
+     "top1_precision": 0.0,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 0.0
+    },
+    "0.2": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 0.0
+    },
+    "0.3": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 0.0
+    },
+    "0.5": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 0.0
+    },
+    "0.7": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 0.0
+    },
+    "0.8": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 0.0
+    }
+   }
+  },
+  "Man City (no arsenal_example)": {
+   "n_ball": 21,
+   "n_noball": 3,
+   "top1_hit10": 0.7142857142857143,
+   "any_hit10": 1.0,
+   "by_thr": {
+    "0.05": {
+     "frames_with_det": 1.0,
+     "top1_precision": 0.7142857142857143,
+     "top1_recall": 0.7142857142857143,
+     "any_recall": 0.9523809523809523,
+     "noball_false_pos": 0.3333333333333333
+    },
+    "0.1": {
+     "frames_with_det": 0.9523809523809523,
+     "top1_precision": 0.75,
+     "top1_recall": 0.7142857142857143,
+     "any_recall": 0.9523809523809523,
+     "noball_false_pos": 0.3333333333333333
+    },
+    "0.2": {
+     "frames_with_det": 0.8571428571428571,
+     "top1_precision": 0.7222222222222222,
+     "top1_recall": 0.6190476190476191,
+     "any_recall": 0.7619047619047619,
+     "noball_false_pos": 0.0
+    },
+    "0.3": {
+     "frames_with_det": 0.7142857142857143,
+     "top1_precision": 0.8666666666666667,
+     "top1_recall": 0.6190476190476191,
+     "any_recall": 0.7142857142857143,
+     "noball_false_pos": 0.0
+    },
+    "0.5": {
+     "frames_with_det": 0.42857142857142855,
+     "top1_precision": 1.0,
+     "top1_recall": 0.42857142857142855,
+     "any_recall": 0.42857142857142855,
+     "noball_false_pos": 0.0
+    },
+    "0.7": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 0.0
+    },
+    "0.8": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 0.0
+    }
+   }
+  },
+  "arsenal_example (held-out frames)": {
+   "n_ball": 20,
+   "n_noball": 0,
+   "top1_hit10": 0.0,
+   "any_hit10": 0.0,
+   "by_thr": {
+    "0.05": {
+     "frames_with_det": 0.05,
+     "top1_precision": 0.0,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": null
+    },
+    "0.1": {
+     "frames_with_det": 0.05,
+     "top1_precision": 0.0,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": null
+    },
+    "0.2": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": null
+    },
+    "0.3": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": null
+    },
+    "0.5": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": null
+    },
+    "0.7": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": null
+    },
+    "0.8": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": null
+    }
+   }
+  },
+  "astonvilla_seg080 (dense)": {
+   "n_ball": 39,
+   "n_noball": 1,
+   "top1_hit10": 0.0,
+   "any_hit10": 0.07692307692307693,
+   "by_thr": {
+    "0.05": {
+     "frames_with_det": 0.20512820512820512,
+     "top1_precision": 0.0,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 1.0
+    },
+    "0.1": {
+     "frames_with_det": 0.07692307692307693,
+     "top1_precision": 0.0,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 1.0
+    },
+    "0.2": {
+     "frames_with_det": 0.02564102564102564,
+     "top1_precision": 0.0,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 0.0
+    },
+    "0.3": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 0.0
+    },
+    "0.5": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 0.0
+    },
+    "0.7": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 0.0
+    },
+    "0.8": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 0.0
+    }
+   }
+  }
+ },
+ "full | soccer ball": {
+  "held-out all (no arsenal_example)": {
+   "n_ball": 133,
+   "n_noball": 8,
+   "top1_hit10": 0.6390977443609023,
+   "any_hit10": 0.9624060150375939,
+   "by_thr": {
+    "0.05": {
+     "frames_with_det": 1.0,
+     "top1_precision": 0.6390977443609023,
+     "top1_recall": 0.6390977443609023,
+     "any_recall": 0.9624060150375939,
+     "noball_false_pos": 0.875
+    },
+    "0.1": {
+     "frames_with_det": 1.0,
+     "top1_precision": 0.6390977443609023,
+     "top1_recall": 0.6390977443609023,
+     "any_recall": 0.9548872180451128,
+     "noball_false_pos": 0.75
+    },
+    "0.2": {
+     "frames_with_det": 1.0,
+     "top1_precision": 0.6390977443609023,
+     "top1_recall": 0.6390977443609023,
+     "any_recall": 0.8947368421052632,
+     "noball_false_pos": 0.625
+    },
+    "0.3": {
+     "frames_with_det": 0.9849624060150376,
+     "top1_precision": 0.648854961832061,
+     "top1_recall": 0.6390977443609023,
+     "any_recall": 0.8345864661654135,
+     "noball_false_pos": 0.625
+    },
+    "0.5": {
+     "frames_with_det": 0.8421052631578947,
+     "top1_precision": 0.6875,
+     "top1_recall": 0.5789473684210527,
+     "any_recall": 0.6691729323308271,
+     "noball_false_pos": 0.375
+    },
+    "0.7": {
+     "frames_with_det": 0.40601503759398494,
+     "top1_precision": 0.8518518518518519,
+     "top1_recall": 0.3458646616541353,
+     "any_recall": 0.3533834586466165,
+     "noball_false_pos": 0.125
+    },
+    "0.8": {
+     "frames_with_det": 0.10526315789473684,
+     "top1_precision": 0.9285714285714286,
+     "top1_recall": 0.09774436090225563,
+     "any_recall": 0.09774436090225563,
+     "noball_false_pos": 0.0
+    }
+   }
+  },
+  "Bournemouth": {
+   "n_ball": 73,
+   "n_noball": 4,
+   "top1_hit10": 0.6712328767123288,
+   "any_hit10": 0.9726027397260274,
+   "by_thr": {
+    "0.05": {
+     "frames_with_det": 1.0,
+     "top1_precision": 0.6712328767123288,
+     "top1_recall": 0.6712328767123288,
+     "any_recall": 0.9726027397260274,
+     "noball_false_pos": 1.0
+    },
+    "0.1": {
+     "frames_with_det": 1.0,
+     "top1_precision": 0.6712328767123288,
+     "top1_recall": 0.6712328767123288,
+     "any_recall": 0.958904109589041,
+     "noball_false_pos": 1.0
+    },
+    "0.2": {
+     "frames_with_det": 1.0,
+     "top1_precision": 0.6712328767123288,
+     "top1_recall": 0.6712328767123288,
+     "any_recall": 0.8904109589041096,
+     "noball_false_pos": 1.0
+    },
+    "0.3": {
+     "frames_with_det": 0.9863013698630136,
+     "top1_precision": 0.6805555555555556,
+     "top1_recall": 0.6712328767123288,
+     "any_recall": 0.8356164383561644,
+     "noball_false_pos": 1.0
+    },
+    "0.5": {
+     "frames_with_det": 0.8767123287671232,
+     "top1_precision": 0.703125,
+     "top1_recall": 0.6164383561643836,
+     "any_recall": 0.684931506849315,
+     "noball_false_pos": 0.5
+    },
+    "0.7": {
+     "frames_with_det": 0.410958904109589,
+     "top1_precision": 0.9666666666666667,
+     "top1_recall": 0.3972602739726027,
+     "any_recall": 0.3972602739726027,
+     "noball_false_pos": 0.0
+    },
+    "0.8": {
+     "frames_with_det": 0.1095890410958904,
+     "top1_precision": 1.0,
+     "top1_recall": 0.1095890410958904,
+     "any_recall": 0.1095890410958904,
+     "noball_false_pos": 0.0
+    }
+   }
+  },
+  "Man City (no arsenal_example)": {
+   "n_ball": 21,
+   "n_noball": 3,
+   "top1_hit10": 0.7619047619047619,
+   "any_hit10": 1.0,
+   "by_thr": {
+    "0.05": {
+     "frames_with_det": 1.0,
+     "top1_precision": 0.7619047619047619,
+     "top1_recall": 0.7619047619047619,
+     "any_recall": 1.0,
+     "noball_false_pos": 0.6666666666666666
+    },
+    "0.1": {
+     "frames_with_det": 1.0,
+     "top1_precision": 0.7619047619047619,
+     "top1_recall": 0.7619047619047619,
+     "any_recall": 1.0,
+     "noball_false_pos": 0.3333333333333333
+    },
+    "0.2": {
+     "frames_with_det": 1.0,
+     "top1_precision": 0.7619047619047619,
+     "top1_recall": 0.7619047619047619,
+     "any_recall": 1.0,
+     "noball_false_pos": 0.0
+    },
+    "0.3": {
+     "frames_with_det": 1.0,
+     "top1_precision": 0.7619047619047619,
+     "top1_recall": 0.7619047619047619,
+     "any_recall": 1.0,
+     "noball_false_pos": 0.0
+    },
+    "0.5": {
+     "frames_with_det": 0.9523809523809523,
+     "top1_precision": 0.8,
+     "top1_recall": 0.7619047619047619,
+     "any_recall": 0.9523809523809523,
+     "noball_false_pos": 0.0
+    },
+    "0.7": {
+     "frames_with_det": 0.7619047619047619,
+     "top1_precision": 0.75,
+     "top1_recall": 0.5714285714285714,
+     "any_recall": 0.6190476190476191,
+     "noball_false_pos": 0.0
+    },
+    "0.8": {
+     "frames_with_det": 0.2857142857142857,
+     "top1_precision": 0.8333333333333334,
+     "top1_recall": 0.23809523809523808,
+     "any_recall": 0.23809523809523808,
+     "noball_false_pos": 0.0
+    }
+   }
+  },
+  "arsenal_example (held-out frames)": {
+   "n_ball": 20,
+   "n_noball": 0,
+   "top1_hit10": 0.0,
+   "any_hit10": 0.0,
+   "by_thr": {
+    "0.05": {
+     "frames_with_det": 1.0,
+     "top1_precision": 0.0,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": null
+    },
+    "0.1": {
+     "frames_with_det": 0.95,
+     "top1_precision": 0.0,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": null
+    },
+    "0.2": {
+     "frames_with_det": 0.85,
+     "top1_precision": 0.0,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": null
+    },
+    "0.3": {
+     "frames_with_det": 0.75,
+     "top1_precision": 0.0,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": null
+    },
+    "0.5": {
+     "frames_with_det": 0.3,
+     "top1_precision": 0.0,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": null
+    },
+    "0.7": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": null
+    },
+    "0.8": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": null
+    }
+   }
+  },
+  "astonvilla_seg080 (dense)": {
+   "n_ball": 39,
+   "n_noball": 1,
+   "top1_hit10": 0.5128205128205128,
+   "any_hit10": 0.9230769230769231,
+   "by_thr": {
+    "0.05": {
+     "frames_with_det": 1.0,
+     "top1_precision": 0.5128205128205128,
+     "top1_recall": 0.5128205128205128,
+     "any_recall": 0.9230769230769231,
+     "noball_false_pos": 1.0
+    },
+    "0.1": {
+     "frames_with_det": 1.0,
+     "top1_precision": 0.5128205128205128,
+     "top1_recall": 0.5128205128205128,
+     "any_recall": 0.9230769230769231,
+     "noball_false_pos": 1.0
+    },
+    "0.2": {
+     "frames_with_det": 1.0,
+     "top1_precision": 0.5128205128205128,
+     "top1_recall": 0.5128205128205128,
+     "any_recall": 0.8461538461538461,
+     "noball_false_pos": 1.0
+    },
+    "0.3": {
+     "frames_with_det": 0.9743589743589743,
+     "top1_precision": 0.5263157894736842,
+     "top1_recall": 0.5128205128205128,
+     "any_recall": 0.7435897435897436,
+     "noball_false_pos": 1.0
+    },
+    "0.5": {
+     "frames_with_det": 0.717948717948718,
+     "top1_precision": 0.5714285714285714,
+     "top1_recall": 0.41025641025641024,
+     "any_recall": 0.48717948717948717,
+     "noball_false_pos": 1.0
+    },
+    "0.7": {
+     "frames_with_det": 0.20512820512820512,
+     "top1_precision": 0.625,
+     "top1_recall": 0.1282051282051282,
+     "any_recall": 0.1282051282051282,
+     "noball_false_pos": 1.0
+    },
+    "0.8": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 0.0
+    }
+   }
+  }
+ },
+ "full | white ball": {
+  "held-out all (no arsenal_example)": {
+   "n_ball": 133,
+   "n_noball": 8,
+   "top1_hit10": 0.13533834586466165,
+   "any_hit10": 0.5639097744360902,
+   "by_thr": {
+    "0.05": {
+     "frames_with_det": 0.5939849624060151,
+     "top1_precision": 0.21518987341772153,
+     "top1_recall": 0.12781954887218044,
+     "any_recall": 0.3383458646616541,
+     "noball_false_pos": 0.875
+    },
+    "0.1": {
+     "frames_with_det": 0.39849624060150374,
+     "top1_precision": 0.3018867924528302,
+     "top1_recall": 0.12030075187969924,
+     "any_recall": 0.21052631578947367,
+     "noball_false_pos": 0.5
+    },
+    "0.2": {
+     "frames_with_det": 0.2631578947368421,
+     "top1_precision": 0.45714285714285713,
+     "top1_recall": 0.12030075187969924,
+     "any_recall": 0.15037593984962405,
+     "noball_false_pos": 0.25
+    },
+    "0.3": {
+     "frames_with_det": 0.18796992481203006,
+     "top1_precision": 0.6,
+     "top1_recall": 0.11278195488721804,
+     "any_recall": 0.14285714285714285,
+     "noball_false_pos": 0.125
+    },
+    "0.5": {
+     "frames_with_det": 0.14285714285714285,
+     "top1_precision": 0.7894736842105263,
+     "top1_recall": 0.11278195488721804,
+     "any_recall": 0.13533834586466165,
+     "noball_false_pos": 0.0
+    },
+    "0.7": {
+     "frames_with_det": 0.06015037593984962,
+     "top1_precision": 1.0,
+     "top1_recall": 0.06015037593984962,
+     "any_recall": 0.06015037593984962,
+     "noball_false_pos": 0.0
+    },
+    "0.8": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 0.0
+    }
+   }
+  },
+  "Bournemouth": {
+   "n_ball": 73,
+   "n_noball": 4,
+   "top1_hit10": 0.0273972602739726,
+   "any_hit10": 0.5616438356164384,
+   "by_thr": {
+    "0.05": {
+     "frames_with_det": 0.547945205479452,
+     "top1_precision": 0.025,
+     "top1_recall": 0.0136986301369863,
+     "any_recall": 0.3013698630136986,
+     "noball_false_pos": 1.0
+    },
+    "0.1": {
+     "frames_with_det": 0.3424657534246575,
+     "top1_precision": 0.0,
+     "top1_recall": 0.0,
+     "any_recall": 0.1095890410958904,
+     "noball_false_pos": 0.5
+    },
+    "0.2": {
+     "frames_with_det": 0.1643835616438356,
+     "top1_precision": 0.0,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 0.0
+    },
+    "0.3": {
+     "frames_with_det": 0.0547945205479452,
+     "top1_precision": 0.0,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 0.0
+    },
+    "0.5": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 0.0
+    },
+    "0.7": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 0.0
+    },
+    "0.8": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 0.0
+    }
+   }
+  },
+  "Man City (no arsenal_example)": {
+   "n_ball": 21,
+   "n_noball": 3,
+   "top1_hit10": 0.7619047619047619,
+   "any_hit10": 1.0,
+   "by_thr": {
+    "0.05": {
+     "frames_with_det": 1.0,
+     "top1_precision": 0.7619047619047619,
+     "top1_recall": 0.7619047619047619,
+     "any_recall": 1.0,
+     "noball_false_pos": 0.6666666666666666
+    },
+    "0.1": {
+     "frames_with_det": 1.0,
+     "top1_precision": 0.7619047619047619,
+     "top1_recall": 0.7619047619047619,
+     "any_recall": 0.9523809523809523,
+     "noball_false_pos": 0.3333333333333333
+    },
+    "0.2": {
+     "frames_with_det": 0.9523809523809523,
+     "top1_precision": 0.8,
+     "top1_recall": 0.7619047619047619,
+     "any_recall": 0.9523809523809523,
+     "noball_false_pos": 0.3333333333333333
+    },
+    "0.3": {
+     "frames_with_det": 0.9047619047619048,
+     "top1_precision": 0.7894736842105263,
+     "top1_recall": 0.7142857142857143,
+     "any_recall": 0.9047619047619048,
+     "noball_false_pos": 0.3333333333333333
+    },
+    "0.5": {
+     "frames_with_det": 0.9047619047619048,
+     "top1_precision": 0.7894736842105263,
+     "top1_recall": 0.7142857142857143,
+     "any_recall": 0.8571428571428571,
+     "noball_false_pos": 0.0
+    },
+    "0.7": {
+     "frames_with_det": 0.38095238095238093,
+     "top1_precision": 1.0,
+     "top1_recall": 0.38095238095238093,
+     "any_recall": 0.38095238095238093,
+     "noball_false_pos": 0.0
+    },
+    "0.8": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 0.0
+    }
+   }
+  },
+  "arsenal_example (held-out frames)": {
+   "n_ball": 20,
+   "n_noball": 0,
+   "top1_hit10": 0.0,
+   "any_hit10": 0.0,
+   "by_thr": {
+    "0.05": {
+     "frames_with_det": 0.45,
+     "top1_precision": 0.0,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": null
+    },
+    "0.1": {
+     "frames_with_det": 0.25,
+     "top1_precision": 0.0,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": null
+    },
+    "0.2": {
+     "frames_with_det": 0.05,
+     "top1_precision": 0.0,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": null
+    },
+    "0.3": {
+     "frames_with_det": 0.05,
+     "top1_precision": 0.0,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": null
+    },
+    "0.5": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": null
+    },
+    "0.7": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": null
+    },
+    "0.8": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": null
+    }
+   }
+  },
+  "astonvilla_seg080 (dense)": {
+   "n_ball": 39,
+   "n_noball": 1,
+   "top1_hit10": 0.0,
+   "any_hit10": 0.3333333333333333,
+   "by_thr": {
+    "0.05": {
+     "frames_with_det": 0.46153846153846156,
+     "top1_precision": 0.0,
+     "top1_recall": 0.0,
+     "any_recall": 0.05128205128205128,
+     "noball_false_pos": 1.0
+    },
+    "0.1": {
+     "frames_with_det": 0.1794871794871795,
+     "top1_precision": 0.0,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 1.0
+    },
+    "0.2": {
+     "frames_with_det": 0.07692307692307693,
+     "top1_precision": 0.0,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 1.0
+    },
+    "0.3": {
+     "frames_with_det": 0.05128205128205128,
+     "top1_precision": 0.0,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 0.0
+    },
+    "0.5": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 0.0
+    },
+    "0.7": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 0.0
+    },
+    "0.8": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 0.0
+    }
+   }
+  }
+ },
+ "full | yellow ball": {
+  "held-out all (no arsenal_example)": {
+   "n_ball": 133,
+   "n_noball": 8,
+   "top1_hit10": 0.6691729323308271,
+   "any_hit10": 0.8120300751879699,
+   "by_thr": {
+    "0.05": {
+     "frames_with_det": 0.8270676691729323,
+     "top1_precision": 0.8090909090909091,
+     "top1_recall": 0.6691729323308271,
+     "any_recall": 0.7744360902255639,
+     "noball_false_pos": 0.25
+    },
+    "0.1": {
+     "frames_with_det": 0.7894736842105263,
+     "top1_precision": 0.8380952380952381,
+     "top1_recall": 0.6616541353383458,
+     "any_recall": 0.7293233082706767,
+     "noball_false_pos": 0.25
+    },
+    "0.2": {
+     "frames_with_det": 0.7142857142857143,
+     "top1_precision": 0.8842105263157894,
+     "top1_recall": 0.631578947368421,
+     "any_recall": 0.6466165413533834,
+     "noball_false_pos": 0.25
+    },
+    "0.3": {
+     "frames_with_det": 0.6165413533834586,
+     "top1_precision": 0.9512195121951219,
+     "top1_recall": 0.5864661654135338,
+     "any_recall": 0.5939849624060151,
+     "noball_false_pos": 0.125
+    },
+    "0.5": {
+     "frames_with_det": 0.5263157894736842,
+     "top1_precision": 0.9571428571428572,
+     "top1_recall": 0.5037593984962406,
+     "any_recall": 0.5112781954887218,
+     "noball_false_pos": 0.0
+    },
+    "0.7": {
+     "frames_with_det": 0.14285714285714285,
+     "top1_precision": 1.0,
+     "top1_recall": 0.14285714285714285,
+     "any_recall": 0.14285714285714285,
+     "noball_false_pos": 0.0
+    },
+    "0.8": {
+     "frames_with_det": 0.015037593984962405,
+     "top1_precision": 1.0,
+     "top1_recall": 0.015037593984962405,
+     "any_recall": 0.015037593984962405,
+     "noball_false_pos": 0.0
+    }
+   }
+  },
+  "Bournemouth": {
+   "n_ball": 73,
+   "n_noball": 4,
+   "top1_hit10": 0.7808219178082192,
+   "any_hit10": 0.9863013698630136,
+   "by_thr": {
+    "0.05": {
+     "frames_with_det": 0.9726027397260274,
+     "top1_precision": 0.8028169014084507,
+     "top1_recall": 0.7808219178082192,
+     "any_recall": 0.9315068493150684,
+     "noball_false_pos": 0.25
+    },
+    "0.1": {
+     "frames_with_det": 0.9315068493150684,
+     "top1_precision": 0.8235294117647058,
+     "top1_recall": 0.7671232876712328,
+     "any_recall": 0.863013698630137,
+     "noball_false_pos": 0.25
+    },
+    "0.2": {
+     "frames_with_det": 0.8082191780821918,
+     "top1_precision": 0.8813559322033898,
+     "top1_recall": 0.7123287671232876,
+     "any_recall": 0.726027397260274,
+     "noball_false_pos": 0.25
+    },
+    "0.3": {
+     "frames_with_det": 0.6575342465753424,
+     "top1_precision": 0.9583333333333334,
+     "top1_recall": 0.6301369863013698,
+     "any_recall": 0.6438356164383562,
+     "noball_false_pos": 0.25
+    },
+    "0.5": {
+     "frames_with_det": 0.5616438356164384,
+     "top1_precision": 0.9512195121951219,
+     "top1_recall": 0.5342465753424658,
+     "any_recall": 0.547945205479452,
+     "noball_false_pos": 0.0
+    },
+    "0.7": {
+     "frames_with_det": 0.2054794520547945,
+     "top1_precision": 1.0,
+     "top1_recall": 0.2054794520547945,
+     "any_recall": 0.2054794520547945,
+     "noball_false_pos": 0.0
+    },
+    "0.8": {
+     "frames_with_det": 0.0273972602739726,
+     "top1_precision": 1.0,
+     "top1_recall": 0.0273972602739726,
+     "any_recall": 0.0273972602739726,
+     "noball_false_pos": 0.0
+    }
+   }
+  },
+  "Man City (no arsenal_example)": {
+   "n_ball": 21,
+   "n_noball": 3,
+   "top1_hit10": 0.0,
+   "any_hit10": 0.0,
+   "by_thr": {
+    "0.05": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 0.0
+    },
+    "0.1": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 0.0
+    },
+    "0.2": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 0.0
+    },
+    "0.3": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 0.0
+    },
+    "0.5": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 0.0
+    },
+    "0.7": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 0.0
+    },
+    "0.8": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 0.0
+    }
+   }
+  },
+  "arsenal_example (held-out frames)": {
+   "n_ball": 20,
+   "n_noball": 0,
+   "top1_hit10": 0.0,
+   "any_hit10": 0.0,
+   "by_thr": {
+    "0.05": {
+     "frames_with_det": 0.05,
+     "top1_precision": 0.0,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": null
+    },
+    "0.1": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": null
+    },
+    "0.2": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": null
+    },
+    "0.3": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": null
+    },
+    "0.5": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": null
+    },
+    "0.7": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": null
+    },
+    "0.8": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": null
+    }
+   }
+  },
+  "astonvilla_seg080 (dense)": {
+   "n_ball": 39,
+   "n_noball": 1,
+   "top1_hit10": 0.8205128205128205,
+   "any_hit10": 0.9230769230769231,
+   "by_thr": {
+    "0.05": {
+     "frames_with_det": 1.0,
+     "top1_precision": 0.8205128205128205,
+     "top1_recall": 0.8205128205128205,
+     "any_recall": 0.8974358974358975,
+     "noball_false_pos": 1.0
+    },
+    "0.1": {
+     "frames_with_det": 0.9487179487179487,
+     "top1_precision": 0.8648648648648649,
+     "top1_recall": 0.8205128205128205,
+     "any_recall": 0.8717948717948718,
+     "noball_false_pos": 1.0
+    },
+    "0.2": {
+     "frames_with_det": 0.9230769230769231,
+     "top1_precision": 0.8888888888888888,
+     "top1_recall": 0.8205128205128205,
+     "any_recall": 0.8461538461538461,
+     "noball_false_pos": 1.0
+    },
+    "0.3": {
+     "frames_with_det": 0.8717948717948718,
+     "top1_precision": 0.9411764705882353,
+     "top1_recall": 0.8205128205128205,
+     "any_recall": 0.8205128205128205,
+     "noball_false_pos": 0.0
+    },
+    "0.5": {
+     "frames_with_det": 0.7435897435897436,
+     "top1_precision": 0.9655172413793104,
+     "top1_recall": 0.717948717948718,
+     "any_recall": 0.717948717948718,
+     "noball_false_pos": 0.0
+    },
+    "0.7": {
+     "frames_with_det": 0.10256410256410256,
+     "top1_precision": 1.0,
+     "top1_recall": 0.10256410256410256,
+     "any_recall": 0.10256410256410256,
+     "noball_false_pos": 0.0
+    },
+    "0.8": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 0.0
+    }
+   }
+  }
+ },
+ "t384 | ball": {
+  "held-out all (no arsenal_example)": {
+   "n_ball": 133,
+   "n_noball": 8,
+   "top1_hit10": 0.849624060150376,
+   "any_hit10": 0.9548872180451128,
+   "by_thr": {
+    "0.05": {
+     "frames_with_det": 0.9849624060150376,
+     "top1_precision": 0.8549618320610687,
+     "top1_recall": 0.8421052631578947,
+     "any_recall": 0.9398496240601504,
+     "noball_false_pos": 0.75
+    },
+    "0.1": {
+     "frames_with_det": 0.9624060150375939,
+     "top1_precision": 0.8671875,
+     "top1_recall": 0.8345864661654135,
+     "any_recall": 0.9097744360902256,
+     "noball_false_pos": 0.625
+    },
+    "0.2": {
+     "frames_with_det": 0.9398496240601504,
+     "top1_precision": 0.88,
+     "top1_recall": 0.8270676691729323,
+     "any_recall": 0.8872180451127819,
+     "noball_false_pos": 0.375
+    },
+    "0.3": {
+     "frames_with_det": 0.8721804511278195,
+     "top1_precision": 0.9137931034482759,
+     "top1_recall": 0.7969924812030075,
+     "any_recall": 0.8345864661654135,
+     "noball_false_pos": 0.125
+    },
+    "0.5": {
+     "frames_with_det": 0.706766917293233,
+     "top1_precision": 0.9468085106382979,
+     "top1_recall": 0.6691729323308271,
+     "any_recall": 0.6766917293233082,
+     "noball_false_pos": 0.125
+    },
+    "0.7": {
+     "frames_with_det": 0.2781954887218045,
+     "top1_precision": 1.0,
+     "top1_recall": 0.2781954887218045,
+     "any_recall": 0.2781954887218045,
+     "noball_false_pos": 0.0
+    },
+    "0.8": {
+     "frames_with_det": 0.05263157894736842,
+     "top1_precision": 1.0,
+     "top1_recall": 0.05263157894736842,
+     "any_recall": 0.05263157894736842,
+     "noball_false_pos": 0.0
+    }
+   }
+  },
+  "Bournemouth": {
+   "n_ball": 73,
+   "n_noball": 4,
+   "top1_hit10": 0.8493150684931506,
+   "any_hit10": 0.958904109589041,
+   "by_thr": {
+    "0.05": {
+     "frames_with_det": 0.9863013698630136,
+     "top1_precision": 0.8472222222222222,
+     "top1_recall": 0.8356164383561644,
+     "any_recall": 0.9315068493150684,
+     "noball_false_pos": 0.75
+    },
+    "0.1": {
+     "frames_with_det": 0.958904109589041,
+     "top1_precision": 0.8571428571428571,
+     "top1_recall": 0.821917808219178,
+     "any_recall": 0.9041095890410958,
+     "noball_false_pos": 0.5
+    },
+    "0.2": {
+     "frames_with_det": 0.9452054794520548,
+     "top1_precision": 0.855072463768116,
+     "top1_recall": 0.8082191780821918,
+     "any_recall": 0.863013698630137,
+     "noball_false_pos": 0.25
+    },
+    "0.3": {
+     "frames_with_det": 0.863013698630137,
+     "top1_precision": 0.8888888888888888,
+     "top1_recall": 0.7671232876712328,
+     "any_recall": 0.8082191780821918,
+     "noball_false_pos": 0.25
+    },
+    "0.5": {
+     "frames_with_det": 0.6575342465753424,
+     "top1_precision": 0.8958333333333334,
+     "top1_recall": 0.589041095890411,
+     "any_recall": 0.6027397260273972,
+     "noball_false_pos": 0.25
+    },
+    "0.7": {
+     "frames_with_det": 0.2602739726027397,
+     "top1_precision": 1.0,
+     "top1_recall": 0.2602739726027397,
+     "any_recall": 0.2602739726027397,
+     "noball_false_pos": 0.0
+    },
+    "0.8": {
+     "frames_with_det": 0.0410958904109589,
+     "top1_precision": 1.0,
+     "top1_recall": 0.0410958904109589,
+     "any_recall": 0.0410958904109589,
+     "noball_false_pos": 0.0
+    }
+   }
+  },
+  "Man City (no arsenal_example)": {
+   "n_ball": 21,
+   "n_noball": 3,
+   "top1_hit10": 0.8571428571428571,
+   "any_hit10": 0.9523809523809523,
+   "by_thr": {
+    "0.05": {
+     "frames_with_det": 0.9523809523809523,
+     "top1_precision": 0.9,
+     "top1_recall": 0.8571428571428571,
+     "any_recall": 0.9523809523809523,
+     "noball_false_pos": 0.6666666666666666
+    },
+    "0.1": {
+     "frames_with_det": 0.9523809523809523,
+     "top1_precision": 0.9,
+     "top1_recall": 0.8571428571428571,
+     "any_recall": 0.9523809523809523,
+     "noball_false_pos": 0.6666666666666666
+    },
+    "0.2": {
+     "frames_with_det": 0.9523809523809523,
+     "top1_precision": 0.9,
+     "top1_recall": 0.8571428571428571,
+     "any_recall": 0.9523809523809523,
+     "noball_false_pos": 0.6666666666666666
+    },
+    "0.3": {
+     "frames_with_det": 0.9523809523809523,
+     "top1_precision": 0.9,
+     "top1_recall": 0.8571428571428571,
+     "any_recall": 0.9523809523809523,
+     "noball_false_pos": 0.0
+    },
+    "0.5": {
+     "frames_with_det": 0.8095238095238095,
+     "top1_precision": 1.0,
+     "top1_recall": 0.8095238095238095,
+     "any_recall": 0.8095238095238095,
+     "noball_false_pos": 0.0
+    },
+    "0.7": {
+     "frames_with_det": 0.47619047619047616,
+     "top1_precision": 1.0,
+     "top1_recall": 0.47619047619047616,
+     "any_recall": 0.47619047619047616,
+     "noball_false_pos": 0.0
+    },
+    "0.8": {
+     "frames_with_det": 0.19047619047619047,
+     "top1_precision": 1.0,
+     "top1_recall": 0.19047619047619047,
+     "any_recall": 0.19047619047619047,
+     "noball_false_pos": 0.0
+    }
+   }
+  },
+  "arsenal_example (held-out frames)": {
+   "n_ball": 20,
+   "n_noball": 0,
+   "top1_hit10": 0.05,
+   "any_hit10": 0.05,
+   "by_thr": {
+    "0.05": {
+     "frames_with_det": 0.45,
+     "top1_precision": 0.1111111111111111,
+     "top1_recall": 0.05,
+     "any_recall": 0.05,
+     "noball_false_pos": null
+    },
+    "0.1": {
+     "frames_with_det": 0.2,
+     "top1_precision": 0.25,
+     "top1_recall": 0.05,
+     "any_recall": 0.05,
+     "noball_false_pos": null
+    },
+    "0.2": {
+     "frames_with_det": 0.05,
+     "top1_precision": 1.0,
+     "top1_recall": 0.05,
+     "any_recall": 0.05,
+     "noball_false_pos": null
+    },
+    "0.3": {
+     "frames_with_det": 0.05,
+     "top1_precision": 1.0,
+     "top1_recall": 0.05,
+     "any_recall": 0.05,
+     "noball_false_pos": null
+    },
+    "0.5": {
+     "frames_with_det": 0.05,
+     "top1_precision": 1.0,
+     "top1_recall": 0.05,
+     "any_recall": 0.05,
+     "noball_false_pos": null
+    },
+    "0.7": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": null
+    },
+    "0.8": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": null
+    }
+   }
+  },
+  "astonvilla_seg080 (dense)": {
+   "n_ball": 39,
+   "n_noball": 1,
+   "top1_hit10": 0.8461538461538461,
+   "any_hit10": 0.9487179487179487,
+   "by_thr": {
+    "0.05": {
+     "frames_with_det": 1.0,
+     "top1_precision": 0.8461538461538461,
+     "top1_recall": 0.8461538461538461,
+     "any_recall": 0.9487179487179487,
+     "noball_false_pos": 1.0
+    },
+    "0.1": {
+     "frames_with_det": 0.9743589743589743,
+     "top1_precision": 0.868421052631579,
+     "top1_recall": 0.8461538461538461,
+     "any_recall": 0.8974358974358975,
+     "noball_false_pos": 1.0
+    },
+    "0.2": {
+     "frames_with_det": 0.9230769230769231,
+     "top1_precision": 0.9166666666666666,
+     "top1_recall": 0.8461538461538461,
+     "any_recall": 0.8974358974358975,
+     "noball_false_pos": 0.0
+    },
+    "0.3": {
+     "frames_with_det": 0.8461538461538461,
+     "top1_precision": 0.9696969696969697,
+     "top1_recall": 0.8205128205128205,
+     "any_recall": 0.8205128205128205,
+     "noball_false_pos": 0.0
+    },
+    "0.5": {
+     "frames_with_det": 0.7435897435897436,
+     "top1_precision": 1.0,
+     "top1_recall": 0.7435897435897436,
+     "any_recall": 0.7435897435897436,
+     "noball_false_pos": 0.0
+    },
+    "0.7": {
+     "frames_with_det": 0.20512820512820512,
+     "top1_precision": 1.0,
+     "top1_recall": 0.20512820512820512,
+     "any_recall": 0.20512820512820512,
+     "noball_false_pos": 0.0
+    },
+    "0.8": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 0.0
+    }
+   }
+  }
+ },
+ "t384 | football": {
+  "held-out all (no arsenal_example)": {
+   "n_ball": 133,
+   "n_noball": 8,
+   "top1_hit10": 0.631578947368421,
+   "any_hit10": 0.924812030075188,
+   "by_thr": {
+    "0.05": {
+     "frames_with_det": 0.9699248120300752,
+     "top1_precision": 0.6356589147286822,
+     "top1_recall": 0.6165413533834586,
+     "any_recall": 0.8345864661654135,
+     "noball_false_pos": 0.625
+    },
+    "0.1": {
+     "frames_with_det": 0.8571428571428571,
+     "top1_precision": 0.6754385964912281,
+     "top1_recall": 0.5789473684210527,
+     "any_recall": 0.7142857142857143,
+     "noball_false_pos": 0.375
+    },
+    "0.2": {
+     "frames_with_det": 0.7293233082706767,
+     "top1_precision": 0.7010309278350515,
+     "top1_recall": 0.5112781954887218,
+     "any_recall": 0.5789473684210527,
+     "noball_false_pos": 0.0
+    },
+    "0.3": {
+     "frames_with_det": 0.49624060150375937,
+     "top1_precision": 0.7424242424242424,
+     "top1_recall": 0.3684210526315789,
+     "any_recall": 0.39097744360902253,
+     "noball_false_pos": 0.0
+    },
+    "0.5": {
+     "frames_with_det": 0.15789473684210525,
+     "top1_precision": 0.7142857142857143,
+     "top1_recall": 0.11278195488721804,
+     "any_recall": 0.12030075187969924,
+     "noball_false_pos": 0.0
+    },
+    "0.7": {
+     "frames_with_det": 0.022556390977443608,
+     "top1_precision": 1.0,
+     "top1_recall": 0.022556390977443608,
+     "any_recall": 0.022556390977443608,
+     "noball_false_pos": 0.0
+    },
+    "0.8": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 0.0
+    }
+   }
+  },
+  "Bournemouth": {
+   "n_ball": 73,
+   "n_noball": 4,
+   "top1_hit10": 0.6301369863013698,
+   "any_hit10": 0.9315068493150684,
+   "by_thr": {
+    "0.05": {
+     "frames_with_det": 0.9863013698630136,
+     "top1_precision": 0.6388888888888888,
+     "top1_recall": 0.6301369863013698,
+     "any_recall": 0.863013698630137,
+     "noball_false_pos": 0.5
+    },
+    "0.1": {
+     "frames_with_det": 0.8904109589041096,
+     "top1_precision": 0.6615384615384615,
+     "top1_recall": 0.589041095890411,
+     "any_recall": 0.7397260273972602,
+     "noball_false_pos": 0.25
+    },
+    "0.2": {
+     "frames_with_det": 0.7945205479452054,
+     "top1_precision": 0.6724137931034483,
+     "top1_recall": 0.5342465753424658,
+     "any_recall": 0.6027397260273972,
+     "noball_false_pos": 0.0
+    },
+    "0.3": {
+     "frames_with_det": 0.5342465753424658,
+     "top1_precision": 0.6666666666666666,
+     "top1_recall": 0.3561643835616438,
+     "any_recall": 0.3835616438356164,
+     "noball_false_pos": 0.0
+    },
+    "0.5": {
+     "frames_with_det": 0.1232876712328767,
+     "top1_precision": 0.4444444444444444,
+     "top1_recall": 0.0547945205479452,
+     "any_recall": 0.0547945205479452,
+     "noball_false_pos": 0.0
+    },
+    "0.7": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 0.0
+    },
+    "0.8": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 0.0
+    }
+   }
+  },
+  "Man City (no arsenal_example)": {
+   "n_ball": 21,
+   "n_noball": 3,
+   "top1_hit10": 0.9047619047619048,
+   "any_hit10": 1.0,
+   "by_thr": {
+    "0.05": {
+     "frames_with_det": 0.9523809523809523,
+     "top1_precision": 0.9,
+     "top1_recall": 0.8571428571428571,
+     "any_recall": 0.9523809523809523,
+     "noball_false_pos": 0.6666666666666666
+    },
+    "0.1": {
+     "frames_with_det": 0.9047619047619048,
+     "top1_precision": 0.9473684210526315,
+     "top1_recall": 0.8571428571428571,
+     "any_recall": 0.9047619047619048,
+     "noball_false_pos": 0.3333333333333333
+    },
+    "0.2": {
+     "frames_with_det": 0.9047619047619048,
+     "top1_precision": 0.9473684210526315,
+     "top1_recall": 0.8571428571428571,
+     "any_recall": 0.9047619047619048,
+     "noball_false_pos": 0.0
+    },
+    "0.3": {
+     "frames_with_det": 0.8095238095238095,
+     "top1_precision": 0.9411764705882353,
+     "top1_recall": 0.7619047619047619,
+     "any_recall": 0.8095238095238095,
+     "noball_false_pos": 0.0
+    },
+    "0.5": {
+     "frames_with_det": 0.47619047619047616,
+     "top1_precision": 0.9,
+     "top1_recall": 0.42857142857142855,
+     "any_recall": 0.47619047619047616,
+     "noball_false_pos": 0.0
+    },
+    "0.7": {
+     "frames_with_det": 0.14285714285714285,
+     "top1_precision": 1.0,
+     "top1_recall": 0.14285714285714285,
+     "any_recall": 0.14285714285714285,
+     "noball_false_pos": 0.0
+    },
+    "0.8": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 0.0
+    }
+   }
+  },
+  "arsenal_example (held-out frames)": {
+   "n_ball": 20,
+   "n_noball": 0,
+   "top1_hit10": 0.05,
+   "any_hit10": 0.05,
+   "by_thr": {
+    "0.05": {
+     "frames_with_det": 0.8,
+     "top1_precision": 0.0625,
+     "top1_recall": 0.05,
+     "any_recall": 0.05,
+     "noball_false_pos": null
+    },
+    "0.1": {
+     "frames_with_det": 0.3,
+     "top1_precision": 0.16666666666666666,
+     "top1_recall": 0.05,
+     "any_recall": 0.05,
+     "noball_false_pos": null
+    },
+    "0.2": {
+     "frames_with_det": 0.05,
+     "top1_precision": 1.0,
+     "top1_recall": 0.05,
+     "any_recall": 0.05,
+     "noball_false_pos": null
+    },
+    "0.3": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": null
+    },
+    "0.5": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": null
+    },
+    "0.7": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": null
+    },
+    "0.8": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": null
+    }
+   }
+  },
+  "astonvilla_seg080 (dense)": {
+   "n_ball": 39,
+   "n_noball": 1,
+   "top1_hit10": 0.48717948717948717,
+   "any_hit10": 0.8717948717948718,
+   "by_thr": {
+    "0.05": {
+     "frames_with_det": 0.9487179487179487,
+     "top1_precision": 0.4864864864864865,
+     "top1_recall": 0.46153846153846156,
+     "any_recall": 0.717948717948718,
+     "noball_false_pos": 1.0
+    },
+    "0.1": {
+     "frames_with_det": 0.7692307692307693,
+     "top1_precision": 0.5333333333333333,
+     "top1_recall": 0.41025641025641024,
+     "any_recall": 0.5641025641025641,
+     "noball_false_pos": 1.0
+    },
+    "0.2": {
+     "frames_with_det": 0.5128205128205128,
+     "top1_precision": 0.55,
+     "top1_recall": 0.28205128205128205,
+     "any_recall": 0.358974358974359,
+     "noball_false_pos": 0.0
+    },
+    "0.3": {
+     "frames_with_det": 0.2564102564102564,
+     "top1_precision": 0.7,
+     "top1_recall": 0.1794871794871795,
+     "any_recall": 0.1794871794871795,
+     "noball_false_pos": 0.0
+    },
+    "0.5": {
+     "frames_with_det": 0.05128205128205128,
+     "top1_precision": 1.0,
+     "top1_recall": 0.05128205128205128,
+     "any_recall": 0.05128205128205128,
+     "noball_false_pos": 0.0
+    },
+    "0.7": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 0.0
+    },
+    "0.8": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 0.0
+    }
+   }
+  }
+ },
+ "t384 | small white ball": {
+  "held-out all (no arsenal_example)": {
+   "n_ball": 133,
+   "n_noball": 8,
+   "top1_hit10": 0.15789473684210525,
+   "any_hit10": 0.3533834586466165,
+   "by_thr": {
+    "0.05": {
+     "frames_with_det": 0.6015037593984962,
+     "top1_precision": 0.2625,
+     "top1_recall": 0.15789473684210525,
+     "any_recall": 0.2781954887218045,
+     "noball_false_pos": 0.625
+    },
+    "0.1": {
+     "frames_with_det": 0.46616541353383456,
+     "top1_precision": 0.3225806451612903,
+     "top1_recall": 0.15037593984962405,
+     "any_recall": 0.16541353383458646,
+     "noball_false_pos": 0.5
+    },
+    "0.2": {
+     "frames_with_det": 0.3233082706766917,
+     "top1_precision": 0.46511627906976744,
+     "top1_recall": 0.15037593984962405,
+     "any_recall": 0.15037593984962405,
+     "noball_false_pos": 0.5
+    },
+    "0.3": {
+     "frames_with_det": 0.18796992481203006,
+     "top1_precision": 0.68,
+     "top1_recall": 0.12781954887218044,
+     "any_recall": 0.12781954887218044,
+     "noball_false_pos": 0.25
+    },
+    "0.5": {
+     "frames_with_det": 0.12781954887218044,
+     "top1_precision": 0.8823529411764706,
+     "top1_recall": 0.11278195488721804,
+     "any_recall": 0.11278195488721804,
+     "noball_false_pos": 0.0
+    },
+    "0.7": {
+     "frames_with_det": 0.03007518796992481,
+     "top1_precision": 1.0,
+     "top1_recall": 0.03007518796992481,
+     "any_recall": 0.03007518796992481,
+     "noball_false_pos": 0.0
+    },
+    "0.8": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 0.0
+    }
+   }
+  },
+  "Bournemouth": {
+   "n_ball": 73,
+   "n_noball": 4,
+   "top1_hit10": 0.0136986301369863,
+   "any_hit10": 0.0821917808219178,
+   "by_thr": {
+    "0.05": {
+     "frames_with_det": 0.4657534246575342,
+     "top1_precision": 0.029411764705882353,
+     "top1_recall": 0.0136986301369863,
+     "any_recall": 0.0547945205479452,
+     "noball_false_pos": 0.25
+    },
+    "0.1": {
+     "frames_with_det": 0.2876712328767123,
+     "top1_precision": 0.0,
+     "top1_recall": 0.0,
+     "any_recall": 0.0136986301369863,
+     "noball_false_pos": 0.25
+    },
+    "0.2": {
+     "frames_with_det": 0.136986301369863,
+     "top1_precision": 0.0,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 0.25
+    },
+    "0.3": {
+     "frames_with_det": 0.0410958904109589,
+     "top1_precision": 0.0,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 0.0
+    },
+    "0.5": {
+     "frames_with_det": 0.0136986301369863,
+     "top1_precision": 0.0,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 0.0
+    },
+    "0.7": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 0.0
+    },
+    "0.8": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 0.0
+    }
+   }
+  },
+  "Man City (no arsenal_example)": {
+   "n_ball": 21,
+   "n_noball": 3,
+   "top1_hit10": 0.9523809523809523,
+   "any_hit10": 1.0,
+   "by_thr": {
+    "0.05": {
+     "frames_with_det": 1.0,
+     "top1_precision": 0.9523809523809523,
+     "top1_recall": 0.9523809523809523,
+     "any_recall": 0.9523809523809523,
+     "noball_false_pos": 1.0
+    },
+    "0.1": {
+     "frames_with_det": 0.9523809523809523,
+     "top1_precision": 1.0,
+     "top1_recall": 0.9523809523809523,
+     "any_recall": 0.9523809523809523,
+     "noball_false_pos": 0.6666666666666666
+    },
+    "0.2": {
+     "frames_with_det": 0.9523809523809523,
+     "top1_precision": 1.0,
+     "top1_recall": 0.9523809523809523,
+     "any_recall": 0.9523809523809523,
+     "noball_false_pos": 0.6666666666666666
+    },
+    "0.3": {
+     "frames_with_det": 0.8095238095238095,
+     "top1_precision": 1.0,
+     "top1_recall": 0.8095238095238095,
+     "any_recall": 0.8095238095238095,
+     "noball_false_pos": 0.6666666666666666
+    },
+    "0.5": {
+     "frames_with_det": 0.7142857142857143,
+     "top1_precision": 1.0,
+     "top1_recall": 0.7142857142857143,
+     "any_recall": 0.7142857142857143,
+     "noball_false_pos": 0.0
+    },
+    "0.7": {
+     "frames_with_det": 0.19047619047619047,
+     "top1_precision": 1.0,
+     "top1_recall": 0.19047619047619047,
+     "any_recall": 0.19047619047619047,
+     "noball_false_pos": 0.0
+    },
+    "0.8": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 0.0
+    }
+   }
+  },
+  "arsenal_example (held-out frames)": {
+   "n_ball": 20,
+   "n_noball": 0,
+   "top1_hit10": 0.05,
+   "any_hit10": 0.05,
+   "by_thr": {
+    "0.05": {
+     "frames_with_det": 0.65,
+     "top1_precision": 0.07692307692307693,
+     "top1_recall": 0.05,
+     "any_recall": 0.05,
+     "noball_false_pos": null
+    },
+    "0.1": {
+     "frames_with_det": 0.35,
+     "top1_precision": 0.14285714285714285,
+     "top1_recall": 0.05,
+     "any_recall": 0.05,
+     "noball_false_pos": null
+    },
+    "0.2": {
+     "frames_with_det": 0.05,
+     "top1_precision": 1.0,
+     "top1_recall": 0.05,
+     "any_recall": 0.05,
+     "noball_false_pos": null
+    },
+    "0.3": {
+     "frames_with_det": 0.05,
+     "top1_precision": 1.0,
+     "top1_recall": 0.05,
+     "any_recall": 0.05,
+     "noball_false_pos": null
+    },
+    "0.5": {
+     "frames_with_det": 0.05,
+     "top1_precision": 1.0,
+     "top1_recall": 0.05,
+     "any_recall": 0.05,
+     "noball_false_pos": null
+    },
+    "0.7": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": null
+    },
+    "0.8": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": null
+    }
+   }
+  },
+  "astonvilla_seg080 (dense)": {
+   "n_ball": 39,
+   "n_noball": 1,
+   "top1_hit10": 0.0,
+   "any_hit10": 0.5128205128205128,
+   "by_thr": {
+    "0.05": {
+     "frames_with_det": 0.6410256410256411,
+     "top1_precision": 0.0,
+     "top1_recall": 0.0,
+     "any_recall": 0.3333333333333333,
+     "noball_false_pos": 1.0
+    },
+    "0.1": {
+     "frames_with_det": 0.5384615384615384,
+     "top1_precision": 0.0,
+     "top1_recall": 0.0,
+     "any_recall": 0.02564102564102564,
+     "noball_false_pos": 1.0
+    },
+    "0.2": {
+     "frames_with_det": 0.3333333333333333,
+     "top1_precision": 0.0,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 1.0
+    },
+    "0.3": {
+     "frames_with_det": 0.1282051282051282,
+     "top1_precision": 0.0,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 0.0
+    },
+    "0.5": {
+     "frames_with_det": 0.02564102564102564,
+     "top1_precision": 0.0,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 0.0
+    },
+    "0.7": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 0.0
+    },
+    "0.8": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 0.0
+    }
+   }
+  }
+ },
+ "t384 | soccer ball": {
+  "held-out all (no arsenal_example)": {
+   "n_ball": 133,
+   "n_noball": 8,
+   "top1_hit10": 0.7443609022556391,
+   "any_hit10": 0.9624060150375939,
+   "by_thr": {
+    "0.05": {
+     "frames_with_det": 1.0,
+     "top1_precision": 0.7443609022556391,
+     "top1_recall": 0.7443609022556391,
+     "any_recall": 0.9624060150375939,
+     "noball_false_pos": 1.0
+    },
+    "0.1": {
+     "frames_with_det": 1.0,
+     "top1_precision": 0.7443609022556391,
+     "top1_recall": 0.7443609022556391,
+     "any_recall": 0.9548872180451128,
+     "noball_false_pos": 0.875
+    },
+    "0.2": {
+     "frames_with_det": 0.9924812030075187,
+     "top1_precision": 0.75,
+     "top1_recall": 0.7443609022556391,
+     "any_recall": 0.9097744360902256,
+     "noball_false_pos": 0.75
+    },
+    "0.3": {
+     "frames_with_det": 0.9699248120300752,
+     "top1_precision": 0.7674418604651163,
+     "top1_recall": 0.7443609022556391,
+     "any_recall": 0.8796992481203008,
+     "noball_false_pos": 0.75
+    },
+    "0.5": {
+     "frames_with_det": 0.9022556390977443,
+     "top1_precision": 0.8,
+     "top1_recall": 0.7218045112781954,
+     "any_recall": 0.7819548872180451,
+     "noball_false_pos": 0.25
+    },
+    "0.7": {
+     "frames_with_det": 0.6390977443609023,
+     "top1_precision": 0.9294117647058824,
+     "top1_recall": 0.5939849624060151,
+     "any_recall": 0.6015037593984962,
+     "noball_false_pos": 0.0
+    },
+    "0.8": {
+     "frames_with_det": 0.3609022556390977,
+     "top1_precision": 1.0,
+     "top1_recall": 0.3609022556390977,
+     "any_recall": 0.3609022556390977,
+     "noball_false_pos": 0.0
+    }
+   }
+  },
+  "Bournemouth": {
+   "n_ball": 73,
+   "n_noball": 4,
+   "top1_hit10": 0.7671232876712328,
+   "any_hit10": 0.958904109589041,
+   "by_thr": {
+    "0.05": {
+     "frames_with_det": 1.0,
+     "top1_precision": 0.7671232876712328,
+     "top1_recall": 0.7671232876712328,
+     "any_recall": 0.958904109589041,
+     "noball_false_pos": 1.0
+    },
+    "0.1": {
+     "frames_with_det": 1.0,
+     "top1_precision": 0.7671232876712328,
+     "top1_recall": 0.7671232876712328,
+     "any_recall": 0.958904109589041,
+     "noball_false_pos": 1.0
+    },
+    "0.2": {
+     "frames_with_det": 1.0,
+     "top1_precision": 0.7671232876712328,
+     "top1_recall": 0.7671232876712328,
+     "any_recall": 0.9315068493150684,
+     "noball_false_pos": 0.75
+    },
+    "0.3": {
+     "frames_with_det": 0.9726027397260274,
+     "top1_precision": 0.7887323943661971,
+     "top1_recall": 0.7671232876712328,
+     "any_recall": 0.9041095890410958,
+     "noball_false_pos": 0.75
+    },
+    "0.5": {
+     "frames_with_det": 0.8904109589041096,
+     "top1_precision": 0.8153846153846154,
+     "top1_recall": 0.726027397260274,
+     "any_recall": 0.7945205479452054,
+     "noball_false_pos": 0.25
+    },
+    "0.7": {
+     "frames_with_det": 0.589041095890411,
+     "top1_precision": 0.9534883720930233,
+     "top1_recall": 0.5616438356164384,
+     "any_recall": 0.5753424657534246,
+     "noball_false_pos": 0.0
+    },
+    "0.8": {
+     "frames_with_det": 0.4383561643835616,
+     "top1_precision": 1.0,
+     "top1_recall": 0.4383561643835616,
+     "any_recall": 0.4383561643835616,
+     "noball_false_pos": 0.0
+    }
+   }
+  },
+  "Man City (no arsenal_example)": {
+   "n_ball": 21,
+   "n_noball": 3,
+   "top1_hit10": 0.9523809523809523,
+   "any_hit10": 1.0,
+   "by_thr": {
+    "0.05": {
+     "frames_with_det": 1.0,
+     "top1_precision": 0.9523809523809523,
+     "top1_recall": 0.9523809523809523,
+     "any_recall": 1.0,
+     "noball_false_pos": 1.0
+    },
+    "0.1": {
+     "frames_with_det": 1.0,
+     "top1_precision": 0.9523809523809523,
+     "top1_recall": 0.9523809523809523,
+     "any_recall": 1.0,
+     "noball_false_pos": 0.6666666666666666
+    },
+    "0.2": {
+     "frames_with_det": 0.9523809523809523,
+     "top1_precision": 1.0,
+     "top1_recall": 0.9523809523809523,
+     "any_recall": 0.9523809523809523,
+     "noball_false_pos": 0.6666666666666666
+    },
+    "0.3": {
+     "frames_with_det": 0.9523809523809523,
+     "top1_precision": 1.0,
+     "top1_recall": 0.9523809523809523,
+     "any_recall": 0.9523809523809523,
+     "noball_false_pos": 0.6666666666666666
+    },
+    "0.5": {
+     "frames_with_det": 0.9523809523809523,
+     "top1_precision": 1.0,
+     "top1_recall": 0.9523809523809523,
+     "any_recall": 0.9523809523809523,
+     "noball_false_pos": 0.0
+    },
+    "0.7": {
+     "frames_with_det": 0.9047619047619048,
+     "top1_precision": 1.0,
+     "top1_recall": 0.9047619047619048,
+     "any_recall": 0.9047619047619048,
+     "noball_false_pos": 0.0
+    },
+    "0.8": {
+     "frames_with_det": 0.47619047619047616,
+     "top1_precision": 1.0,
+     "top1_recall": 0.47619047619047616,
+     "any_recall": 0.47619047619047616,
+     "noball_false_pos": 0.0
+    }
+   }
+  },
+  "arsenal_example (held-out frames)": {
+   "n_ball": 20,
+   "n_noball": 0,
+   "top1_hit10": 0.05,
+   "any_hit10": 0.05,
+   "by_thr": {
+    "0.05": {
+     "frames_with_det": 1.0,
+     "top1_precision": 0.05,
+     "top1_recall": 0.05,
+     "any_recall": 0.05,
+     "noball_false_pos": null
+    },
+    "0.1": {
+     "frames_with_det": 0.95,
+     "top1_precision": 0.05263157894736842,
+     "top1_recall": 0.05,
+     "any_recall": 0.05,
+     "noball_false_pos": null
+    },
+    "0.2": {
+     "frames_with_det": 0.9,
+     "top1_precision": 0.05555555555555555,
+     "top1_recall": 0.05,
+     "any_recall": 0.05,
+     "noball_false_pos": null
+    },
+    "0.3": {
+     "frames_with_det": 0.8,
+     "top1_precision": 0.0625,
+     "top1_recall": 0.05,
+     "any_recall": 0.05,
+     "noball_false_pos": null
+    },
+    "0.5": {
+     "frames_with_det": 0.45,
+     "top1_precision": 0.1111111111111111,
+     "top1_recall": 0.05,
+     "any_recall": 0.05,
+     "noball_false_pos": null
+    },
+    "0.7": {
+     "frames_with_det": 0.05,
+     "top1_precision": 1.0,
+     "top1_recall": 0.05,
+     "any_recall": 0.05,
+     "noball_false_pos": null
+    },
+    "0.8": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": null
+    }
+   }
+  },
+  "astonvilla_seg080 (dense)": {
+   "n_ball": 39,
+   "n_noball": 1,
+   "top1_hit10": 0.5897435897435898,
+   "any_hit10": 0.9487179487179487,
+   "by_thr": {
+    "0.05": {
+     "frames_with_det": 1.0,
+     "top1_precision": 0.5897435897435898,
+     "top1_recall": 0.5897435897435898,
+     "any_recall": 0.9487179487179487,
+     "noball_false_pos": 1.0
+    },
+    "0.1": {
+     "frames_with_det": 1.0,
+     "top1_precision": 0.5897435897435898,
+     "top1_recall": 0.5897435897435898,
+     "any_recall": 0.9230769230769231,
+     "noball_false_pos": 1.0
+    },
+    "0.2": {
+     "frames_with_det": 1.0,
+     "top1_precision": 0.5897435897435898,
+     "top1_recall": 0.5897435897435898,
+     "any_recall": 0.8461538461538461,
+     "noball_false_pos": 1.0
+    },
+    "0.3": {
+     "frames_with_det": 0.9743589743589743,
+     "top1_precision": 0.6052631578947368,
+     "top1_recall": 0.5897435897435898,
+     "any_recall": 0.7948717948717948,
+     "noball_false_pos": 1.0
+    },
+    "0.5": {
+     "frames_with_det": 0.8974358974358975,
+     "top1_precision": 0.6571428571428571,
+     "top1_recall": 0.5897435897435898,
+     "any_recall": 0.6666666666666666,
+     "noball_false_pos": 1.0
+    },
+    "0.7": {
+     "frames_with_det": 0.5897435897435898,
+     "top1_precision": 0.8260869565217391,
+     "top1_recall": 0.48717948717948717,
+     "any_recall": 0.48717948717948717,
+     "noball_false_pos": 0.0
+    },
+    "0.8": {
+     "frames_with_det": 0.15384615384615385,
+     "top1_precision": 1.0,
+     "top1_recall": 0.15384615384615385,
+     "any_recall": 0.15384615384615385,
+     "noball_false_pos": 0.0
+    }
+   }
+  }
+ },
+ "t384 | white ball": {
+  "held-out all (no arsenal_example)": {
+   "n_ball": 133,
+   "n_noball": 8,
+   "top1_hit10": 0.17293233082706766,
+   "any_hit10": 0.44360902255639095,
+   "by_thr": {
+    "0.05": {
+     "frames_with_det": 0.7744360902255639,
+     "top1_precision": 0.21359223300970873,
+     "top1_recall": 0.16541353383458646,
+     "any_recall": 0.3308270676691729,
+     "noball_false_pos": 0.75
+    },
+    "0.1": {
+     "frames_with_det": 0.6090225563909775,
+     "top1_precision": 0.25925925925925924,
+     "top1_recall": 0.15789473684210525,
+     "any_recall": 0.21052631578947367,
+     "noball_false_pos": 0.625
+    },
+    "0.2": {
+     "frames_with_det": 0.44360902255639095,
+     "top1_precision": 0.3389830508474576,
+     "top1_recall": 0.15037593984962405,
+     "any_recall": 0.15789473684210525,
+     "noball_false_pos": 0.5
+    },
+    "0.3": {
+     "frames_with_det": 0.3609022556390977,
+     "top1_precision": 0.4166666666666667,
+     "top1_recall": 0.15037593984962405,
+     "any_recall": 0.15037593984962405,
+     "noball_false_pos": 0.5
+    },
+    "0.5": {
+     "frames_with_det": 0.21052631578947367,
+     "top1_precision": 0.7142857142857143,
+     "top1_recall": 0.15037593984962405,
+     "any_recall": 0.15037593984962405,
+     "noball_false_pos": 0.25
+    },
+    "0.7": {
+     "frames_with_det": 0.12030075187969924,
+     "top1_precision": 0.9375,
+     "top1_recall": 0.11278195488721804,
+     "any_recall": 0.11278195488721804,
+     "noball_false_pos": 0.0
+    },
+    "0.8": {
+     "frames_with_det": 0.06015037593984962,
+     "top1_precision": 1.0,
+     "top1_recall": 0.06015037593984962,
+     "any_recall": 0.06015037593984962,
+     "noball_false_pos": 0.0
+    }
+   }
+  },
+  "Bournemouth": {
+   "n_ball": 73,
+   "n_noball": 4,
+   "top1_hit10": 0.0410958904109589,
+   "any_hit10": 0.1917808219178082,
+   "by_thr": {
+    "0.05": {
+     "frames_with_det": 0.6712328767123288,
+     "top1_precision": 0.04081632653061224,
+     "top1_recall": 0.0273972602739726,
+     "any_recall": 0.0821917808219178,
+     "noball_false_pos": 0.5
+    },
+    "0.1": {
+     "frames_with_det": 0.4794520547945205,
+     "top1_precision": 0.02857142857142857,
+     "top1_recall": 0.0136986301369863,
+     "any_recall": 0.0410958904109589,
+     "noball_false_pos": 0.25
+    },
+    "0.2": {
+     "frames_with_det": 0.2602739726027397,
+     "top1_precision": 0.0,
+     "top1_recall": 0.0,
+     "any_recall": 0.0136986301369863,
+     "noball_false_pos": 0.25
+    },
+    "0.3": {
+     "frames_with_det": 0.1917808219178082,
+     "top1_precision": 0.0,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 0.25
+    },
+    "0.5": {
+     "frames_with_det": 0.0273972602739726,
+     "top1_precision": 0.0,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 0.0
+    },
+    "0.7": {
+     "frames_with_det": 0.0136986301369863,
+     "top1_precision": 0.0,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 0.0
+    },
+    "0.8": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 0.0
+    }
+   }
+  },
+  "Man City (no arsenal_example)": {
+   "n_ball": 21,
+   "n_noball": 3,
+   "top1_hit10": 0.9523809523809523,
+   "any_hit10": 1.0,
+   "by_thr": {
+    "0.05": {
+     "frames_with_det": 1.0,
+     "top1_precision": 0.9523809523809523,
+     "top1_recall": 0.9523809523809523,
+     "any_recall": 0.9523809523809523,
+     "noball_false_pos": 1.0
+    },
+    "0.1": {
+     "frames_with_det": 0.9523809523809523,
+     "top1_precision": 1.0,
+     "top1_recall": 0.9523809523809523,
+     "any_recall": 0.9523809523809523,
+     "noball_false_pos": 1.0
+    },
+    "0.2": {
+     "frames_with_det": 0.9523809523809523,
+     "top1_precision": 1.0,
+     "top1_recall": 0.9523809523809523,
+     "any_recall": 0.9523809523809523,
+     "noball_false_pos": 0.6666666666666666
+    },
+    "0.3": {
+     "frames_with_det": 0.9523809523809523,
+     "top1_precision": 1.0,
+     "top1_recall": 0.9523809523809523,
+     "any_recall": 0.9523809523809523,
+     "noball_false_pos": 0.6666666666666666
+    },
+    "0.5": {
+     "frames_with_det": 0.9523809523809523,
+     "top1_precision": 1.0,
+     "top1_recall": 0.9523809523809523,
+     "any_recall": 0.9523809523809523,
+     "noball_false_pos": 0.6666666666666666
+    },
+    "0.7": {
+     "frames_with_det": 0.7142857142857143,
+     "top1_precision": 1.0,
+     "top1_recall": 0.7142857142857143,
+     "any_recall": 0.7142857142857143,
+     "noball_false_pos": 0.0
+    },
+    "0.8": {
+     "frames_with_det": 0.38095238095238093,
+     "top1_precision": 1.0,
+     "top1_recall": 0.38095238095238093,
+     "any_recall": 0.38095238095238093,
+     "noball_false_pos": 0.0
+    }
+   }
+  },
+  "arsenal_example (held-out frames)": {
+   "n_ball": 20,
+   "n_noball": 0,
+   "top1_hit10": 0.05,
+   "any_hit10": 0.05,
+   "by_thr": {
+    "0.05": {
+     "frames_with_det": 0.9,
+     "top1_precision": 0.05555555555555555,
+     "top1_recall": 0.05,
+     "any_recall": 0.05,
+     "noball_false_pos": null
+    },
+    "0.1": {
+     "frames_with_det": 0.7,
+     "top1_precision": 0.07142857142857142,
+     "top1_recall": 0.05,
+     "any_recall": 0.05,
+     "noball_false_pos": null
+    },
+    "0.2": {
+     "frames_with_det": 0.35,
+     "top1_precision": 0.14285714285714285,
+     "top1_recall": 0.05,
+     "any_recall": 0.05,
+     "noball_false_pos": null
+    },
+    "0.3": {
+     "frames_with_det": 0.05,
+     "top1_precision": 1.0,
+     "top1_recall": 0.05,
+     "any_recall": 0.05,
+     "noball_false_pos": null
+    },
+    "0.5": {
+     "frames_with_det": 0.05,
+     "top1_precision": 1.0,
+     "top1_recall": 0.05,
+     "any_recall": 0.05,
+     "noball_false_pos": null
+    },
+    "0.7": {
+     "frames_with_det": 0.05,
+     "top1_precision": 1.0,
+     "top1_recall": 0.05,
+     "any_recall": 0.05,
+     "noball_false_pos": null
+    },
+    "0.8": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": null
+    }
+   }
+  },
+  "astonvilla_seg080 (dense)": {
+   "n_ball": 39,
+   "n_noball": 1,
+   "top1_hit10": 0.0,
+   "any_hit10": 0.6153846153846154,
+   "by_thr": {
+    "0.05": {
+     "frames_with_det": 0.8461538461538461,
+     "top1_precision": 0.0,
+     "top1_recall": 0.0,
+     "any_recall": 0.46153846153846156,
+     "noball_false_pos": 1.0
+    },
+    "0.1": {
+     "frames_with_det": 0.6666666666666666,
+     "top1_precision": 0.0,
+     "top1_recall": 0.0,
+     "any_recall": 0.1282051282051282,
+     "noball_false_pos": 1.0
+    },
+    "0.2": {
+     "frames_with_det": 0.5128205128205128,
+     "top1_precision": 0.0,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 1.0
+    },
+    "0.3": {
+     "frames_with_det": 0.358974358974359,
+     "top1_precision": 0.0,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 1.0
+    },
+    "0.5": {
+     "frames_with_det": 0.15384615384615385,
+     "top1_precision": 0.0,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 0.0
+    },
+    "0.7": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 0.0
+    },
+    "0.8": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 0.0
+    }
+   }
+  }
+ },
+ "t384 | yellow ball": {
+  "held-out all (no arsenal_example)": {
+   "n_ball": 133,
+   "n_noball": 8,
+   "top1_hit10": 0.7443609022556391,
+   "any_hit10": 0.8195488721804511,
+   "by_thr": {
+    "0.05": {
+     "frames_with_det": 0.8796992481203008,
+     "top1_precision": 0.8461538461538461,
+     "top1_recall": 0.7443609022556391,
+     "any_recall": 0.8120300751879699,
+     "noball_false_pos": 0.625
+    },
+    "0.1": {
+     "frames_with_det": 0.8421052631578947,
+     "top1_precision": 0.8660714285714286,
+     "top1_recall": 0.7293233082706767,
+     "any_recall": 0.7894736842105263,
+     "noball_false_pos": 0.5
+    },
+    "0.2": {
+     "frames_with_det": 0.8120300751879699,
+     "top1_precision": 0.8888888888888888,
+     "top1_recall": 0.7218045112781954,
+     "any_recall": 0.7819548872180451,
+     "noball_false_pos": 0.5
+    },
+    "0.3": {
+     "frames_with_det": 0.7744360902255639,
+     "top1_precision": 0.912621359223301,
+     "top1_recall": 0.706766917293233,
+     "any_recall": 0.7593984962406015,
+     "noball_false_pos": 0.375
+    },
+    "0.5": {
+     "frames_with_det": 0.7593984962406015,
+     "top1_precision": 0.9108910891089109,
+     "top1_recall": 0.6917293233082706,
+     "any_recall": 0.7293233082706767,
+     "noball_false_pos": 0.125
+    },
+    "0.7": {
+     "frames_with_det": 0.5639097744360902,
+     "top1_precision": 0.9466666666666667,
+     "top1_recall": 0.5338345864661654,
+     "any_recall": 0.5488721804511278,
+     "noball_false_pos": 0.125
+    },
+    "0.8": {
+     "frames_with_det": 0.22556390977443608,
+     "top1_precision": 0.9666666666666667,
+     "top1_recall": 0.21804511278195488,
+     "any_recall": 0.22556390977443608,
+     "noball_false_pos": 0.0
+    }
+   }
+  },
+  "Bournemouth": {
+   "n_ball": 73,
+   "n_noball": 4,
+   "top1_hit10": 0.863013698630137,
+   "any_hit10": 0.9726027397260274,
+   "by_thr": {
+    "0.05": {
+     "frames_with_det": 1.0,
+     "top1_precision": 0.863013698630137,
+     "top1_recall": 0.863013698630137,
+     "any_recall": 0.9726027397260274,
+     "noball_false_pos": 1.0
+    },
+    "0.1": {
+     "frames_with_det": 0.9863013698630136,
+     "top1_precision": 0.8611111111111112,
+     "top1_recall": 0.8493150684931506,
+     "any_recall": 0.9452054794520548,
+     "noball_false_pos": 0.75
+    },
+    "0.2": {
+     "frames_with_det": 0.958904109589041,
+     "top1_precision": 0.8714285714285714,
+     "top1_recall": 0.8356164383561644,
+     "any_recall": 0.9315068493150684,
+     "noball_false_pos": 0.75
+    },
+    "0.3": {
+     "frames_with_det": 0.9315068493150684,
+     "top1_precision": 0.8676470588235294,
+     "top1_recall": 0.8082191780821918,
+     "any_recall": 0.9041095890410958,
+     "noball_false_pos": 0.75
+    },
+    "0.5": {
+     "frames_with_det": 0.9178082191780822,
+     "top1_precision": 0.8656716417910447,
+     "top1_recall": 0.7945205479452054,
+     "any_recall": 0.863013698630137,
+     "noball_false_pos": 0.25
+    },
+    "0.7": {
+     "frames_with_det": 0.6712328767123288,
+     "top1_precision": 0.9183673469387755,
+     "top1_recall": 0.6164383561643836,
+     "any_recall": 0.6438356164383562,
+     "noball_false_pos": 0.25
+    },
+    "0.8": {
+     "frames_with_det": 0.3013698630136986,
+     "top1_precision": 0.9545454545454546,
+     "top1_recall": 0.2876712328767123,
+     "any_recall": 0.3013698630136986,
+     "noball_false_pos": 0.0
+    }
+   }
+  },
+  "Man City (no arsenal_example)": {
+   "n_ball": 21,
+   "n_noball": 3,
+   "top1_hit10": 0.0,
+   "any_hit10": 0.047619047619047616,
+   "by_thr": {
+    "0.05": {
+     "frames_with_det": 0.2857142857142857,
+     "top1_precision": 0.0,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 0.0
+    },
+    "0.1": {
+     "frames_with_det": 0.14285714285714285,
+     "top1_precision": 0.0,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 0.0
+    },
+    "0.2": {
+     "frames_with_det": 0.047619047619047616,
+     "top1_precision": 0.0,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 0.0
+    },
+    "0.3": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 0.0
+    },
+    "0.5": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 0.0
+    },
+    "0.7": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 0.0
+    },
+    "0.8": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 0.0
+    }
+   }
+  },
+  "arsenal_example (held-out frames)": {
+   "n_ball": 20,
+   "n_noball": 0,
+   "top1_hit10": 0.0,
+   "any_hit10": 0.0,
+   "by_thr": {
+    "0.05": {
+     "frames_with_det": 0.85,
+     "top1_precision": 0.0,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": null
+    },
+    "0.1": {
+     "frames_with_det": 0.5,
+     "top1_precision": 0.0,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": null
+    },
+    "0.2": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": null
+    },
+    "0.3": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": null
+    },
+    "0.5": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": null
+    },
+    "0.7": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": null
+    },
+    "0.8": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": null
+    }
+   }
+  },
+  "astonvilla_seg080 (dense)": {
+   "n_ball": 39,
+   "n_noball": 1,
+   "top1_hit10": 0.9230769230769231,
+   "any_hit10": 0.9487179487179487,
+   "by_thr": {
+    "0.05": {
+     "frames_with_det": 0.9743589743589743,
+     "top1_precision": 0.9473684210526315,
+     "top1_recall": 0.9230769230769231,
+     "any_recall": 0.9487179487179487,
+     "noball_false_pos": 1.0
+    },
+    "0.1": {
+     "frames_with_det": 0.9487179487179487,
+     "top1_precision": 0.9459459459459459,
+     "top1_recall": 0.8974358974358975,
+     "any_recall": 0.9230769230769231,
+     "noball_false_pos": 1.0
+    },
+    "0.2": {
+     "frames_with_det": 0.9487179487179487,
+     "top1_precision": 0.9459459459459459,
+     "top1_recall": 0.8974358974358975,
+     "any_recall": 0.9230769230769231,
+     "noball_false_pos": 1.0
+    },
+    "0.3": {
+     "frames_with_det": 0.8974358974358975,
+     "top1_precision": 1.0,
+     "top1_recall": 0.8974358974358975,
+     "any_recall": 0.8974358974358975,
+     "noball_false_pos": 0.0
+    },
+    "0.5": {
+     "frames_with_det": 0.8717948717948718,
+     "top1_precision": 1.0,
+     "top1_recall": 0.8717948717948718,
+     "any_recall": 0.8717948717948718,
+     "noball_false_pos": 0.0
+    },
+    "0.7": {
+     "frames_with_det": 0.6666666666666666,
+     "top1_precision": 1.0,
+     "top1_recall": 0.6666666666666666,
+     "any_recall": 0.6666666666666666,
+     "noball_false_pos": 0.0
+    },
+    "0.8": {
+     "frames_with_det": 0.20512820512820512,
+     "top1_precision": 1.0,
+     "top1_recall": 0.20512820512820512,
+     "any_recall": 0.20512820512820512,
+     "noball_false_pos": 0.0
+    }
+   }
+  }
+ },
+ "t540 | ball": {
+  "held-out all (no arsenal_example)": {
+   "n_ball": 133,
+   "n_noball": 8,
+   "top1_hit10": 0.706766917293233,
+   "any_hit10": 0.8195488721804511,
+   "by_thr": {
+    "0.05": {
+     "frames_with_det": 0.9624060150375939,
+     "top1_precision": 0.7265625,
+     "top1_recall": 0.6992481203007519,
+     "any_recall": 0.7969924812030075,
+     "noball_false_pos": 1.0
+    },
+    "0.1": {
+     "frames_with_det": 0.9097744360902256,
+     "top1_precision": 0.7603305785123967,
+     "top1_recall": 0.6917293233082706,
+     "any_recall": 0.7894736842105263,
+     "noball_false_pos": 0.5
+    },
+    "0.2": {
+     "frames_with_det": 0.8571428571428571,
+     "top1_precision": 0.7719298245614035,
+     "top1_recall": 0.6616541353383458,
+     "any_recall": 0.7218045112781954,
+     "noball_false_pos": 0.375
+    },
+    "0.3": {
+     "frames_with_det": 0.7669172932330827,
+     "top1_precision": 0.8431372549019608,
+     "top1_recall": 0.6466165413533834,
+     "any_recall": 0.6842105263157895,
+     "noball_false_pos": 0.125
+    },
+    "0.5": {
+     "frames_with_det": 0.6090225563909775,
+     "top1_precision": 0.9506172839506173,
+     "top1_recall": 0.5789473684210527,
+     "any_recall": 0.5864661654135338,
+     "noball_false_pos": 0.0
+    },
+    "0.7": {
+     "frames_with_det": 0.3383458646616541,
+     "top1_precision": 0.9777777777777777,
+     "top1_recall": 0.3308270676691729,
+     "any_recall": 0.3308270676691729,
+     "noball_false_pos": 0.0
+    },
+    "0.8": {
+     "frames_with_det": 0.03759398496240601,
+     "top1_precision": 1.0,
+     "top1_recall": 0.03759398496240601,
+     "any_recall": 0.03759398496240601,
+     "noball_false_pos": 0.0
+    }
+   }
+  },
+  "Bournemouth": {
+   "n_ball": 73,
+   "n_noball": 4,
+   "top1_hit10": 0.6712328767123288,
+   "any_hit10": 0.7808219178082192,
+   "by_thr": {
+    "0.05": {
+     "frames_with_det": 0.958904109589041,
+     "top1_precision": 0.6857142857142857,
+     "top1_recall": 0.6575342465753424,
+     "any_recall": 0.7671232876712328,
+     "noball_false_pos": 1.0
+    },
+    "0.1": {
+     "frames_with_det": 0.9041095890410958,
+     "top1_precision": 0.7121212121212122,
+     "top1_recall": 0.6438356164383562,
+     "any_recall": 0.7534246575342466,
+     "noball_false_pos": 0.5
+    },
+    "0.2": {
+     "frames_with_det": 0.8767123287671232,
+     "top1_precision": 0.71875,
+     "top1_recall": 0.6301369863013698,
+     "any_recall": 0.6986301369863014,
+     "noball_false_pos": 0.5
+    },
+    "0.3": {
+     "frames_with_det": 0.7945205479452054,
+     "top1_precision": 0.7931034482758621,
+     "top1_recall": 0.6301369863013698,
+     "any_recall": 0.6712328767123288,
+     "noball_false_pos": 0.25
+    },
+    "0.5": {
+     "frames_with_det": 0.6301369863013698,
+     "top1_precision": 0.9347826086956522,
+     "top1_recall": 0.589041095890411,
+     "any_recall": 0.6027397260273972,
+     "noball_false_pos": 0.0
+    },
+    "0.7": {
+     "frames_with_det": 0.4246575342465753,
+     "top1_precision": 0.967741935483871,
+     "top1_recall": 0.410958904109589,
+     "any_recall": 0.410958904109589,
+     "noball_false_pos": 0.0
+    },
+    "0.8": {
+     "frames_with_det": 0.0547945205479452,
+     "top1_precision": 1.0,
+     "top1_recall": 0.0547945205479452,
+     "any_recall": 0.0547945205479452,
+     "noball_false_pos": 0.0
+    }
+   }
+  },
+  "Man City (no arsenal_example)": {
+   "n_ball": 21,
+   "n_noball": 3,
+   "top1_hit10": 0.5714285714285714,
+   "any_hit10": 0.7142857142857143,
+   "by_thr": {
+    "0.05": {
+     "frames_with_det": 0.9523809523809523,
+     "top1_precision": 0.6,
+     "top1_recall": 0.5714285714285714,
+     "any_recall": 0.7142857142857143,
+     "noball_false_pos": 1.0
+    },
+    "0.1": {
+     "frames_with_det": 0.8095238095238095,
+     "top1_precision": 0.7058823529411765,
+     "top1_recall": 0.5714285714285714,
+     "any_recall": 0.7142857142857143,
+     "noball_false_pos": 0.3333333333333333
+    },
+    "0.2": {
+     "frames_with_det": 0.7142857142857143,
+     "top1_precision": 0.7333333333333333,
+     "top1_recall": 0.5238095238095238,
+     "any_recall": 0.6190476190476191,
+     "noball_false_pos": 0.0
+    },
+    "0.3": {
+     "frames_with_det": 0.6666666666666666,
+     "top1_precision": 0.7857142857142857,
+     "top1_recall": 0.5238095238095238,
+     "any_recall": 0.6190476190476191,
+     "noball_false_pos": 0.0
+    },
+    "0.5": {
+     "frames_with_det": 0.5714285714285714,
+     "top1_precision": 0.9166666666666666,
+     "top1_recall": 0.5238095238095238,
+     "any_recall": 0.5238095238095238,
+     "noball_false_pos": 0.0
+    },
+    "0.7": {
+     "frames_with_det": 0.42857142857142855,
+     "top1_precision": 1.0,
+     "top1_recall": 0.42857142857142855,
+     "any_recall": 0.42857142857142855,
+     "noball_false_pos": 0.0
+    },
+    "0.8": {
+     "frames_with_det": 0.047619047619047616,
+     "top1_precision": 1.0,
+     "top1_recall": 0.047619047619047616,
+     "any_recall": 0.047619047619047616,
+     "noball_false_pos": 0.0
+    }
+   }
+  },
+  "arsenal_example (held-out frames)": {
+   "n_ball": 20,
+   "n_noball": 0,
+   "top1_hit10": 0.0,
+   "any_hit10": 0.0,
+   "by_thr": {
+    "0.05": {
+     "frames_with_det": 0.55,
+     "top1_precision": 0.0,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": null
+    },
+    "0.1": {
+     "frames_with_det": 0.05,
+     "top1_precision": 0.0,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": null
+    },
+    "0.2": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": null
+    },
+    "0.3": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": null
+    },
+    "0.5": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": null
+    },
+    "0.7": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": null
+    },
+    "0.8": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": null
+    }
+   }
+  },
+  "astonvilla_seg080 (dense)": {
+   "n_ball": 39,
+   "n_noball": 1,
+   "top1_hit10": 0.8461538461538461,
+   "any_hit10": 0.9487179487179487,
+   "by_thr": {
+    "0.05": {
+     "frames_with_det": 0.9743589743589743,
+     "top1_precision": 0.868421052631579,
+     "top1_recall": 0.8461538461538461,
+     "any_recall": 0.8974358974358975,
+     "noball_false_pos": 1.0
+    },
+    "0.1": {
+     "frames_with_det": 0.9743589743589743,
+     "top1_precision": 0.868421052631579,
+     "top1_recall": 0.8461538461538461,
+     "any_recall": 0.8974358974358975,
+     "noball_false_pos": 1.0
+    },
+    "0.2": {
+     "frames_with_det": 0.8974358974358975,
+     "top1_precision": 0.8857142857142857,
+     "top1_recall": 0.7948717948717948,
+     "any_recall": 0.8205128205128205,
+     "noball_false_pos": 1.0
+    },
+    "0.3": {
+     "frames_with_det": 0.7692307692307693,
+     "top1_precision": 0.9666666666666667,
+     "top1_recall": 0.7435897435897436,
+     "any_recall": 0.7435897435897436,
+     "noball_false_pos": 0.0
+    },
+    "0.5": {
+     "frames_with_det": 0.5897435897435898,
+     "top1_precision": 1.0,
+     "top1_recall": 0.5897435897435898,
+     "any_recall": 0.5897435897435898,
+     "noball_false_pos": 0.0
+    },
+    "0.7": {
+     "frames_with_det": 0.1282051282051282,
+     "top1_precision": 1.0,
+     "top1_recall": 0.1282051282051282,
+     "any_recall": 0.1282051282051282,
+     "noball_false_pos": 0.0
+    },
+    "0.8": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 0.0
+    }
+   }
+  }
+ },
+ "t540 | football": {
+  "held-out all (no arsenal_example)": {
+   "n_ball": 133,
+   "n_noball": 8,
+   "top1_hit10": 0.5714285714285714,
+   "any_hit10": 0.8045112781954887,
+   "by_thr": {
+    "0.05": {
+     "frames_with_det": 0.9398496240601504,
+     "top1_precision": 0.608,
+     "top1_recall": 0.5714285714285714,
+     "any_recall": 0.7744360902255639,
+     "noball_false_pos": 0.625
+    },
+    "0.1": {
+     "frames_with_det": 0.8646616541353384,
+     "top1_precision": 0.6434782608695652,
+     "top1_recall": 0.556390977443609,
+     "any_recall": 0.706766917293233,
+     "noball_false_pos": 0.375
+    },
+    "0.2": {
+     "frames_with_det": 0.7218045112781954,
+     "top1_precision": 0.6770833333333334,
+     "top1_recall": 0.48872180451127817,
+     "any_recall": 0.5714285714285714,
+     "noball_false_pos": 0.375
+    },
+    "0.3": {
+     "frames_with_det": 0.5338345864661654,
+     "top1_precision": 0.7323943661971831,
+     "top1_recall": 0.39097744360902253,
+     "any_recall": 0.45112781954887216,
+     "noball_false_pos": 0.0
+    },
+    "0.5": {
+     "frames_with_det": 0.3157894736842105,
+     "top1_precision": 0.7380952380952381,
+     "top1_recall": 0.23308270676691728,
+     "any_recall": 0.2556390977443609,
+     "noball_false_pos": 0.0
+    },
+    "0.7": {
+     "frames_with_det": 0.05263157894736842,
+     "top1_precision": 0.5714285714285714,
+     "top1_recall": 0.03007518796992481,
+     "any_recall": 0.03759398496240601,
+     "noball_false_pos": 0.0
+    },
+    "0.8": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 0.0
+    }
+   }
+  },
+  "Bournemouth": {
+   "n_ball": 73,
+   "n_noball": 4,
+   "top1_hit10": 0.5616438356164384,
+   "any_hit10": 0.7945205479452054,
+   "by_thr": {
+    "0.05": {
+     "frames_with_det": 0.9315068493150684,
+     "top1_precision": 0.6029411764705882,
+     "top1_recall": 0.5616438356164384,
+     "any_recall": 0.7945205479452054,
+     "noball_false_pos": 0.75
+    },
+    "0.1": {
+     "frames_with_det": 0.8904109589041096,
+     "top1_precision": 0.6153846153846154,
+     "top1_recall": 0.547945205479452,
+     "any_recall": 0.7123287671232876,
+     "noball_false_pos": 0.5
+    },
+    "0.2": {
+     "frames_with_det": 0.8082191780821918,
+     "top1_precision": 0.6440677966101694,
+     "top1_recall": 0.5205479452054794,
+     "any_recall": 0.6301369863013698,
+     "noball_false_pos": 0.5
+    },
+    "0.3": {
+     "frames_with_det": 0.6438356164383562,
+     "top1_precision": 0.7021276595744681,
+     "top1_recall": 0.4520547945205479,
+     "any_recall": 0.5205479452054794,
+     "noball_false_pos": 0.0
+    },
+    "0.5": {
+     "frames_with_det": 0.410958904109589,
+     "top1_precision": 0.7,
+     "top1_recall": 0.2876712328767123,
+     "any_recall": 0.3287671232876712,
+     "noball_false_pos": 0.0
+    },
+    "0.7": {
+     "frames_with_det": 0.0821917808219178,
+     "top1_precision": 0.5,
+     "top1_recall": 0.0410958904109589,
+     "any_recall": 0.0547945205479452,
+     "noball_false_pos": 0.0
+    },
+    "0.8": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 0.0
+    }
+   }
+  },
+  "Man City (no arsenal_example)": {
+   "n_ball": 21,
+   "n_noball": 3,
+   "top1_hit10": 0.5714285714285714,
+   "any_hit10": 0.7142857142857143,
+   "by_thr": {
+    "0.05": {
+     "frames_with_det": 0.9047619047619048,
+     "top1_precision": 0.631578947368421,
+     "top1_recall": 0.5714285714285714,
+     "any_recall": 0.7142857142857143,
+     "noball_false_pos": 0.3333333333333333
+    },
+    "0.1": {
+     "frames_with_det": 0.8571428571428571,
+     "top1_precision": 0.6666666666666666,
+     "top1_recall": 0.5714285714285714,
+     "any_recall": 0.7142857142857143,
+     "noball_false_pos": 0.3333333333333333
+    },
+    "0.2": {
+     "frames_with_det": 0.6666666666666666,
+     "top1_precision": 0.7142857142857143,
+     "top1_recall": 0.47619047619047616,
+     "any_recall": 0.5714285714285714,
+     "noball_false_pos": 0.3333333333333333
+    },
+    "0.3": {
+     "frames_with_det": 0.5238095238095238,
+     "top1_precision": 0.6363636363636364,
+     "top1_recall": 0.3333333333333333,
+     "any_recall": 0.42857142857142855,
+     "noball_false_pos": 0.0
+    },
+    "0.5": {
+     "frames_with_det": 0.42857142857142855,
+     "top1_precision": 0.7777777777777778,
+     "top1_recall": 0.3333333333333333,
+     "any_recall": 0.3333333333333333,
+     "noball_false_pos": 0.0
+    },
+    "0.7": {
+     "frames_with_det": 0.047619047619047616,
+     "top1_precision": 1.0,
+     "top1_recall": 0.047619047619047616,
+     "any_recall": 0.047619047619047616,
+     "noball_false_pos": 0.0
+    },
+    "0.8": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 0.0
+    }
+   }
+  },
+  "arsenal_example (held-out frames)": {
+   "n_ball": 20,
+   "n_noball": 0,
+   "top1_hit10": 0.0,
+   "any_hit10": 0.0,
+   "by_thr": {
+    "0.05": {
+     "frames_with_det": 0.8,
+     "top1_precision": 0.0,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": null
+    },
+    "0.1": {
+     "frames_with_det": 0.55,
+     "top1_precision": 0.0,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": null
+    },
+    "0.2": {
+     "frames_with_det": 0.05,
+     "top1_precision": 0.0,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": null
+    },
+    "0.3": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": null
+    },
+    "0.5": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": null
+    },
+    "0.7": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": null
+    },
+    "0.8": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": null
+    }
+   }
+  },
+  "astonvilla_seg080 (dense)": {
+   "n_ball": 39,
+   "n_noball": 1,
+   "top1_hit10": 0.5897435897435898,
+   "any_hit10": 0.8717948717948718,
+   "by_thr": {
+    "0.05": {
+     "frames_with_det": 0.9743589743589743,
+     "top1_precision": 0.6052631578947368,
+     "top1_recall": 0.5897435897435898,
+     "any_recall": 0.7692307692307693,
+     "noball_false_pos": 1.0
+    },
+    "0.1": {
+     "frames_with_det": 0.8205128205128205,
+     "top1_precision": 0.6875,
+     "top1_recall": 0.5641025641025641,
+     "any_recall": 0.6923076923076923,
+     "noball_false_pos": 0.0
+    },
+    "0.2": {
+     "frames_with_det": 0.5897435897435898,
+     "top1_precision": 0.7391304347826086,
+     "top1_recall": 0.4358974358974359,
+     "any_recall": 0.46153846153846156,
+     "noball_false_pos": 0.0
+    },
+    "0.3": {
+     "frames_with_det": 0.3333333333333333,
+     "top1_precision": 0.9230769230769231,
+     "top1_recall": 0.3076923076923077,
+     "any_recall": 0.3333333333333333,
+     "noball_false_pos": 0.0
+    },
+    "0.5": {
+     "frames_with_det": 0.07692307692307693,
+     "top1_precision": 1.0,
+     "top1_recall": 0.07692307692307693,
+     "any_recall": 0.07692307692307693,
+     "noball_false_pos": 0.0
+    },
+    "0.7": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 0.0
+    },
+    "0.8": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 0.0
+    }
+   }
+  }
+ },
+ "t540 | small white ball": {
+  "held-out all (no arsenal_example)": {
+   "n_ball": 133,
+   "n_noball": 8,
+   "top1_hit10": 0.09022556390977443,
+   "any_hit10": 0.2706766917293233,
+   "by_thr": {
+    "0.05": {
+     "frames_with_det": 0.43609022556390975,
+     "top1_precision": 0.20689655172413793,
+     "top1_recall": 0.09022556390977443,
+     "any_recall": 0.19548872180451127,
+     "noball_false_pos": 0.5
+    },
+    "0.1": {
+     "frames_with_det": 0.38345864661654133,
+     "top1_precision": 0.23529411764705882,
+     "top1_recall": 0.09022556390977443,
+     "any_recall": 0.11278195488721804,
+     "noball_false_pos": 0.375
+    },
+    "0.2": {
+     "frames_with_det": 0.21804511278195488,
+     "top1_precision": 0.41379310344827586,
+     "top1_recall": 0.09022556390977443,
+     "any_recall": 0.09774436090225563,
+     "noball_false_pos": 0.25
+    },
+    "0.3": {
+     "frames_with_det": 0.12781954887218044,
+     "top1_precision": 0.6470588235294118,
+     "top1_recall": 0.08270676691729323,
+     "any_recall": 0.08270676691729323,
+     "noball_false_pos": 0.25
+    },
+    "0.5": {
+     "frames_with_det": 0.06766917293233082,
+     "top1_precision": 1.0,
+     "top1_recall": 0.06766917293233082,
+     "any_recall": 0.06766917293233082,
+     "noball_false_pos": 0.0
+    },
+    "0.7": {
+     "frames_with_det": 0.015037593984962405,
+     "top1_precision": 1.0,
+     "top1_recall": 0.015037593984962405,
+     "any_recall": 0.015037593984962405,
+     "noball_false_pos": 0.0
+    },
+    "0.8": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 0.0
+    }
+   }
+  },
+  "Bournemouth": {
+   "n_ball": 73,
+   "n_noball": 4,
+   "top1_hit10": 0.0,
+   "any_hit10": 0.0273972602739726,
+   "by_thr": {
+    "0.05": {
+     "frames_with_det": 0.1643835616438356,
+     "top1_precision": 0.0,
+     "top1_recall": 0.0,
+     "any_recall": 0.0136986301369863,
+     "noball_false_pos": 0.25
+    },
+    "0.1": {
+     "frames_with_det": 0.136986301369863,
+     "top1_precision": 0.0,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 0.0
+    },
+    "0.2": {
+     "frames_with_det": 0.0273972602739726,
+     "top1_precision": 0.0,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 0.0
+    },
+    "0.3": {
+     "frames_with_det": 0.0136986301369863,
+     "top1_precision": 0.0,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 0.0
+    },
+    "0.5": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 0.0
+    },
+    "0.7": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 0.0
+    },
+    "0.8": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 0.0
+    }
+   }
+  },
+  "Man City (no arsenal_example)": {
+   "n_ball": 21,
+   "n_noball": 3,
+   "top1_hit10": 0.5714285714285714,
+   "any_hit10": 0.7142857142857143,
+   "by_thr": {
+    "0.05": {
+     "frames_with_det": 0.9523809523809523,
+     "top1_precision": 0.6,
+     "top1_recall": 0.5714285714285714,
+     "any_recall": 0.6666666666666666,
+     "noball_false_pos": 0.6666666666666666
+    },
+    "0.1": {
+     "frames_with_det": 0.8095238095238095,
+     "top1_precision": 0.7058823529411765,
+     "top1_recall": 0.5714285714285714,
+     "any_recall": 0.6666666666666666,
+     "noball_false_pos": 0.6666666666666666
+    },
+    "0.2": {
+     "frames_with_det": 0.7142857142857143,
+     "top1_precision": 0.8,
+     "top1_recall": 0.5714285714285714,
+     "any_recall": 0.6190476190476191,
+     "noball_false_pos": 0.3333333333333333
+    },
+    "0.3": {
+     "frames_with_det": 0.5714285714285714,
+     "top1_precision": 0.9166666666666666,
+     "top1_recall": 0.5238095238095238,
+     "any_recall": 0.5238095238095238,
+     "noball_false_pos": 0.3333333333333333
+    },
+    "0.5": {
+     "frames_with_det": 0.42857142857142855,
+     "top1_precision": 1.0,
+     "top1_recall": 0.42857142857142855,
+     "any_recall": 0.42857142857142855,
+     "noball_false_pos": 0.0
+    },
+    "0.7": {
+     "frames_with_det": 0.09523809523809523,
+     "top1_precision": 1.0,
+     "top1_recall": 0.09523809523809523,
+     "any_recall": 0.09523809523809523,
+     "noball_false_pos": 0.0
+    },
+    "0.8": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 0.0
+    }
+   }
+  },
+  "arsenal_example (held-out frames)": {
+   "n_ball": 20,
+   "n_noball": 0,
+   "top1_hit10": 0.0,
+   "any_hit10": 0.0,
+   "by_thr": {
+    "0.05": {
+     "frames_with_det": 0.2,
+     "top1_precision": 0.0,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": null
+    },
+    "0.1": {
+     "frames_with_det": 0.1,
+     "top1_precision": 0.0,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": null
+    },
+    "0.2": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": null
+    },
+    "0.3": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": null
+    },
+    "0.5": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": null
+    },
+    "0.7": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": null
+    },
+    "0.8": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": null
+    }
+   }
+  },
+  "astonvilla_seg080 (dense)": {
+   "n_ball": 39,
+   "n_noball": 1,
+   "top1_hit10": 0.0,
+   "any_hit10": 0.48717948717948717,
+   "by_thr": {
+    "0.05": {
+     "frames_with_det": 0.6666666666666666,
+     "top1_precision": 0.0,
+     "top1_recall": 0.0,
+     "any_recall": 0.28205128205128205,
+     "noball_false_pos": 1.0
+    },
+    "0.1": {
+     "frames_with_det": 0.6153846153846154,
+     "top1_precision": 0.0,
+     "top1_recall": 0.0,
+     "any_recall": 0.02564102564102564,
+     "noball_false_pos": 1.0
+    },
+    "0.2": {
+     "frames_with_det": 0.3076923076923077,
+     "top1_precision": 0.0,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 1.0
+    },
+    "0.3": {
+     "frames_with_det": 0.10256410256410256,
+     "top1_precision": 0.0,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 1.0
+    },
+    "0.5": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 0.0
+    },
+    "0.7": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 0.0
+    },
+    "0.8": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 0.0
+    }
+   }
+  }
+ },
+ "t540 | soccer ball": {
+  "held-out all (no arsenal_example)": {
+   "n_ball": 133,
+   "n_noball": 8,
+   "top1_hit10": 0.6090225563909775,
+   "any_hit10": 0.8270676691729323,
+   "by_thr": {
+    "0.05": {
+     "frames_with_det": 1.0,
+     "top1_precision": 0.6090225563909775,
+     "top1_recall": 0.6090225563909775,
+     "any_recall": 0.8270676691729323,
+     "noball_false_pos": 1.0
+    },
+    "0.1": {
+     "frames_with_det": 1.0,
+     "top1_precision": 0.6090225563909775,
+     "top1_recall": 0.6090225563909775,
+     "any_recall": 0.8270676691729323,
+     "noball_false_pos": 0.875
+    },
+    "0.2": {
+     "frames_with_det": 0.9774436090225563,
+     "top1_precision": 0.6230769230769231,
+     "top1_recall": 0.6090225563909775,
+     "any_recall": 0.7819548872180451,
+     "noball_false_pos": 0.875
+    },
+    "0.3": {
+     "frames_with_det": 0.9323308270676691,
+     "top1_precision": 0.6532258064516129,
+     "top1_recall": 0.6090225563909775,
+     "any_recall": 0.7443609022556391,
+     "noball_false_pos": 0.75
+    },
+    "0.5": {
+     "frames_with_det": 0.8270676691729323,
+     "top1_precision": 0.7272727272727273,
+     "top1_recall": 0.6015037593984962,
+     "any_recall": 0.6691729323308271,
+     "noball_false_pos": 0.375
+    },
+    "0.7": {
+     "frames_with_det": 0.631578947368421,
+     "top1_precision": 0.8452380952380952,
+     "top1_recall": 0.5338345864661654,
+     "any_recall": 0.556390977443609,
+     "noball_false_pos": 0.0
+    },
+    "0.8": {
+     "frames_with_det": 0.2932330827067669,
+     "top1_precision": 0.9743589743589743,
+     "top1_recall": 0.2857142857142857,
+     "any_recall": 0.2857142857142857,
+     "noball_false_pos": 0.0
+    }
+   }
+  },
+  "Bournemouth": {
+   "n_ball": 73,
+   "n_noball": 4,
+   "top1_hit10": 0.6301369863013698,
+   "any_hit10": 0.7945205479452054,
+   "by_thr": {
+    "0.05": {
+     "frames_with_det": 1.0,
+     "top1_precision": 0.6301369863013698,
+     "top1_recall": 0.6301369863013698,
+     "any_recall": 0.7945205479452054,
+     "noball_false_pos": 1.0
+    },
+    "0.1": {
+     "frames_with_det": 1.0,
+     "top1_precision": 0.6301369863013698,
+     "top1_recall": 0.6301369863013698,
+     "any_recall": 0.7945205479452054,
+     "noball_false_pos": 1.0
+    },
+    "0.2": {
+     "frames_with_det": 0.9726027397260274,
+     "top1_precision": 0.647887323943662,
+     "top1_recall": 0.6301369863013698,
+     "any_recall": 0.7671232876712328,
+     "noball_false_pos": 1.0
+    },
+    "0.3": {
+     "frames_with_det": 0.9041095890410958,
+     "top1_precision": 0.696969696969697,
+     "top1_recall": 0.6301369863013698,
+     "any_recall": 0.7397260273972602,
+     "noball_false_pos": 1.0
+    },
+    "0.5": {
+     "frames_with_det": 0.8082191780821918,
+     "top1_precision": 0.7627118644067796,
+     "top1_recall": 0.6164383561643836,
+     "any_recall": 0.6712328767123288,
+     "noball_false_pos": 0.5
+    },
+    "0.7": {
+     "frames_with_det": 0.6164383561643836,
+     "top1_precision": 0.9111111111111111,
+     "top1_recall": 0.5616438356164384,
+     "any_recall": 0.6027397260273972,
+     "noball_false_pos": 0.0
+    },
+    "0.8": {
+     "frames_with_det": 0.3698630136986301,
+     "top1_precision": 1.0,
+     "top1_recall": 0.3698630136986301,
+     "any_recall": 0.3698630136986301,
+     "noball_false_pos": 0.0
+    }
+   }
+  },
+  "Man City (no arsenal_example)": {
+   "n_ball": 21,
+   "n_noball": 3,
+   "top1_hit10": 0.5714285714285714,
+   "any_hit10": 0.7142857142857143,
+   "by_thr": {
+    "0.05": {
+     "frames_with_det": 1.0,
+     "top1_precision": 0.5714285714285714,
+     "top1_recall": 0.5714285714285714,
+     "any_recall": 0.7142857142857143,
+     "noball_false_pos": 1.0
+    },
+    "0.1": {
+     "frames_with_det": 1.0,
+     "top1_precision": 0.5714285714285714,
+     "top1_recall": 0.5714285714285714,
+     "any_recall": 0.7142857142857143,
+     "noball_false_pos": 0.6666666666666666
+    },
+    "0.2": {
+     "frames_with_det": 0.9523809523809523,
+     "top1_precision": 0.6,
+     "top1_recall": 0.5714285714285714,
+     "any_recall": 0.7142857142857143,
+     "noball_false_pos": 0.6666666666666666
+    },
+    "0.3": {
+     "frames_with_det": 0.9523809523809523,
+     "top1_precision": 0.6,
+     "top1_recall": 0.5714285714285714,
+     "any_recall": 0.7142857142857143,
+     "noball_false_pos": 0.3333333333333333
+    },
+    "0.5": {
+     "frames_with_det": 0.8095238095238095,
+     "top1_precision": 0.7058823529411765,
+     "top1_recall": 0.5714285714285714,
+     "any_recall": 0.6666666666666666,
+     "noball_false_pos": 0.3333333333333333
+    },
+    "0.7": {
+     "frames_with_det": 0.7142857142857143,
+     "top1_precision": 0.7333333333333333,
+     "top1_recall": 0.5238095238095238,
+     "any_recall": 0.5238095238095238,
+     "noball_false_pos": 0.0
+    },
+    "0.8": {
+     "frames_with_det": 0.42857142857142855,
+     "top1_precision": 0.8888888888888888,
+     "top1_recall": 0.38095238095238093,
+     "any_recall": 0.38095238095238093,
+     "noball_false_pos": 0.0
+    }
+   }
+  },
+  "arsenal_example (held-out frames)": {
+   "n_ball": 20,
+   "n_noball": 0,
+   "top1_hit10": 0.0,
+   "any_hit10": 0.0,
+   "by_thr": {
+    "0.05": {
+     "frames_with_det": 1.0,
+     "top1_precision": 0.0,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": null
+    },
+    "0.1": {
+     "frames_with_det": 0.95,
+     "top1_precision": 0.0,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": null
+    },
+    "0.2": {
+     "frames_with_det": 0.9,
+     "top1_precision": 0.0,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": null
+    },
+    "0.3": {
+     "frames_with_det": 0.8,
+     "top1_precision": 0.0,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": null
+    },
+    "0.5": {
+     "frames_with_det": 0.35,
+     "top1_precision": 0.0,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": null
+    },
+    "0.7": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": null
+    },
+    "0.8": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": null
+    }
+   }
+  },
+  "astonvilla_seg080 (dense)": {
+   "n_ball": 39,
+   "n_noball": 1,
+   "top1_hit10": 0.5897435897435898,
+   "any_hit10": 0.9487179487179487,
+   "by_thr": {
+    "0.05": {
+     "frames_with_det": 1.0,
+     "top1_precision": 0.5897435897435898,
+     "top1_recall": 0.5897435897435898,
+     "any_recall": 0.9487179487179487,
+     "noball_false_pos": 1.0
+    },
+    "0.1": {
+     "frames_with_det": 1.0,
+     "top1_precision": 0.5897435897435898,
+     "top1_recall": 0.5897435897435898,
+     "any_recall": 0.9487179487179487,
+     "noball_false_pos": 1.0
+    },
+    "0.2": {
+     "frames_with_det": 1.0,
+     "top1_precision": 0.5897435897435898,
+     "top1_recall": 0.5897435897435898,
+     "any_recall": 0.8461538461538461,
+     "noball_false_pos": 1.0
+    },
+    "0.3": {
+     "frames_with_det": 0.9743589743589743,
+     "top1_precision": 0.6052631578947368,
+     "top1_recall": 0.5897435897435898,
+     "any_recall": 0.7692307692307693,
+     "noball_false_pos": 1.0
+    },
+    "0.5": {
+     "frames_with_det": 0.8717948717948718,
+     "top1_precision": 0.6764705882352942,
+     "top1_recall": 0.5897435897435898,
+     "any_recall": 0.6666666666666666,
+     "noball_false_pos": 0.0
+    },
+    "0.7": {
+     "frames_with_det": 0.6153846153846154,
+     "top1_precision": 0.7916666666666666,
+     "top1_recall": 0.48717948717948717,
+     "any_recall": 0.48717948717948717,
+     "noball_false_pos": 0.0
+    },
+    "0.8": {
+     "frames_with_det": 0.07692307692307693,
+     "top1_precision": 1.0,
+     "top1_recall": 0.07692307692307693,
+     "any_recall": 0.07692307692307693,
+     "noball_false_pos": 0.0
+    }
+   }
+  }
+ },
+ "t540 | white ball": {
+  "held-out all (no arsenal_example)": {
+   "n_ball": 133,
+   "n_noball": 8,
+   "top1_hit10": 0.10526315789473684,
+   "any_hit10": 0.39849624060150374,
+   "by_thr": {
+    "0.05": {
+     "frames_with_det": 0.6165413533834586,
+     "top1_precision": 0.15853658536585366,
+     "top1_recall": 0.09774436090225563,
+     "any_recall": 0.2781954887218045,
+     "noball_false_pos": 0.75
+    },
+    "0.1": {
+     "frames_with_det": 0.49624060150375937,
+     "top1_precision": 0.19696969696969696,
+     "top1_recall": 0.09774436090225563,
+     "any_recall": 0.14285714285714285,
+     "noball_false_pos": 0.625
+    },
+    "0.2": {
+     "frames_with_det": 0.3308270676691729,
+     "top1_precision": 0.2727272727272727,
+     "top1_recall": 0.09022556390977443,
+     "any_recall": 0.11278195488721804,
+     "noball_false_pos": 0.375
+    },
+    "0.3": {
+     "frames_with_det": 0.23308270676691728,
+     "top1_precision": 0.3870967741935484,
+     "top1_recall": 0.09022556390977443,
+     "any_recall": 0.10526315789473684,
+     "noball_false_pos": 0.25
+    },
+    "0.5": {
+     "frames_with_det": 0.13533834586466165,
+     "top1_precision": 0.6111111111111112,
+     "top1_recall": 0.08270676691729323,
+     "any_recall": 0.09022556390977443,
+     "noball_false_pos": 0.0
+    },
+    "0.7": {
+     "frames_with_det": 0.07518796992481203,
+     "top1_precision": 1.0,
+     "top1_recall": 0.07518796992481203,
+     "any_recall": 0.07518796992481203,
+     "noball_false_pos": 0.0
+    },
+    "0.8": {
+     "frames_with_det": 0.03007518796992481,
+     "top1_precision": 1.0,
+     "top1_recall": 0.03007518796992481,
+     "any_recall": 0.03007518796992481,
+     "noball_false_pos": 0.0
+    }
+   }
+  },
+  "Bournemouth": {
+   "n_ball": 73,
+   "n_noball": 4,
+   "top1_hit10": 0.0273972602739726,
+   "any_hit10": 0.2191780821917808,
+   "by_thr": {
+    "0.05": {
+     "frames_with_det": 0.4520547945205479,
+     "top1_precision": 0.030303030303030304,
+     "top1_recall": 0.0136986301369863,
+     "any_recall": 0.0684931506849315,
+     "noball_false_pos": 0.5
+    },
+    "0.1": {
+     "frames_with_det": 0.273972602739726,
+     "top1_precision": 0.05,
+     "top1_recall": 0.0136986301369863,
+     "any_recall": 0.0273972602739726,
+     "noball_false_pos": 0.5
+    },
+    "0.2": {
+     "frames_with_det": 0.0958904109589041,
+     "top1_precision": 0.0,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 0.0
+    },
+    "0.3": {
+     "frames_with_det": 0.0547945205479452,
+     "top1_precision": 0.0,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 0.0
+    },
+    "0.5": {
+     "frames_with_det": 0.0410958904109589,
+     "top1_precision": 0.0,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 0.0
+    },
+    "0.7": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 0.0
+    },
+    "0.8": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 0.0
+    }
+   }
+  },
+  "Man City (no arsenal_example)": {
+   "n_ball": 21,
+   "n_noball": 3,
+   "top1_hit10": 0.5714285714285714,
+   "any_hit10": 0.7142857142857143,
+   "by_thr": {
+    "0.05": {
+     "frames_with_det": 0.9523809523809523,
+     "top1_precision": 0.6,
+     "top1_recall": 0.5714285714285714,
+     "any_recall": 0.7142857142857143,
+     "noball_false_pos": 1.0
+    },
+    "0.1": {
+     "frames_with_det": 0.9523809523809523,
+     "top1_precision": 0.6,
+     "top1_recall": 0.5714285714285714,
+     "any_recall": 0.7142857142857143,
+     "noball_false_pos": 0.6666666666666666
+    },
+    "0.2": {
+     "frames_with_det": 0.8571428571428571,
+     "top1_precision": 0.6666666666666666,
+     "top1_recall": 0.5714285714285714,
+     "any_recall": 0.7142857142857143,
+     "noball_false_pos": 0.6666666666666666
+    },
+    "0.3": {
+     "frames_with_det": 0.8095238095238095,
+     "top1_precision": 0.7058823529411765,
+     "top1_recall": 0.5714285714285714,
+     "any_recall": 0.6666666666666666,
+     "noball_false_pos": 0.3333333333333333
+    },
+    "0.5": {
+     "frames_with_det": 0.6666666666666666,
+     "top1_precision": 0.7857142857142857,
+     "top1_recall": 0.5238095238095238,
+     "any_recall": 0.5714285714285714,
+     "noball_false_pos": 0.0
+    },
+    "0.7": {
+     "frames_with_det": 0.47619047619047616,
+     "top1_precision": 1.0,
+     "top1_recall": 0.47619047619047616,
+     "any_recall": 0.47619047619047616,
+     "noball_false_pos": 0.0
+    },
+    "0.8": {
+     "frames_with_det": 0.19047619047619047,
+     "top1_precision": 1.0,
+     "top1_recall": 0.19047619047619047,
+     "any_recall": 0.19047619047619047,
+     "noball_false_pos": 0.0
+    }
+   }
+  },
+  "arsenal_example (held-out frames)": {
+   "n_ball": 20,
+   "n_noball": 0,
+   "top1_hit10": 0.0,
+   "any_hit10": 0.0,
+   "by_thr": {
+    "0.05": {
+     "frames_with_det": 0.8,
+     "top1_precision": 0.0,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": null
+    },
+    "0.1": {
+     "frames_with_det": 0.4,
+     "top1_precision": 0.0,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": null
+    },
+    "0.2": {
+     "frames_with_det": 0.1,
+     "top1_precision": 0.0,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": null
+    },
+    "0.3": {
+     "frames_with_det": 0.05,
+     "top1_precision": 0.0,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": null
+    },
+    "0.5": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": null
+    },
+    "0.7": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": null
+    },
+    "0.8": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": null
+    }
+   }
+  },
+  "astonvilla_seg080 (dense)": {
+   "n_ball": 39,
+   "n_noball": 1,
+   "top1_hit10": 0.0,
+   "any_hit10": 0.5641025641025641,
+   "by_thr": {
+    "0.05": {
+     "frames_with_det": 0.7435897435897436,
+     "top1_precision": 0.0,
+     "top1_recall": 0.0,
+     "any_recall": 0.4358974358974359,
+     "noball_false_pos": 1.0
+    },
+    "0.1": {
+     "frames_with_det": 0.6666666666666666,
+     "top1_precision": 0.0,
+     "top1_recall": 0.0,
+     "any_recall": 0.05128205128205128,
+     "noball_false_pos": 1.0
+    },
+    "0.2": {
+     "frames_with_det": 0.48717948717948717,
+     "top1_precision": 0.0,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 1.0
+    },
+    "0.3": {
+     "frames_with_det": 0.2564102564102564,
+     "top1_precision": 0.0,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 1.0
+    },
+    "0.5": {
+     "frames_with_det": 0.02564102564102564,
+     "top1_precision": 0.0,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 0.0
+    },
+    "0.7": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 0.0
+    },
+    "0.8": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 0.0
+    }
+   }
+  }
+ },
+ "t540 | yellow ball": {
+  "held-out all (no arsenal_example)": {
+   "n_ball": 133,
+   "n_noball": 8,
+   "top1_hit10": 0.6917293233082706,
+   "any_hit10": 0.7293233082706767,
+   "by_thr": {
+    "0.05": {
+     "frames_with_det": 0.8421052631578947,
+     "top1_precision": 0.7946428571428571,
+     "top1_recall": 0.6691729323308271,
+     "any_recall": 0.706766917293233,
+     "noball_false_pos": 0.625
+    },
+    "0.1": {
+     "frames_with_det": 0.7969924812030075,
+     "top1_precision": 0.8301886792452831,
+     "top1_recall": 0.6616541353383458,
+     "any_recall": 0.6917293233082706,
+     "noball_false_pos": 0.375
+    },
+    "0.2": {
+     "frames_with_det": 0.7518796992481203,
+     "top1_precision": 0.87,
+     "top1_recall": 0.6541353383458647,
+     "any_recall": 0.6691729323308271,
+     "noball_false_pos": 0.25
+    },
+    "0.3": {
+     "frames_with_det": 0.7142857142857143,
+     "top1_precision": 0.9052631578947369,
+     "top1_recall": 0.6466165413533834,
+     "any_recall": 0.6616541353383458,
+     "noball_false_pos": 0.25
+    },
+    "0.5": {
+     "frames_with_det": 0.6466165413533834,
+     "top1_precision": 0.9069767441860465,
+     "top1_recall": 0.5864661654135338,
+     "any_recall": 0.5939849624060151,
+     "noball_false_pos": 0.125
+    },
+    "0.7": {
+     "frames_with_det": 0.48872180451127817,
+     "top1_precision": 0.9692307692307692,
+     "top1_recall": 0.47368421052631576,
+     "any_recall": 0.47368421052631576,
+     "noball_false_pos": 0.0
+    },
+    "0.8": {
+     "frames_with_det": 0.15789473684210525,
+     "top1_precision": 1.0,
+     "top1_recall": 0.15789473684210525,
+     "any_recall": 0.15789473684210525,
+     "noball_false_pos": 0.0
+    }
+   }
+  },
+  "Bournemouth": {
+   "n_ball": 73,
+   "n_noball": 4,
+   "top1_hit10": 0.7534246575342466,
+   "any_hit10": 0.7945205479452054,
+   "by_thr": {
+    "0.05": {
+     "frames_with_det": 0.958904109589041,
+     "top1_precision": 0.7857142857142857,
+     "top1_recall": 0.7534246575342466,
+     "any_recall": 0.7945205479452054,
+     "noball_false_pos": 1.0
+    },
+    "0.1": {
+     "frames_with_det": 0.9315068493150684,
+     "top1_precision": 0.7941176470588235,
+     "top1_recall": 0.7397260273972602,
+     "any_recall": 0.7808219178082192,
+     "noball_false_pos": 0.5
+    },
+    "0.2": {
+     "frames_with_det": 0.8767123287671232,
+     "top1_precision": 0.828125,
+     "top1_recall": 0.726027397260274,
+     "any_recall": 0.7534246575342466,
+     "noball_false_pos": 0.5
+    },
+    "0.3": {
+     "frames_with_det": 0.8356164383561644,
+     "top1_precision": 0.8524590163934426,
+     "top1_recall": 0.7123287671232876,
+     "any_recall": 0.7397260273972602,
+     "noball_false_pos": 0.5
+    },
+    "0.5": {
+     "frames_with_det": 0.7671232876712328,
+     "top1_precision": 0.8571428571428571,
+     "top1_recall": 0.6575342465753424,
+     "any_recall": 0.6712328767123288,
+     "noball_false_pos": 0.25
+    },
+    "0.7": {
+     "frames_with_det": 0.6027397260273972,
+     "top1_precision": 0.9545454545454546,
+     "top1_recall": 0.5753424657534246,
+     "any_recall": 0.5753424657534246,
+     "noball_false_pos": 0.0
+    },
+    "0.8": {
+     "frames_with_det": 0.273972602739726,
+     "top1_precision": 1.0,
+     "top1_recall": 0.273972602739726,
+     "any_recall": 0.273972602739726,
+     "noball_false_pos": 0.0
+    }
+   }
+  },
+  "Man City (no arsenal_example)": {
+   "n_ball": 21,
+   "n_noball": 3,
+   "top1_hit10": 0.14285714285714285,
+   "any_hit10": 0.14285714285714285,
+   "by_thr": {
+    "0.05": {
+     "frames_with_det": 0.19047619047619047,
+     "top1_precision": 0.0,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 0.0
+    },
+    "0.1": {
+     "frames_with_det": 0.047619047619047616,
+     "top1_precision": 0.0,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 0.0
+    },
+    "0.2": {
+     "frames_with_det": 0.047619047619047616,
+     "top1_precision": 0.0,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 0.0
+    },
+    "0.3": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 0.0
+    },
+    "0.5": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 0.0
+    },
+    "0.7": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 0.0
+    },
+    "0.8": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": 0.0
+    }
+   }
+  },
+  "arsenal_example (held-out frames)": {
+   "n_ball": 20,
+   "n_noball": 0,
+   "top1_hit10": 0.0,
+   "any_hit10": 0.0,
+   "by_thr": {
+    "0.05": {
+     "frames_with_det": 0.2,
+     "top1_precision": 0.0,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": null
+    },
+    "0.1": {
+     "frames_with_det": 0.15,
+     "top1_precision": 0.0,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": null
+    },
+    "0.2": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": null
+    },
+    "0.3": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": null
+    },
+    "0.5": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": null
+    },
+    "0.7": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": null
+    },
+    "0.8": {
+     "frames_with_det": 0.0,
+     "top1_precision": null,
+     "top1_recall": 0.0,
+     "any_recall": 0.0,
+     "noball_false_pos": null
+    }
+   }
+  },
+  "astonvilla_seg080 (dense)": {
+   "n_ball": 39,
+   "n_noball": 1,
+   "top1_hit10": 0.8717948717948718,
+   "any_hit10": 0.9230769230769231,
+   "by_thr": {
+    "0.05": {
+     "frames_with_det": 0.9743589743589743,
+     "top1_precision": 0.8947368421052632,
+     "top1_recall": 0.8717948717948718,
+     "any_recall": 0.9230769230769231,
+     "noball_false_pos": 1.0
+    },
+    "0.1": {
+     "frames_with_det": 0.9487179487179487,
+     "top1_precision": 0.918918918918919,
+     "top1_recall": 0.8717948717948718,
+     "any_recall": 0.8974358974358975,
+     "noball_false_pos": 1.0
+    },
+    "0.2": {
+     "frames_with_det": 0.8974358974358975,
+     "top1_precision": 0.9714285714285714,
+     "top1_recall": 0.8717948717948718,
+     "any_recall": 0.8717948717948718,
+     "noball_false_pos": 0.0
+    },
+    "0.3": {
+     "frames_with_det": 0.8717948717948718,
+     "top1_precision": 1.0,
+     "top1_recall": 0.8717948717948718,
+     "any_recall": 0.8717948717948718,
+     "noball_false_pos": 0.0
+    },
+    "0.5": {
+     "frames_with_det": 0.7692307692307693,
+     "top1_precision": 1.0,
+     "top1_recall": 0.7692307692307693,
+     "any_recall": 0.7692307692307693,
+     "noball_false_pos": 0.0
+    },
+    "0.7": {
+     "frames_with_det": 0.5384615384615384,
+     "top1_precision": 1.0,
+     "top1_recall": 0.5384615384615384,
+     "any_recall": 0.5384615384615384,
+     "noball_false_pos": 0.0
+    },
+    "0.8": {
+     "frames_with_det": 0.02564102564102564,
+     "top1_precision": 1.0,
+     "top1_recall": 0.02564102564102564,
+     "any_recall": 0.02564102564102564,
+     "noball_false_pos": 0.0
+    }
+   }
+  }
+ }
+}
