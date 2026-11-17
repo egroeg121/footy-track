@@ -25,6 +25,7 @@ import cv2
 import numpy as np
 
 from footy_track.calibration import centre_circle as cc
+from footy_track.calibration import centre_fit as cf
 from footy_track.calibration import geometry as geo
 from footy_track.calibration import pitch_finders as pf
 from footy_track.calibration.pitch_model import PitchModel
@@ -37,7 +38,20 @@ GT_ROOT, CLIP_DIRS, OUT = ev0.GT_ROOT, ev0.CLIP_DIRS, ev0.OUT
 PX = np.array([ev0.PX_W, ev0.PX_H])
 GROSS_PX = 15.0
 GRID_M = 5.0
-KINDS = ("centre", "d")
+#: variant -> (finder kind, kwargs). ``centre_old`` is the earlier behaviour (2 circle points, + points derived from a
+#: touchline end when found); ``centre`` is the shape-first fit with everything it may use (the ground's camera rig
+#: by clip name, a touchline end, the square-pixel prior); the others restrict it to one source for the ablation.
+VARIANTS = {
+    "centre_old": ("centre", {"shape": False}),
+    "centre": ("centre", {}),
+    "centre_nr": ("centre", {"refine": False}),
+    "centre_norig": ("centre", {"use": ("touchline", "intrinsic")}),
+    "centre_intr": ("centre", {"use": ("intrinsic",)}),
+    "centre_rig": ("centre", {"use": ("rig",)}),
+    "d": ("d", {}),
+}
+KINDS = tuple(VARIANTS)
+DEFAULT_VARIANTS = tuple(k for k in VARIANTS if k not in ("d", "centre_nr"))
 
 
 def load_frame(clip: str, idx: int, video, cache: Path):
@@ -80,9 +94,10 @@ def gt_project(rec: dict, pm: PitchModel, pts_m) -> tuple[np.ndarray, np.ndarray
     return xy, inb
 
 
-def run_finder(kind: str, mask, far, dist, pitch: PitchModel):
+def run_finder(variant: str, mask, far, dist, pitch: PitchModel, clip: str = "", circle=None):
+    kind, kw = VARIANTS[variant]
     if kind == "centre":
-        return pf.find_centre(mask, dist, pitch, far_mask=far)
+        return pf.find_centre(mask, dist, pitch, far_mask=far, rig=cf.rig_for_clip(clip), circle=circle, **kw)
     return pf.find_d(mask, dist, pitch)
 
 
@@ -136,16 +151,20 @@ def run(args) -> dict:
             pm_true = PitchModel(*rec["pitch_dims"])
             present = gt_present(rec)
             row = {"clip": clip, "idx": idx, "gt": present, "runs": {}}
-            for kind in KINDS:
-                if args.only and kind != args.only:
-                    continue
+            # the circle / halfway-line detection is shared by the centre variants (its CPU is added to each)
+            ctx0 = pf._ctx(mask, dist, pm_true)
+            c0 = time.process_time()
+            circle = cc.detect_from_mask(mask, dist, ("centre",), pitch=pm_true, prep=(ctx0.obs, ctx0.und))
+            circle_cpu = time.process_time() - c0
+            for kind in args.variants:
                 t1, c1 = time.perf_counter(), time.process_time()
-                det = run_finder(kind, mask, far, dist, pm_true)
+                det = run_finder(kind, mask, far, dist, pm_true, clip, circle if VARIANTS[kind][0] == "centre" else None)
                 dt = time.perf_counter() - t1
-                cpu = time.process_time() - c1
+                cpu = time.process_time() - c1 + (circle_cpu if VARIANTS[kind][0] == "centre" else 0.0)
                 r = det.result
-                e = {"answered": r is not None, "reason": det.reason, "sec": dt, "cpu": cpu, "gt_present": present[kind]}
-                if kind == "centre":
+                bk = VARIANTS[kind][0]
+                e = {"answered": r is not None, "reason": det.reason, "sec": dt, "cpu": cpu, "gt_present": present[bk]}
+                if bk == "centre":
                     _, fin = gt_project(rec, pm_true, [pm_true.keypoints()["HALFWAY_TOP"]])
                     e["gt_far_in"] = bool(fin[0])
                 if r is not None:
@@ -153,7 +172,8 @@ def run(args) -> dict:
                     err = np.linalg.norm((np.array([p.uv for p in r.points]) - g_uv) * PX, axis=1)
                     e.update(
                         conf=r.confidence,
-                        info={kk: vv for kk, vv in r.info.items() if kk in ("source", "end", "f1", "margin", "touchline_ends", "width_est_m", "template_precision", "template", "ambiguous_dropped", "n_elements")},
+                        info={kk: vv for kk, vv in r.info.items() if kk in ("source", "end", "f1", "margin", "touchline_ends", "width_est_m", "template_precision", "template", "ambiguous_dropped", "n_elements")}
+                        | ({"shape": {k: v for k, v in r.info["shape"].items() if k != "candidates"}} if "shape" in r.info else {}),
                         points=[
                             {"id": p.pitch_id or "FREE", "derived": p.derived, "conf": p.confidence, "err": float(er), "gt_in": bool(gi)}
                             for p, er, gi in zip(r.points, err, g_in, strict=True)
@@ -164,7 +184,7 @@ def run(args) -> dict:
                         e["fit"] = editor_fit_error(pts, pm_true, rec, pm_true)
                         if not e["fit"]["ok"]:
                             e["fit"]["n_pts"] = len(pts)
-                    if args.width_sens and kind == "centre" and "touchline_ends" in r.info:
+                    if args.width_sens and kind == "centre_old" and "touchline_ends" in r.info:
                         e["width_sens"] = {}
                         for dw in (-2.0, 2.0):
                             pm_w = PitchModel(pm_true.length, pm_true.width + dw)
@@ -256,7 +276,21 @@ def summarise(res: dict) -> str:
             )
         sec = np.array([r["runs"][kind].get("cpu", r["runs"][kind]["sec"]) for r in rs])
         out.append(f"  CPU time per frame (finder only, 1280 px mask cached): median {np.median(sec):.2f}s, p95 {_pct(sec, 95):.2f}s, max {sec.max():.2f}s")
-        if kind == "centre":
+        fa_ = [r["runs"][kind]["fit"]["med_m"] for r in pres if r["runs"][kind].get("fit", {}).get("ok")]
+        if pres:
+            out.append(
+                f"  GT frames whose editor fit (>=4 points) is within 0.5 m: {sum(m < 0.5 for m in fa_)}/{len(pres)} "
+                f"({100 * sum(m < 0.5 for m in fa_) / len(pres):.0f}%), within 1 m: {sum(m < 1.0 for m in fa_)}/{len(pres)} "
+                f"({100 * sum(m < 1.0 for m in fa_) / len(pres):.0f}%)"
+            )
+        srcs: dict[str, list[float]] = {}
+        for r in ans:
+            sh = r["runs"][kind].get("info", {}).get("shape")
+            if sh and sh.get("accepted") and r["runs"][kind].get("fit", {}).get("ok"):
+                srcs.setdefault(sh["accepted"], []).append(r["runs"][kind]["fit"]["med_m"])
+        if srcs:
+            out.append("  accepted source (n, median fit m, <0.5 m): " + "; ".join(f"{k} {len(v)}/{np.median(v):.2f}/{sum(x < 0.5 for x in v)}" for k, v in sorted(srcs.items())))
+        if kind.startswith("centre"):
             ws = [r["runs"][kind]["width_sens"] for r in ans if r["runs"][kind].get("width_sens")]
             for dw in ("-2.0", "2.0"):
                 v = [w[dw]["med_m"] for w in ws if dw in w and w[dw]["ok"]]
@@ -272,13 +306,31 @@ def summarise(res: dict) -> str:
             vis_far = [r for r in pres if r["runs"][kind].get("gt_far_in")]
             found = [r for r in vis_far if r["runs"][kind]["answered"] and "HALFWAY_TOP" in {p["id"] for p in r["runs"][kind]["points"]}]
             out.append(f"  far touchline end: GT puts HALFWAY_TOP in frame on {len(vis_far)} of the centre frames, found on {len(found)}")
+    out.append(paired(res))
     return "\n".join(out)
+
+
+def paired(res: dict, a: str = "centre_old", b: str = "centre") -> str:
+    """Same frames, two variants: editor-fit error of ``a`` vs ``b`` where both answered with a fit, and how often
+    ``b`` has a fit where ``a`` had none."""
+    rows = [r for r in res["rows"] if a in r["runs"] and b in r["runs"] and r["runs"][a]["gt_present"]]
+    if not rows:
+        return ""
+    both = [(r["runs"][a]["fit"]["med_m"], r["runs"][b]["fit"]["med_m"]) for r in rows if r["runs"][a].get("fit", {}).get("ok") and r["runs"][b].get("fit", {}).get("ok")]
+    gained = [r for r in rows if not r["runs"][a].get("fit", {}).get("ok") and r["runs"][b].get("fit", {}).get("ok")]
+    lost = [r for r in rows if r["runs"][a].get("fit", {}).get("ok") and not r["runs"][b].get("fit", {}).get("ok")]
+    txt = [f"== paired {a} vs {b} on {len(rows)} GT frames =="]
+    if both:
+        A, B = np.array(both).T
+        txt.append(f"  both with an editor fit: n={len(both)}; median {np.median(A):.2f} m -> {np.median(B):.2f} m; worse by > 0.3 m: {(B > A + 0.3).sum()}, better by > 0.3 m: {(B < A - 0.3).sum()}")
+    txt.append(f"  editor fit gained by {b}: {len(gained)}; lost: {len(lost)} {[(r['clip'], r['idx']) for r in lost][:6]}")
+    return "\n".join(txt)
 
 
 def contact_sheet(res: dict, path: Path, lens: str = "gt", per_kind: int = 6) -> None:
     cache = OUT / "cache"
     tiles = []
-    for kind in KINDS:
+    for kind in ("centre", "d"):
         cand_rows = []
         for r in res["rows"]:
             e = r["runs"].get(kind)
@@ -304,7 +356,7 @@ def contact_sheet(res: dict, path: Path, lens: str = "gt", per_kind: int = 6) ->
             pm = PitchModel(*doc["pitch_dims"])
             loaded = load_frame(r["clip"], r["idx"], None, cache)
             mask, far, _ = loaded
-            det = run_finder(kind, mask, far, dist, pm)
+            det = run_finder(kind, mask, far, dist, pm, r['clip'])
             vis = pf.draw_overlay(img, det, dist, label=kind)
             h, w = vis.shape[:2]
             if det.result is not None:
@@ -329,7 +381,7 @@ def contact_sheet(res: dict, path: Path, lens: str = "gt", per_kind: int = 6) ->
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--lens", choices=["gt", "none"], default="gt")
-    ap.add_argument("--only", choices=list(KINDS))
+    ap.add_argument("--variants", nargs="+", choices=list(KINDS), default=list(DEFAULT_VARIANTS))
     ap.add_argument("--width-sens", action="store_true", help="re-run the centre finder with width +-2 m")
     ap.add_argument("--out", default=str(OUT / "eval_v2.json"))
     ap.add_argument("--sheet", default=str(OUT / "contact_sheet_v2.jpg"))

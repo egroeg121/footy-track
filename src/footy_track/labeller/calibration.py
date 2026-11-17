@@ -720,7 +720,9 @@ _AUTO_LOCK = threading.Lock()
 AUTO_KINDS = ("centre", "d")
 
 
-def _auto_points(video: Path, idx: int, dist: dict | None, pitch: PitchModel, kind: str, key: tuple) -> dict | None:
+def _auto_points(
+    video: Path, idx: int, dist: dict | None, pitch: PitchModel, kind: str, key: tuple, clip: str = ""
+) -> dict | None:
     """Finder verdict for one frame (cached); ``None`` when the frame cannot be read."""
     with _AUTO_LOCK:
         hit = _AUTO_CACHE.get(key)
@@ -730,14 +732,36 @@ def _auto_points(video: Path, idx: int, dist: dict | None, pitch: PitchModel, ki
         frame = _read_frame(video, idx)
         if frame is None:
             return None
-        from footy_track.calibration.pitch_finders import find_points
+        from footy_track.calibration.centre_fit import (  # noqa: PLC0415
+            rig_for_clip,
+            to_norm_H,
+        )
+        from footy_track.calibration.pitch_finders import find_points  # noqa: PLC0415
 
-        det = find_points(kind, frame, dist, pitch)
+        kw = {"rig": rig_for_clip(clip)} if kind == "centre" else {}
+        det = find_points(kind, frame, dist, pitch, **kw)
         if det.result is None:
             out = {"reason": det.reason or f"no {kind} structure found"}
         else:
             r = det.result
             out = {"kind": kind, "confidence": float(r.confidence), "correspondences": r.correspondences()}
+            shape = r.info.get("shape") or {}
+            fitted = det.debug.get("H_px") is not None and (kind == "d" or shape.get("accepted"))
+            if fitted:
+                # the fitted pitch -> undistorted normalised image homography (apply ``distortion`` to draw it)
+                out["H"] = to_norm_H(det.debug["H_px"], det.size).tolist()
+                out["H_convention"] = "pitch_m_to_undistorted_normalised_image"
+            if kind == "centre":
+                if shape.get("accepted") == "intrinsic":
+                    out["warning"] = (
+                        "approximate: shape fitted from the square-pixel assumption alone (no touchline end, no known "
+                        "camera for this ground); left/right and the 45-degree points may be ~10 px off - check them"
+                    )
+                out["fit"] = {
+                    k: (v if not hasattr(v, "item") else v.item())
+                    for k, v in shape.items()
+                    if k in ("accepted", "precision", "f_over_w", "ground", "ends")
+                }
         _AUTO_CACHE[key] = out
         while len(_AUTO_CACHE) > _AUTO_CACHE_MAX:
             _AUTO_CACHE.popitem(last=False)
@@ -756,8 +780,10 @@ async def auto_points(body: dict):
     sits at ``(0, +-width/2)`` and the penalty-area corners are placed from the length.
 
     Answers ``{ok: true, kind, confidence, correspondences: [{image, pitch_id, pitch_xy, confidence,
-    derived}]}`` (``pitch_id`` is ``null`` for the free derived circle points, ``derived`` marks points
-    synthesised from the fitted geometry rather than seen), or ``{ok: false, reason}`` with HTTP 200 when the
+    derived}], H?, H_convention?, fit?}`` (``pitch_id`` is ``null`` for the free derived circle points,
+    ``derived`` marks points synthesised from the fitted geometry rather than seen; ``H`` is the fitted
+    pitch-metres -> undistorted normalised image homography every returned point was computed from, present
+    when a shape / template fit was accepted; ``fit`` says which source fixed it), or ``{ok: false, reason}`` with HTTP 200 when the
     finder abstains (not an error). Nothing is stored; the page adds the pairs to its working set. Respects
     the request's dataset.
     """
@@ -778,12 +804,12 @@ async def auto_points(body: dict):
     if video is None:
         return _err(404, f"clip not found: {clip}")
     key = (datasets.current_name(), str(video), idx, json.dumps(dist, sort_keys=True), kind, (pitch.length, pitch.width))
-    res = await asyncio.to_thread(_auto_points, video, idx, dist, pitch, kind, key)
+    res = await asyncio.to_thread(_auto_points, video, idx, dist, pitch, kind, key, clip)
     if res is None:
         return _err(404, f"cannot read frame {idx}")
     if "reason" in res:
         return {"ok": False, "reason": res["reason"]}
-    return {"ok": True, "kind": res["kind"], "confidence": res["confidence"], "correspondences": res["correspondences"]}
+    return {"ok": True, **{k: v for k, v in res.items() if k != "reason"}}
 
 
 @router.get("/calibration/api/gt/{clip}")

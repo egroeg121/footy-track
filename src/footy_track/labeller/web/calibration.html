@@ -507,7 +507,7 @@ async function autoPoints(kind) {
     state.imgPts.push(...add.img); state.pitchPts.push(...add.ptc); state.dirty = true;
     refit();
     const derived = r.correspondences.filter(c => c.derived).length;
-    status(autoStatusText(r.kind, r.confidence, add.img.length, skipped, nPairs(), derived));
+    status(autoStatusText(r.kind, r.confidence, add.img.length, skipped, nPairs(), derived) + (r.warning ? " \u2014 " + r.warning : ""));
   } catch (e) { status(`auto ${lab} failed: ` + e.message, true); }
   finally { autoBusy = false; btns.forEach(b => b.disabled = false); }
 }

@@ -19,9 +19,16 @@ the labeller `/calibration` page).
   `L_PEN_BOX_TOP_OUTER` are stable API (GT files reference them).
   `L`/`R` = `-x`/`+x` end, `TOP`/`BOTTOM` = `+y`/`-y` side.
 * `centre_circle.py` (halfway line / box front x circle -> 2 points + the circle's pole) and `pitch_finders.py` (the
-  editor's two finders: `find_centre` adds the touchline end and derived circle points, `find_d` fits the whole
-  penalty-area template by brute force; see the module docstrings and LAB-1224) place correspondences from the
-  line mask. Pitch width / length are inputs, never assumed.
+  editor's two finders: `find_centre` fits the centre circle + halfway line *shape* to a homography
+  (`centre_fit.py`) and returns the points of that fit, `find_d` fits the whole penalty-area template by brute
+  force; see the module docstrings and LAB-1224) place correspondences from the line mask. Pitch width / length
+  are inputs, never assumed.
+* `centre_fit.py`: the shape-first centre fit. The circle leaves one parameter free (the vanishing point `W` of the
+  width axis on the halfway line); it comes from a touchline end (1-D cross ratio), from the ground's fixed camera
+  centre (`camera_rigs/{emirates,vitality}.json`, chosen by clip-name prefix, never guessed for an unknown ground)
+  or from square pixels + principal point at the image centre (the circular points `E` x `m` on the image of the
+  absolute conic). Candidates are scored on the whole template (halfway line, circle, touchlines, box lines) and the
+  best consistent one is kept only if its core precision is >= 0.6. Unstable intrinsic roots are abstained on.
 * `geometry.py`: `fit_homography` (DLT, optional RANSAC),
   `reprojection_errors` (px and metres), `project_polyline_to_image` (drops
   points behind the camera so lines never wrap), `warp_to_pitch` (top-down
