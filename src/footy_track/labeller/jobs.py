@@ -355,14 +355,15 @@ def _normalise_items(kind: str, raw: object, max_cards: object = None) -> list[d
     return out
 
 
-def _assign_inline_boxes(job_id: str, dataset: str, items: list[dict]) -> None:
+def _assign_inline_boxes(job_id: str, dataset: str, items: list[dict], start: int = 0) -> None:
     """Give every inline card its ``box_index`` (see the module docstring); unique per
-    ``(clip, frame)`` within the job and against every other job on the dataset."""
+    ``(clip, frame)`` within the job and against every other job on the dataset. ``start`` is the
+    position of ``items[0]`` in the job (appended cards hash their real position)."""
     taken: set[tuple] = set(inline_index(dataset))
     for i, it in enumerate(items):
         if not _wants_inline(it):
             continue
-        h = int(hashlib.sha1(f"{job_id}:{i}".encode()).hexdigest()[:8], 16) & (
+        h = int(hashlib.sha1(f"{job_id}:{start + i}".encode()).hexdigest()[:8], 16) & (
             (1 << 29) - 1
         )  # noqa: S324
         while (it["clip"], it["frame_index"], INLINE_BOX_BASE + h) in taken:
@@ -439,6 +440,7 @@ def submit(body: dict, default_dataset: str) -> tuple[dict, bool]:  # noqa: PLR0
     if url is not None and (not isinstance(url, str) or not url.startswith("/")):
         raise JobError(422, "url must be a path on this server, like /ball_check?dataset=nottinghamforest")
     items = _normalise_items(kind, body.get("items"), body.get("max_cards"))
+    hook_cfg = _validate_hooks(kind, body.get("hooks"))
     want_prepare = body.get("prepare")
     where = None
     if want_prepare:
@@ -464,6 +466,10 @@ def submit(body: dict, default_dataset: str) -> tuple[dict, bool]:  # noqa: PLR0
     }
     if url:
         job["url"] = url
+    if hook_cfg:
+        job["hooks"] = hook_cfg
+    if body.get("max_cards") is not None and kind != "other":
+        job["max_cards"] = body["max_cards"]  # validated by _normalise_items; appends honour it
     with _LOCK:
         if key:
             existing = read_job(job["id"])
@@ -525,7 +531,25 @@ def _set_status(job_id: str, new: str, *, only_from: tuple[str, ...] | None = No
                 job.pop("closed", None)
                 job.pop("closed_by", None)
             _write_atomic(_job_path(job_id), job)
+            if new == "done" and job.get("hooks"):
+                _fire_on_done(job_id)
         return job
+
+
+def _validate_hooks(kind: str, raw: object) -> list[dict]:
+    from footy_track.labeller import hooks  # noqa: PLC0415 (hooks imports this module)
+
+    return hooks.validate_hooks(kind, raw)
+
+
+def _fire_on_done(job_id: str) -> None:
+    """Tell the hooks a job just completed (off-thread, never raises: see ``hooks.py``)."""
+    try:
+        from footy_track.labeller import hooks  # noqa: PLC0415
+
+        hooks.job_done(job_id)
+    except Exception:  # noqa: BLE001 - a hook problem must not break closing a job
+        pass
 
 
 def close(job_id: str, new: str) -> dict:
@@ -842,7 +866,7 @@ def frame_list(job: dict) -> dict:
             for f in _item_units(kind, it)
         )
     done = sum(1 for f in frames if f["done"])
-    return {"id": job["id"], "title": job["title"], "kind": kind, "dataset": job["dataset"],
+    return {"id": job["id"], "title": job["title"], "kind": kind, "dataset": job["dataset"], "rev": int(job.get("rev") or 0),
             "total": len(frames), "done": done, "frames": frames}  # fmt: skip
 
 

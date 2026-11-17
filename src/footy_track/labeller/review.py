@@ -25,7 +25,7 @@ from fastapi import APIRouter
 from fastapi.responses import Response
 
 from footy_track.ball_eval.metrics import bbox_iou
-from footy_track.labeller import datasets
+from footy_track.labeller import datasets, hooks
 from footy_track.labeller.constants import (
     NO_BALL_TAG,
     NOT_BROADCAST_TAG,
@@ -341,6 +341,7 @@ async def review_correct(body: dict) -> dict:
     jsonl_path.write_text("\n".join(lines) + "\n")
     # Invalidate crop cache for this box
     _CROP_CACHE.pop((datasets.current_name(), clip, frame_index, box_index), None)
+    hooks.emit("ball_place", clip=clip, unit=frame_index, verdict="corrected")
     return {"ok": True}
 
 
@@ -363,6 +364,7 @@ async def review_delete(body: dict) -> dict:
     del lines[line_indices[box_index]]
     jsonl_path.write_text("\n".join(lines) + "\n")
     _CROP_CACHE.pop((datasets.current_name(), clip, frame_index, box_index), None)
+    hooks.emit("ball_place", clip=clip, unit=frame_index, verdict="deleted")
     return {"ok": True}
 
 

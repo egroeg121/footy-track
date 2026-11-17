@@ -19,6 +19,8 @@ Command line (``python jobs_client.py`` or ``python -m footy_track.scripts.label
     submit --title T --kind ball_check --dataset D --items cards.json --prepare [--where mini|desktop] [--allow-large]
     prepare REF [--hold] [--where mini|desktop]     # (re)render an existing ball_check job's cards ahead of time
     status REF | results REF [-o out.json] | wait REF [--poll 60] [--timeout S] | list | done REF | cancel REF
+    hooks REF [--set hooks.json] [--run NAME]       # labelling hooks: show / replace / run one now (README 19c)
+    submit ... --hooks hooks.json                   # hooks at submit time
     gc [--dry-run]                                  # stale prepare runs, idle/finished renders, cache size cap
 
 Ball Check items are pointers ``{clip, frame_index, box_index, source?}`` into a registered review list,
@@ -126,13 +128,15 @@ def submit(
     timeout: float = 60,
     prepare: bool | str = False,
     max_cards: int | None = None,
+    hooks: list[dict] | None = None,
 ) -> dict:
     """Create a job; returns ``{id, url, status, created, ...}``. Re-submitting the same ``key``
     returns the existing job (``created`` False). ``requester=None`` auto-detects from git.
 
     ``prepare=True`` (or ``"mini"`` / ``"desktop"``, where to render) also queues the render run and
     returns the job as ``preparing``. ``max_cards`` raises the per-job card cap (default 500) up to
-    the hard ceiling of 2000."""
+    the hard ceiling of 2000. ``hooks`` is the labelling-hooks config (see ``hooks.py``): things the
+    server runs *while the job is being labelled* (refit, reorder the remaining items, queue a Prefect run)."""
     items = items or []
     if kind == "ball_check":
         cap = max_cards or DEFAULT_MAX_CARDS
@@ -157,6 +161,8 @@ def submit(
         body["key"] = key
     if max_cards:
         body["max_cards"] = max_cards
+    if hooks:
+        body["hooks"] = hooks
     if prepare:
         body["prepare"] = {"where": prepare} if isinstance(prepare, str) else {}
         body["prepare"] = body["prepare"] or True
@@ -173,6 +179,36 @@ def prepare(
     if where:
         body["where"] = where
     return _request("POST", f"/api/jobs/{_ref(ref)}/prepare", url=url, body=body)
+
+
+def get_hooks(ref: str, *, url: str | None = None) -> dict:
+    """The job's hook config, runtime state (counter, last run, backoff, in-flight run) and history."""
+    return _request("GET", f"/api/jobs/{_ref(ref)}/hooks", url=url)
+
+
+def set_hooks(ref: str, hooks: list[dict], *, url: str | None = None) -> dict:
+    """Replace the job's hooks (``[]`` removes them). Raises ``JobsError`` 422 on a bad config."""
+    return _request("PUT", f"/api/jobs/{_ref(ref)}/hooks", url=url, body={"hooks": hooks})
+
+
+def run_hook(ref: str, name: str, *, url: str | None = None) -> dict:
+    """Run one hook now (skips the debounce; refused while it is in flight or backing off)."""
+    return _request("POST", f"/api/jobs/{_ref(ref)}/hooks/{_ref(name)}/run", url=url, timeout=120)
+
+
+def reorder(ref: str, order: list[int], *, by: str = "api", note: str | None = None, if_rev: int | None = None,
+            url: str | None = None) -> dict:  # fmt: skip
+    """Put these *unanswered* item positions first, in this order. Answered items never move; positions
+    that are answered / unknown are skipped (counted in the reply). ``if_rev``: 409 if the job changed."""
+    body = {"order": order, "by": by, "note": note, "if_rev": if_rev}
+    return _request("POST", f"/api/jobs/{_ref(ref)}/reorder", url=url, body={k: v for k, v in body.items() if v is not None})
+
+
+def append(ref: str, items: list[dict], *, by: str = "api", note: str | None = None, if_rev: int | None = None,
+           url: str | None = None) -> dict:  # fmt: skip
+    """Append items to a live job (same shapes as submit; caps / queued-card cap / disk floor apply)."""
+    body = {"items": items, "by": by, "note": note, "if_rev": if_rev}
+    return _request("POST", f"/api/jobs/{_ref(ref)}/append", url=url, body={k: v for k, v in body.items() if v is not None})
 
 
 def gc(*, dry_run: bool = False, url: str | None = None) -> dict:
@@ -250,6 +286,11 @@ def read_items(path: str, *, step: int | None = None) -> list[dict]:
     return rows
 
 
+def _load_json(path: str) -> object:
+    with open(path) as f:
+        return json.load(f)
+
+
 def _print(obj: object) -> None:
     print(json.dumps(obj, indent=2))
 
@@ -289,6 +330,11 @@ def main(argv: list[str] | None = None) -> int:  # noqa: PLR0912, PLR0915
     s.add_argument(
         "--max-cards", type=int, help=f"explicit card cap, at most {HARD_MAX_CARDS}"
     )
+    s.add_argument("--hooks", help="JSON file: list of labelling hooks (README 19c)")
+    hp = sub.add_parser("hooks", help="show / replace / run a job's labelling hooks")
+    hp.add_argument("ref", help="job id or exact title")
+    hp.add_argument("--set", dest="set_file", help="JSON file with the new hook list ([] removes them)")
+    hp.add_argument("--run", metavar="NAME", help="run this hook now")
     for name, helptext in (("status", "status + progress"), ("results", "canonical label rows"), ("wait", "block until done"),
                            ("done", "close the job"), ("cancel", "cancel the job")):  # fmt: skip
         p = sub.add_parser(name, help=helptext)
@@ -327,7 +373,8 @@ def main(argv: list[str] | None = None) -> int:  # noqa: PLR0912, PLR0915
             items = read_items(a.items, step=a.step) if a.items else []
             res = submit(a.title, a.kind, items, dataset=a.dataset, why=a.why, device=a.device,
                          priority=a.priority, key=a.key, url=a.url, prepare=(a.where or True) if a.prepare else False,
-                         max_cards=HARD_MAX_CARDS if a.allow_large and not a.max_cards else a.max_cards)  # fmt: skip
+                         max_cards=HARD_MAX_CARDS if a.allow_large and not a.max_cards else a.max_cards,
+                         hooks=_load_json(a.hooks) if a.hooks else None)  # fmt: skip
             _print(res)
             if (res.get("prepare") or {}).get("state") == "failed":
                 print(
@@ -337,6 +384,13 @@ def main(argv: list[str] | None = None) -> int:  # noqa: PLR0912, PLR0915
                 return 2
         elif a.cmd == "prepare":
             _print(prepare(a.ref, hold=a.hold, where=a.where, url=a.url).get("prepare"))
+        elif a.cmd == "hooks":
+            if a.set_file:
+                _print(set_hooks(a.ref, _load_json(a.set_file), url=a.url))
+            elif a.run:
+                _print(run_hook(a.ref, a.run, url=a.url))
+            else:
+                _print(get_hooks(a.ref, url=a.url))
         elif a.cmd == "gc":
             _print(gc(dry_run=a.dry_run, url=a.url))
         elif a.cmd == "status":

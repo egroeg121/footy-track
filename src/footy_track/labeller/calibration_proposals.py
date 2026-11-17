@@ -28,6 +28,7 @@ from footy_track.calibration.prelabel.proposals import (
 )
 from footy_track.clip_id import canonical_clip_id
 from footy_track.labeller import calibration as cal
+from footy_track.labeller import hooks
 from footy_track.labeller.review import _gt_marks_dir
 
 router = APIRouter()
@@ -243,6 +244,7 @@ async def accept_proposal(clip: str, run_id: str, idx: int, body: dict | None = 
         cal._write_gt(clip, doc)
         if idx in cal.too_few_points_frames(_gt_marks_dir(), clip):
             cal.clear_too_few_points(clip, idx)   # accepted after all: it had enough points
+        hooks.emit("calibration_gt", clip=cal.canonical_clip_id(clip), unit=idx, verdict="gt")
 
         def _flip(d):
             f = d["runs"][run_id]["frames"][str(idx)]

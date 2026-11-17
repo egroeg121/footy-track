@@ -85,3 +85,10 @@ def create_flow_run(
         body["name"] = name
     run = _call("POST", f"/deployments/{dep['id']}/create_flow_run", body)
     return str(run["id"])
+
+
+def flow_run_state(run_id: str) -> str:
+    """The state type of a flow run: ``SCHEDULED``, ``PENDING``, ``RUNNING``, ``COMPLETED``, ``FAILED``,
+    ``CANCELLED``, ``CRASHED`` ... (used by labelling hooks to know when their run is over)."""
+    run = _call("GET", "/flow_runs/" + urllib.parse.quote(str(run_id), safe=""))
+    return str((run.get("state") or {}).get("type") or run.get("state_type") or "UNKNOWN").upper()

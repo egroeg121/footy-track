@@ -37,7 +37,7 @@ from fastapi.responses import HTMLResponse, Response  # noqa: E402
 from fastapi.staticfiles import StaticFiles  # noqa: E402
 
 from footy_track.ball_eval.metrics import bbox_iou  # noqa: E402
-from footy_track.labeller import datasets  # noqa: E402
+from footy_track.labeller import datasets, hooks  # noqa: E402
 from footy_track.labeller.ball_check import router as ball_check_router  # noqa: E402
 from footy_track.labeller.calibration import router as calibration_router  # noqa: E402
 from footy_track.labeller.calibration_proposals import router as calibration_proposals_router  # noqa: E402
@@ -394,6 +394,12 @@ async def next_detection(from_idx: int) -> dict:
     return {"idx": None}
 
 
+def _emit_mark(session: Session, idx: int, verdict: str) -> None:
+    """Labelling hooks: one event per ball_place mark (see ``hooks.py``). Never raises."""
+    if session.video_path is not None:
+        hooks.emit("ball_place", clip=session.video_path.stem, unit=idx, verdict=verdict)
+
+
 @app.post("/edit")
 async def edit_frame(body: dict) -> dict:
     """Overwrite a frame with the user's boxes (labeller provenance = ground truth)."""
@@ -405,6 +411,7 @@ async def edit_frame(body: dict) -> dict:
         session.no_ball_frames.discard(idx)
         session.not_broadcast_frames.discard(idx)
     session.schedule_flush()
+    _emit_mark(session, idx, "ball" if any(b.label in BALL_LABELS for b in boxes) else "edit")
     return {"idx": idx, "boxes": boxes_payload(session.get_frame(idx))}
 
 
@@ -421,6 +428,7 @@ async def mark_no_ball(body: dict) -> dict:
                 b for b in session.timeline[idx] if b.label not in BALL_LABELS
             ]
     session.schedule_flush()
+    _emit_mark(session, idx, "no_ball")
     return {"idx": idx, "no_ball": True}
 
 
@@ -430,6 +438,7 @@ async def mark_not_broadcast(body: dict) -> dict:
     idx = int(body["idx"])
     session.not_broadcast_frames.add(idx)
     session.schedule_flush()
+    _emit_mark(session, idx, "not_broadcast")
     return {"idx": idx, "not_broadcast": True}
 
 
@@ -439,6 +448,7 @@ async def clear_no_ball(body: dict) -> dict:
     idx = int(body["idx"])
     session.no_ball_frames.discard(idx)
     session.schedule_flush()
+    _emit_mark(session, idx, "no_ball_cleared")
     return {"idx": idx, "no_ball": False}
 
 
@@ -448,6 +458,7 @@ async def clear_not_broadcast(body: dict) -> dict:
     idx = int(body["idx"])
     session.not_broadcast_frames.discard(idx)
     session.schedule_flush()
+    _emit_mark(session, idx, "not_broadcast_cleared")
     return {"idx": idx, "not_broadcast": False}
 
 

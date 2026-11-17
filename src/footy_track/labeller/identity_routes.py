@@ -46,7 +46,7 @@ from footy_track.identity.store import (
     load_pair_labels,
     load_tracklet_reviews,
 )
-from footy_track.labeller import datasets
+from footy_track.labeller import datasets, hooks
 
 router = APIRouter(prefix="/identity")
 
@@ -552,6 +552,8 @@ async def label_pair(body: dict) -> dict:
         _labels_dir(),
         PairLabel(a=a, b=b, verdict=verdict, annotator=body.get("annotator", "human")),
     )
+    for clip in dict.fromkeys((a.clip, b.clip)):  # labelling hooks: one event per clip the pair touches
+        hooks.emit("identity", clip=clip, verdict=verdict.value)
     res = build_clusters(load_pair_labels(_labels_dir()))
     return {
         "ok": True,
@@ -583,6 +585,7 @@ async def submit_review(body: dict) -> dict:
         annotator=body.get("annotator", "human"),
     )
     append_tracklet_review(_labels_dir(), review)
+    hooks.emit("identity", clip=tracklet.clip, verdict="unsure" if review.unsure else "reviewed")
     return {
         "ok": True,
         "is_pure": review.is_pure(),

@@ -39,7 +39,7 @@ from fastapi.responses import Response
 from footy_track.clip_id import canonical_clip_id
 from footy_track.labeller import ball_check_cache as bcc
 from footy_track.labeller import candidates as cand
-from footy_track.labeller import datasets, jobs
+from footy_track.labeller import datasets, hooks, jobs
 from footy_track.labeller.constants import (
     BALL_LABELS,
     NO_BALL_TAG,
@@ -251,6 +251,10 @@ def _append_verdict(rec: dict) -> None:
     path = _verdict_path(rec["clip"])
     with path.open("a") as fh:
         fh.write(json.dumps(rec) + "\n")
+    hooks.emit(  # labelling hooks: one event per persisted verdict / undo tombstone
+        "ball_check", clip=rec["clip"], verdict=rec.get("verdict"),
+        unit=(rec.get("source") or "sidecar", int(rec["frame_index"]), int(rec["box_index"])),
+    )  # fmt: skip
 
 
 # ---------------------------------------------------------------------------
@@ -430,6 +434,7 @@ def _job_queue(job_id: str, judged: dict, clip: str | None, limit: int) -> dict 
     return {
         "source": "list",
         "job": job_id,
+        "rev": int(j.get("rev") or 0),  # the page re-asks when this changes (a hook reordered the job)
         "remaining": len(todo),
         "judged": len(cards) - len(todo),
         "items": [
