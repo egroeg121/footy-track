@@ -190,6 +190,10 @@ Measured 2026-11-17 against the real datasets, with the clip register previewed 
 
 The hash rule is blind to how much data a clip carries. `bournemouth_1st_seg070` is the second-largest GT clip (3,840 rows) and the hash puts it in the eval tier, which is why one clip accounts for the whole v11 figure. If an eval tier that large for one clip is not wanted, pin it with a manual `train` entry in `clip_splits.json` before applying; the register keeps manual entries.
 
+## Versioned datasets and results
+
+The labels are also frozen into three independently versioned datasets (`tracking`, `broadcast`, `calibration`), each with train and eval parts from the split authority above. A version is a content-hashed, read-only Parquet snapshot written only when the labels change, and model metrics are stored per dataset version, split and cohort (`eval_result`). One command ingests every label source: `python -m footy_track.feature_store.ingest_all`; `python -m footy_track.datasets bump all` writes new versions. See [Versioned datasets and progress tracking](design/datasets_and_progress.md) for the item definitions, manifest, cohorts and contamination flags.
+
 ## Feature store
 
 DuckDB (open with `read_only=True`; see [Environment notes](development.md#environment-notes) for the version pin). The keys, the diagram and the list of what is not in the store are in [Feature store design, section 7.1](design/feature_store.md#71-keys-as-implemented-and-what-is-not-in-the-store). The state of the newest copy:

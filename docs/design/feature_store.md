@@ -2,6 +2,8 @@
 
 Status: **IMPLEMENTED (v1)** · Code: `src/footy_track/feature_store/` · Tests: `tests/feature_store/`
 
+Dataset versions, the one-shot `ingest_all`, and model results (`eval_result`, `dataset_version`, `broadcast_label`, `gt_frame` tables) are in [datasets_and_progress.md](datasets_and_progress.md).
+
 This document proposes a single, queryable **feature store** for footy-track:
 the consolidated home for everything we know about a match's frames —
 per-frame metadata, broadcast classification, pitch segmentation,
