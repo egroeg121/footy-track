@@ -49,6 +49,29 @@ def _clips_dir() -> Path:
     return server._CLIPS_DIR
 
 
+def _live_session_for(clip_stem: str):
+    """The live Session iff it has this clip loaded and is allowed to flush.
+
+    Review writes used to go straight to the sidecar file. When the labeller
+    had the same clip open, the Session's debounced flush would rewrite the
+    whole file from its in-memory timeline within ~2s, silently discarding the
+    review edit. Corrections for a loaded clip must therefore go through the
+    Session; the direct file path remains for clips nobody has open.
+
+    A session whose load dropped marks never flushes (see Session._do_flush),
+    so direct file writes are both safe and necessary in that state — return
+    None for it.
+    """
+    from footy_track.labeller import server  # noqa: PLC0415 — avoid import cycle
+
+    session = server.SESSION
+    if session.video_path is None or session.video_path.stem != clip_stem:
+        return None
+    if getattr(session, "_load_dropped", 0):
+        return None
+    return session
+
+
 # Provenance tags recognised when reading sidecar lines for review. NOTE:
 # deliberately unchanged from the original implementation — 'vittrack' is
 # absent, so vittrack boxes surface with provenance 'labeller' (OPEN-3 in
@@ -312,6 +335,34 @@ async def review_correct(body: dict) -> dict:
     label = body["label"]
     bbox = body["bbox"]  # {x, y, w, h} normalized
 
+    bx = max(0.0, min(1.0, float(bbox["x"])))
+    by = max(0.0, min(1.0, float(bbox["y"])))
+    bw = max(0.0, min(1.0 - bx, float(bbox["w"])))
+    bh = max(0.0, min(1.0 - by, float(bbox["h"])))
+
+    session = _live_session_for(clip)
+    if session is not None:
+        # Clip is open in the labeller: the Session timeline is authoritative
+        # (its next flush rewrites the whole sidecar), so edit it, not the file.
+        from footy_track.schema import ObjectDetection  # noqa: PLC0415
+
+        boxes = session.get_frame(frame_index)
+        if box_index >= len(boxes):
+            return {"ok": False, "error": "box_index out of range"}
+        boxes[box_index] = ObjectDetection(
+            label=label,
+            confidence=1.0,
+            x=bx,
+            y=by,
+            w=bw,
+            h=bh,
+            model=PROV_LABELLER,
+        )
+        session.set_frame(frame_index, boxes)
+        session.schedule_flush()
+        _CROP_CACHE.pop((clip, frame_index, box_index), None)
+        return {"ok": True}
+
     marks_dir = _gt_marks_dir()
     jsonl_path = marks_dir / f"{clip}.jsonl"
     if not jsonl_path.exists():
@@ -322,10 +373,6 @@ async def review_correct(body: dict) -> dict:
     if box_index >= len(line_indices):
         return {"ok": False, "error": "box_index out of range"}
 
-    bx = max(0.0, min(1.0, float(bbox["x"])))
-    by = max(0.0, min(1.0, float(bbox["y"])))
-    bw = max(0.0, min(1.0 - bx, float(bbox["w"])))
-    bh = max(0.0, min(1.0 - by, float(bbox["h"])))
     lines[line_indices[box_index]] = json.dumps(
         {
             "frame_index": frame_index,
@@ -347,6 +394,18 @@ async def review_delete(body: dict) -> dict:
     clip = body["clip"]
     frame_index = int(body["frame_index"])
     box_index = int(body["box_index"])
+
+    session = _live_session_for(clip)
+    if session is not None:
+        # See review_correct: a loaded clip's timeline is authoritative.
+        boxes = session.get_frame(frame_index)
+        if box_index >= len(boxes):
+            return {"ok": False, "error": "box_index out of range"}
+        del boxes[box_index]
+        session.set_frame(frame_index, boxes)
+        session.schedule_flush()
+        _CROP_CACHE.pop((clip, frame_index, box_index), None)
+        return {"ok": True}
 
     jsonl_path = _gt_marks_dir() / f"{clip}.jsonl"
     if not jsonl_path.exists():

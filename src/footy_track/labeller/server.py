@@ -27,6 +27,7 @@ os.environ.setdefault(
 import cv2  # noqa: E402
 from fastapi import (  # noqa: E402
     FastAPI,
+    HTTPException,
     WebSocket,
     WebSocketDisconnect,
 )
@@ -195,6 +196,38 @@ async def list_clips() -> dict:
         for p in paths
     ]
     return {"clips": clips, "dir": str(_CLIPS_DIR)}
+
+
+@app.post("/clips/add")
+async def add_clip(body: dict) -> dict:
+    """Register a clip with the labeller (OPEN-2 — was a dead frontend button).
+
+    Accepts either a bare filename already present in the clips dir (no-op
+    beyond validation) or an absolute path to a video elsewhere on this
+    machine, which is symlinked into the clips dir — matching the existing
+    convention that eval_data/clips is a directory of symlinks.
+    """
+    name = str(body.get("name") or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="missing clip name")
+    video_suffixes = {".mp4", ".mov", ".avi", ".mkv"}
+    src = Path(name).expanduser()
+    if src.suffix.lower() not in video_suffixes:
+        raise HTTPException(status_code=400, detail="not a video file")
+    if src.is_absolute():
+        if not src.is_file():
+            raise HTTPException(status_code=404, detail="file not found")
+        dest = _CLIPS_DIR / src.name
+        if not dest.exists():
+            _CLIPS_DIR.mkdir(parents=True, exist_ok=True)
+            dest.symlink_to(src)
+        return {"ok": True, "name": src.name}
+    # Bare name: no path separators, must already exist in the clips dir.
+    if src.name != name:
+        raise HTTPException(status_code=400, detail="bare filename or absolute path")
+    if not (_CLIPS_DIR / name).exists():
+        raise HTTPException(status_code=404, detail="not found in clips dir")
+    return {"ok": True, "name": name}
 
 
 @app.get("/clips/status")

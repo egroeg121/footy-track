@@ -196,10 +196,14 @@ def import_roboflow(
 
             ct = _continuous_time(frame_index, fps, time_offset)
             if gid not in games_seen:
-                store.upsert_games([GameRow(game_id=gid, fps=fps)])
+                # insert_missing, not upsert: this importer only knows the
+                # extraction fps (default 1.0), so it must never overwrite
+                # video-derived game/frame rows written by ingest_gt — an
+                # upsert here rewrote continuous_time_s/fps for the same PK.
+                store.insert_missing_games([GameRow(game_id=gid, fps=fps)])
                 games_seen.add(gid)
 
-            store.upsert_frames(
+            store.insert_missing_frames(
                 [
                     FrameRow(
                         game_id=gid,
@@ -288,10 +292,12 @@ def import_labeller_json(
         ct = _continuous_time(frame_index, fps, time_offset)
 
         if gid not in games_seen:
-            store.upsert_games([GameRow(game_id=gid, fps=fps)])
+            # See import_roboflow: fps here is a caller guess, so never
+            # overwrite video-derived game/frame rows from ingest_gt.
+            store.insert_missing_games([GameRow(game_id=gid, fps=fps)])
             games_seen.add(gid)
 
-        store.upsert_frames(
+        store.insert_missing_frames(
             [
                 FrameRow(
                     game_id=gid,

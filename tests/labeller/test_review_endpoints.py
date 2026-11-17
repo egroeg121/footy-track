@@ -344,3 +344,133 @@ def test_review_yolo_missing_video(client, clips_dir, gt_marks_dir):
         "error": "video not found",
         "boxes": [],
     }
+
+
+# ---------------------------------------------------------------------------
+# review writes route through a live Session (the flush-clobber race)
+# ---------------------------------------------------------------------------
+
+
+def _load_clip_with_boxes(fresh_session, clips_dir):
+    from .conftest import load_fake_clip, make_box
+
+    load_fake_clip(fresh_session, clips_dir, "clip.mp4", total_frames=4)
+    fresh_session.set_frame(
+        1,
+        [
+            make_box(model="yolo", label="player", confidence=0.5, x=0.1),
+            make_box(model="yolo", label="player", confidence=0.5, x=0.3),
+        ],
+    )
+    return fresh_session
+
+
+def test_correct_routes_through_live_session_and_survives_flush(
+    client, fresh_session, clips_dir, gt_marks_dir, fake_cv2
+):
+    _load_clip_with_boxes(fresh_session, clips_dir)
+    r = client.post(
+        "/review/correct",
+        json={
+            "clip": "clip",
+            "frame_index": 1,
+            "box_index": 1,
+            "label": "referee",
+            "bbox": {"x": 0.35, "y": 0.2, "w": 0.05, "h": 0.08},
+        },
+    )
+    assert r.json() == {"ok": True}
+    # The edit landed in the authoritative timeline, promoted to labeller GT.
+    box = fresh_session.timeline[1][1]
+    assert (box.label, box.model, box.confidence) == ("referee", PROV_LABELLER, 1.0)
+    assert box.x == 0.35
+    # And the next full flush (which rewrites the whole sidecar from the
+    # timeline — the old clobber route) now WRITES the correction.
+    fresh_session._do_flush()
+    lines = [
+        json.loads(line)
+        for line in (gt_marks_dir / "clip.jsonl").read_text().splitlines()
+    ]
+    corrected = [d for d in lines if "referee" in d["tags"]]
+    assert len(corrected) == 1
+    assert corrected[0]["bbox"]["x"] == 0.35
+
+
+def test_delete_routes_through_live_session(
+    client, fresh_session, clips_dir, gt_marks_dir, fake_cv2
+):
+    _load_clip_with_boxes(fresh_session, clips_dir)
+    r = client.post(
+        "/review/delete", json={"clip": "clip", "frame_index": 1, "box_index": 0}
+    )
+    assert r.json() == {"ok": True}
+    assert len(fresh_session.timeline[1]) == 1
+    assert fresh_session.timeline[1][0].x == 0.3  # the other box remains
+
+
+def test_correct_box_index_out_of_range_via_session(
+    client, fresh_session, clips_dir, gt_marks_dir, fake_cv2
+):
+    _load_clip_with_boxes(fresh_session, clips_dir)
+    r = client.post(
+        "/review/correct",
+        json={
+            "clip": "clip",
+            "frame_index": 1,
+            "box_index": 9,
+            "label": "player",
+            "bbox": {"x": 0.1, "y": 0.1, "w": 0.1, "h": 0.1},
+        },
+    )
+    assert r.json() == {"ok": False, "error": "box_index out of range"}
+
+
+def test_correct_falls_back_to_file_when_session_cannot_flush(
+    client, fresh_session, clips_dir, gt_marks_dir, fake_cv2
+):
+    """A session that dropped marks at load never flushes — direct file writes
+    are then both safe and required."""
+    _load_clip_with_boxes(fresh_session, clips_dir)
+    fresh_session._load_dropped = 3
+    _write_sidecar(gt_marks_dir, "clip", [_line(1, ["player", "yolo"], x=0.3)])
+    r = client.post(
+        "/review/correct",
+        json={
+            "clip": "clip",
+            "frame_index": 1,
+            "box_index": 0,
+            "label": "referee",
+            "bbox": {"x": 0.4, "y": 0.2, "w": 0.05, "h": 0.08},
+        },
+    )
+    assert r.json() == {"ok": True}
+    # File was edited directly; the (flush-disabled) timeline was not.
+    lines = [
+        json.loads(line)
+        for line in (gt_marks_dir / "clip.jsonl").read_text().splitlines()
+    ]
+    assert "referee" in lines[0]["tags"]
+    assert fresh_session.timeline[1][0].label == "player"
+
+
+def test_correct_on_unloaded_clip_still_writes_file(
+    client, fresh_session, clips_dir, gt_marks_dir, fake_cv2
+):
+    """No live session for this clip: the original direct-file path applies."""
+    _write_sidecar(gt_marks_dir, "other", [_line(0, ["player", "yolo"])])
+    r = client.post(
+        "/review/correct",
+        json={
+            "clip": "other",
+            "frame_index": 0,
+            "box_index": 0,
+            "label": "referee",
+            "bbox": {"x": 0.2, "y": 0.2, "w": 0.05, "h": 0.08},
+        },
+    )
+    assert r.json() == {"ok": True}
+    lines = [
+        json.loads(line)
+        for line in (gt_marks_dir / "other.jsonl").read_text().splitlines()
+    ]
+    assert "referee" in lines[0]["tags"]

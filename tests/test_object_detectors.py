@@ -162,3 +162,34 @@ class TestUltralyticsSam3Detector:
 
         # Check if at least half the persons have an IoU of 0.5 or greater
         assert matches / len(gt_persons) >= 0.5
+
+
+class TestPredictKwargs:
+    def test_predict_from_path_passes_thresholds_to_model(self, monkeypatch):
+        """conf/iou/imgsz must reach model.predict — they were silently dropped,
+        so every caller got Ultralytics defaults (conf=0.25) regardless of the
+        min_confidence/iou_threshold they asked for."""
+        import types
+
+        detector = UltralyticsObjectDetector(
+            min_confidence=0.42, iou_threshold=0.55, imgsz=1280, verbose=False
+        )
+        captured: dict = {}
+
+        class _EmptyResult:
+            orig_shape = (360, 640)
+            boxes = None
+
+        def fake_predict(source, **kwargs):
+            captured.update(kwargs)
+            return [_EmptyResult()]
+
+        monkeypatch.setattr(
+            detector, "model", types.SimpleNamespace(predict=fake_predict)
+        )
+        frame = detector.predict_from_path(Path("whatever.jpg"))
+        assert frame.detections == []
+        assert captured["conf"] == 0.42
+        assert captured["iou"] == 0.55
+        assert captured["imgsz"] == 1280
+        assert captured["verbose"] is False
