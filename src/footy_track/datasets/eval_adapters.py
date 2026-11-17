@@ -7,7 +7,7 @@ dataset snapshot* (never on "current labels"):
 adapter        runs on                                 status
 =============  =====================================  =========================================
 calibration    CPU (proposal files vs GT correspond.)  working: success@5px / @10px, reprojection
-broadcast      CPU (stored classifier calls)           working: accuracy / precision / recall / F1
+broadcast      CPU (stored classifier calls)           working: accuracy / precision / recall / F1 (random stratum)
 ball tracker   CPU (replays cached detections)         working given a candidate cache
 detector       GPU (RT-DETR / YOLO inference)          stub: NotImplementedError (Prefect gpu pool)
 =============  =====================================  =========================================
@@ -169,7 +169,7 @@ class StoredPredictionModel:
     """The classifier's call recorded when the frame was queued for review (``pred`` /
     ``p_yes`` in the item payload): the number the review page shows next to the frame.
     Those frames are the ones nearest the decision boundary plus a random sample, so the
-    headline numbers are biased towards hard frames; ``accuracy_random`` is the unbiased subset."""
+    all-frames numbers are biased towards hard frames; see :class:`BroadcastAdapter`."""
 
     name: str = "broadcast_classifier_at_review"
     version: str = "stored"
@@ -183,9 +183,82 @@ class StoredPredictionModel:
         return None
 
 
+STRATUM_RANDOM = "random"
+STRATUM_EDGE = "edge"
+STRATUM_UNKNOWN = "unknown"
+
+
+def broadcast_stratum(item: dict) -> str:
+    """Which review sample a broadcast item came from: ``random`` / ``edge`` / ``unknown``.
+
+    The payload ``reason`` is the ``broadcast_select`` bucket: ``random`` (uniform over the
+    match: the only unbiased sample), ``edge_mid`` / ``edge_boundary`` (frames the classifier
+    was unsure about; the legacy value ``edge`` is the same thing). An item with no ``reason``
+    (legacy review files) or any other value is ``unknown``: it is NEVER assumed random, because
+    nothing says it was sampled at random, so it stays out of the headline.
+    """
+    reason = _payload(item).get("reason")
+    if reason == "random":
+        return STRATUM_RANDOM
+    if isinstance(reason, str) and reason.startswith("edge"):
+        return STRATUM_EDGE
+    return STRATUM_UNKNOWN
+
+
+class _Confusion:
+    def __init__(self) -> None:
+        self.tp = self.fp = self.tn = self.fn = 0
+
+    def add(self, pred: bool, truth: bool) -> None:
+        self.tp += pred and truth
+        self.fp += pred and not truth
+        self.tn += (not pred) and (not truth)
+        self.fn += (not pred) and truth
+
+    @property
+    def n(self) -> int:
+        return self.tp + self.fp + self.tn + self.fn
+
+    def __iadd__(self, o: _Confusion) -> _Confusion:
+        self.tp += o.tp
+        self.fp += o.fp
+        self.tn += o.tn
+        self.fn += o.fn
+        return self
+
+    def scores(self) -> tuple[float | None, float | None, float | None, float | None]:
+        """``(accuracy, precision_yes, recall_yes, f1_yes)``."""
+
+        def div(a: float, b: float) -> float | None:
+            return a / b if b else None
+
+        prec, rec = div(self.tp, self.tp + self.fp), div(self.tp, self.tp + self.fn)
+        f1 = div(2 * prec * rec, prec + rec) if prec is not None and rec is not None else None
+        return div(self.tp + self.tn, self.n), prec, rec, f1
+
+
 class BroadcastAdapter:
     """Accuracy / precision / recall / F1 of "is this a main-camera frame" against human
-    verdicts. ``unsure`` verdicts and frames with no prediction are excluded."""
+    verdicts. ``unsure`` verdicts and frames with no prediction are excluded.
+
+    The review set is NOT a random sample: ``broadcast_select`` picks the frames nearest the
+    decision boundary (``edge_mid`` / ``edge_boundary``) plus a few ``random`` ones. On edge
+    frames (stored p_yes within ~0.48-0.52) any preprocessing difference flips the call, so
+    accuracy there is noise (broadcast v1: stored 0.33, JPEG re-score 0.76, video-seek 0.59,
+    while all paths agree at 0.87 on the random frames). Metrics are therefore reported per
+    stratum (see :func:`broadcast_stratum`):
+
+    * **headline** ``accuracy`` / ``precision_yes`` / ``recall_yes`` / ``f1_yes`` / ``n_yes`` /
+      ``n_no``: the RANDOM stratum only, with ``n_random``; ``accuracy_random`` and
+      ``f1_yes_random`` repeat the headline under the explicit stratum name;
+    * ``accuracy_edge`` / ``f1_yes_edge`` / ``n_edge``: diagnostic only;
+    * ``accuracy_all_biased`` / ``f1_yes_all_biased``: every scored frame, edge-weighted,
+      diagnostic only;
+    * ``n_unknown``: frames with no / unrecognised ``reason`` (legacy), excluded from the
+      headline and the edge stratum (never assumed random), included in ``*_all_biased``.
+
+    ``EvalOutput.n_items`` is the number of scored frames across all strata.
+    """
 
     task = "broadcast"
     dataset = "broadcast"
@@ -193,40 +266,41 @@ class BroadcastAdapter:
     def evaluate(
         self, model: BroadcastModel, dataset_version: DatasetVersion, split: str, cohort: int | None = None
     ) -> EvalOutput:
-        tp = fp = tn = fn = 0
-        rnd_ok = rnd_n = 0
+        strata = {STRATUM_RANDOM: _Confusion(), STRATUM_EDGE: _Confusion(), STRATUM_UNKNOWN: _Confusion()}
         for r in _items(dataset_version, split, cohort):
             if r["label_kind"] not in ("yes", "no"):
                 continue
             pred = model.says_yes(r)
             if pred is None:
                 continue
-            truth = r["label_kind"] == "yes"
-            tp += pred and truth
-            fp += pred and not truth
-            tn += (not pred) and (not truth)
-            fn += (not pred) and truth
-            if _payload(r).get("reason") == "random":
-                rnd_n += 1
-                rnd_ok += pred == truth
+            strata[broadcast_stratum(r)].add(pred, r["label_kind"] == "yes")
 
-        def div(a: float, b: float) -> float | None:
-            return a / b if b else None
-
-        n = tp + fp + tn + fn
-        prec, rec = div(tp, tp + fp), div(tp, tp + fn)
-        f1 = div(2 * prec * rec, prec + rec) if prec is not None and rec is not None else None
+        rnd, edge, unk = strata[STRATUM_RANDOM], strata[STRATUM_EDGE], strata[STRATUM_UNKNOWN]
+        everything = _Confusion()
+        for c in strata.values():
+            everything += c
+        acc_r, prec_r, rec_r, f1_r = rnd.scores()
+        acc_e, _, _, f1_e = edge.scores()
+        acc_all, _, _, f1_all = everything.scores()
         return EvalOutput(
             {
-                "accuracy": div(tp + tn, n),
-                "precision_yes": prec,
-                "recall_yes": rec,
-                "f1_yes": f1,
-                "accuracy_random": div(rnd_ok, rnd_n),
-                "n_yes": float(tp + fn),
-                "n_no": float(tn + fp),
+                "accuracy": acc_r,
+                "precision_yes": prec_r,
+                "recall_yes": rec_r,
+                "f1_yes": f1_r,
+                "n_yes": float(rnd.tp + rnd.fn),
+                "n_no": float(rnd.tn + rnd.fp),
+                "accuracy_random": acc_r,
+                "f1_yes_random": f1_r,
+                "n_random": float(rnd.n),
+                "accuracy_edge": acc_e,
+                "f1_yes_edge": f1_e,
+                "n_edge": float(edge.n),
+                "accuracy_all_biased": acc_all,
+                "f1_yes_all_biased": f1_all,
+                "n_unknown": float(unk.n),
             },
-            n,
+            everything.n,
         )
 
 

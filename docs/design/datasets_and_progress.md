@@ -71,7 +71,8 @@ Details that matter when reading the numbers:
   frames the classifier was unsure about plus a random sample, judged yes/no/unsure by a human. They
   have no clip, so a 6,000-frame window `<match>_wNNNN` stands in for one (`splits.broadcast_window_id`).
   `unsure` items are kept but never scored. The sampling is biased towards hard frames, so a stored
-  classifier's accuracy here is not its accuracy on a random frame; `accuracy_random` is the unbiased subset.
+  classifier's accuracy over all frames is not its accuracy on a random frame; the headline is the random
+  stratum only (see "Broadcast eval: random vs edge strata" in section 9).
 - **calibration.** Human GT only (`calibration_gt/`) plus the human `frame_type/` flags. Machine
   proposals are stored in the store but are the thing being *evaluated*, not part of the dataset. A file is
   copied to every alias `game_id` of its clip; the dataset keeps one item per canonical clip and frame.
@@ -191,13 +192,43 @@ contamination flags and records the rows.
 | adapter | task | status | metrics | model |
 |---|---|---|---|---|
 | `CalibrationAdapter` | calibration | **works, CPU** | `success_at_5px`, `success_at_10px`, `mean_/median_reprojection_px`, `mean_reprojection_m`, `failed_rate`, `keypoint_agreement`, `coverage` | `ProposalRunModel(run_id, gt_dirs)`: a stored proposals run in `calibration_proposals/` (reuses `prelabel.evaluate.eval_frame`); any object with `.proposal(item)` works |
-| `BroadcastAdapter` | broadcast | **works, CPU** | `accuracy`, `precision_yes`, `recall_yes`, `f1_yes`, `accuracy_random`, `n_yes`, `n_no` | `StoredPredictionModel`: the classifier's call recorded with each frame when it was queued for review (the number the review page shows). Any object with `.says_yes(item)` works |
+| `BroadcastAdapter` | broadcast | **works, CPU** | Headline (random stratum): `accuracy`, `precision_yes`, `recall_yes`, `f1_yes`, `n_yes`, `n_no`, `n_random`, plus `accuracy_random`, `f1_yes_random`. Diagnostic: `accuracy_edge`, `f1_yes_edge`, `n_edge`, `accuracy_all_biased`, `f1_yes_all_biased`, `n_unknown` | `StoredPredictionModel`: the classifier's call recorded with each frame when it was queued for review (the number the review page shows). Any object with `.says_yes(item)` works |
 | `BallTrackerAdapter` | tracking | **works on CPU given a candidate cache** | `ball_precision_/recall_/wrong_per_prediction_` at 10 px and 25 px, `clips_scored`, `clips_without_cache` | `BallTrackerReplay(kind, cache_dir, ...)`: replays `online`/`bidirectional`/`viterbi` over `<clip>.jsonl` caches from `ball_tracking_eval cache` (reuses `ball_eval.detection_replay`) |
 | `DetectorAdapter` | tracking | **stub** (`NotImplementedError`) | detector P / R / mAP50 | needs GPU inference over every eval frame |
 
 TODO (Prefect): the detector eval, and the candidate-cache step the ball-tracker replay depends on, run
 on the `gpu` work pool (desktop RTX 2070); they should call `record_results` when done. The calibration,
 broadcast and tracker-replay evals are CPU and belong on the `cpu` pool.
+
+### Broadcast eval: random vs edge strata
+
+Broadcast review frames are not a random sample. `broadcast_select.select` picks the frames nearest
+the decision boundary (`edge_mid`, `edge_boundary`; legacy value `edge`) plus a few `random` ones, and the
+item payload carries that `reason`. In `broadcast` v1 (72 in-match eval items from one match) 49 items
+(68%) are edge frames with stored p_yes about 0.48-0.52, and only 23 are random. On edge frames any
+preprocessing difference flips the call, so accuracy there is noise:
+
+| frames | stored calls | JPEG re-score | video-seek re-score |
+|---|---|---|---|
+| edge (49) | 0.33 | 0.76 | 0.59 |
+| random (23) | 0.87 | 0.87 | 0.87 |
+| all 72 (edge-weighted) | 0.50 | 0.79 | |
+
+There is no join, threshold or weights bug; the 0.50 vs 0.79 gap is the edge weighting. So:
+
+- `BroadcastAdapter` headline metrics (`accuracy`, `f1_yes`, `precision_yes`, `recall_yes`, `n_yes`, `n_no`)
+  are computed on the **random stratum only**, with `n_random`. `accuracy_random` / `f1_yes_random` repeat them
+  under the explicit stratum name.
+- `accuracy_edge`, `f1_yes_edge`, `n_edge` and the all-frames `accuracy_all_biased`, `f1_yes_all_biased`
+  are diagnostic only.
+- **Legacy items with no `reason`** (or any value other than `random` / `edge*`) are never assumed random:
+  nothing records that they were sampled at random. They count in `n_unknown` and `*_all_biased` only, and are
+  excluded from the headline and the edge stratum. (Only a `reason` of `random` in the review file says so.)
+- `/progress` shows the headline with its n, greys the diagnostic metrics (tooltip says why), and warns
+  "small eval sample" when the headline n is below 50. A result recorded before this split (no `n_random`)
+  is flagged "all frames, edge-weighted".
+- Reviews of held-out matches should use the eval-oriented selection of `broadcast_select` (mostly random,
+  few edge), since held-out labels are never used for training.
 
 ## 10. Contamination flags
 

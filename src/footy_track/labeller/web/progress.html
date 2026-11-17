@@ -49,6 +49,12 @@
   td.c-unk { background:rgba(210,153,34,.14); color:var(--amber); font-style:italic; }
   td.c-train { color:var(--muted); }
   td.none { color:var(--border); }
+  tr.diag td { color:#6b7a88; font-style:italic; }
+  tr.diag td:first-child::after { content:" (diagnostic)"; font-size:10px; }
+  .headline { display:flex; flex-wrap:wrap; gap:8px 16px; margin:6px 0; }
+  .headline > div { border:1px solid var(--border); border-radius:6px; padding:4px 10px; }
+  .headline .big { font-size:20px; font-weight:700; }
+  .badge.small { color:var(--amber); border-color:var(--amber); background:rgba(210,153,34,.12); }
   .model { border-top:1px solid var(--border); margin-top:12px; padding-top:4px; }
   select { background:var(--bg); color:var(--ink); border:1px solid var(--border); border-radius:4px; padding:2px 4px; }
   .tier-full { color:var(--ink); } .tier-cohort { color:var(--teal); }
@@ -205,12 +211,28 @@ function valueCell(series, p) {
   if (st === "train") return `<td class="c-train" title="${esc(tip)}">${fmtVal(p.value)}</td>`;
   return `<td title="${esc(tip)}">${fmtVal(p.value)}</td>`;
 }
+const metaOf = (model, metric) => (model.metric_meta || {})[metric] || {};
+const isDiag = (model, metric) => metaOf(model, metric).role === "diagnostic";
+function headlineStrip(model) {
+  if (!model.headline || !model.headline.length) return "";
+  const cells = model.headline.map(h => {
+    const n = h.n == null ? "n unknown" : `n=${h.n} random frames`;
+    const warn = h.warning ? `<div><span class="badge small" title="${esc(h.warning)}">${h.n != null ? "small eval sample" : "all frames, edge-weighted"}</span></div>` : "";
+    const f1 = h.f1_yes == null ? "" : ` &middot; F1 ${fmtVal(h.f1_yes)}`;
+    return `<div title="${esc(_HEADLINE_TIP)}"><span class="muted">${esc(h.tier)} &middot; v${h.dataset_version}</span><div><span class="big">${fmtVal(h.accuracy)}</span> accuracy${f1}</div>` +
+      `<div class="muted">headline (random stratum) &middot; ${n}</div>${warn}</div>`;
+  }).join("");
+  return `<div class="headline">${cells}</div>` +
+    `<div class="muted">Edge-frame and all-frames metrics below are greyed: diagnostic only (hover for why).</div>`;
+}
+const _HEADLINE_TIP = "Headline = accuracy on the random stratum only, the unbiased sample. Edge frames (stored p_yes about 0.48-0.52) are noise.";
 function tierTable(model, kind, versions) {
   const rows = [];
   for (const [metric, series] of Object.entries(model.metrics)) {
     for (const s of series.filter(x => x.kind === kind).sort((a, b) => a.split.localeCompare(b.split) || (a.cohort_version ?? 0) - (b.cohort_version ?? 0))) {
       const byV = Object.fromEntries(s.points.map(p => [p.dataset_version, p]));
-      rows.push(`<tr><td>${esc(metric)}</td><td class="l ${kind === "cohort" ? "tier-cohort" : "tier-full"}">${esc(s.tier)}</td>` +
+      const diag = isDiag(model, metric);
+      rows.push(`<tr${diag ? ` class="diag" title="${esc(metaOf(model, metric).note)}"` : ""}><td>${esc(metric)}</td><td class="l ${kind === "cohort" ? "tier-cohort" : "tier-full"}">${esc(s.tier)}</td>` +
         versions.map(v => valueCell(s, byV[v])).join("") + `</tr>`);
     }
   }
@@ -223,13 +245,15 @@ function tierTable(model, kind, versions) {
 function modelBlock(ds, m, versions) {
   const key = ds + "|" + m.model_name + "|" + m.model_version;
   const metrics = Object.keys(m.metrics);
-  const sel = metricChoice[key] && metrics.includes(metricChoice[key]) ? metricChoice[key] : metrics[0];
+  const sel = metricChoice[key] && metrics.includes(metricChoice[key]) ? metricChoice[key] : (metrics.find(x => !isDiag(m, x)) ?? metrics[0]);
   const flags = (m.n_contaminated ? `<span class="badge bad">${m.n_contaminated} contaminated</span> ` : "") +
     (m.n_unknown ? `<span class="badge unk">${m.n_unknown} contamination unknown</span>` : "");
-  const opts = metrics.map(x => `<option${x === sel ? " selected" : ""}>${esc(x)}</option>`).join("");
+  const opts = metrics.map(x => `<option value="${esc(x)}"${x === sel ? " selected" : ""}>${esc(x)}${isDiag(m, x) ? " (diagnostic)" : ""}</option>`).join("");
+  const selNote = isDiag(m, sel) ? `<div class="banner info">${esc(metaOf(m, sel).note)}</div>` : "";
   const modelV = String(m.model_version).length > 14 ? String(m.model_version).slice(0, 12) + "…" : m.model_version;
   return `<div class="model"><h4>${esc(m.model_name)} <span class="muted" title="${esc(m.model_version)}">@ ${esc(modelV)} &middot; ${esc(m.task)}</span> ${flags}</h4>` +
-    `<div class="row"><div><label class="muted">metric <select data-key="${esc(key)}">${opts}</select></label>${perfChart(m.metrics[sel], versions)}</div>` +
+    headlineStrip(m) +
+    `<div class="row"><div><label class="muted">metric <select data-key="${esc(key)}">${opts}</select></label>${selNote}${perfChart(m.metrics[sel], versions)}</div>` +
     `<div>${tierTable(m, "full", versions)}${tierTable(m, "cohort", versions)}</div></div></div>`;
 }
 function perfSection(ds, x, d) {

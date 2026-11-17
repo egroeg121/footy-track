@@ -247,7 +247,95 @@ def _group_results(rows: list[dict]) -> dict[str, list[dict]]:
                 model["n_contaminated"] += 1
             elif r["contaminated"] is None:
                 model["n_unknown"] += 1
-    return {ds: list(models.values()) for ds, models in by_ds.items()}
+    out = {ds: list(models.values()) for ds, models in by_ds.items()}
+    for model in out.get("broadcast", []):
+        _annotate_broadcast(model)
+    return out
+
+
+# --------------------------------------------------------------------------------------------
+# broadcast: random-stratum headline vs diagnostic edge / all-frames metrics
+# --------------------------------------------------------------------------------------------
+#: A headline computed on fewer random frames than this is flagged "small eval sample".
+MIN_HEADLINE_N = 50
+
+_EDGE_NOTE = (
+    "Diagnostic only. Edge frames are the ones the classifier was least sure about "
+    "(stored p_yes about 0.48-0.52), so any preprocessing difference flips the call and "
+    "accuracy there is noise (broadcast v1: stored 0.33, JPEG re-score 0.76, video-seek 0.59)."
+)
+_BIASED_NOTE = (
+    "Diagnostic only. Counts every scored frame, about two thirds of which are edge frames "
+    "picked because the classifier was unsure, so this is edge-weighted and not the accuracy on a "
+    "random frame. The headline is the random stratum."
+)
+_HEADLINE_NOTE = "Headline: random-stratum frames only, the unbiased sample."
+_UNKNOWN_NOTE = (
+    "Frames with no recorded sampling reason (legacy review data). They are never assumed random, "
+    "so they are excluded from the headline."
+)
+
+
+def _broadcast_metric_meta(metric: str) -> dict[str, Any]:
+    """``{role, note}`` of a broadcast metric: ``headline`` / ``diagnostic`` / ``count``."""
+    if metric.endswith("_edge"):
+        return {"role": "diagnostic", "note": _EDGE_NOTE}
+    if metric.endswith("_all_biased"):
+        return {"role": "diagnostic", "note": _BIASED_NOTE}
+    if metric == "n_unknown":
+        return {"role": "count", "note": _UNKNOWN_NOTE}
+    if metric.startswith("n_"):
+        return {"role": "count", "note": None}
+    return {"role": "headline", "note": _HEADLINE_NOTE}
+
+
+def _annotate_broadcast(model: dict) -> None:
+    """Flag the edge / all-biased metrics as diagnostic, show the headline with its n, and warn
+    on a small headline sample. Mutates ``model`` (adds ``metric_meta`` and ``headline``)."""
+    metrics = model["metrics"]
+    model["metric_meta"] = {m: _broadcast_metric_meta(m) for m in metrics}
+
+    def point_at(metric: str, series: dict, version: int) -> dict | None:
+        for s in metrics.get(metric, []):
+            if s["split"] == series["split"] and s["cohort_version"] == series["cohort_version"]:
+                return next((p for p in s["points"] if p["dataset_version"] == version), None)
+        return None
+
+    # every metric's n is the n of its own stratum, not the all-frames n_items of the run
+    for metric, series_list in metrics.items():
+        n_metric = (
+            "n_edge" if metric.endswith("_edge")
+            else None if metric.endswith("_all_biased") or metric.startswith("n_")
+            else "n_random"
+        )
+        for s in series_list:
+            for p in s["points"]:
+                if n_metric:
+                    npt = point_at(n_metric, s, p["dataset_version"])
+                    if npt and npt["value"] is not None:
+                        p["n_items"] = int(npt["value"])
+                if metric.endswith("_all_biased"):
+                    p["note"] = " | ".join(x for x in (p["note"], "edge-weighted, diagnostic") if x)
+
+    headline = []
+    for s in metrics.get("accuracy", []):
+        p = max(s["points"], key=lambda q: q["dataset_version"])
+        f1 = point_at("f1_yes", s, p["dataset_version"])
+        npt = point_at("n_random", s, p["dataset_version"])
+        n = int(npt["value"]) if npt and npt["value"] is not None else None
+        entry = {
+            "split": s["split"], "cohort_version": s["cohort_version"], "tier": s["tier"],
+            "dataset_version": p["dataset_version"], "accuracy": p["value"],
+            "f1_yes": f1["value"] if f1 else None, "n": n,
+            "contaminated": p["contaminated"], "warning": None,
+        }
+        if n is None:
+            entry["warning"] = ("recorded before the random/edge split: this accuracy covers all frames "
+                                "(edge-weighted); re-run the eval")
+        elif n < MIN_HEADLINE_N:
+            entry["warning"] = f"small eval sample: only {n} random frames (< {MIN_HEADLINE_N})"
+        headline.append(entry)
+    model["headline"] = sorted(headline, key=lambda h: (h["split"], h["cohort_version"] or 0))
 
 
 # --------------------------------------------------------------------------------------------
