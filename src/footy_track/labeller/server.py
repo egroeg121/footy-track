@@ -193,11 +193,6 @@ async def calibration_review_page() -> HTMLResponse:
     )
 
 
-@app.get("/ingest", response_class=HTMLResponse)
-async def ingest_page() -> HTMLResponse:
-    return HTMLResponse((_STATIC_DIR / "ingest.html").read_text())
-
-
 def _clip_completion(stem: str, video_path: Path) -> dict:
     """Return {marked, complete, label_count} for a clip.
 
@@ -258,6 +253,13 @@ async def list_clips() -> dict:
 @app.get("/clips/status")
 async def clips_status() -> dict:
     """Return completion status for all clips — may be slow (reads video metadata)."""
+    # One cv2.VideoCapture + one sidecar parse per clip: seconds of blocking work. Off the event
+    # loop (to_thread keeps the request's dataset ContextVar), or every other page stalls while a
+    # laptop opens /labeller (B1 of the labelling architecture review).
+    return await asyncio.to_thread(_clips_status_sync)
+
+
+def _clips_status_sync() -> dict:
     if not datasets.current().clips_dir.exists():
         return {"clips": []}
     video_suffixes = {".mp4", ".mov", ".avi", ".mkv"}

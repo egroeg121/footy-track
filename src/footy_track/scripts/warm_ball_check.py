@@ -8,7 +8,10 @@ clip once, sequentially, with a pause between requests so it stays out of the wa
 
     nice -n 19 python -m footy_track.scripts.warm_ball_check --base http://127.0.0.1:8011 --dataset nottinghamforest
 
-``--dataset`` selects the labeller dataset (default: the server's default). Started
+``--source candidates`` instead warms the detector-candidate pool of the dataset (one
+``/ball_check/queue?source=candidates`` request: the first one after a restart builds the pool, 13 s
+measured, then 0.14 s; no cards are rendered). ``--dataset`` selects the labeller dataset (default:
+the server's default). Started
 in the background by ``scripts/labeller_deploy.sh`` after restarting the service,
 for each dataset it lists in WARM_DATASETS (skip with ``--no-warm``).
 """
@@ -56,15 +59,36 @@ def fetch_todo(base: str, wait_s: float, dataset: str | None = None) -> list[dic
             time.sleep(2)
 
 
+def warm_pool(base: str, wait_s: float, dataset: str | None = None) -> float:
+    """Build the server's candidate pool by asking for one card; returns the seconds it took."""
+    deadline = time.monotonic() + wait_s
+    while True:
+        t0 = time.monotonic()
+        try:
+            q = json.loads(_get(f"{base}/ball_check/queue?source=candidates&limit=1{_ds(dataset)}", 300))
+            return time.monotonic() - t0 if q.get("source") == "candidates" else -1.0
+        except (urllib.error.URLError, OSError, ValueError) as e:
+            if time.monotonic() > deadline:
+                raise SystemExit(f"warm: server at {base} not ready: {e}") from e
+            time.sleep(2)
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--base", required=True, help="e.g. http://127.0.0.1:8011")
     ap.add_argument("--dataset", default=None, help="labeller dataset name (default: server default)")
+    ap.add_argument("--source", choices=("list", "candidates"), default="list",
+                    help="list: render the review-list cards; candidates: build the candidate pool only")
     ap.add_argument("--sleep", type=float, default=0.5, help="pause between requests (s)")
     ap.add_argument("--wait", type=float, default=120, help="max seconds to wait for the server")
     ap.add_argument("--limit", type=int, default=MAX_QUEUE)
     args = ap.parse_args(argv)
     base = args.base.rstrip("/")
+
+    if args.source == "candidates":
+        took = warm_pool(base, args.wait, args.dataset)
+        print(f"warm: candidate pool {'built' if took >= 0 else 'not available'} in {max(took, 0):.1f}s", flush=True)
+        return 0
 
     todo = fetch_todo(base, args.wait, args.dataset)[: args.limit]
     print(f"warm: {len(todo)} undone cards from {base}", flush=True)

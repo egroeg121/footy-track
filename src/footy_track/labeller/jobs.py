@@ -749,6 +749,7 @@ def compute(job: dict) -> dict:  # noqa: PLR0912
     nxt: dict | None = None
     done = total = 0
     ident = _identity_records(ds) if kind == "identity" else []
+    br_stores: dict[str, dict] = {}  # broadcast_review: one read_store per match per call (items are frames)
     for i, it in enumerate(job["items"]):
         units = _item_units(kind, it)
         n_done = 0
@@ -782,7 +783,9 @@ def compute(job: dict) -> dict:  # noqa: PLR0912
         elif kind == "broadcast_review":
             from footy_track.labeller import broadcast_review as br
 
-            store = br.read_store(ds, it["clip"])
+            store = br_stores.get(it["clip"])
+            if store is None:
+                store = br_stores[it["clip"]] = br.read_store(ds, it["clip"])
             stores[it["clip"]] = {"clip": it["clip"], "store": f"broadcast_review/{it['clip']}.json"}
             for f in units:
                 rec = store.get(f)

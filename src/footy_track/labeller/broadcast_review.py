@@ -357,7 +357,9 @@ async def job_view(ref: str):
         cal = latest_calibration(ds)
         rows = []
         for i, it in enumerate(job["items"]):
-            st = stores.setdefault(it["clip"], read_store(ds, it["clip"]))
+            st = stores.get(it["clip"])
+            if st is None:  # setdefault(k, read_store()) would read the file for every item
+                st = stores[it["clip"]] = read_store(ds, it["clip"])
             v = st.get(it["frame"])
             row = {**it, "item": i, "verdict": v["verdict"] if v else None, "done": bool(v)}
             if cal is not None and isinstance(it.get("p_yes"), (int, float)):

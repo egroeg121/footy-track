@@ -382,36 +382,58 @@ function flash(verdict) {
   setTimeout(() => { el.style.opacity = '0'; }, 120);
 }
 
+// ---- verdict save helpers (run under node by tests/labeller/test_ball_check.py) ----
+// A POST only counts as saved when the HTTP status is 2xx AND the JSON body says `ok: true`:
+// the server answers some validation failures with 200 `{"ok": false}`, and a 500 has no JSON.
+async function postJson(url, payload) {
+  let r;
+  try {
+    r = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+  } catch (err) {
+    return { ok: false, error: 'Offline' };
+  }
+  let body = null;
+  try { body = await r.json(); } catch (err) { /* not JSON: judged by status below */ }
+  if (!r.ok) return { ok: false, error: `server error ${r.status}` };
+  if (!body || body.ok !== true) return { ok: false, error: (body && body.error) || 'not saved' };
+  return { ok: true };
+}
+
 async function judge(verdict, extra) {
   const item = queue[0];
   if (!item || busy) return;
   busy = true;
   flash(verdict);
+  // Optimistic advance: the next card shows (and prefetches) while the POST is in flight.
   queue.shift();
   history.push(item);
   judged += 1;
   remaining = Math.max(0, remaining - 1);
   render();
-  try {
-    await fetch('/ball_check/verdict', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        clip: item.clip, frame_index: item.frame_index, box_index: item.box_index,
-        source: srcOf(item), confidence: item.confidence,
-        bbox: item.bbox, label: item.label, provenance: item.provenance,
-        verdict, ...(extra || {}),
-      }),
-    });
+  const res = await postJson('/ball_check/verdict', {
+    clip: item.clip, frame_index: item.frame_index, box_index: item.box_index,
+    source: srcOf(item), confidence: item.confidence,
+    bbox: item.bbox, label: item.label, provenance: item.provenance,
+    verdict, ...(extra || {}),
+  });
+  if (res.ok) {
     $('status').textContent = '';
-  } catch (err) {
-    // The card is already gone from the buffer; put it back rather than
-    // pretend a verdict was recorded.
-    queue.unshift(item);
-    history.pop();
-    judged -= 1;
-    $('status').textContent = 'Offline — verdict not saved, try again.';
+  } else {
+    // The card is already gone from the buffer; put it back at the front and undo the
+    // counters rather than pretend a verdict was recorded.
+    if (!queue.some((q) => keyOf(q) === keyOf(item))) queue.unshift(item);
+    const at = history.lastIndexOf(item);
+    if (at >= 0) history.splice(at, 1);
+    judged = Math.max(0, judged - 1);
+    remaining += 1;
+    $('status').textContent = `Verdict NOT saved (${res.error}) \u2014 try again.`;
     render();
+    busy = false;
+    return;
   }
   busy = false;
   sinceRefresh += 1;
@@ -426,6 +448,7 @@ async function judge(verdict, extra) {
   }
   refreshStats();
 }
+// ---- end verdict save helpers ----
 
 async function saveBox() {
   const item = queue[0];
@@ -443,14 +466,10 @@ async function saveBox() {
   };
   // A hand-dragged box is real human geometry, so it goes back to the sidecar
   // as labeller GT through the review endpoint — not just a verdict.
-  const res = await (await fetch('/ball_check/save_box', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      clip: item.clip, frame_index: item.frame_index, box_index: item.box_index,
-      source: srcOf(item), label: item.label, bbox,
-    }),
-  })).json();
+  const res = await postJson('/ball_check/save_box', {
+    clip: item.clip, frame_index: item.frame_index, box_index: item.box_index,
+    source: srcOf(item), label: item.label, bbox,
+  });
   if (!res.ok) { $('status').textContent = `Could not save: ${res.error || 'error'}`; return; }
   judge('corrected', { corrected_bbox: bbox });
 }

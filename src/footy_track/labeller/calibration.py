@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import asyncio
 import collections
+import copy
 import json
 import os
 import tempfile
@@ -140,6 +141,29 @@ def _write_gt(clip: str, doc: dict) -> None:
         raise
 
 
+#: Serialises every calibration-GT read-modify-write in this process (save, delete, accept a
+#: proposal, flag/unflag not-broadcast): two of them racing on one clip would each read the same
+#: document and the second write would silently drop the first's frame. Same pattern as
+#: ``frame_type.update_frame_types`` / ``proposals.update_proposals``.
+_GT_LOCK = threading.Lock()
+
+
+def update_gt(clip: str, fn):
+    """Read-modify-write ``clip``'s GT document under :data:`_GT_LOCK`; returns ``fn(doc)``.
+
+    ``fn`` mutates the document in place; nothing is written when it left the document unchanged.
+    Never call another locked store (frame types, proposals) from inside ``fn``: do that after
+    this returns.
+    """
+    with _GT_LOCK:
+        doc = _read_gt(clip)
+        before = copy.deepcopy(doc)
+        out = fn(doc)
+        if doc != before:
+            _write_gt(clip, doc)
+        return out
+
+
 def _gt_frames(clip: str) -> list[int]:
     try:
         return sorted(int(k) for k in _read_gt(clip)["frames"])
@@ -185,9 +209,7 @@ def mark_not_broadcast(clip: str, idx: int, *, overwrite: bool = False, run_id: 
     update_frame_types(_gt_marks_dir(), clip, _flag)
     removed_gt = False
     if existing is not None:
-        doc = _read_gt(clip)
-        removed_gt = doc["frames"].pop(str(idx), None) is not None
-        _write_gt(clip, doc)
+        removed_gt = update_gt(clip, lambda doc: doc["frames"].pop(str(idx), None) is not None)
 
     def _props(doc: dict) -> None:
         for rid, run in doc["runs"].items():
@@ -224,10 +246,7 @@ def clear_not_broadcast(clip: str, idx: int) -> bool:
 
     update_frame_types(_gt_marks_dir(), clip, _unflag)
     if displaced:
-        doc = _read_gt(clip)
-        if str(idx) not in doc["frames"]:
-            doc["frames"][str(idx)] = displaced[0]
-            _write_gt(clip, doc)
+        update_gt(clip, lambda doc: doc["frames"].setdefault(str(idx), displaced[0]))
 
     def _props(doc: dict) -> None:
         for run in doc["runs"].values():
@@ -887,9 +906,7 @@ async def gt_save(clip: str, idx: int, body: dict):
     rec = _gt_record(idx, res, body)
 
     def _store() -> None:
-        doc = _read_gt(clip)
-        doc["frames"][str(idx)] = rec
-        _write_gt(clip, doc)
+        update_gt(clip, lambda doc: doc["frames"].update({str(idx): rec}))
         if idx in too_few_points_frames(_gt_marks_dir(), clip):
             clear_too_few_points(clip, idx)   # labelled after all: it had enough points
         hooks.emit("calibration_gt", clip=canonical_clip_id(clip), unit=idx, verdict="gt")
@@ -901,10 +918,8 @@ async def gt_save(clip: str, idx: int, body: dict):
 @router.delete("/calibration/api/gt/{clip}/{idx}")
 async def gt_delete(clip: str, idx: int):
     def _drop() -> bool:
-        doc = _read_gt(clip)
-        if doc["frames"].pop(str(idx), None) is None:
+        if not update_gt(clip, lambda doc: doc["frames"].pop(str(idx), None) is not None):
             return False
-        _write_gt(clip, doc)
         hooks.emit("calibration_gt", clip=canonical_clip_id(clip), unit=idx, verdict="gt_deleted")
         return True
 

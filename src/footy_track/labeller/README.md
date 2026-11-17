@@ -37,7 +37,6 @@ uv run uvicorn footy_track.labeller.server:app --reload
 | `/ball_check` | Mobile ball verification (swipe yes/no) |
 | `/calibration` | Manual pitch calibration (frame <-> pitch point pairs, §16) |
 | `/calibration/review` | Mobile accept/reject of machine pitch-calibration proposals (§16, LAB-1210..1219) |
-| `/ingest` | Clip ingestion (page currently broken — OPEN-1) |
 
 Test suite: `tests/labeller/` (run `uv run pytest tests/labeller/`). Test
 references below are `file::test_name` within `tests/labeller/`.
@@ -914,9 +913,9 @@ are already there, nothing needs re-running). Corpus on the Mac mini:
 Tracked against this spec; burn these down by fixing the behavior AND
 updating/adding the corresponding LAB requirement + tests.
 
-- **OPEN-1** `GET /ingest` serves `web/ingest.html`, which does not exist —
-  the route 500s. The `/ingest/upload` and `/ingest/run` APIs (LAB-501/502)
-  work. Fix: add the page or remove the route + hub link.
+- ~~**OPEN-1**~~ FIXED (LAB-1433): `GET /ingest` served a `web/ingest.html` that never existed
+  (500). The page route and its hub card are removed (`GET /ingest` is now a 404); the
+  `/ingest/upload` and `/ingest/run` APIs (LAB-501/502) are unchanged.
 - **OPEN-2** The labeller frontend's "+ Add clip" button POSTs `/clips/add`,
   which has no server route (404). Dead frontend feature — implement or
   remove.
@@ -1744,6 +1743,44 @@ they re-read the job order, keep the frame/card on screen as the user's place an
 * Pointer ball_check jobs (no inline cards) are served by the review list, not the job's item order, so reordering them has no
   page effect; use inline cards.
 
+## 19d. Review fixes: the architecture review's bug-fix pass (LAB-1427..1434)
+
+Tests: `test_review_bugfixes.py` (names below are within it).
+
+- **LAB-1427** (MUST) A Ball Check verdict only counts as saved when the HTTP status is 2xx **and** the JSON body has
+  `ok: true` (the endpoint answers some validation errors with 200 `{"ok": false}`, and a 500 has no JSON). The card advances
+  optimistically and the next ones prefetch as before; when the save did not land (non-2xx, `ok` not true, network error) the
+  card goes back to the front of the queue, `judged`/`remaining` are rolled back and the status line says
+  `Verdict NOT saved (...)`. `save_box` uses the same check.
+  - Tests: `::test_ball_check_judge_keeps_the_card_when_the_save_fails` (the page's own `judge` run under node); the layout of
+    the message is UNTESTED-FRONTEND.
+- **LAB-1428** (MUST) Blocking cv2 / label-file work never runs on the event loop: `/clips/status` runs in a worker thread and
+  the identity data routes are threadpool `def`s, so a slow request does not stall other pages (B1, B8).
+  - Tests: `::test_clips_status_does_not_block_the_event_loop`, `::test_identity_routes_do_not_block_the_event_loop`,
+    `::test_identity_data_routes_are_not_async_with_blocking_bodies`
+- **LAB-1429** (MUST) `jobs.compute` and `broadcast_review.job_view` read each match's store once per call, not once per item (B2).
+  - Tests: `::test_jobs_compute_reads_each_broadcast_review_store_once`, `::test_broadcast_job_view_reads_each_store_once`
+- **LAB-1430** (MUST) Every calibration-GT read-modify-write (save, delete, accept a proposal, flag/unflag not-broadcast) goes
+  through `calibration.update_gt` under one process lock; nothing is written when the document did not change (B5).
+  - Tests: `::test_concurrent_calibration_gt_updates_lose_nothing` (with `::test_unlocked_read_modify_write_would_lose_updates`
+    proving the race is real), `::test_update_gt_writes_nothing_when_the_document_is_unchanged`
+- **LAB-1431** (MUST) A clip name from a request body that becomes part of a path (`/ball_check/verdict`, `/ball_check/undo`,
+  `/ball_check/save_box`, `/review/correct`, `/review/delete`) must match `names.safe_clip_name` (`[A-Za-z0-9][A-Za-z0-9._-]*`, at
+  most 201 chars, no `..`); anything else is a 422 and nothing is written (B6).
+  - Tests: `::test_ball_check_verdict_rejects_unsafe_clip_names`, `::test_review_and_save_box_reject_unsafe_clip_names`,
+    `::test_real_clip_names_still_pass`
+- **LAB-1432** (MUST) `/review/correct` and `/review/delete` replace the sidecar atomically (temp file + fsync + rename, mode kept):
+  a crash mid-write leaves the old file.
+  - Tests: `::test_review_correct_and_delete_replace_the_file_atomically`, `::test_a_crash_mid_write_leaves_the_sidecar_intact`
+- **LAB-1433** (MUST) `GET /ingest` is a 404, not a 500 page, and the hub has no Ingest card (OPEN-1); the ingest APIs still work.
+  - Tests: `::test_ingest_page_route_is_gone_and_the_hub_does_not_link_to_it`
+- **LAB-1434** (MUST) The sidecar box scan behind the Ball Check `sidecar` queue and `/review/queue` re-parses only the sidecars
+  whose (mtime, size, inode) or video path changed (B13). The deploy script also builds the candidate pool after a restart
+  (`warm_ball_check --source candidates`, B12).
+  - Tests: `::test_sidecar_scan_reparses_only_changed_files`; `test_task_board.py::test_warm_helper_candidate_pool` (the
+    `labeller_deploy.sh` wiring is UNTESTED)
+
+
 ## 15. Traceability summary
 
 | Section | Requirements | Tested | UNTESTED | UNTESTED-FRONTEND |
@@ -1764,7 +1801,8 @@ they re-read the job order, keep the frame/card on screen as the user's place an
 | 18. Datasets (LAB-13xx) | 6 | 5 | 0 | 1 |
 | 19. Labelling jobs (LAB-14xx) | 8 | 7 | 0 | 1 |
 | 19c. Labelling hooks (LAB-1417..1426) | 10 | 8 | 0 | 2 |
-| **Total** | **148** | **109** | **8** | **31** |
+| 19d. Review fixes (LAB-1427..1434) | 8 | 7 | 1 | 0 |
+| **Total** | **156** | **116** | **9** | **31** |
 
 Open items: 4 (OPEN-1..4) + 1 fixed on main (undo provenance, `95b60cc`).
 Test suite: 138 tests in `tests/labeller/` (all green), plus the
