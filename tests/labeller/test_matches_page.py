@@ -58,6 +58,15 @@ def test_matches_page_and_api(client, tmp_path, monkeypatch):
         "MATCHES_PREFECT_API", "http://127.0.0.1:9/api"
     )  # unreachable -> no links
     monkeypatch.setattr(matches_status, "_api_cache", {"t": 0.0, "runs": []})
+    reg = tmp_path / "splits.json"
+    reg.write_text(
+        '{"arsenal_x": {"split": "train"},'
+        ' "chelsea-vs-manchester-united-2026-27": {"split": "heldout"}}'
+    )
+    monkeypatch.setenv("FOOTY_MATCH_SPLITS", str(reg))
+    from footy_track import match_splits
+
+    match_splits.clear_cache()
 
     page = client.get("/matches")
     assert page.status_code == 200 and "Matches" in page.text
@@ -84,6 +93,9 @@ def test_matches_page_and_api(client, tmp_path, monkeypatch):
     assert x["segments"]["text"] == "3 segments"
     assert x["detection"]["text"].startswith("1/3")
     assert x["projection"]["state"] == "na"
+    assert by["arsenal_x"]["split"] == "train"
+    assert by["chelsea-vs-manchester-united-2026-27"]["split"] == "heldout"
+    assert by["arsenal-vs-chelsea-2026-27"]["split"] == "unassigned"
     assert (
         d["matches"][0]["stages"]["download"]["state"] == "running"
     )  # active rows first
