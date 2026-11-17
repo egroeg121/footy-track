@@ -1753,18 +1753,32 @@ models are retrained on authority-based exports.</p>
 <h2 id="11-progress-page-built">11. <code>/progress</code> page (built)<a class="headerlink" href="#11-progress-page-built" title="Permanent link">&para;</a></h2>
 <p><code>http://&lt;labeller&gt;:8011/progress</code> (linked from the hub), JSON at <code>/api/progress</code>
 (<code>labeller/progress.py</code>, <code>progress_routes.py</code>, <code>web/progress.html</code>). It is the one view of project
-progress and is global: the <code>?dataset=</code> labelling-dataset parameter is ignored. Per dataset
-(<code>tracking</code>, <code>broadcast</code>, <code>calibration</code>):</p>
+progress and is global: the <code>?dataset=</code> labelling-dataset parameter is ignored.</p>
+<p><strong>Main view: three sections (Tracking, Broadcast view, Pitch calibration), two small line charts each.</strong>
+X is the dataset version (v1, v2, ...; the date is in the hover tooltip; one version draws dots, not a
+stretched axis). Hover or tap a version for a tooltip.</p>
 <ol>
-<li><strong>Dataset growth.</strong> A stacked bar chart (inline SVG) and a table of v1..vN from the snapshot
-   manifests only (never <code>items.parquet</code>): created_at, items by split (train / in-match eval /
-   held-out eval), counts by label kind, and the diff vs the parent (added / removed / changed).</li>
-<li><strong>Model performance.</strong> From <code>eval_result_latest</code>: per model and metric, the value at each dataset
-   version, as a line chart plus two tables, "full current eval" (<code>cohort_version</code> NULL) and "fixed
-   cohort" (shown separately, the tier is part of every row). A contaminated result
-   (<code>contaminated = true</code>) is drawn red with a warning mark; unknown contamination (NULL) is amber
-   with a "?"; neither is ever styled as clean. Hover shows <code>n_items</code>, the run time and the
-   contamination note. The train split is shown but contamination does not apply to it.</li>
+<li><strong>Dataset size:</strong> items per version for train, eval (in-match) and eval (held-out match), from the
+   snapshot manifests only (never <code>items.parquet</code>); Y starts at 0.</li>
+<li><strong>Performance:</strong> one headline metric per model, at most about 3 lines, Y 0 to 1. Which metrics: the
+   <code>PERFORMANCE_SERIES</code> dict at the top of <code>labeller/progress.py</code> (metric key, split, <code>model_name</code>
+   pattern, how to pick one run when several <code>model_version</code>s share a dataset version). Today: tracking
+   = ball F1 @10px on the held-out split, player recall on in-match eval, ball-tracker recall @10px on
+   held-out; broadcast = <code>accuracy</code> (random stratum only) of the re-scored classifier and of the calls
+   made at review time, in-match eval; calibration = <code>success_at_5px</code>, in-match eval. Always the full
+   current eval (<code>cohort_version</code> NULL). Tooltip: value, <code>n_items</code>, model name @ version. A dashed
+   segment means the model changed between the two versions. A contaminated result
+   (<code>contaminated = true</code>) is a hollow marker, explained by one footnote under the charts.</li>
+</ol>
+<p>Everything else is still on the page, collapsed under one <strong>Details</strong> section (open it, or load
+<code>/progress?details=1</code>):</p>
+<ol>
+<li><strong>Dataset versions table</strong> (created_at, items by split, label kinds, diff vs the parent) and <strong>model
+   performance</strong>: per model and metric, the value at each dataset version as a line chart plus two
+   tables, "full current eval" and "fixed cohort". A contaminated result is drawn red with a warning
+   mark; unknown contamination (NULL) is amber with a "?"; neither is ever styled as clean. The broadcast
+   edge and all-biased metrics are greyed as diagnostic, and the headline carries its random-frame <code>n</code>
+   with a small-sample warning.</li>
 <li><strong>Split health.</strong> Matches held-out vs train (<code>match_splits.json</code>) and clips eval vs train
    (<code>clip_splits.json</code>), the latest version's eval counts per dataset, and warnings: <strong>zero held-out
    eval items</strong> (a call to action; broadcast has none until a held-out match's broadcast-review frames
@@ -1773,8 +1787,11 @@ progress and is global: the <code>?dataset=</code> labelling-dataset parameter i
 <li><strong>Empty states</strong> with the exact command: no store (<code>python -m footy_track.feature_store.ingest_all</code>),
    no versions (<code>python -m footy_track.datasets bump all</code>), no results (a <code>results record</code> example), no
    clip register (<code>python -m footy_track.splits assign --apply</code>). Missing, unreadable or locked files
-   degrade the affected section; the page never returns a 500.</li>
+   degrade the affected section; the page never returns a 500. On the main view a chart with no data
+   just says "no results yet".</li>
 </ol>
+<p>The JSON keeps every field the Details view needs and adds <code>datasets.&lt;ds&gt;.charts</code>
+(<code>{versions, size, performance}</code>), which is what the two charts draw.</p>
 <p>Implementation: the store is opened <code>read_only</code> for a single query under the shared store lock and
 closed again (a writer mid-ingest gives a "store busy" note, not a hang). The payload is cached for 60 s
 and invalidated early when a manifest, the store (or its WAL) or a register changes; <code>?refresh=true</code>
