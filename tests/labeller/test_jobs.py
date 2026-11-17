@@ -552,3 +552,34 @@ def test_jobs_dir_and_registry_untouched_when_nothing_is_submitted(web, tmp_path
     assert not (tmp_path / "labelling_jobs").exists()  # created lazily, on first submit
     assert datasets.registry_path().exists()  # (the test registry, written by the fixture)
     assert jobs.jobs_dir() == tmp_path / "labelling_jobs"
+
+
+def test_board_tasks_are_cached_and_invalidated_by_job_writes(web, two, monkeypatch):
+    calls = []
+    real = jobs._board_tasks_uncached
+    monkeypatch.setattr(jobs, "_board_tasks_uncached", lambda: calls.append(1) or real())
+    jobs.invalidate_board_cache()
+    _submit(web)
+    web.get("/api/tasks")
+    web.get("/api/tasks")
+    web.get("/api/tasks")
+    assert len(calls) == 1  # warm hits do not recompute progress
+    j2 = _submit(web, title="Second").json()
+    ids = [t["id"] for t in web.get("/api/tasks").json()["tasks"]]
+    assert j2["id"] in ids and len(calls) == 2  # new job shows immediately
+    web.post(f"/api/jobs/{j2['id']}/done")
+    ids = [t["id"] for t in web.get("/api/tasks").json()["tasks"]]
+    assert j2["id"] not in ids and len(calls) == 3  # closing invalidates too
+
+
+def test_board_cache_expires_after_ttl(web, two, monkeypatch):
+    calls = []
+    real = jobs._board_tasks_uncached
+    monkeypatch.setattr(jobs, "_board_tasks_uncached", lambda: calls.append(1) or real())
+    _submit(web)
+    jobs.board_tasks()
+    jobs.board_tasks()
+    assert len(calls) == 1
+    monkeypatch.setattr(jobs, "BOARD_CACHE_TTL_S", 0.0)
+    jobs.board_tasks()
+    assert len(calls) == 2

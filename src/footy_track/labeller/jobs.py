@@ -156,6 +156,7 @@ def _write_atomic(path: Path, doc: dict, *, exclusive: bool = False) -> bool:
     Exclusive uses ``os.link`` (atomic, never replaces), so two processes
     submitting the same idempotency key cannot both create the job.
     """
+    invalidate_board_cache()
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp = tempfile.mkstemp(prefix=path.name + ".", suffix=".tmp", dir=path.parent)
     try:
@@ -171,8 +172,10 @@ def _write_atomic(path: Path, doc: dict, *, exclusive: bool = False) -> bool:
             except FileExistsError:
                 return False
             os.unlink(tmp)
+            invalidate_board_cache()
             return True
         os.replace(tmp, path)
+        invalidate_board_cache()
         return True
     except BaseException:
         with contextlib.suppress(OSError):
@@ -988,7 +991,34 @@ def filter_jobs(
 # ---------------------------------------------------------------------------
 
 
+BOARD_CACHE_TTL_S = 30.0
+_BOARD_CACHE: dict = {"key": None, "at": 0.0, "tasks": []}
+
+
+def invalidate_board_cache() -> None:
+    _BOARD_CACHE["key"] = None
+
+
+def _board_key() -> tuple:
+    d = jobs_dir()
+    try:
+        return (str(d), d.stat().st_mtime_ns)  # any job create/replace/close in any process touches the dir
+    except OSError:
+        return (str(d), None)
+
+
 def board_tasks() -> list[dict]:
+    """Open jobs as task-board entries, memoised ``BOARD_CACHE_TTL_S`` s (progress ``compute()`` for
+    every open job is the slow part). A job write (here or in another process) changes the key."""
+    key, now = _board_key(), time.monotonic()
+    if _BOARD_CACHE["key"] == key and now - _BOARD_CACHE["at"] < BOARD_CACHE_TTL_S:
+        return [dict(t) for t in _BOARD_CACHE["tasks"]]
+    tasks = _board_tasks_uncached()
+    _BOARD_CACHE.update(key=key, at=now, tasks=tasks)
+    return [dict(t) for t in tasks]
+
+
+def _board_tasks_uncached() -> list[dict]:
     """Open jobs as task-board entries. Never raises: the board must not break on a bad job."""
     tasks = []
     try:
