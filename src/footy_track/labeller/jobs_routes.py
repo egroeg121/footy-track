@@ -8,7 +8,7 @@ from pathlib import Path
 from fastapi import APIRouter, Query, Request
 from fastapi.responses import JSONResponse, PlainTextResponse
 
-from footy_track.labeller import ball_check, datasets, jobs
+from footy_track.labeller import ball_check, datasets, hooks, job_edit, jobs
 
 router = APIRouter()
 
@@ -164,6 +164,97 @@ async def job_prepare(request: Request, ref: str, body: dict | None = None):
             job["id"], hold=bool(body.get("hold")), where=body.get("where")
         )
         return _view(request, job, None, items=False)
+
+    try:
+        return await asyncio.to_thread(work)
+    except jobs.JobError as e:
+        return _err(e)
+
+
+@router.get("/api/jobs/{ref:path}/rev")
+async def job_rev(ref: str):
+    """Cheap change marker for pages that walk a job in order: ``rev`` goes up whenever a hook (or
+    the API) reorders or appends to the job."""
+
+    def work():
+        job = jobs.resolve(ref)
+        return {"id": job["id"], "rev": int(job.get("rev") or 0), "status": job["status"]}
+
+    try:
+        return await asyncio.to_thread(work)
+    except jobs.JobError as e:
+        return _err(e)
+
+
+def _hooks_view(job: dict) -> dict:
+    return {"id": job["id"], "rev": int(job.get("rev") or 0), "hooks": job.get("hooks") or [],
+            "state": hooks.runtime_view(job), "history": job.get("hook_history") or [],
+            "actions": sorted(hooks.ACTIONS)}  # fmt: skip
+
+
+@router.get("/api/jobs/{ref:path}/hooks")
+async def get_job_hooks(ref: str):
+    """The job's hook config, per-hook runtime (counter, last run, backoff, in-flight run) and the
+    history of reorders / appends / hook runs; ``actions`` lists the registered in-process actions."""
+    try:
+        return await asyncio.to_thread(lambda: _hooks_view(jobs.resolve(ref)))
+    except jobs.JobError as e:
+        return _err(e)
+
+
+@router.put("/api/jobs/{ref:path}/hooks")
+async def put_job_hooks(ref: str, body: dict):
+    """Replace the job's hooks. Body ``{"hooks": [{name, trigger{every_n?, min_interval_s?, on_done?},
+    action{type: builtin|prefect, ...}}]}``; ``{"hooks": []}`` removes them. See ``hooks.py``."""
+
+    def work():
+        job = jobs.resolve(ref)
+        return _hooks_view(job_edit.set_hooks(job["id"], body.get("hooks")))
+
+    try:
+        return await asyncio.to_thread(work)
+    except jobs.JobError as e:
+        return _err(e)
+
+
+@router.post("/api/jobs/{ref:path}/hooks/{name}/run")
+async def run_job_hook(ref: str, name: str):
+    """Run one hook now (skips the debounce, not the one-in-flight rule or the failure backoff)."""
+
+    def work():
+        return hooks.run_now(jobs.resolve(ref)["id"], name)
+
+    try:
+        return await asyncio.to_thread(work)
+    except jobs.JobError as e:
+        return _err(e)
+
+
+@router.post("/api/jobs/{ref:path}/reorder")
+async def job_reorder(ref: str, body: dict):
+    """Reorder the *unanswered* items: ``{order: [item positions], by?, note?, if_rev?}``. The listed
+    unanswered items go first in that order; answered items never move. See ``job_edit.py``."""
+
+    def work():
+        job = jobs.resolve(ref)
+        return job_edit.reorder_unanswered(job["id"], body.get("order"), by=str(body.get("by") or "api")[:80],
+                                           note=body.get("note"), if_rev=body.get("if_rev"))  # fmt: skip
+
+    try:
+        return await asyncio.to_thread(work)
+    except jobs.JobError as e:
+        return _err(e)
+
+
+@router.post("/api/jobs/{ref:path}/append")
+async def job_append(ref: str, body: dict):
+    """Append items to a live job: ``{items: [...], by?, note?, if_rev?}`` (same shapes as at submit;
+    caps, queued-card cap and disk floor apply; appended items carry ``added_by``)."""
+
+    def work():
+        job = jobs.resolve(ref)
+        return job_edit.append_items(job["id"], body.get("items"), by=str(body.get("by") or "api")[:80],
+                                     note=body.get("note"), if_rev=body.get("if_rev"))  # fmt: skip
 
     try:
         return await asyncio.to_thread(work)

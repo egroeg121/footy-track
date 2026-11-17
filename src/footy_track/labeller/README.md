@@ -1610,6 +1610,140 @@ Frames are `<dataset clips_dir>/<match>/f<frame>.jpg`; verdicts (`yes`/`no`/`uns
 footy_track.scripts.export_broadcast_review --dataset broadcast_review --out <dir>` writes `train/{Yes,No}/`
 for `scripts/train_classifier.py --local-dataset` (`unsure` skipped; `--valid-matches` keeps a match whole in `valid/`).
 
+## 19c. Labelling hooks: refit, reorder and kick off work *while* a job is being labelled (LAB-1417..1426)
+
+Any job (every kind) can carry **hooks**: things the server does as labels arrive. Code: `hooks.py` (event point,
+triggers, registry, bounds), `job_edit.py` (reorder / append / history), `jobs_routes.py` (API), `broadcast_review.py`
+(`broadcast_calibrate`, the first action). Stage 1 of "learn the classifier's real boundary while labelling".
+
+**Event point.** Every label write calls `hooks.emit(kind, clip=, unit=, verdict=)` once, after it is persisted:
+
+| write | where it is emitted | event `kind` / `unit` | job kinds it can answer |
+|---|---|---|---|
+| Ball Check verdict / undo | `ball_check._append_verdict` | `ball_check` / `(source, frame, box)` | ball_check |
+| ball_place: box edit, no-ball, not-broadcast (+ clears) | `server.py` routes (`/edit`, `/no-ball`, `/not-broadcast`, `/*/clear`), `review.py` (`/review/correct`, `/review/delete`) | `ball_place` / frame | ball_place |
+| calibration GT save / delete / accepted proposal | `calibration.py` `gt_save`/`gt_delete`, `calibration_proposals.accept` | `calibration_gt` / frame | calibration |
+| frame-type flag (not_broadcast, too_few_points) set / clear | `calibration.mark_*` / `clear_*` | `frame_type` / frame | calibration, frame_type |
+| identity pair / review | `identity_routes.label_pair` (one event per clip of the pair), `submit_review` | `identity` / - | identity |
+| broadcast-review verdict | `broadcast_review.set_verdict` | `broadcast_review` / frame | broadcast_review |
+
+`emit` only queues a small event (bounded queue, `EVENT_QUEUE_MAX`; a full queue drops the event and counts it); one
+daemon thread matches it to the live jobs *that contain that unit* (same dataset, canonical clip id for the
+clip-aliased kinds) and counts it against their hooks; actions run on a 3-thread pool. Hook errors are logged and
+recorded, never raised into the write.
+`FOOTY_LABELLING_HOOKS=0` turns the whole thing off.
+
+**Config** (`job["hooks"]`; at submit `hooks: [...]`, later `PUT /api/jobs/<ref>/hooks`, CLI `labelling_jobs hooks REF
+--set hooks.json`, `submit --hooks hooks.json`; `GET /api/jobs/<ref>/hooks` shows config, per-hook runtime and history):
+
+```json
+[{"name": "calibrate",
+  "trigger": {"every_n": 20, "min_interval_s": 60, "on_done": false},
+  "action": {"type": "builtin", "name": "broadcast_calibrate", "params": {}}},
+ {"name": "rescore",
+  "trigger": {"every_n": 50, "min_interval_s": 600, "on_done": true},
+  "action": {"type": "prefect", "deployment": "my-flow/my-deployment", "params": {"top": 100}}}]
+```
+
+**Actions.** `hooks.register_action(name, fn, kinds=(...))`; `fn(ctx) -> dict` gets `ctx.job` (fresh), `ctx.params`,
+`ctx.event`, `ctx.trigger` (`every_n` / `on_done` / `manual`), runs with the job's dataset current, and steers the job
+via `ctx.reorder(...)` / `ctx.append(...)`. Built in: `shuffle_unanswered` and `sort_by_field` (`params.key`,
+`descending`) for any kind, `broadcast_calibrate` for broadcast_review. A `prefect` action queues `deployment` through
+`prefect_client.create_flow_run` with `{job_id, hook, trigger, dataset, labeller_url?, **params}`; the run stays "in
+flight" until Prefect reports a terminal state (polled), and the flow talks back through the reorder / append API.
+`FOOTY_HOOKS_PREFECT_ALLOW=a/b,c/d` restricts which deployments a job may name.
+
+**Bounds** (per `(job, hook)` unless said): one run in flight (a later trigger waits; `on_done` is skipped if its run is
+still in flight, so give it its own hook); `min_interval_s` debounce (default 60; at least 30 for prefect actions);
+after a failed run no new run for **10 min** (`BACKOFF_S`, like `maybe_reprepare`; also persisted, so a restart keeps it);
+a run that never reports is declared failed after 2 h; at most **8 hooks per job**, 3 prefect runs in flight across
+all jobs, 2000 queued events; hook params at most 4000 bytes of JSON. `POST /api/jobs/<ref>/hooks/<name>/run` runs one
+now (skips the debounce only).
+
+**Mutation API** (`job_edit.py`; live jobs only):
+
+* `POST /api/jobs/<ref>/reorder {order: [item positions], by?, note?, if_rev?}` - the listed *unanswered* items go first,
+  in that order; the other unanswered items follow in their old order; **answered items never move** (unanswered items
+  are re-dealt into the positions unanswered items already held), nothing is added or removed. Answered / unknown /
+  repeated positions are skipped and counted. "Answered" = every unit of the item has a label in the real store.
+* `POST /api/jobs/<ref>/append {items, by?, note?, if_rev?}` - same item shapes as submit; items whose unit is already
+  in the job are skipped; bounded by the job's card/frame cap (its stored `max_cards`, else the default; hard ceiling
+  as at submit), at most 500 per call, and for a prepared ball_check job the queued-card cap (429) and disk floor (507).
+  Appended items get `added_by: {by, ts, note?}` (an item key: it is echoed in results); appended inline cards get
+  their `box_index` from the job id and their real position. They render on demand (call `/prepare` to pre-render).
+* `rev` on the job counts reorders/appends (`GET /api/jobs/<ref>/rev` is the cheap poll); `hook_history` keeps the last 50
+  reorders, appends, hook runs (with the action's summary, e.g. a refit) and errors; `hook_state` keeps last run /
+  backoff per hook.
+
+**Pages.** `/broadcast_review?job=`, `/ball_check?...&job=` and `/labeller?job=` poll `rev` (every 10-12 s); on a change
+they re-read the job order, keep the frame/card on screen as the user's place and take the *next* one from the new order.
+
+- **LAB-1417** (MUST) Every label write of every kind above emits exactly one event after it is persisted, naming the job it
+  belongs to when the unit is in a live hooked job; emitting never blocks, never raises into the write, drops (and counts)
+  when the queue is full, and runs hooks off the request thread.
+  - Tests: `test_hooks.py::test_event_fires_for_a_non_broadcast_kind_ball_check`, `::test_event_fires_for_broadcast_review_and_only_for_that_jobs_frames`,
+    `::test_event_fires_for_ball_place_marks`, `::test_event_fires_for_frame_type_flags_on_calibration_and_frame_type_jobs`,
+    `::test_event_fires_for_identity_pairs_and_reviews`, `::test_a_failing_or_full_hook_pipeline_never_breaks_the_write`,
+    `::test_emit_is_off_the_request_thread`
+- **LAB-1418** (MUST) Hooks are stored in the job, set at submit and replaced through the API / CLI; the config is validated
+  (names, triggers, registered action for the job kind, prefect deployment name and debounce floor) and capped at 8 per job.
+  - Tests: `::test_hooks_are_set_at_submit_and_updated_through_the_api`, `::test_hook_config_is_validated_and_capped`, `::test_cli_hooks_roundtrip`
+- **LAB-1419** (MUST) Triggers and bounds: `every_n` counts the job's own events, `min_interval_s` debounces, at most one run in
+  flight per (job, hook), a failure backs off 10 min (persisted), `on_done` runs once at completion, a manual run skips the
+  debounce only; a `prefect` action queues the named deployment with `{job_id, ...params}`, stays in flight until Prefect
+  says the run ended, backs off when queueing fails or the run fails, and is capped across jobs.
+  - Tests: `::test_every_n_triggers_after_n_events_and_debounce_holds_the_rest`, `::test_at_most_one_run_in_flight_per_job_and_hook`,
+    `::test_a_failed_run_backs_off_for_ten_minutes_and_is_recorded`, `::test_on_done_runs_once_when_the_job_completes`,
+    `::test_manual_run_skips_the_debounce_but_not_the_backoff`, `::test_prefect_action_queues_the_deployment_and_stays_in_flight_until_it_ends`,
+    `::test_prefect_failure_backs_off_and_unreachable_prefect_is_recorded`, `::test_prefect_inflight_cap_across_jobs`,
+    `::test_generic_builtin_actions_shuffle_and_sort_any_kind`
+- **LAB-1420** (MUST) Reordering moves only unanswered items; answered items keep their positions, no item is added, lost or
+  duplicated, verdicts and progress are unchanged; the job gets a new `rev` and a history entry; a no-op changes nothing;
+  closed jobs are refused; `if_rev` guards against a concurrent change.
+  - Tests: `::test_reorder_moves_only_unanswered_items_and_never_answered_ones`, `::test_reorder_is_a_noop_when_nothing_changes_and_honours_if_rev`,
+    `::test_reorder_works_for_window_items_of_a_frame_kind`
+- **LAB-1421** (MUST) Appending records provenance (`added_by`), skips duplicates, keeps answered items and their verdicts, and
+  respects the per-job cap, the per-call cap, and (prepared ball_check) the queued-card cap and disk floor; nothing is written
+  when refused.
+  - Tests: `::test_append_adds_items_with_provenance_skips_duplicates_and_keeps_answers`, `::test_append_respects_the_per_job_cap_and_per_call_cap`,
+    `::test_append_to_a_prepared_ball_check_job_honours_queued_cap_and_disk_floor`, `::test_append_is_refused_for_closed_jobs_and_validates_items`
+- **LAB-1422** (MUST) The pages that walk a job in order pick up a new order without losing the user's place: the server serves the
+  job in its new order with `rev`; the pages poll `rev`, keep the current frame/card and take the next from the new order.
+  - Tests (server half): `::test_broadcast_page_api_serves_the_new_order_and_rev`, `::test_ball_check_queue_serves_the_new_order_and_rev`,
+    `::test_labeller_job_frames_carry_the_rev`, `::test_pages_poll_the_rev_and_keep_the_users_place` (text check); the page logic itself is
+    UNTESTED-FRONTEND.
+- **LAB-1423** (MUST) `broadcast_calibrate` fits Platt scaling `P(yes) = sigmoid(a * logit(p_yes) + b)` (p clipped to [1e-6, 1-1e-6],
+  `unsure` excluded, all yes/no verdicts of the dataset) and writes each new fit as an immutable
+  `<marks_dir>/broadcast_review/calibration/vNNN.json` (`a, b, n, n_yes, n_no, boundary_p_yes` = the p_yes where calibrated p = 0.5,
+  `ts`, `version`, `matches`); the same data again reuses the latest version; fewer than 10 yes or 10 no (with a stored p_yes) is a
+  no-op that says why.
+  - Tests: `::test_platt_fit_recovers_the_known_scaling_and_boundary`, `::test_broadcast_calibrate_writes_a_versioned_file_and_reorders_by_uncertainty`,
+    `::test_broadcast_calibrate_is_a_noop_with_a_reason_when_there_are_too_few_verdicts`, `::test_the_real_dataset_verdicts_fit_when_available`
+- **LAB-1424** (MUST) After a fit the job's remaining frames are reordered by `|a * logit(p_yes) + b|` ascending (distance to the fitted
+  boundary on the logit scale) plus Gaussian jitter (0.5) and a per-time-bucket penalty (60 s buckets, 0.15 per more-uncertain frame
+  already ranked) so no cluster hogs the top; answered frames never move; it fires as verdicts arrive.
+  - Tests: `::test_broadcast_calibrate_writes_a_versioned_file_and_reorders_by_uncertainty`, `::test_broadcast_calibrate_fires_as_verdicts_arrive`
+- **LAB-1425** (MUST) The broadcast review page shows the calibrated p and the fitted boundary (and version, n) next to the raw p_yes.
+  - Tests (server half): `::test_broadcast_calibrate_writes_a_versioned_file_and_reorders_by_uncertainty` (`calibration`, `p_cal` in the job view);
+    the page text is UNTESTED-FRONTEND.
+- **LAB-1426** (MUST) Actions are registered by name (`hooks.register_action`) so each labelling kind can add its own; the registry
+  rejects an action on a job kind it is not for.
+  - Tests: `::test_hook_config_is_validated_and_capped`, `::test_generic_builtin_actions_shuffle_and_sort_any_kind`
+
+### How other kinds use it (documentation only)
+
+* **ball_check** (inline cards): attach `{"type": "prefect", "deployment": "ballcheck-rescore/ballcheck-rescore", "params": {...}}`
+  with `every_n: 50`. The flow reads `GET /api/jobs/<job_id>/results` (the verdicts so far, hidden keys in `labels[].meta`), refits
+  or re-scores the detector candidates, then `POST /api/jobs/<job_id>/reorder` with the positions of the unanswered cards by the new
+  score (read the current order with `GET /api/jobs/<job_id>`, pass `if_rev`) and `POST .../append` with fresh near-boundary
+  cards (`bbox`, hidden `score` keys; caps, queued-card cap and disk floor apply; follow with `POST .../prepare` to pre-render).
+  An in-process equivalent is `register_action("rescore_cards", fn, kinds=("ball_check",))` where `fn` calls `ctx.reorder` /
+  `ctx.append`.
+* **ball_place**: same shape with window items; `sort_by_field` / `shuffle_unanswered` already work on them, and a prefect action
+  can append `{clip, frame}` items around frames the labeller found hard. Items are frames/windows, so reorder moves whole windows.
+* Pointer ball_check jobs (no inline cards) are served by the review list, not the job's item order, so reordering them has no
+  page effect; use inline cards.
+
 ## 15. Traceability summary
 
 | Section | Requirements | Tested | UNTESTED | UNTESTED-FRONTEND |
@@ -1629,7 +1763,8 @@ for `scripts/train_classifier.py --local-dataset` (`unsure` skipped; `--valid-ma
 | 16. Pitch calibration (LAB-12xx) | 23 | 18 | 0 | 5 |
 | 18. Datasets (LAB-13xx) | 6 | 5 | 0 | 1 |
 | 19. Labelling jobs (LAB-14xx) | 8 | 7 | 0 | 1 |
-| **Total** | **138** | **101** | **8** | **29** |
+| 19c. Labelling hooks (LAB-1417..1426) | 10 | 8 | 0 | 2 |
+| **Total** | **148** | **109** | **8** | **31** |
 
 Open items: 4 (OPEN-1..4) + 1 fixed on main (undo provenance, `95b60cc`).
 Test suite: 138 tests in `tests/labeller/` (all green), plus the

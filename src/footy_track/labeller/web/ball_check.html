@@ -341,6 +341,7 @@ async function loadQueue(reset) {
   if (EMPTY_HTML !== null) { $('empty').innerHTML = EMPTY_HTML; EMPTY_HTML = null; }
   remaining = data.remaining;
   judged = data.judged;
+  if (data.rev !== undefined) jobRev = data.rev;
   if (data.tau !== undefined) {
     tau = data.tau;
     $('tau').textContent = `boundary ~${tau.toFixed(2)}`;
@@ -351,6 +352,24 @@ async function loadQueue(reset) {
 }
 
 const keyOf = (i) => `${srcOf(i)}|${i.clip}|${i.frame_index}|${i.box_index}`;
+
+// Labelling hooks may reorder / top up a job while it is being labelled (its `rev` goes up). Poll
+// the cheap rev endpoint; on a change keep the card on screen and the next one (the user's place) and
+// re-ask the server for the rest, which now comes in the new order.
+let jobRev = null;
+if (QS.get('job')) {
+  setInterval(async () => {
+    if (busy || document.hidden) return;
+    try {
+      const r = await (await fetch(`/api/jobs/${encodeURIComponent(QS.get('job'))}/rev`)).json();
+      if (jobRev !== null && r.rev !== undefined && r.rev !== jobRev) {
+        jobRev = r.rev;
+        queue = queue.slice(0, 2);
+        loadQueue(false);
+      }
+    } catch (err) { /* offline: try again next tick */ }
+  }, 10000);
+}
 
 function flash(verdict) {
   const marks = { ball: '✔', not_ball: '✖', box_off: '□', corrected: '✎', unsure: '?' };

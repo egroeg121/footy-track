@@ -53,7 +53,7 @@ from footy_track.calibration.frame_type import (
 from footy_track.calibration.prelabel.proposals import read_proposals, update_proposals
 from footy_track.calibration.video import read_frame
 from footy_track.clip_id import canonical_clip_id
-from footy_track.labeller import datasets
+from footy_track.labeller import datasets, hooks
 from footy_track.labeller.review import _clips_dir, _gt_marks_dir
 from footy_track.labeller.review import _find_video as _find_video_exact
 
@@ -201,6 +201,7 @@ def mark_not_broadcast(clip: str, idx: int, *, overwrite: bool = False, run_id: 
 
     if read_proposals(_gt_marks_dir(), clip)["runs"]:
         update_proposals(_gt_marks_dir(), clip, _props)
+    hooks.emit("frame_type", clip=canonical_clip_id(clip), unit=idx, verdict=NOT_BROADCAST)
     return {"ok": True, "frame_index": idx, "removed_gt": removed_gt, "gt_frames": _gt_frames(clip)}
 
 
@@ -237,6 +238,8 @@ def clear_not_broadcast(clip: str, idx: int) -> bool:
 
     if read_proposals(_gt_marks_dir(), clip)["runs"]:
         update_proposals(_gt_marks_dir(), clip, _props)
+    if gone[0]:
+        hooks.emit("frame_type", clip=canonical_clip_id(clip), unit=idx, verdict=f"{NOT_BROADCAST}_cleared")
     return gone[0]
 
 
@@ -345,6 +348,7 @@ def mark_too_few_points(clip: str, idx: int, *, tags: list[str] | None = None, r
 
     if read_proposals(_gt_marks_dir(), clip)["runs"]:
         update_proposals(_gt_marks_dir(), clip, _props)
+    hooks.emit("frame_type", clip=canonical_clip_id(clip), unit=idx, verdict=TOO_FEW_POINTS)
     return {"ok": True, "frame_index": idx, "tags": tags, "too_few_points": _too_few_points(clip)}
 
 
@@ -373,6 +377,8 @@ def clear_too_few_points(clip: str, idx: int) -> bool:
 
     if read_proposals(_gt_marks_dir(), clip)["runs"]:
         update_proposals(_gt_marks_dir(), clip, _props)
+    if gone[0]:
+        hooks.emit("frame_type", clip=canonical_clip_id(clip), unit=idx, verdict=f"{TOO_FEW_POINTS}_cleared")
     return gone[0]
 
 
@@ -886,6 +892,7 @@ async def gt_save(clip: str, idx: int, body: dict):
         _write_gt(clip, doc)
         if idx in too_few_points_frames(_gt_marks_dir(), clip):
             clear_too_few_points(clip, idx)   # labelled after all: it had enough points
+        hooks.emit("calibration_gt", clip=canonical_clip_id(clip), unit=idx, verdict="gt")
 
     await asyncio.to_thread(_store)
     return {"ok": True, "frame_index": idx, "gt_frames": _gt_frames(clip), "record": rec}
@@ -898,6 +905,7 @@ async def gt_delete(clip: str, idx: int):
         if doc["frames"].pop(str(idx), None) is None:
             return False
         _write_gt(clip, doc)
+        hooks.emit("calibration_gt", clip=canonical_clip_id(clip), unit=idx, verdict="gt_deleted")
         return True
 
     if not await asyncio.to_thread(_drop):
