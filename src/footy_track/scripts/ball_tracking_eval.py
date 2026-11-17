@@ -6,12 +6,14 @@
 
     # 2+3. replay trackers on the cache (CPU) and score against GT
     python -m footy_track.scripts.ball_tracking_eval score \
-        --cache cache_dir --gt gt_dir --split split.json \
-        --trackers online,bidirectional,viterbi
+        --cache cache_dir --gt gt_dir --trackers online,bidirectional,viterbi
 
-``--split`` is a JSON object ``{"<canonical clip id>": "seen" | "held_out"}``; the
-headline numbers are the held-out clips. ``--param tracker.key=value`` overrides a
-tracker parameter. See docs/ball-tracking-eval.md.
+Clips are grouped by the global split authority (``footy_track.splits``): ``eval_heldout_match``
+and ``eval_in_match`` are the evaluation tiers (the headline numbers), ``train`` the clips a
+detector may have seen. ``--split split.json`` is the legacy override, a JSON object
+``{"<canonical clip id>": "seen" | "held_out"}`` (groups ``held-out`` / ``seen``); without it the
+authority is used. ``--param tracker.key=value`` overrides a tracker parameter. See
+docs/ball-tracking-eval.md.
 """
 
 from __future__ import annotations
@@ -21,6 +23,7 @@ import json
 import math
 from pathlib import Path
 
+from footy_track import splits as authority
 from footy_track.ball_eval.detection_replay import (
     HUMAN,
     PROPAGATED,
@@ -103,17 +106,41 @@ def _overrides(items: list[str]) -> dict[str, dict[str, float | str]]:
     return out
 
 
+def split_groups(
+    clips: list[str], legacy: dict[str, str] | None = None
+) -> tuple[dict[str, list[str]], dict[str, str]]:
+    """Report groups ``{label: [clip]}`` plus ``{clip: split label}``.
+
+    Default: the split authority (tiers ``eval_heldout_match`` / ``eval_in_match`` / ``train``).
+    ``legacy`` is a hand-made ``{clip: seen|held_out}`` map and keeps the old groups.
+    """
+    if legacy:
+        labels = {c: legacy.get(c, "?") for c in clips}
+        return (
+            {
+                "held-out": [c for c in clips if legacy.get(c) == "held_out"],
+                "seen": [c for c in clips if legacy.get(c) == "seen"],
+                "all": list(clips),
+            },
+            labels,
+        )
+    labels = {c: authority.split_of_name(c) for c in clips}
+    groups: dict[str, list[str]] = {
+        s: [c for c in clips if labels[c] == s]
+        for s in (authority.EVAL_HELDOUT, authority.EVAL_IN_MATCH, authority.TRAIN)
+    }
+    groups["eval (both tiers)"] = [c for c in clips if authority.is_eval(labels[c])]
+    groups["all"] = list(clips)
+    return groups, labels
+
+
 def cmd_score(args: argparse.Namespace) -> int:
     gts = load_gt(args.gt)
     caches = {p.stem: read_cache(p) for p in sorted(args.cache.glob("*.jsonl"))}
-    split = json.loads(args.split.read_text()) if args.split else {}
+    legacy = authority.load_split_arg(args.split, []) if args.split else None
+    groups, labels = split_groups(list(caches), legacy)
     overrides = _overrides(args.param)
     radii = tuple(float(r) for r in args.radii.split(","))
-    groups = {
-        "held-out": [c for c in caches if split.get(c) == "held_out"],
-        "seen": [c for c in caches if split.get(c) == "seen"],
-        "all": list(caches),
-    }
     tiers_sets = {"human": (HUMAN,), "human+propagated": (HUMAN, PROPAGATED)}
     lines: list[str] = []
     for name, tiers in tiers_sets.items():
@@ -131,13 +158,11 @@ def cmd_score(args: argparse.Namespace) -> int:
             )
             lines += [f"### {kind}", "", *TABLE_HEADER]
             for group, clips in groups.items():
-                if group == "seen" and not split:
-                    continue
                 lines += format_counts(group, pool(per_clip, clips))
             if args.per_clip:
                 lines += ["", *TABLE_HEADER]
                 for clip, counts in per_clip.items():
-                    lines += format_counts(f"{clip} [{split.get(clip, '?')}]", counts)
+                    lines += format_counts(f"{clip} [{labels.get(clip, "?")}]", counts)
             lines.append("")
     print("\n".join(lines))
     return 0
@@ -227,7 +252,12 @@ def main(argv: list[str] | None = None) -> int:
     s = sub.add_parser("score", help="replay trackers on the cache and score them")
     s.add_argument("--cache", type=Path, required=True)
     s.add_argument("--gt", type=Path, required=True)
-    s.add_argument("--split", type=Path, default=None)
+    s.add_argument(
+        "--split",
+        type=Path,
+        default=None,
+        help="legacy {clip: seen|held_out} JSON; default: the global split authority",
+    )
     s.add_argument("--trackers", default=",".join(TRACKER_KINDS))
     s.add_argument("--radii", default="10,25")
     s.add_argument("--param", action="append", default=[], metavar="TRACKER.KEY=VALUE")

@@ -200,7 +200,6 @@ def test_export_drops_not_ball_keeps_others(tmp_path) -> None:
             video_dir=tmp_path,
             eval_dir=tmp_path / "none",
             extra_exclude=set(),
-            val_fraction=0.0,
             tag="t",
             **kw,
         )

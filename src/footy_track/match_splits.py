@@ -1,4 +1,4 @@
-"""Per-match split register: which whole matches are held-out (evaluation only) vs training pool.
+"""Per-match split register (tier 1 of the split authority, :mod:`footy_track.splits`): which whole matches are held-out (evaluation only) vs training pool.
 
 One persistent JSON file (default ``/mnt/storage/footy_data/match_splits.json``, override with env
 ``FOOTY_MATCH_SPLITS``)::

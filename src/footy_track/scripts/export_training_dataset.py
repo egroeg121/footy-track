@@ -14,18 +14,20 @@ alphabetically and taking their index — deterministic and recorded in
 ``data.yaml["names"]``.
 
 Assembles a YOLOv8-format dataset (``images/{train,val[,test]}``,
-``labels/{train,val[,test]}``, ``data.yaml``) with a **by-clip** split (a clip
-never straddles a split, preventing near-duplicate frame leakage) in all modes.
+``labels/{train,val[,test]}``, ``data.yaml``). The train/val/test assignment is NOT computed
+here: it comes from the global split authority (:mod:`footy_track.splits`, docs/data.md
+"Train/eval partitioning"), which keeps it stable as clips and matches are added:
 
-By default only train/val are produced (``--test-fraction 0`` — the original,
-back-compat two-way split). Passing ``--test-fraction`` > 0 switches to a
-three-way by-clip split (train/val/test); clips are still never split across
-any pair of splits, and the same deterministic assignment approach as the
-two-way split is used. The recommended convention is a 70/20/10 split:
-``--val-fraction 0.2 --test-fraction 0.1``.
+* ``train``              -> ``train/``
+* ``eval_in_match``      -> ``val/``   (the ~1-in-5 clips of train matches registered as eval)
+* ``eval_heldout_match`` -> left out (never in a training export); with ``--heldout-as-test``
+  they become ``test/`` (evaluation only, for a trainer that reports a test split).
+
+The split is by clip (a clip never straddles two splits). Missing/invalid registers fail closed
+before anything is queried or written.
 
 Leakage guard (the critical requirement): every clip used by the ball_eval
-harness is excluded from both splits. The harness eval set is the set of clips
+harness is excluded from every split. The harness eval set is the set of clips
 that have a GT ``.jsonl`` sidecar under ``--eval-dir`` (default
 ``eval_data/clips``). Extra clips can be excluded with repeated ``--exclude-clip``.
 
@@ -55,16 +57,9 @@ CLI:
         --video-dir eval_data/clips \\
         --out data/training_datasets/ball_v1 \\
         [--eval-dir eval_data/clips] [--exclude-clip <stem> ...] \\
-        [--val-fraction 0.2] [--test-fraction 0.1] [--tag ball_v1] \\
+        [--heldout-as-test] [--tag ball_v1] \\
         [--classes player,referee,person | --classes all] \\
         [--sources hand_label,vittrack]
-
-    # Recommended 70/20/10 split:
-    uv run python -m footy_track.scripts.export_training_dataset \\
-        --db data/feature_store.duckdb \\
-        --video-dir eval_data/clips \\
-        --out data/training_datasets/ball_v1 \\
-        --val-fraction 0.2 --test-fraction 0.1 --tag ball_v1
 """
 
 from __future__ import annotations
@@ -76,9 +71,11 @@ from pathlib import Path
 
 import yaml
 
+from footy_track import splits as authority
 from footy_track.clip_id import canonical_clip_id
 from footy_track.feature_store.store import FeatureStore
 from footy_track.match_splits import is_heldout_clip, load_register  # noqa: F401
+from footy_track.splits import EVAL_HELDOUT
 
 BALL_LABELS = ("ball", "in_play_ball", "out_of_play_ball")
 BALL_CLASS_ID = 0
@@ -168,74 +165,31 @@ def _query_multiclass_detections(
     return store.query(sql, params)
 
 
-def _pick_spread(clips: list[str], n: int) -> set[str]:
-    """Pick *n* clips spread across the sorted list (every k-th) for game
-    diversity. ``clips`` must already be sorted."""
-    if not n:
-        return set()
-    step = max(1, len(clips) // n)
-    picked = {clips[i] for i in range(0, len(clips), step)}
-    return set(sorted(picked)[:n])
-
-
-def _split_clips(clips: list[str], val_fraction: float) -> tuple[set[str], set[str]]:
-    """Deterministic by-clip split: assign whole clips to val until the target
-    fraction of clips is reached. Sorted for reproducibility."""
-    clips = sorted(clips)
-    if not clips:
-        return set(), set()
-    n_val = max(1, round(len(clips) * val_fraction)) if len(clips) > 1 else 0
-    val = _pick_spread(clips, n_val)
-    train = set(clips) - val
-    return train, val
-
-
-def _split_clips_three_way(
-    clips: list[str], val_fraction: float, test_fraction: float
-) -> tuple[set[str], set[str], set[str]]:
-    """Deterministic by-clip three-way split: train/val/test, no clip in more
-    than one split. Same spread-picking approach as the two-way split, applied
-    first to carve out val, then test, from what remains.
-
-    ``test_fraction == 0`` reduces exactly to ``_split_clips``'s train/val
-    behavior (test is simply empty)."""
-    clips = sorted(clips)
-    if not clips:
-        return set(), set(), set()
-    n_val = max(1, round(len(clips) * val_fraction)) if len(clips) > 1 else 0
-    val = _pick_spread(clips, n_val)
-
-    remaining = sorted(set(clips) - val)
-    n_test = 0
-    if test_fraction > 0 and len(clips) > 1 and remaining:
-        n_test = max(1, round(len(clips) * test_fraction))
-        n_test = min(n_test, len(remaining))
-    test = _pick_spread(remaining, n_test)
-
-    train = set(clips) - val - test
-    return train, val, test
-
-
 def _split_by_clip_identity(
-    game_ids: list[str], val_fraction: float, test_fraction: float
-) -> tuple[set[str], set[str], set[str], dict[str, set[str]]]:
-    """By-clip split over *physical* clips (T-03): every alias ``game_id`` of
-    one clip lands in the same split. Each alias group is represented by its
-    smallest ``game_id``, so with no aliases this is exactly ``_split_clips``
-    / ``_split_clips_three_way`` over the ``game_id``s. Also returns
-    ``{canonical_id: game_ids}`` for the manifest."""
+    game_ids: list[str], *, heldout_as_test: bool = False
+) -> tuple[set[str], set[str], set[str], dict[str, set[str]], set[str]]:
+    """Partition ``game_id``s with the split authority (:mod:`footy_track.splits`).
+
+    Every alias ``game_id`` of one physical clip (T-03) gets the clip's split, and an alias of a
+    held-out match is held out whichever alias it is. Returns ``(train, val, test, aliases_by_id,
+    heldout)``: ``val`` is the in-match eval tier, ``test`` the heldout-match tier when
+    ``heldout_as_test`` (else ``test`` is empty and those clips are returned in ``heldout`` for
+    the caller to drop)."""
     aliases_by_id: dict[str, set[str]] = defaultdict(set)
     for game_id in game_ids:
         aliases_by_id[canonical_clip_id(game_id)].add(game_id)
-    group_of = {min(g): g for g in aliases_by_id.values()}
-    if test_fraction > 0:
-        splits = _split_clips_three_way(list(group_of), val_fraction, test_fraction)
-    else:
-        splits = (*_split_clips(list(group_of), val_fraction), set())
-    train, val, test = (
-        {game_id for rep in reps for game_id in group_of[rep]} for reps in splits
-    )
-    return train, val, test, aliases_by_id
+    train: set[str] = set()
+    val: set[str] = set()
+    test: set[str] = set()
+    heldout: set[str] = set()
+    for cid, group in aliases_by_id.items():
+        if any(authority.split_of_name(g) == EVAL_HELDOUT for g in group):
+            split = EVAL_HELDOUT
+        else:
+            split = authority.split_of_name(cid)
+        target = authority.export_dir(split, heldout_as_test=heldout_as_test)
+        {"train": train, "val": val, "test": test, None: heldout}[target].update(group)
+    return train, val, test, aliases_by_id, heldout
 
 
 # Fallback source-video resolution (ft-n2o.1): the `eval_data/clips/*.mp4`
@@ -448,9 +402,18 @@ def _build_manifest(
     per_clip: dict,
     unresolved_clips: set[str],
     aliases_by_id: dict[str, set[str]],
+    heldout_boxes: int = 0,
+    heldout_as_test: bool = False,
 ) -> dict:
     manifest = {
         "tag": tag,
+        "split_authority": {
+            "module": "footy_track.splits",
+            "train": "train",
+            "val": "eval_in_match",
+            "test": "eval_heldout_match" if heldout_as_test else None,
+            "heldout_excluded_boxes": heldout_boxes,
+        },
         "classes": class_names,
         "sources": sorted(sources) if sources else None,
         "excluded_eval_clips": sorted(eval_clips),
@@ -479,12 +442,11 @@ def export(
     video_dir: Path,
     eval_dir: Path,
     extra_exclude: set[str],
-    val_fraction: float,
     tag: str,
     data_root: Path | None = None,
     classes: list[str] | None = None,
     sources: list[str] | None = None,
-    test_fraction: float = 0.0,
+    heldout_as_test: bool = False,
     include_rejected: bool = False,
 ) -> dict:
     """Export a leakage-free YOLO dataset.
@@ -500,16 +462,16 @@ def export(
     ``sources`` optionally restricts detections to specific ``source`` column
     values (e.g. ``["hand_label"]``); ``None``/empty means unrestricted.
 
-    ``test_fraction`` defaults to ``0.0``: the original two-way (train/val)
-    by-clip split, output unchanged. Set > 0 for a three-way (train/val/test)
-    by-clip split (recommended: ``val_fraction=0.2, test_fraction=0.1`` for a
-    70/20/10 split); a clip never straddles any pair of splits.
+    The train/val/test assignment comes from :mod:`footy_track.splits` (clip-level, sticky): train
+    -> ``train``, in-match eval -> ``val``, held-out-match eval -> dropped (or ``test`` with
+    ``heldout_as_test=True``). There are no fractions to choose.
 
     Boxes the user marked ``not_ball`` in Ball Check are dropped from the
     positives (the export has no negatives/background notion, so they are
     simply excluded); ``include_rejected=True`` keeps them.
     """
     load_register()  # fail closed before touching the store or out_dir
+    authority.load_clip_register()
     multiclass = classes is not None
     if multiclass:
         class_names = sorted(set(classes))
@@ -532,15 +494,19 @@ def export(
     rows_by_clip: dict[str, list] = defaultdict(list)
     excluded_boxes = 0
     for r in df.itertuples():
-        if canonical_clip_id(r.game_id) in excluded_ids or is_heldout_clip(r.game_id):
+        if canonical_clip_id(r.game_id) in excluded_ids:
             excluded_boxes += 1
             continue
         rows_by_clip[r.game_id].append(r)
 
-    has_test = test_fraction > 0
-    train_clips, val_clips, test_clips, aliases_by_id = _split_by_clip_identity(
-        list(rows_by_clip), val_fraction, test_fraction
+    has_test = heldout_as_test
+    train_clips, val_clips, test_clips, aliases_by_id, heldout_clips = (
+        _split_by_clip_identity(list(rows_by_clip), heldout_as_test=heldout_as_test)
     )
+    heldout_boxes = sum(len(rows_by_clip[c]) for c in heldout_clips)
+    for c in heldout_clips:
+        del rows_by_clip[c]
+    excluded_boxes += heldout_boxes
 
     # Sanity: no clip in more than one split.
     assert not (train_clips & val_clips), "clip leakage between splits"
@@ -595,6 +561,8 @@ def export(
         per_clip=per_clip,
         unresolved_clips=unresolved_clips,
         aliases_by_id=aliases_by_id,
+        heldout_boxes=heldout_boxes,
+        heldout_as_test=heldout_as_test,
     )
     (out_dir / "manifest.yaml").write_text(yaml.safe_dump(manifest, sort_keys=False))
     return manifest
@@ -611,15 +579,12 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument(
         "--exclude-clip", action="append", default=[], dest="exclude_clip"
     )
-    parser.add_argument("--val-fraction", type=float, default=0.2)
     parser.add_argument(
-        "--test-fraction",
-        type=float,
-        default=0.0,
-        help="Fraction of clips held out as a third (test) split, by-clip like "
-        "--val-fraction. Default 0.0 keeps the original train/val-only "
-        "behavior exactly. Recommended convention for a 70/20/10 split: "
-        "--val-fraction 0.2 --test-fraction 0.1.",
+        "--heldout-as-test",
+        action="store_true",
+        help="Write held-out-match clips as a test/ split (evaluation only). Default: "
+        "they are left out of the export entirely. val/ is always the in-match "
+        "eval tier (footy_track.splits).",
     )
     parser.add_argument("--tag", type=str, default="ball_v1")
     parser.add_argument(
@@ -672,8 +637,7 @@ def main(argv: list[str] | None = None) -> None:
         video_dir=args.video_dir,
         eval_dir=args.eval_dir,
         extra_exclude=set(args.exclude_clip),
-        val_fraction=args.val_fraction,
-        test_fraction=args.test_fraction,
+        heldout_as_test=args.heldout_as_test,
         data_root=args.data_root,
         tag=args.tag,
         classes=classes,
