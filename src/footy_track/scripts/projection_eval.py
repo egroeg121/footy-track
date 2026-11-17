@@ -39,6 +39,7 @@ from footy_track.calibration.clip_calibration import (
 )
 from footy_track.calibration.prelabel.pipeline import find_video
 from footy_track.clip_id import canonical_clip_id
+from footy_track.splits import split_label
 from footy_track.projection.players import (
     load_detections,
     project_boxes,
@@ -216,7 +217,7 @@ def write_tables(res: dict, path: Path) -> None:
         for k, v in res.items():
             ho = v["held_out"]
             for half in ("all", "near", "far"):
-                out.append(_row(f"{k} (keys {v['keyframes']}) {half}", ho[key][half]))
+                out.append(_row(f"{k} [{v.get('split', '?')}] (keys {v['keyframes']}) {half}", ho[key][half]))
             out.append(_row(f"{k} - static nearest-keyframe H, all", ho[base]["all"]))
         out.append("")
     out += ["### (b) Whole clip: coverage, players in the pitch, jitter", "",
@@ -226,7 +227,7 @@ def write_tables(res: dict, path: Path) -> None:
         c, j, p = v["clip_level"], v["clip_level"].get("jitter") or {}, v["clip_level"].get("players") or {}
         if not p:
             continue
-        out.append(f"| {k} | {c['ok_frac_all_frames']:.3f} / {c['ok_frac_keyframed_shots']:.3f} | {p['in_pitch_frac']:.3f} / {p['in_bounds_5m_frac']:.3f} | "
+        out.append(f"| {k} [{v.get('split', '?')}] | {c['ok_frac_all_frames']:.3f} / {c['ok_frac_keyframed_shots']:.3f} | {p['in_pitch_frac']:.3f} / {p['in_bounds_5m_frac']:.3f} | "
                    f"{j['disp_median_m']:.2f} / {j['disp_p95_m']:.2f} | {j['disp_frac_gt_0p4m']:.3f} | "
                    f"{j['common_shift_median_m']:.2f} / {j['common_shift_p95_m']:.2f} | {c['stats']['n_accepted']} / {c['stats']['n_rejected']} |")
     path.write_text("\n".join(out) + "\n")
@@ -280,7 +281,7 @@ def main(argv=None) -> int:
             t0 = time.perf_counter()
             cal = calibrate_clip(video, {k: gt_h[k] for k in keys}, boxes, Policy(refine=refine), motion=motion, masks=masks)
             cal.save(a.out / f"{cid}.{name}.calibration.parquet")
-            r = {"clip": cid, "scenario": name, "keyframes": keys, "refine": refine, "calibrate_s": time.perf_counter() - t0,
+            r = {"clip": cid, "split": split_label(cid), "scenario": name, "keyframes": keys, "refine": refine, "calibrate_s": time.perf_counter() - t0,
                  "held_out": held_out_errors(cal, {f: (H, d) for f, (H, d) in gt_h.items()}, keys, masks, dets),
                  "clip_level": whole_clip(cal, dets)}
             res[key] = r

@@ -28,12 +28,12 @@ its ball positions are in the stands (normalised y under 0.12).
 
 ```bash
 python -m footy_track.scripts.ball_tracking_eval cache  --videos <clips> --gt <gt> --out <cache> --weights <best.pt>
-python -m footy_track.scripts.ball_tracking_eval score  --cache <cache> --gt <gt> --split split.json \
+python -m footy_track.scripts.ball_tracking_eval score  --cache <cache> --gt <gt> \
     --trackers online,bidirectional,viterbi --radii 10,25 [--per-clip] [--param viterbi.enter_cost=6]
 python -m footy_track.scripts.ball_tracking_eval review --runs <dir of run folders>
 ```
 
-`split.json` maps each canonical clip id to `"seen"` or `"held_out"`.
+Clips are grouped by the global split authority (`footy_track.splits`: `eval_heldout_match`, `eval_in_match`, `train`, see [Train/eval partitioning](data.md#traineval-partitioning)). `--split split.json` still works as an explicit override: it maps each canonical clip id to `"seen"` or `"held_out"`.
 
 ## Ground truth rules
 

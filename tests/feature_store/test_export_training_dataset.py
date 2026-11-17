@@ -4,18 +4,32 @@ from __future__ import annotations
 
 import json
 
+import pytest
 import yaml
 from PIL import Image
 
 from footy_track.feature_store import FeatureStore, import_labeller_json
 from footy_track.feature_store.ingest_gt import ingest_gt_jsonl
+from footy_track import splits as authority
 from footy_track.scripts.export_training_dataset import (
     _distinct_labels,
-    _split_clips,
-    _split_clips_three_way,
     export,
     main,
 )
+
+
+@pytest.fixture(autouse=True)
+def _half_eval_register(tmp_path, monkeypatch):
+    """Clip register with a 1-in-2 hash rule so small fixtures see both train and val clips.
+    (Production rate is 1 in 5; the rule is read from the register file.)"""
+    reg = tmp_path / "clip_splits.json"
+    reg.write_text(
+        json.dumps({"version": 1, "rule": {"modulus": 2, "eval_remainder": 0}, "clips": {}})
+    )
+    monkeypatch.setenv("FOOTY_CLIP_SPLITS", str(reg))
+    authority.clear_cache()
+    yield
+    authority.clear_cache()
 
 
 def _seed_clip(store, tmp_path, stem, images_dir, frames):
@@ -42,104 +56,94 @@ def _seed_clip(store, tmp_path, stem, images_dir, frames):
         )
 
 
-def test_split_clips_no_overlap() -> None:
-    clips = [f"c{i}" for i in range(10)]
-    train, val = _split_clips(clips, 0.2)
-    assert not (train & val)
-    assert train | val == set(clips)
-    assert len(val) == 2
+def _split_dir_of(manifest: dict, clip: str) -> str | None:
+    for s in ("train", "val", "test"):
+        if clip in manifest.get(f"{s}_clips", []):
+            return s
+    return None
 
 
-def test_split_clips_three_way_no_overlap_and_fractions() -> None:
-    clips = [f"c{i}" for i in range(20)]
-    train, val, test = _split_clips_three_way(clips, 0.2, 0.1)
-    # No clip in more than one split, all pairs disjoint.
-    assert not (train & val)
-    assert not (train & test)
-    assert not (val & test)
-    assert train | val | test == set(clips)
-    assert len(val) == 4  # round(20 * 0.2)
-    assert len(test) == 2  # round(20 * 0.1)
-    assert len(train) == 14
-
-
-def test_split_clips_three_way_test_fraction_zero_matches_two_way() -> None:
-    """test_fraction=0 must reduce exactly to the two-way split (back-compat)."""
-    clips = [f"c{i}" for i in range(11)]
-    train2, val2 = _split_clips(clips, 0.2)
-    train3, val3, test3 = _split_clips_three_way(clips, 0.2, 0.0)
-    assert train3 == train2
-    assert val3 == val2
-    assert test3 == set()
-
-
-def test_split_clips_three_way_small_and_zero_clips() -> None:
-    assert _split_clips_three_way([], 0.2, 0.1) == (set(), set(), set())
-    # single clip: no split possible (mirrors _split_clips's len(clips) > 1 guard)
-    train, val, test = _split_clips_three_way(["only"], 0.2, 0.1)
-    assert train == {"only"}
-    assert val == set()
-    assert test == set()
-
-
-def test_export_three_way_split_end_to_end(tmp_path) -> None:
-    """--test-fraction > 0 produces a genuine three-way by-clip split with no
-    clip straddling any pair of splits, plus test dirs/data.yaml/manifest."""
+def test_export_follows_the_authority(tmp_path) -> None:
+    """val = in-match eval clips, train = the rest; nothing is positional."""
     images_dir = tmp_path / "imgs"
     images_dir.mkdir()
     store = FeatureStore.open(":memory:")
-    for i in range(10):
-        _seed_clip(store, tmp_path, f"clip_{i}", images_dir, frames=(0, 1))
-
-    out = tmp_path / "ball_v1"
+    names = [f"clip_{i}" for i in range(12)]
+    for n in names:
+        _seed_clip(store, tmp_path, n, images_dir, frames=(0, 1))
     eval_dir = tmp_path / "eval"
     eval_dir.mkdir()
     manifest = export(
-        store,
-        out_dir=out,
-        video_dir=tmp_path,
-        eval_dir=eval_dir,
-        extra_exclude=set(),
-        val_fraction=0.2,
-        test_fraction=0.1,
-        tag="ball_v1",
+        store, out_dir=tmp_path / "o", video_dir=tmp_path, eval_dir=eval_dir,
+        extra_exclude=set(), tag="t",
     )
+    for n in names:
+        want = "val" if authority.split_of_name(n) == authority.EVAL_IN_MATCH else "train"
+        assert _split_dir_of(manifest, n) == want
+    assert manifest["val_clips"] and manifest["train_clips"]
+    assert manifest["split_authority"]["val"] == "eval_in_match"
 
-    train_clips = set(manifest["train_clips"])
-    val_clips = set(manifest["val_clips"])
-    test_clips = set(manifest["test_clips"])
-    assert not (train_clips & val_clips)
-    assert not (train_clips & test_clips)
-    assert not (val_clips & test_clips)
-    assert train_clips | val_clips | test_clips == {f"clip_{i}" for i in range(10)}
-    assert len(test_clips) == 1  # round(10 * 0.1)
-    assert len(val_clips) == 2  # round(10 * 0.2)
 
-    # data.yaml has all three splits.
-    dy = yaml.safe_load((out / "data.yaml").read_text())
-    assert dy["train"] == "images/train"
-    assert dy["val"] == "images/val"
+def test_export_split_is_stable_when_clips_are_added(tmp_path) -> None:
+    """The old position-based picker reshuffled everything when a clip appeared."""
+    images_dir = tmp_path / "imgs"
+    images_dir.mkdir()
+    eval_dir = tmp_path / "eval"
+    eval_dir.mkdir()
+    store = FeatureStore.open(":memory:")
+    for i in range(8):
+        _seed_clip(store, tmp_path, f"clip_{i}", images_dir, frames=(0,))
+    kw = dict(video_dir=tmp_path, eval_dir=eval_dir, extra_exclude=set(), tag="t")
+    before = export(store, out_dir=tmp_path / "o1", **kw)
+    for i in range(8, 14):
+        _seed_clip(store, tmp_path, f"clip_{i}", images_dir, frames=(0,))
+    after = export(store, out_dir=tmp_path / "o2", **kw)
+    assert set(before["val_clips"]) <= set(after["val_clips"])
+    assert set(before["train_clips"]) <= set(after["train_clips"])
+
+
+def test_export_heldout_match_dropped_or_test(tmp_path) -> None:
+    images_dir = tmp_path / "imgs"
+    images_dir.mkdir()
+    eval_dir = tmp_path / "eval"
+    eval_dir.mkdir()
+    store = FeatureStore.open(":memory:")
+    _seed_clip(store, tmp_path, "arsenal_nottinghamforest_seg012", images_dir, frames=(0, 1))
+    _seed_clip(store, tmp_path, "clip_a", images_dir, frames=(0,))
+    kw = dict(video_dir=tmp_path, eval_dir=eval_dir, extra_exclude=set(), tag="t")
+
+    m = export(store, out_dir=tmp_path / "o1", **kw)
+    exported = set(m["train_clips"]) | set(m["val_clips"])
+    assert exported == {"clip_a"}
+    assert "test" not in m and m["split_authority"]["heldout_excluded_boxes"] == 2
+    assert not (tmp_path / "o1" / "images" / "test").exists()
+
+    m = export(store, out_dir=tmp_path / "o2", heldout_as_test=True, **kw)
+    assert m["test_clips"] == ["arsenal_nottinghamforest_seg012"]
+    assert m["test"]["images"] == 2
+    dy = yaml.safe_load((tmp_path / "o2" / "data.yaml").read_text())
     assert dy["test"] == "images/test"
-
-    # Output dirs exist for all three splits.
-    for split in ("train", "val", "test"):
-        assert (out / "images" / split).is_dir()
-        assert (out / "labels" / split).is_dir()
-
-    # test split actually has images/boxes.
-    assert manifest["test"]["images"] > 0
-    assert manifest["test"]["boxes"] > 0
-
-    # dataset_tag write-back covers the test split.
-    tagged_test = store.query(
-        "SELECT DISTINCT dataset_tag FROM detection WHERE dataset_tag = 'ball_v1:test'"
-    )
-    assert len(tagged_test) == 1
+    assert store.query(
+        "SELECT count(*) AS n FROM detection WHERE dataset_tag = 't:test'"
+    )["n"][0] == 2
 
 
-def test_export_test_fraction_zero_back_compat_default(tmp_path) -> None:
-    """Default (test_fraction=0.0) leaves the manifest/data.yaml/dirs exactly
-    as before: no 'test' key, no test dirs."""
+def test_export_fails_closed_without_clip_register(tmp_path, monkeypatch) -> None:
+    from footy_track.match_splits import RegisterError
+
+    monkeypatch.setenv("FOOTY_CLIP_SPLITS", str(tmp_path / "absent.json"))
+    monkeypatch.delenv("FOOTY_MATCH_SPLITS_ALLOW_SEED")
+    monkeypatch.setenv("FOOTY_MATCH_SPLITS", str(tmp_path / "m.json"))
+    (tmp_path / "m.json").write_text("{}")
+    authority.clear_cache()
+    with pytest.raises(RegisterError, match="clip split register"):
+        export(None, out_dir=tmp_path / "o", video_dir=tmp_path, eval_dir=tmp_path,
+               extra_exclude=set(), tag="t")
+    assert not (tmp_path / "o").exists()
+
+
+def test_export_default_has_no_test_split(tmp_path) -> None:
+    """Without --heldout-as-test: no 'test' key, no test dirs."""
     images_dir = tmp_path / "imgs"
     images_dir.mkdir()
     store = FeatureStore.open(":memory:")
@@ -155,7 +159,6 @@ def test_export_test_fraction_zero_back_compat_default(tmp_path) -> None:
         video_dir=tmp_path,
         eval_dir=eval_dir,
         extra_exclude=set(),
-        val_fraction=0.2,
         tag="ball_v1",
     )
 
@@ -183,7 +186,6 @@ def test_export_end_to_end_by_clip(tmp_path) -> None:
         video_dir=tmp_path,
         eval_dir=eval_dir,
         extra_exclude=set(),
-        val_fraction=0.2,
         tag="ball_v1",
     )
 
@@ -222,7 +224,6 @@ def test_export_excludes_eval_clips(tmp_path) -> None:
         video_dir=tmp_path,
         eval_dir=eval_dir,
         extra_exclude=set(),
-        val_fraction=0.5,
         tag="ball_v1",
     )
 
@@ -267,15 +268,14 @@ def test_export_keeps_aliases_of_one_clip_on_one_side_and_excludes_eval_aliases(
     eval_dir.mkdir()
     (eval_dir / "mancity_seg010.jsonl").write_text("{}\n")
 
-    for test_fraction in (0.0, 0.2):
+    for heldout_as_test in (False, True):
         manifest = export(
             store,
-            out_dir=tmp_path / f"out_{test_fraction}",
+            out_dir=tmp_path / f"out_{heldout_as_test}",
             video_dir=tmp_path,
             eval_dir=eval_dir,
             extra_exclude=set(),
-            val_fraction=0.5,
-            test_fraction=test_fraction,
+            heldout_as_test=heldout_as_test,
             tag="ball_v1",
         )
         exported = (
@@ -292,7 +292,7 @@ def test_export_keeps_aliases_of_one_clip_on_one_side_and_excludes_eval_aliases(
         assert manifest["clip_aliases"]["arsenal_mancity_seg020"] == sorted(pairs[0])
 
 
-def test_export_alias_free_store_splits_exactly_as_before(tmp_path) -> None:
+def test_export_alias_free_store_splits_by_the_authority(tmp_path) -> None:
     """Grouping by canonical id must not move clips when there are no aliases:
     groups are keyed by their smallest game_id, i.e. the game_id itself."""
     images_dir = tmp_path / "imgs"
@@ -310,11 +310,12 @@ def test_export_alias_free_store_splits_exactly_as_before(tmp_path) -> None:
         video_dir=tmp_path,
         eval_dir=eval_dir,
         extra_exclude=set(),
-        val_fraction=0.25,
         tag="ball_v1",
     )
-    train, val = _split_clips(stems, 0.25)
-    assert set(manifest["train_clips"]) == train
+    val = {
+        n for n in stems if authority.split_of_name(n) == authority.EVAL_IN_MATCH
+    }
+    assert set(manifest["train_clips"]) == set(stems) - val
     assert set(manifest["val_clips"]) == val
     assert manifest["clip_aliases"] == {}
 
@@ -412,7 +413,6 @@ def test_export_multiclass_mapping_and_label_lines(tmp_path) -> None:
         video_dir=tmp_path,
         eval_dir=eval_dir,
         extra_exclude=set(),
-        val_fraction=0.5,
         tag="mc_v1",
         classes=["referee", "player"],  # deliberately unsorted input
     )
@@ -471,7 +471,6 @@ def test_export_sources_filtering(tmp_path) -> None:
         video_dir=tmp_path,
         eval_dir=eval_dir,
         extra_exclude=set(),
-        val_fraction=0.5,
         tag="all",
         classes=["player"],
     )
@@ -490,7 +489,6 @@ def test_export_sources_filtering(tmp_path) -> None:
         video_dir=tmp_path,
         eval_dir=eval_dir,
         extra_exclude=set(),
-        val_fraction=0.5,
         tag="hand",
         classes=["player"],
         sources=["hand_label"],
@@ -533,7 +531,6 @@ def test_export_sources_filtering_ball_mode(tmp_path) -> None:
         video_dir=tmp_path,
         eval_dir=eval_dir,
         extra_exclude=set(),
-        val_fraction=0.5,
         tag="ball_hand",
         sources=["hand_label"],
     )
@@ -567,7 +564,6 @@ def test_export_default_back_compat_unchanged(tmp_path) -> None:
         video_dir=tmp_path,
         eval_dir=eval_dir,
         extra_exclude=set(),
-        val_fraction=0.5,
         tag="ball_v1",
     )
     dy = yaml.safe_load((out / "data.yaml").read_text())
@@ -683,7 +679,6 @@ def test_export_fails_closed_without_register(tmp_path, monkeypatch):
             video_dir=tmp_path,
             eval_dir=tmp_path,
             extra_exclude=set(),
-            val_fraction=0.2,
             tag="t",
         )
     assert not out.exists()

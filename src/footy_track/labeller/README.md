@@ -1607,7 +1607,7 @@ Frames are `<dataset clips_dir>/<match>/f<frame>.jpg`; verdicts (`yes`/`no`/`uns
 `<marks_dir>/broadcast_review/<match>.json` and counted as progress. Page: `/broadcast_review?dataset=..&job=<id>`
 (Y / N / U keys; the model's call and `p_yes` are shown while answering). Training: `python -m
 footy_track.scripts.export_broadcast_review --dataset broadcast_review --out <dir>` writes `train/{Yes,No}/`
-for `scripts/train_classifier.py --local-dataset` (`unsure` skipped; `--valid-matches` keeps a match whole in `valid/`).
+for `scripts/train_classifier.py --local-dataset` (`unsure` skipped; train/valid/test come from the split authority `footy_track.splits`, docs/data.md "Train/eval partitioning"; `--valid-matches` is an explicit whole-match override).
 
 ## 19c. Labelling hooks: refit, reorder and kick off work *while* a job is being labelled (LAB-1417..1426)
 

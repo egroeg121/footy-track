@@ -10,6 +10,7 @@ import numpy as np
 from footy_track.calibration import geometry as geo
 from footy_track.calibration.prelabel.proposals import list_clips_with_proposals, read_proposals
 from footy_track.clip_id import canonical_clip_id
+from footy_track.splits import split_label
 
 SUCCESS_PX_STRICT = 5.0
 LOC_TOL_PX = 8.0  # two labels "at the same image location"
@@ -88,7 +89,7 @@ def evaluate(gt_dir: Path, run_id: str | None = None, success_px: float = SUCCES
                 if k in gts:
                     runs_seen.add(rid)
                     rows.append({"clip": clip, "frame": int(k), "run_id": rid,
-                                 **eval_frame(gts[k], prop)})
+                                 "split": split_label(clip), **eval_frame(gts[k], prop)})
     rows.sort(key=lambda r: (r["run_id"], r["clip"], r["frame"]))
     ok = [r for r in rows if r["mean_px"] is not None and r["mean_px"] <= success_px]
     mp = [r["mean_px"] for r in rows if r["mean_px"] is not None]
@@ -101,8 +102,25 @@ def evaluate(gt_dir: Path, run_id: str | None = None, success_px: float = SUCCES
         "mean_px_over_frames": float(np.mean(mp)) if mp else None,
         "keypoint_agreement": agree_n / agree_d if agree_d else None,
         "n_same_location": agree_d,
+        "by_split": _by_split(rows, success_px),
     }
     return {"summary": summary, "frames": rows}
+
+
+def _by_split(rows: list[dict], success_px: float) -> dict:
+    """The headline numbers per partition (``footy_track.splits``): train-pool GT versus the
+    eval tiers. Only the eval tiers are an honest estimate for anything trained on GT."""
+    out: dict[str, dict] = {}
+    for split in sorted({r["split"] for r in rows}):
+        rs = [r for r in rows if r["split"] == split]
+        mp = [r["mean_px"] for r in rs if r["mean_px"] is not None]
+        ok = [r for r in rs if r["mean_px"] is not None and r["mean_px"] <= success_px]
+        out[split] = {
+            "n_clips": len({r["clip"] for r in rs}), "n_frames": len(rs), "n_success": len(ok),
+            "success_rate": len(ok) / len(rs), "n_failed": sum(r["status"] == "failed" for r in rs),
+            "mean_px_over_frames": float(np.mean(mp)) if mp else None,
+        }
+    return out
 
 
 def format_table(res: dict) -> str:
@@ -127,4 +145,10 @@ def format_table(res: dict) -> str:
         f"keypoint agreement={f(s['keypoint_agreement'], '.0%')} over {s['n_same_location']} shared locations  "
         f"mean px={f(s['mean_px_over_frames'], '.1f')}"
     )
+    for split, b in (s.get("by_split") or {}).items():
+        lines.append(
+            f"  [{split}] clips={b['n_clips']} frames={b['n_frames']}  "
+            f"success={b['n_success']}/{b['n_frames']} ({f(b['success_rate'], '.0%')})  "
+            f"failed={b['n_failed']}  mean px={f(b['mean_px_over_frames'], '.1f')}"
+        )
     return "\n".join(lines)
