@@ -569,9 +569,7 @@ def _add_shape_points(
     ctx: _Ctx, r: cc.CirclePoints, res: FinderResult, out: FinderDetection, rig, use: tuple[str, ...], refine: bool = True
 ) -> None:
     """Shape-first path (``calibration.centre_fit``): replaces the base points by the fit's points when accepted."""
-    from footy_track.calibration import (
-        centre_fit as cf,  # noqa: PLC0415 (centre_fit imports this module)
-    )
+    import footy_track.calibration.centre_fit as cf  # noqa: PLC0415  (centre_fit imports this module)
 
     L, E = r.anchor, r.ellipse
     V = np.linalg.solve(cc._conic(E), _line_h(L.o, L.n))
