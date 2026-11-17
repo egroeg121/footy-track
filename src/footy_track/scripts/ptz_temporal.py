@@ -336,9 +336,9 @@ def cam_proj(cam, w, h):
     return f
 
 
-def render(cache, t, cams: dict, truth=None, width=960):
+def render(cache, t, cams: dict, truth=None, width=960, frame=None):
     """Frame t with the pitch markings of each camera in ``cams`` (name -> (cam, BGR colour)); truth in red."""
-    f = cache.read_full(t)
+    f = cache.read_full(t) if frame is None else frame
     h = int(round(f.shape[0] * width / f.shape[1]))
     img = cv2.resize(f, (width, h), interpolation=cv2.INTER_AREA)
     if truth is not None:
@@ -579,9 +579,16 @@ def cmd_sheet(args):
     cv2.imwrite(str(dest / f"{args.clip}{WORK_SUFFIX}_sheet.jpg"), np.vstack(rows), [cv2.IMWRITE_JPEG_QUALITY, 85])
     # overlay video: every 5th frame, temporal (full) in green, 960 wide
     vw = cv2.VideoWriter(str(dest / f"{args.clip}{WORK_SUFFIX}_overlay.mp4"), cv2.VideoWriter_fourcc(*"mp4v"), 5.0, (960, 540))
-    for t in range(0, cache.n, 5):
+    cap = cv2.VideoCapture(str(cache.video))  # one sequential pass: seeks are not frame-accurate (see read_full)
+    for t in range(cache.n):
+        ok, f = cap.read()
+        if not ok:
+            break
+        if t % 5:
+            continue
         c = pt.cam_from_state(st[t], sh) if np.all(np.isfinite(st[t])) else None
-        vw.write(render(cache, t, {"temporal": (c, (0, 255, 0))}))
+        vw.write(render(cache, t, {"temporal": (c, (0, 255, 0))}, frame=f))
+    cap.release()
     vw.release()
     log("wrote", dest)
 
