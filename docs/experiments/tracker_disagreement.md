@@ -108,7 +108,7 @@ Fusion: `fuse4.py` (a VitTrack frame "has a ball" when its score >= 0.20, VitTra
 | all four agree | 21.4 % | 59.9 % |
 | three agree (one of the four silent) | 22.3 % | 18.1 % |
 | two agree (two silent) | 3.9 % | 2.6 % |
-| exactly one tracker is the odd one out of a majority | 42.7 % (VitTrack 2 732 of 2 957) | 10.2 % (VitTrack 517 of 716) |
+| exactly one tracker is the odd one out of a majority | 42.7 % (VitTrack 2 732 of 2 894) | 10.2 % (VitTrack 517 of 716) |
 | split 2 + 2 / all differ | 0.5 % / 2.8 % | 0.2 % / 1.5 % |
 | only one tracker has a ball | 4.6 % (VitTrack alone 245) | 3.2 % (VitTrack alone 79) |
 | none | 1.9 % | 4.4 % |
