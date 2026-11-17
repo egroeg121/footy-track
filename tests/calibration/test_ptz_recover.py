@@ -27,18 +27,27 @@ def _on_band(pan_deg, f):
 # ---------------------------------------------------------------- pose prior
 
 
-def test_emirates_rig_carries_the_pose_prior_and_vitality_does_not():
-    em = ptz.Rig.from_json(RIGS / "emirates.json")
+def test_both_rigs_carry_a_pose_prior():
+    em, vit = (ptz.Rig.from_json(RIGS / f"{n}.json") for n in ("emirates", "vitality"))
     assert pr.pose_prior(em)["tilt_sigma_deg"] > 0
-    assert pr.pose_prior(ptz.Rig.from_json(RIGS / "vitality.json")) is None  # no band measured: search unrestricted
+    p = pr.pose_prior(vit)  # estimated from the accepted Bournemouth 1st-half segments
+    assert 0 < p["tilt_sigma_deg"] < 1.2 and p["tilt_b"] < 0 and p["pan_deg"][0] < 50 < 130 < p["pan_deg"][1]
+    # the band passes the typical Bournemouth main-camera pose (f 3500 px: tilt 7 deg) and refuses a 10 deg error
+    lf = np.log(3500.0)
+    t0 = np.deg2rad(p["tilt_a"] + p["tilt_b"] * lf)
+    assert pr.in_prior(p, np.deg2rad(90.0), t0, lf) and not pr.in_prior(p, np.deg2rad(90.0), t0 + np.deg2rad(10.0), lf)
 
 
-def test_rig_variants_add_the_two_penalty_line_camera_positions_only_for_the_emirates_rig():
+def test_rig_variants_add_the_two_penalty_line_camera_positions_of_each_ground():
     em = ptz.Rig.from_json(RIGS / "emirates.json")
     v = pr.rig_variants(em)
     assert [n for n, _ in v] == ["centre", "x+32.7", "x-32.7"]
     assert np.allclose(v[1][1].C - em.C, [32.7, 0, 0]) and v[1][1].k1 == em.k1 and v[2][1].roll == em.roll
-    assert [n for n, _ in pr.rig_variants(ptz.Rig.from_json(RIGS / "vitality.json"))] == ["centre"]
+    vit = ptz.Rig.from_json(RIGS / "vitality.json")  # penalty-area line at 52.5 - 16.5 = 36 m (free-C fits: +-36.6)
+    vv = pr.rig_variants(vit)
+    assert [n for n, _ in vv] == ["centre", "x+36.6", "x-36.6"]
+    assert np.allclose(vv[2][1].C - vit.C, [-36.6, 0, 0]) and np.allclose(vv[2][1].C[1:], vit.C[1:])
+    assert [n for n, _ in pr.rig_variants(ptz.Rig(np.zeros(3)))] == ["centre"]  # a rig without a prior: one position
 
 
 def test_in_prior_accepts_the_band_and_refuses_off_band_poses():
@@ -48,6 +57,14 @@ def test_in_prior_accepts_the_band_and_refuses_off_band_poses():
     assert not pr.in_prior(PRIOR, np.deg2rad(20.0), c.tilt, c.logf)  # pan outside the stand's range
     assert not pr.in_prior(PRIOR, c.pan, c.tilt, np.log(1200.0))  # a zoom the operator never uses
     assert pr.in_prior(None, 0.0, 3.0, 20.0)  # no prior: everything passes
+
+
+def test_prior_grid_uses_the_priors_own_tilt_offsets():
+    vit = pr.pose_prior(ptz.Rig.from_json(RIGS / "vitality.json"))
+    g = pr.prior_grid(vit)
+    resid = np.array([pr.tilt_resid_deg(vit, t, lf) for _, t, lf in g])
+    assert 4000 < len(g) < 8000 and np.abs(resid).max() <= 4 * vit["tilt_sigma_deg"] + 1e-9  # whole grid inside the gate
+    assert np.exp(g[:, 2]).min() >= 1499 and np.exp(g[:, 2]).max() <= 8001
 
 
 def test_prior_grid_lies_on_the_band():

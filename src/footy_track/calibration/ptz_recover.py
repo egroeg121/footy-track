@@ -69,7 +69,9 @@ def in_prior(prior: dict | None, pan: float, tilt: float, logf: float, nsig: flo
 
 
 def prior_grid(prior: dict, n_pan: int = 53, n_f: int = 22, tilt_offsets_deg=(-4.0, -2.0, 0.0, 2.0, 4.0)) -> Array:
-    """Pan x log f grid with the tilt on the prior band (+- offsets): ~6k poses, dense where the camera really is."""
+    """Pan x log f grid with the tilt on the prior band (+- offsets): ~6k poses, dense where the camera really is.
+    ``prior["tilt_offsets_deg"]`` overrides the offsets (a narrower band, e.g. the Vitality's 0.8 deg sigma, needs finer ones)."""
+    tilt_offsets_deg = prior.get("tilt_offsets_deg", tilt_offsets_deg)
     pan = np.linspace(np.radians(prior["pan_deg"][0]), np.radians(prior["pan_deg"][1]), n_pan)
     logf = np.linspace(np.log(prior["f_px"][0]), np.log(prior["f_px"][1]), n_f)
     out = []

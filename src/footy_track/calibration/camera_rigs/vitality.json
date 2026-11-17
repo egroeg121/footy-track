@@ -67,6 +67,31 @@
     "res_px": 96.04366501888794
    }
   ],
-  "fit_date": "2026-11-15"
+  "fit_date": "2026-11-15",
+  "pose_prior": {
+   "tilt_a": 71.46,
+   "tilt_b": -7.768,
+   "tilt_sigma_deg": 0.8,
+   "pan_deg": [
+    35.0,
+    145.0
+   ],
+   "f_px": [
+    1500.0,
+    8000.0
+   ],
+   "tilt_offsets_deg": [
+    -3.2,
+    -1.6,
+    0.0,
+    1.6,
+    3.2
+   ],
+   "source": "tilt_deg = a + b*ln(f_px) over accepted frames (every 5th) of the 76 Bournemouth 1st-half segments with accepted_frac >= 0.5 (8230 frames; pan 1-99% 47-129 deg, f 1-99% 2141-4665 px, tilt resid 1-99% -2.4..2.2 deg, std 0.79); ranges widened; tilt_offsets_deg scaled to the smaller sigma. side_cx_m: free-C fits of penalty-D finder points on weak segments 26, 41 (C_x=+36.4..+37.2, rms 1-3 px with C_y,C_z free) and 33, 57, 100 (C_x=-36.4..-36.6); fixed-C at the centre reprojects them 140-330 px off.",
+   "side_cx_m": [
+    36.6,
+    -36.6
+   ]
+  }
  }
 }
