@@ -27,7 +27,9 @@ def _cam(pan_deg: float, tilt_deg: float = 28.0, f: float = 700.0) -> np.ndarray
     """Normalised image -> pitch metres for a camera fixed at (5, -48, 25) that pans/tilts/zooms."""
     K = np.array([[f, 0, W / 2], [0, f, H / 2], [0, 0, 1.0]])
     pan, tilt = np.deg2rad(pan_deg), np.deg2rad(tilt_deg)
-    fwd = np.array([np.sin(pan) * np.cos(tilt), np.cos(pan) * np.cos(tilt), -np.sin(tilt)])
+    fwd = np.array(
+        [np.sin(pan) * np.cos(tilt), np.cos(pan) * np.cos(tilt), -np.sin(tilt)]
+    )
     right = np.cross(fwd, [0, 0, 1.0])
     right /= np.linalg.norm(right)
     down = np.cross(fwd, right)
@@ -48,7 +50,14 @@ def _raster() -> np.ndarray:
     T = geo.pitch_raster_transform(PITCH, PX_PER_M, MARGIN)
     for poly in PITCH.polylines().values():
         pts, _ = geo.apply_homography(T, poly)
-        cv2.polylines(img, [np.round(pts).astype(np.int32)], False, (245, 245, 245), 3, cv2.LINE_AA)
+        cv2.polylines(
+            img,
+            [np.round(pts).astype(np.int32)],
+            False,
+            (245, 245, 245),
+            3,
+            cv2.LINE_AA,
+        )
     return np.clip(img, 0, 255).astype(np.uint8)
 
 
@@ -58,7 +67,9 @@ RASTER = _raster()
 def _render(Hn: np.ndarray, size=(W, H)) -> np.ndarray:
     T = geo.pitch_raster_transform(PITCH, PX_PER_M, MARGIN)
     M = np.diag([size[0], size[1], 1.0]) @ np.linalg.inv(Hn) @ np.linalg.inv(T)
-    out = cv2.warpPerspective(RASTER, M, size, flags=cv2.INTER_LINEAR, borderValue=(35, 35, 35))
+    out = cv2.warpPerspective(
+        RASTER, M, size, flags=cv2.INTER_LINEAR, borderValue=(35, 35, 35)
+    )
     return out
 
 
@@ -67,7 +78,9 @@ def _true_motion(Ha: np.ndarray, Hb: np.ndarray) -> np.ndarray:
     return np.linalg.inv(Hb) @ Ha
 
 
-GRID = np.array([[x, y] for x in np.linspace(0.15, 0.85, 6) for y in np.linspace(0.4, 0.9, 5)])
+GRID = np.array(
+    [[x, y] for x in np.linspace(0.15, 0.85, 6) for y in np.linspace(0.4, 0.9, 5)]
+)
 
 
 def _transfer_px(Hest: np.ndarray, Htrue: np.ndarray, size=(W, H)) -> float:
@@ -121,8 +134,11 @@ def test_masks_exclude_overlay_players_and_boxes():
 def test_a_moving_player_does_not_bias_the_motion():
     Ha, Hb = _cam(8.0), _cam(9.0)
     fa, fb = _render(Ha), _render(Hb)
-    for f, x in ((fa, 200), (fb, 240)):  # big player blob moving with a different velocity
-        f[170:260, x:x + 70] = (60, 60, 200)
+    for f, x in (
+        (fa, 200),
+        (fb, 240),
+    ):  # big player blob moving with a different velocity
+        f[170:260, x : x + 70] = (60, 60, 200)
     pm = tp.estimate_pair(fa, fb, scale=W)
     assert pm.ok and _transfer_px(pm.H_norm, _true_motion(Ha, Hb)) < 2.0
 
@@ -130,10 +146,30 @@ def test_a_moving_player_does_not_bias_the_motion():
 def test_load_person_boxes(tmp_path):
     p = tmp_path / "x.jsonl"
     rows = [
-        {"frame_index": 3, "bbox": {"x": 0.1, "y": 0.2, "w": 0.05, "h": 0.1}, "tags": ["player"], "confidence": 0.9},
-        {"frame_index": 3, "bbox": {"x": 0.5, "y": 0.5, "w": 0.01, "h": 0.01}, "tags": ["in_play_ball"], "confidence": 0.5},
-        {"frame_index": 3, "bbox": {"x": 0.9, "y": 0.9, "w": 0.05, "h": 0.1}, "tags": ["player"], "confidence": 0.05},
-        {"frame_index": 4, "bbox": {"x": 0.3, "y": 0.3, "w": 0.05, "h": 0.1}, "tags": ["crowd"], "confidence": 0.9},
+        {
+            "frame_index": 3,
+            "bbox": {"x": 0.1, "y": 0.2, "w": 0.05, "h": 0.1},
+            "tags": ["player"],
+            "confidence": 0.9,
+        },
+        {
+            "frame_index": 3,
+            "bbox": {"x": 0.5, "y": 0.5, "w": 0.01, "h": 0.01},
+            "tags": ["in_play_ball"],
+            "confidence": 0.5,
+        },
+        {
+            "frame_index": 3,
+            "bbox": {"x": 0.9, "y": 0.9, "w": 0.05, "h": 0.1},
+            "tags": ["player"],
+            "confidence": 0.05,
+        },
+        {
+            "frame_index": 4,
+            "bbox": {"x": 0.3, "y": 0.3, "w": 0.05, "h": 0.1},
+            "tags": ["crowd"],
+            "confidence": 0.9,
+        },
     ]
     p.write_text("\n".join(json.dumps(r) for r in rows))
     b = tp.load_person_boxes(p)
@@ -224,8 +260,13 @@ def test_hist_distance_separates_scenes():
 def test_refine_frame_recovers_a_perturbed_propagated_h():
     Ht = _cam(8.0)
     frame = _render(Ht, (1280, 720))
-    Hbad = geo.orient_homography(Ht @ np.array([[1, 0, 0.012], [0, 1, -0.01], [0, 0, 1.0]]), [[0.5, 0.6]])
+    Hbad = geo.orient_homography(
+        Ht @ np.array([[1, 0, 0.012], [0, 1, -0.01], [0, 0, 1.0]]), [[0.5, 0.6]]
+    )
     r = tp.refine_frame(Hbad, frame, PITCH, work_width=960)
     assert r.applied, r.reason
     pts = np.array([[0.3, 0.7], [0.5, 0.6], [0.7, 0.8], [0.5, 0.9]])
-    assert tp.pitch_grid_error(r.H, Ht, pts).max() < tp.pitch_grid_error(Hbad, Ht, pts).max()
+    assert (
+        tp.pitch_grid_error(r.H, Ht, pts).max()
+        < tp.pitch_grid_error(Hbad, Ht, pts).max()
+    )

@@ -20,14 +20,23 @@ from footy_track.calibration.pitch_model import PitchModel
 from footy_track.calibration.prelabel import evaluate as ev
 from footy_track.calibration.prelabel import identifier as idf
 from footy_track.calibration.prelabel import pipeline as pl
-from footy_track.calibration.prelabel.candidates import find_candidates, render_candidates
-from footy_track.calibration.prelabel.fit import Label, fit_and_score, line_support_score
+from footy_track.calibration.prelabel.candidates import (
+    find_candidates,
+    render_candidates,
+)
+from footy_track.calibration.prelabel.fit import (
+    Label,
+    fit_and_score,
+    line_support_score,
+)
 from footy_track.calibration.prelabel.proposals import read_proposals
 
 from .test_geometry import H, W, _camera_h
 
 PITCH = PitchModel()
-KP = list(PITCH.keypoints())  # _labels_from keeps those that are visible and have a candidate
+KP = list(
+    PITCH.keypoints()
+)  # _labels_from keeps those that are visible and have a candidate
 
 
 def synth_frame(Hn=None) -> np.ndarray:
@@ -63,11 +72,19 @@ def _true_uv(kid: str) -> np.ndarray:
 def test_candidates_find_true_line_intersections(det):
     assert det.lines and det.candidates
     w, h = det.size
-    for kid in ("HALFWAY_TOP", "CENTRE_CIRCLE_TOP", "CENTRE_CIRCLE_BOTTOM", "R_PEN_BOX_TOP_OUTER"):
+    for kid in (
+        "HALFWAY_TOP",
+        "CENTRE_CIRCLE_TOP",
+        "CENTRE_CIRCLE_BOTTOM",
+        "R_PEN_BOX_TOP_OUTER",
+    ):
         uv = _true_uv(kid)
         if not (0.02 < uv[0] < 0.98 and 0.02 < uv[1] < 0.98):
             continue
-        d = min(np.hypot((c.uv[0] - uv[0]) * w, (c.uv[1] - uv[1]) * h) for c in det.candidates)
+        d = min(
+            np.hypot((c.uv[0] - uv[0]) * w, (c.uv[1] - uv[1]) * h)
+            for c in det.candidates
+        )
         assert d < 8, (kid, d)
 
 
@@ -91,7 +108,10 @@ def _labels_from(det, ids, tol_px=8.0):
         uv = _true_uv(kid)
         if not (0 <= uv[0] <= 1 and 0 <= uv[1] <= 1):
             continue
-        best = min(det.candidates, key=lambda c: np.hypot((c.uv[0] - uv[0]) * w, (c.uv[1] - uv[1]) * h))
+        best = min(
+            det.candidates,
+            key=lambda c: np.hypot((c.uv[0] - uv[0]) * w, (c.uv[1] - uv[1]) * h),
+        )
         if np.hypot((best.uv[0] - uv[0]) * w, (best.uv[1] - uv[1]) * h) < tol_px:
             out.append(Label(kid, best.uv, 1.0, best.id))
     return out
@@ -104,7 +124,9 @@ def test_fit_recovers_known_homography_and_scores_high(det):
     assert fit.ok and sum(fit.inliers) >= 4
     assert fit.score > 0.8
     # reprojected centre-circle top sits where the truth says
-    uv, _ = geo.apply_homography(np.linalg.inv(fit.H), np.array([PITCH.keypoints()["CENTRE_CIRCLE_TOP"]]))
+    uv, _ = geo.apply_homography(
+        np.linalg.inv(fit.H), np.array([PITCH.keypoints()["CENTRE_CIRCLE_TOP"]])
+    )
     assert np.hypot(*((uv[0] - _true_uv("CENTRE_CIRCLE_TOP")) * [W, H])) < 6
 
 
@@ -125,9 +147,15 @@ def test_wrong_homography_scores_low(det):
 
 
 def test_fit_fails_with_reason(det):
-    assert "only 2" in fit_and_score(_labels_from(det, KP)[:2], PITCH, det, (W, H)).failure
-    collinear = [Label("HALFWAY_TOP", (0.5, 0.2)), Label("CENTRE_CIRCLE_TOP", (0.5, 0.4)),
-                 Label("CENTRE_SPOT", (0.5, 0.5)), Label("HALFWAY_BOTTOM", (0.5, 0.9))]
+    assert (
+        "only 2" in fit_and_score(_labels_from(det, KP)[:2], PITCH, det, (W, H)).failure
+    )
+    collinear = [
+        Label("HALFWAY_TOP", (0.5, 0.2)),
+        Label("CENTRE_CIRCLE_TOP", (0.5, 0.4)),
+        Label("CENTRE_SPOT", (0.5, 0.5)),
+        Label("HALFWAY_BOTTOM", (0.5, 0.9)),
+    ]
     r = fit_and_score(collinear, PITCH, det, (W, H))
     assert not r.ok and "degenerate" in r.failure
 
@@ -156,11 +184,24 @@ def _gt_dir(tmp_path, det, ids=KP, clip="arsenal_mancity_seg010", idx=7):
     for kid in ids:
         uv = _true_uv(kid)
         if 0 <= uv[0] <= 1 and 0 <= uv[1] <= 1:
-            corr.append({"image": uv.tolist(), "pitch_id": kid, "pitch_xy": list(PITCH.keypoints()[kid])})
+            corr.append(
+                {
+                    "image": uv.tolist(),
+                    "pitch_id": kid,
+                    "pitch_xy": list(PITCH.keypoints()[kid]),
+                }
+            )
     d = tmp_path / "gt"
     (d / "calibration_gt").mkdir(parents=True)
-    rec = {"correspondences": corr, "image_size": [W, H], "H": _camera_h().tolist(), "pitch_dims": [105, 68]}
-    (d / "calibration_gt" / f"{clip}.json").write_text(json.dumps({"clip": clip, "frames": {str(idx): rec}}))
+    rec = {
+        "correspondences": corr,
+        "image_size": [W, H],
+        "H": _camera_h().tolist(),
+        "pitch_dims": [105, 68],
+    }
+    (d / "calibration_gt" / f"{clip}.json").write_text(
+        json.dumps({"clip": clip, "frames": {str(idx): rec}})
+    )
     return d
 
 
@@ -182,15 +223,23 @@ def test_mock_corrupt_swaps_labels(tmp_path, det):
     d = _gt_dir(tmp_path, det)
     clean = idf.MockIdentifier(d).identify(_inp(det))
     bad = idf.MockIdentifier(d, corrupt=1).identify(_inp(det))
-    assert [lb.keypoint_id for lb in clean.labels] != [lb.keypoint_id for lb in bad.labels]
+    assert [lb.keypoint_id for lb in clean.labels] != [
+        lb.keypoint_id for lb in bad.labels
+    ]
 
 
 def _fake_response(payload, stop="end_turn", usage=(1000, 200)):
     return SimpleNamespace(
-        stop_reason=stop, stop_details=SimpleNamespace(category="cyber"), model="claude-opus-5-5",
+        stop_reason=stop,
+        stop_details=SimpleNamespace(category="cyber"),
+        model="claude-opus-5-5",
         content=[SimpleNamespace(type="text", text=json.dumps(payload))],
-        usage=SimpleNamespace(input_tokens=usage[0], output_tokens=usage[1],
-                              cache_creation_input_tokens=0, cache_read_input_tokens=0),
+        usage=SimpleNamespace(
+            input_tokens=usage[0],
+            output_tokens=usage[1],
+            cache_creation_input_tokens=0,
+            cache_read_input_tokens=0,
+        ),
     )
 
 
@@ -209,20 +258,68 @@ class FakeClient:
 def _payload(det):
     w, h = det.size
     pts = []
-    for kid in ("HALFWAY_TOP", "CENTRE_CIRCLE_TOP", "CENTRE_CIRCLE_BOTTOM", "R_PEN_BOX_TOP_OUTER", "CENTRE_SPOT"):
+    for kid in (
+        "HALFWAY_TOP",
+        "CENTRE_CIRCLE_TOP",
+        "CENTRE_CIRCLE_BOTTOM",
+        "R_PEN_BOX_TOP_OUTER",
+        "CENTRE_SPOT",
+    ):
         uv = _true_uv(kid)
         # direct localisation in sent-image pixels (no hint), off by a few px
-        pts.append({"keypoint_id": kid, "x": uv[0] * w + 4, "y": uv[1] * h - 3, "confidence": 0.8, "candidate_id": 0})
+        pts.append(
+            {
+                "keypoint_id": kid,
+                "x": uv[0] * w + 4,
+                "y": uv[1] * h - 3,
+                "confidence": 0.8,
+                "candidate_id": 0,
+            }
+        )
     cands = _labels_from(det, KP)[:1]
     for lb in cands:  # one cited hint: its exact position is used
-        pts.append({"keypoint_id": lb.keypoint_id, "x": 1.0, "y": 1.0, "confidence": 0.9, "candidate_id": lb.candidate_id})
-    pts.append({"keypoint_id": "CENTRE_SPOT", "x": 5, "y": 5, "confidence": 0.9, "candidate_id": 9999})  # bad id -> use x, y
+        pts.append(
+            {
+                "keypoint_id": lb.keypoint_id,
+                "x": 1.0,
+                "y": 1.0,
+                "confidence": 0.9,
+                "candidate_id": lb.candidate_id,
+            }
+        )
+    pts.append(
+        {
+            "keypoint_id": "CENTRE_SPOT",
+            "x": 5,
+            "y": 5,
+            "confidence": 0.9,
+            "candidate_id": 9999,
+        }
+    )  # bad id -> use x, y
     return {
-        "unusable": False, "unusable_reason": "",
-        "view": {"end": "L", "main_camera_wide": True, "reverse_angle_suspected": False, "notes": "left end"},
+        "unusable": False,
+        "unusable_reason": "",
+        "view": {
+            "end": "L",
+            "main_camera_wide": True,
+            "reverse_angle_suspected": False,
+            "notes": "left end",
+        },
         "points": pts,
-        "lines": [{"line_id": "HALFWAY_LINE", "p1": {"x": 100, "y": 100}, "p2": {"x": 300, "y": 120}, "confidence": 0.9},
-                  {"line_id": "HALFWAY_LINE", "p1": {"x": 100, "y": 100}, "p2": {"x": 101, "y": 100}, "confidence": 0.9}],
+        "lines": [
+            {
+                "line_id": "HALFWAY_LINE",
+                "p1": {"x": 100, "y": 100},
+                "p2": {"x": 300, "y": 120},
+                "confidence": 0.9,
+            },
+            {
+                "line_id": "HALFWAY_LINE",
+                "p1": {"x": 100, "y": 100},
+                "p2": {"x": 101, "y": 100},
+                "confidence": 0.9,
+            },
+        ],
     }
 
 
@@ -235,7 +332,10 @@ def test_claude_identifier_request_shape_and_parsing(det):
     assert kw["output_config"]["format"]["type"] == "json_schema"
     assert "thinking" not in kw  # adaptive by default: omitted
     assert kw["max_tokens"] >= 8000
-    assert kw["betas"] == ["server-side-fallback-2026-07-01"] and kw["fallbacks"] == "default"
+    assert (
+        kw["betas"] == ["server-side-fallback-2026-07-01"]
+        and kw["fallbacks"] == "default"
+    )
     imgs = [b for b in kw["messages"][0]["content"] if b["type"] == "image"]
     assert len(imgs) == 2
     assert not res.unusable and res.view["end"] == "L"
@@ -243,42 +343,72 @@ def test_claude_identifier_request_shape_and_parsing(det):
     direct = [lb for lb in res.labels if lb.candidate_id is None]
     assert len(direct) >= 5  # localised directly, no candidate needed
     top = next(lb for lb in direct if lb.keypoint_id == "HALFWAY_TOP")
-    assert np.allclose(np.array(top.uv) * [w, h], _true_uv("HALFWAY_TOP") * [w, h] + [4, -3], atol=1e-6)
-    assert all(lb.candidate_id != 9999 for lb in res.labels)  # hallucinated id is not trusted
-    assert [ll.line_id for ll in res.line_labels] == ["HALFWAY_LINE"]  # the degenerate (1 px) line is dropped
-    assert any(lb.candidate_id is not None for lb in res.labels)  # a cited hint keeps its candidate id
+    assert np.allclose(
+        np.array(top.uv) * [w, h], _true_uv("HALFWAY_TOP") * [w, h] + [4, -3], atol=1e-6
+    )
+    assert all(
+        lb.candidate_id != 9999 for lb in res.labels
+    )  # hallucinated id is not trusted
+    assert [ll.line_id for ll in res.line_labels] == [
+        "HALFWAY_LINE"
+    ]  # the degenerate (1 px) line is dropped
+    assert any(
+        lb.candidate_id is not None for lb in res.labels
+    )  # a cited hint keeps its candidate id
     assert res.usage["input_tokens"] == 1000 and res.usage["output_tokens"] == 200
     assert ci.run_prefix() == f"claude-claude-opus-5-5-{idf.PROMPT_VERSION}"
 
 
 def test_claude_schema_enumerates_keypoints():
     s = idf.build_schema(PITCH)
-    assert set(s["properties"]["points"]["items"]["properties"]["keypoint_id"]["enum"]) == set(PITCH.keypoints())
-    assert set(s["properties"]["lines"]["items"]["properties"]["line_id"]["enum"]) == set(PITCH.segments())
+    assert set(
+        s["properties"]["points"]["items"]["properties"]["keypoint_id"]["enum"]
+    ) == set(PITCH.keypoints())
+    assert set(
+        s["properties"]["lines"]["items"]["properties"]["line_id"]["enum"]
+    ) == set(PITCH.segments())
 
 
 def test_claude_prompt_caches_the_stable_prefix_only(det):
     client = FakeClient(_fake_response(_payload(det)))
-    idf.ClaudeIdentifier(client=client).identify(IdentifyInput_(det, b"FRAME", b"DIAGRAM"))
+    idf.ClaudeIdentifier(client=client).identify(
+        IdentifyInput_(det, b"FRAME", b"DIAGRAM")
+    )
     kw = client.calls[0]
     content = kw["messages"][0]["content"]
     marked = [i for i, b in enumerate(content) if "cache_control" in b]
-    assert len(marked) == 1 and content[marked[0]]["cache_control"] == {"type": "ephemeral"}
+    assert len(marked) == 1 and content[marked[0]]["cache_control"] == {
+        "type": "ephemeral"
+    }
     before, after = content[: marked[0] + 1], content[marked[0] + 1 :]
-    imgs = lambda blocks: [base64.b64decode(b["source"]["data"]) for b in blocks if b["type"] == "image"]  # noqa: E731
-    assert imgs(before) == [b"DIAGRAM"] and imgs(after) == [b"FRAME"]  # per-frame stuff is after the breakpoint
-    assert "cache_control" not in kw["system"] if isinstance(kw["system"], dict) else True
+    imgs = lambda blocks: [
+        base64.b64decode(b["source"]["data"]) for b in blocks if b["type"] == "image"
+    ]  # noqa: E731
+    assert imgs(before) == [b"DIAGRAM"] and imgs(after) == [
+        b"FRAME"
+    ]  # per-frame stuff is after the breakpoint
+    assert (
+        "cache_control" not in kw["system"] if isinstance(kw["system"], dict) else True
+    )
     # the prefix is byte-identical between two different frames
     client2 = FakeClient(_fake_response(_payload(det)))
-    idf.ClaudeIdentifier(client=client2).identify(IdentifyInput_(det, b"OTHER", b"DIAGRAM", idx=9))
-    assert json.dumps(client2.calls[0]["messages"][0]["content"][: marked[0] + 1], sort_keys=True) == json.dumps(
-        content[: marked[0] + 1], sort_keys=True)
-    assert client2.calls[0]["system"] == kw["system"] and client2.calls[0]["output_config"] == kw["output_config"]
+    idf.ClaudeIdentifier(client=client2).identify(
+        IdentifyInput_(det, b"OTHER", b"DIAGRAM", idx=9)
+    )
+    assert json.dumps(
+        client2.calls[0]["messages"][0]["content"][: marked[0] + 1], sort_keys=True
+    ) == json.dumps(content[: marked[0] + 1], sort_keys=True)
+    assert (
+        client2.calls[0]["system"] == kw["system"]
+        and client2.calls[0]["output_config"] == kw["output_config"]
+    )
     assert idf.PROMPT_VERSION == "p2"
 
 
 def IdentifyInput_(det, frame_jpg, diagram_jpg, idx=7):  # noqa: N802
-    return idf.IdentifyInput("arsenal_mancity_seg010", idx, PITCH, det, frame_jpg, diagram_jpg)
+    return idf.IdentifyInput(
+        "arsenal_mancity_seg010", idx, PITCH, det, frame_jpg, diagram_jpg
+    )
 
 
 def test_prompt_frame_has_a_labelled_grid(det):
@@ -288,13 +418,19 @@ def test_prompt_frame_has_a_labelled_grid(det):
     assert not np.array_equal(img, plain)
     # grid lines are drawn every 100 px: the gridline column is brighter than its neighbours on dark grass
     row = plain[det.size[1] // 2 + 3]
-    assert row[100:101].mean() > row[103:104].mean() - 1  # a tick column exists (no crash; weak check)
+    assert (
+        row[100:101].mean() > row[103:104].mean() - 1
+    )  # a tick column exists (no crash; weak check)
 
 
 def test_claude_refusal_and_truncation_are_errors_not_labels(det):
-    r = idf.ClaudeIdentifier(client=FakeClient(_fake_response({}, stop="refusal"))).identify(_inp(det))
+    r = idf.ClaudeIdentifier(
+        client=FakeClient(_fake_response({}, stop="refusal"))
+    ).identify(_inp(det))
     assert r.error and "refusal" in r.error and not r.labels
-    r = idf.ClaudeIdentifier(client=FakeClient(_fake_response({}, stop="max_tokens"))).identify(_inp(det))
+    r = idf.ClaudeIdentifier(
+        client=FakeClient(_fake_response({}, stop="max_tokens"))
+    ).identify(_inp(det))
     assert r.error and "max_tokens" in r.error
 
 
@@ -331,8 +467,14 @@ def run_env(tmp_path, monkeypatch, frame, det):
 
 def test_pipeline_with_mock_writes_contract_proposals(run_env):
     gt, clips = run_env
-    cfg = pl.RunConfig(gt_dir=gt, clips_dir=clips, clips=["arsenal_mancity_seg010"], frames=[7, 8],
-                       skip_gt=False, render_dir=gt.parent / "renders")
+    cfg = pl.RunConfig(
+        gt_dir=gt,
+        clips_dir=clips,
+        clips=["arsenal_mancity_seg010"],
+        frames=[7, 8],
+        skip_gt=False,
+        render_dir=gt.parent / "renders",
+    )
     s = pl.run_prelabel(cfg, idf.MockIdentifier(gt), log=lambda *_: None)
     assert s.n_frames == 2 and s.n_proposed == 1 and s.n_failed == 1
     doc = read_proposals(gt, "arsenal_mancity_seg010")
@@ -340,45 +482,79 @@ def test_pipeline_with_mock_writes_contract_proposals(run_env):
     run = doc["runs"][s.run_id]
     assert s.run_id.startswith("mock-") and run["source"] == "classical"
     ok, bad = run["frames"]["7"], run["frames"]["8"]
-    assert ok["status"] == "proposed" and 0.8 < ok["score"] <= 1 and ok["H"] and len(ok["H"]) == 3
-    assert ok["H_convention"] == "normalised_image_to_pitch_m" and ok["image_size"] == [W, H]
+    assert (
+        ok["status"] == "proposed"
+        and 0.8 < ok["score"] <= 1
+        and ok["H"]
+        and len(ok["H"]) == 3
+    )
+    assert ok["H_convention"] == "normalised_image_to_pitch_m" and ok["image_size"] == [
+        W,
+        H,
+    ]
     assert len(ok["inliers"]) == len(ok["correspondences"])
-    assert bad["status"] == "failed" and "no human GT" in bad["failure"] and bad["H"] is None
+    assert (
+        bad["status"] == "failed"
+        and "no human GT" in bad["failure"]
+        and bad["H"] is None
+    )
     assert (gt.parent / "renders" / "arsenal_mancity_seg010_7_overlay.jpg").exists()
     # file mode of a new proposals file
-    assert (gt / "calibration_proposals" / "arsenal_mancity_seg010.json").stat().st_mode & 0o777 == 0o664
+    assert (
+        gt / "calibration_proposals" / "arsenal_mancity_seg010.json"
+    ).stat().st_mode & 0o777 == 0o664
 
 
 def test_pipeline_skip_gt_and_limit(run_env):
     gt, clips = run_env
-    cfg = pl.RunConfig(gt_dir=gt, clips_dir=clips, clips=["mancity_seg010"], every=1, limit=3)
+    cfg = pl.RunConfig(
+        gt_dir=gt, clips_dir=clips, clips=["mancity_seg010"], every=1, limit=3
+    )
     s = pl.run_prelabel(cfg, idf.MockIdentifier(gt), log=lambda *_: None)
-    frames = set(read_proposals(gt, "mancity_seg010")["runs"][s.run_id]["frames"])  # alias -> same file
+    frames = set(
+        read_proposals(gt, "mancity_seg010")["runs"][s.run_id]["frames"]
+    )  # alias -> same file
     assert frames == {"0", "1", "2"} and "7" not in frames
 
 
 def test_pipeline_logs_usage_and_handles_claude_errors(run_env, det):
     gt, clips = run_env
     client = FakeClient(_fake_response({}, stop="refusal"))
-    cfg = pl.RunConfig(gt_dir=gt, clips_dir=clips, clips=["arsenal_mancity_seg010"], frames=[1])
+    cfg = pl.RunConfig(
+        gt_dir=gt, clips_dir=clips, clips=["arsenal_mancity_seg010"], frames=[1]
+    )
     s = pl.run_prelabel(cfg, idf.ClaudeIdentifier(client=client), log=lambda *_: None)
     run = read_proposals(gt, "arsenal_mancity_seg010")["runs"][s.run_id]
     assert run["source"] == "claude" and run["frames"]["1"]["status"] == "failed"
     assert "refusal" in run["frames"]["1"]["failure"]
     assert run["params"]["usage_total"]["input_tokens"] == 1000
-    assert run["params"]["usage"][0]["frame"] == 1 and run["params"]["prompt_version"] == idf.PROMPT_VERSION
+    assert (
+        run["params"]["usage"][0]["frame"] == 1
+        and run["params"]["prompt_version"] == idf.PROMPT_VERSION
+    )
 
 
 def test_eval_scores_good_and_bad_proposals(run_env):
     gt, clips = run_env
     for corrupt in (0, 2):
-        cfg = pl.RunConfig(gt_dir=gt, clips_dir=clips, clips=["arsenal_mancity_seg010"], frames=[7],
-                           skip_gt=False, run_id=f"mock-c{corrupt}")
-        pl.run_prelabel(cfg, idf.MockIdentifier(gt, corrupt=corrupt), log=lambda *_: None)
+        cfg = pl.RunConfig(
+            gt_dir=gt,
+            clips_dir=clips,
+            clips=["arsenal_mancity_seg010"],
+            frames=[7],
+            skip_gt=False,
+            run_id=f"mock-c{corrupt}",
+        )
+        pl.run_prelabel(
+            cfg, idf.MockIdentifier(gt, corrupt=corrupt), log=lambda *_: None
+        )
     res = ev.evaluate(gt)
     by = {r["run_id"]: r for r in res["frames"]}
     assert by["mock-c0"]["mean_px"] < 3 and by["mock-c0"]["agreement"] == 1.0
-    assert by["mock-c2"]["mean_px"] is None or by["mock-c2"]["mean_px"] > by["mock-c0"]["mean_px"]
+    assert (
+        by["mock-c2"]["mean_px"] is None
+        or by["mock-c2"]["mean_px"] > by["mock-c0"]["mean_px"]
+    )
     assert res["summary"]["n_frames"] == 2 and 0 <= res["summary"]["success_rate"] <= 1
     assert "success" in ev.format_table(res)
 
@@ -427,17 +603,36 @@ def test_claude_cli_request_shape_and_parsing(det, tmp_path):
     call = json.loads(log.read_text().splitlines()[0])
     argv = call["argv"]
     assert argv[:1] == ["-p"] and call["cwd"] == str(tmp_path.resolve())
-    assert argv[argv.index("--model") + 1] == "opus" and argv[argv.index("--effort") + 1] == "low"
-    assert argv[argv.index("--tools") + 1] == "" and argv[argv.index("--system-prompt") + 1] == idf.SYSTEM
-    assert "--no-session-persistence" in argv and argv[argv.index("--output-format") + 1] == "stream-json"
+    assert (
+        argv[argv.index("--model") + 1] == "opus"
+        and argv[argv.index("--effort") + 1] == "low"
+    )
+    assert (
+        argv[argv.index("--tools") + 1] == ""
+        and argv[argv.index("--system-prompt") + 1] == idf.SYSTEM
+    )
+    assert (
+        "--no-session-persistence" in argv
+        and argv[argv.index("--output-format") + 1] == "stream-json"
+    )
     assert json.loads(argv[argv.index("--json-schema") + 1]) == idf.build_schema(PITCH)
     msg = json.loads(call["stdin"])
-    assert msg["type"] == "user" and msg["message"]["content"] == idf.build_content(_inp(det), cache_breakpoint=False)  # same prompt as the API path
+    assert msg["type"] == "user" and msg["message"]["content"] == idf.build_content(
+        _inp(det), cache_breakpoint=False
+    )  # same prompt as the API path
     assert "cache_control" not in call["stdin"]
     assert len([b for b in msg["message"]["content"] if b["type"] == "image"]) == 2
     direct = [lb for lb in res.labels if lb.candidate_id is None]
-    assert not res.unusable and len(direct) >= 5 and [ll.line_id for ll in res.line_labels] == ["HALFWAY_LINE"]
-    assert res.usage["cost_usd"] == 0.25 and res.usage["duration_ms"] == 4000 and res.usage["output_tokens"] == 300
+    assert (
+        not res.unusable
+        and len(direct) >= 5
+        and [ll.line_id for ll in res.line_labels] == ["HALFWAY_LINE"]
+    )
+    assert (
+        res.usage["cost_usd"] == 0.25
+        and res.usage["duration_ms"] == 4000
+        and res.usage["output_tokens"] == 300
+    )
     assert res.usage["model_served"] == "claude-opus-5-5"
     assert ci.run_prefix() == f"claudecli-opus-{idf.PROMPT_VERSION}"
 
@@ -446,19 +641,26 @@ def test_claude_cli_retries_once_then_reports_errors(det, tmp_path):
     cmd, log = _fake_claude(tmp_path, mode="flaky", payload=_payload(det))
     res = idf.ClaudeCLIIdentifier(command=cmd).identify(_inp(det))
     assert res.error is None and res.labels and len(log.read_text().splitlines()) == 2
-    for mode, frag in (("garbage", "no result event"), ("nostruct", "no structured_output")):
+    for mode, frag in (
+        ("garbage", "no result event"),
+        ("nostruct", "no structured_output"),
+    ):
         d = tmp_path / mode
         d.mkdir()
         cmd, log = _fake_claude(d, mode=mode)
         r = idf.ClaudeCLIIdentifier(command=cmd).identify(_inp(det))
-        assert frag in r.error and not r.labels and len(log.read_text().splitlines()) == 2
+        assert (
+            frag in r.error and not r.labels and len(log.read_text().splitlines()) == 2
+        )
 
 
 def test_claude_cli_timeout_and_missing_binary(det, tmp_path):
     cmd, _ = _fake_claude(tmp_path, mode="sleep")
     r = idf.ClaudeCLIIdentifier(command=cmd, timeout=0.5, retries=0).identify(_inp(det))
     assert "timed out" in r.error
-    r = idf.ClaudeCLIIdentifier(command=str(tmp_path / "nope"), retries=0).identify(_inp(det))
+    r = idf.ClaudeCLIIdentifier(command=str(tmp_path / "nope"), retries=0).identify(
+        _inp(det)
+    )
     assert "cannot run claude CLI" in r.error
 
 
@@ -511,7 +713,9 @@ print(json.dumps({{"type": "turn.completed", "usage": {{"input_tokens": 900, "ca
 
 def test_codex_cli_request_shape_and_parsing(det, tmp_path):
     cmd, log = _fake_codex(tmp_path, payload=_payload(det))
-    inp = idf.IdentifyInput("arsenal_mancity_seg010", 7, PITCH, det, b"FRAMEBYTES", b"DIAGRAMBYTES")
+    inp = idf.IdentifyInput(
+        "arsenal_mancity_seg010", 7, PITCH, det, b"FRAMEBYTES", b"DIAGRAMBYTES"
+    )
     ci = idf.CodexCLIIdentifier(command=cmd, effort="low", model="gpt-6-luna")
     res = ci.identify(inp)
     call = json.loads(log.read_text().splitlines()[0])
@@ -519,22 +723,44 @@ def test_codex_cli_request_shape_and_parsing(det, tmp_path):
     assert argv[0] == "exec" and argv[-1] == "-"  # prompt on stdin
     assert argv[argv.index("-m") + 1] == "gpt-6-luna"
     assert argv[argv.index("-c") + 1] == 'model_reasoning_effort="low"'
-    assert argv[argv.index("-s") + 1] == "read-only" and "--ephemeral" in argv and "--json" in argv
-    assert call["images"] == ["DIAGRAMBYTES", "FRAMEBYTES"]  # attached in order: reference, then frame
+    assert (
+        argv[argv.index("-s") + 1] == "read-only"
+        and "--ephemeral" in argv
+        and "--json" in argv
+    )
+    assert call["images"] == [
+        "DIAGRAMBYTES",
+        "FRAMEBYTES",
+    ]  # attached in order: reference, then frame
     assert call["schema"] == idf.build_schema(PITCH)
-    assert call["cwd"] != str(tmp_path) and argv[argv.index("-C") + 1] == call["cwd"]  # scratch cwd, not the repo
-    assert call["stdin"].startswith(idf.SYSTEM) and "Do not run any commands" in call["stdin"]
+    assert (
+        call["cwd"] != str(tmp_path) and argv[argv.index("-C") + 1] == call["cwd"]
+    )  # scratch cwd, not the repo
+    assert (
+        call["stdin"].startswith(idf.SYSTEM)
+        and "Do not run any commands" in call["stdin"]
+    )
     assert f"{det.size[0]} x {det.size[1]} px" in call["stdin"]
     direct = [lb for lb in res.labels if lb.candidate_id is None]
-    assert not res.unusable and len(direct) >= 5 and [ll.line_id for ll in res.line_labels] == ["HALFWAY_LINE"]
+    assert (
+        not res.unusable
+        and len(direct) >= 5
+        and [ll.line_id for ll in res.line_labels] == ["HALFWAY_LINE"]
+    )
     assert res.usage["input_tokens"] == 900 and res.usage["output_tokens"] == 300
     assert res.usage["reasoning_output_tokens"] == 120 and res.usage["duration_ms"] >= 0
-    assert ci.run_prefix() == f"codexcli-gpt-6-luna-{idf.PROMPT_VERSION}" and ci.source == "codex"
-    assert ci.run_params()["backend"] == "codex-cli" and ci.run_params()["effort"] == "low"
+    assert (
+        ci.run_prefix() == f"codexcli-gpt-6-luna-{idf.PROMPT_VERSION}"
+        and ci.source == "codex"
+    )
+    assert (
+        ci.run_params()["backend"] == "codex-cli" and ci.run_params()["effort"] == "low"
+    )
 
 
 def test_codex_schema_is_openai_strict(det):
     """OpenAI strict structured outputs: every object closed and every property required."""
+
     def check(node):
         if isinstance(node, dict):
             if node.get("type") == "object":
@@ -553,28 +779,42 @@ def test_codex_cli_retries_once_then_reports_errors(det, tmp_path):
     cmd, log = _fake_codex(tmp_path, mode="flaky", payload=_payload(det))
     res = idf.CodexCLIIdentifier(command=cmd).identify(_inp(det))
     assert res.error is None and res.labels and len(log.read_text().splitlines()) == 2
-    for mode, frag in (("garbage", "codex CLI failed"), ("badjson", "unparseable JSON")):
+    for mode, frag in (
+        ("garbage", "codex CLI failed"),
+        ("badjson", "unparseable JSON"),
+    ):
         d = tmp_path / mode
         d.mkdir()
         cmd, log = _fake_codex(d, mode=mode)
         r = idf.CodexCLIIdentifier(command=cmd).identify(_inp(det))
-        assert frag in r.error and not r.labels and len(log.read_text().splitlines()) == 2
+        assert (
+            frag in r.error and not r.labels and len(log.read_text().splitlines()) == 2
+        )
 
 
 def test_codex_cli_limit_and_auth_failures_are_clear_and_not_retried(det, tmp_path):
-    for mode, frag in (("limit", "codex CLI usage limit"), ("auth", "codex CLI auth failure")):
+    for mode, frag in (
+        ("limit", "codex CLI usage limit"),
+        ("auth", "codex CLI auth failure"),
+    ):
         d = tmp_path / mode
         d.mkdir()
         cmd, log = _fake_codex(d, mode=mode)
         r = idf.CodexCLIIdentifier(command=cmd, retries=2).identify(_inp(det))
-        assert r.error.startswith(frag) and not r.labels and len(log.read_text().splitlines()) == 1
+        assert (
+            r.error.startswith(frag)
+            and not r.labels
+            and len(log.read_text().splitlines()) == 1
+        )
 
 
 def test_codex_cli_timeout_and_missing_binary(det, tmp_path):
     cmd, _ = _fake_codex(tmp_path, mode="sleep")
     r = idf.CodexCLIIdentifier(command=cmd, timeout=0.5, retries=0).identify(_inp(det))
     assert "timed out" in r.error
-    r = idf.CodexCLIIdentifier(command=str(tmp_path / "nope"), retries=2).identify(_inp(det))
+    r = idf.CodexCLIIdentifier(command=str(tmp_path / "nope"), retries=2).identify(
+        _inp(det)
+    )
     assert "cannot run codex CLI" in r.error
 
 
@@ -591,47 +831,80 @@ def test_codex_cli_cleans_up_its_scratch_files(det, tmp_path, monkeypatch):
 def test_pipeline_with_claude_cli_records_cost(run_env, det, tmp_path):
     gt, clips = run_env
     cmd, _ = _fake_claude(tmp_path, payload=_payload(det))
-    cfg = pl.RunConfig(gt_dir=gt, clips_dir=clips, clips=["arsenal_mancity_seg010"], frames=[1])
+    cfg = pl.RunConfig(
+        gt_dir=gt, clips_dir=clips, clips=["arsenal_mancity_seg010"], frames=[1]
+    )
     s = pl.run_prelabel(cfg, idf.ClaudeCLIIdentifier(command=cmd), log=lambda *_: None)
     run = read_proposals(gt, "arsenal_mancity_seg010")["runs"][s.run_id]
-    assert run["params"]["backend"] == "claude-cli" and run["params"]["usage_total"]["cost_usd"] == 0.25
+    assert (
+        run["params"]["backend"] == "claude-cli"
+        and run["params"]["usage_total"]["cost_usd"] == 0.25
+    )
     assert run["params"]["usage"][0]["duration_ms"] == 4000
 
 
 def test_prompt_version_v2_is_selectable_and_v1_stays_default(det, tmp_path):
-    assert idf.resolve_prompt_version(None) == idf.PROMPT_VERSION == idf.resolve_prompt_version("v1")
+    assert (
+        idf.resolve_prompt_version(None)
+        == idf.PROMPT_VERSION
+        == idf.resolve_prompt_version("v1")
+    )
     assert idf.resolve_prompt_version("v2") == idf.V2_VERSION != idf.PROMPT_VERSION
     with pytest.raises(ValueError):
         idf.resolve_prompt_version("v9")
-    assert idf.SYSTEMS[idf.V2_VERSION].startswith(idf.SYSTEM) and "LABELLING RULES" in idf.SYSTEMS[idf.V2_VERSION]
+    assert (
+        idf.SYSTEMS[idf.V2_VERSION].startswith(idf.SYSTEM)
+        and "LABELLING RULES" in idf.SYSTEMS[idf.V2_VERSION]
+    )
     cmd, log = _fake_claude(tmp_path, payload=_payload(det))
     ci = idf.ClaudeCLIIdentifier(command=cmd, prompt_version="v2")
     ci.identify(_inp(det))
     argv = json.loads(log.read_text().splitlines()[0])["argv"]
     assert argv[argv.index("--system-prompt") + 1] == idf.SYSTEM_V2
-    assert ci.run_prefix().endswith(idf.V2_VERSION) and ci.run_params()["prompt_version"] == idf.V2_VERSION
+    assert (
+        ci.run_prefix().endswith(idf.V2_VERSION)
+        and ci.run_params()["prompt_version"] == idf.V2_VERSION
+    )
     d = tmp_path / "x"
     d.mkdir()
     xcmd, xlog = _fake_codex(d, payload=_payload(det))
     xi = idf.CodexCLIIdentifier(command=xcmd, prompt_version="v2")
     xi.identify(_inp(det))
-    assert json.loads(xlog.read_text().splitlines()[0])["stdin"].startswith(idf.SYSTEM_V2)
-    assert idf.ClaudeCLIIdentifier().prompt_version == idf.PROMPT_VERSION  # default unchanged
+    assert json.loads(xlog.read_text().splitlines()[0])["stdin"].startswith(
+        idf.SYSTEM_V2
+    )
+    assert (
+        idf.ClaudeCLIIdentifier().prompt_version == idf.PROMPT_VERSION
+    )  # default unchanged
 
 
 def test_cli_identifiers_verify_same_contract(det, tmp_path):
     verdict = {"match": True, "reason": "lines sit on the markings"}
-    ccmd, clog = _fake_claude(tmp_path / "c" if (tmp_path / "c").mkdir() is None else tmp_path, payload=verdict)
+    ccmd, clog = _fake_claude(
+        tmp_path / "c" if (tmp_path / "c").mkdir() is None else tmp_path,
+        payload=verdict,
+    )
     r = idf.ClaudeCLIIdentifier(command=ccmd).verify(b"OVERLAY")
-    assert r["match"] is True and r["reason"] == verdict["reason"] and r["usage"]["cost_usd"] == 0.25
+    assert (
+        r["match"] is True
+        and r["reason"] == verdict["reason"]
+        and r["usage"]["cost_usd"] == 0.25
+    )
     call = json.loads(clog.read_text().splitlines()[0])
     assert call["argv"][call["argv"].index("--system-prompt") + 1] == idf.REVIEW_SYSTEM
-    assert json.loads(call["argv"][call["argv"].index("--json-schema") + 1]) == idf.REVIEW_SCHEMA
+    assert (
+        json.loads(call["argv"][call["argv"].index("--json-schema") + 1])
+        == idf.REVIEW_SCHEMA
+    )
     d = tmp_path / "x"
     d.mkdir()
     xcmd, xlog = _fake_codex(d, payload={"match": False, "reason": "mirrored"})
     r = idf.CodexCLIIdentifier(command=xcmd).verify(b"OVERLAY")
-    assert r["match"] is False and r["reason"] == "mirrored" and r["usage"]["output_tokens"] == 300
+    assert (
+        r["match"] is False
+        and r["reason"] == "mirrored"
+        and r["usage"]["output_tokens"] == 300
+    )
     call = json.loads(xlog.read_text().splitlines()[0])
     assert call["images"] == ["OVERLAY"] and call["schema"] == idf.REVIEW_SCHEMA
     assert call["stdin"].startswith(idf.REVIEW_SYSTEM)
@@ -640,25 +913,43 @@ def test_cli_identifiers_verify_same_contract(det, tmp_path):
     d2.mkdir()
     lcmd, llog = _fake_codex(d2, mode="limit")
     r = idf.CodexCLIIdentifier(command=lcmd, retries=2).verify(b"O")
-    assert r["match"] is None and "usage limit" in r["reason"] and len(llog.read_text().splitlines()) == 1
+    assert (
+        r["match"] is None
+        and "usage limit" in r["reason"]
+        and len(llog.read_text().splitlines()) == 1
+    )
 
 
 def test_review_prompt_v2_returns_checks_and_same_contract(tmp_path):
     assert idf.CodexCLIIdentifier().review_version == "r1"
-    payload = {"far_touchline": "off", "halfway_and_circle": "ok", "boxes_and_goal_areas": "not_visible",
-               "near_side": "ok", "match": False, "reason": "far touchline sits on the hoarding"}
+    payload = {
+        "far_touchline": "off",
+        "halfway_and_circle": "ok",
+        "boxes_and_goal_areas": "not_visible",
+        "near_side": "ok",
+        "match": False,
+        "reason": "far touchline sits on the hoarding",
+    }
     cmd, log = _fake_claude(tmp_path, payload=payload)
     r = idf.ClaudeCLIIdentifier(command=cmd, review_version="r2").verify(b"O")
-    assert r["match"] is False and r["checks"]["far_touchline"] == "off" and r["review_version"] == "r2"
+    assert (
+        r["match"] is False
+        and r["checks"]["far_touchline"] == "off"
+        and r["review_version"] == "r2"
+    )
     argv = json.loads(log.read_text().splitlines()[0])["argv"]
     assert argv[argv.index("--system-prompt") + 1] == idf.REVIEW_SYSTEM_V2
     assert json.loads(argv[argv.index("--json-schema") + 1]) == idf.REVIEW_SCHEMA_V2
     d = tmp_path / "x"
     d.mkdir()
     xcmd, xlog = _fake_codex(d, payload=payload)
-    r = idf.CodexCLIIdentifier(command=xcmd).verify(b"O", review_version="r2")  # per-call override
+    r = idf.CodexCLIIdentifier(command=xcmd).verify(
+        b"O", review_version="r2"
+    )  # per-call override
     assert r["match"] is False and r["checks"]["near_side"] == "ok"
-    assert json.loads(xlog.read_text().splitlines()[0])["schema"] == idf.REVIEW_SCHEMA_V2
+    assert (
+        json.loads(xlog.read_text().splitlines()[0])["schema"] == idf.REVIEW_SCHEMA_V2
+    )
     # v1 results carry no checks
     d2 = tmp_path / "y"
     d2.mkdir()
@@ -670,19 +961,50 @@ def test_review_prompt_v2_returns_checks_and_same_contract(tmp_path):
 
 def test_pipeline_uses_a_separate_reviewer(run_env, tmp_path):
     gt, clips = run_env
-    rev_cmd, rlog = _fake_codex(tmp_path, payload={"match": False, "reason": "off by a box"})
-    cfg = pl.RunConfig(gt_dir=gt, clips_dir=clips, clips=["arsenal_mancity_seg010"], frames=[7, 8], skip_gt=False,
-                       reviewer=idf.CodexCLIIdentifier(command=rev_cmd, model="gpt-6-luna"))
-    s = pl.run_prelabel(cfg, idf.MockIdentifier(gt), log=lambda *_: None)  # the mock has no verify(): only the reviewer judges
+    rev_cmd, rlog = _fake_codex(
+        tmp_path, payload={"match": False, "reason": "off by a box"}
+    )
+    cfg = pl.RunConfig(
+        gt_dir=gt,
+        clips_dir=clips,
+        clips=["arsenal_mancity_seg010"],
+        frames=[7, 8],
+        skip_gt=False,
+        reviewer=idf.CodexCLIIdentifier(command=rev_cmd, model="gpt-6-luna"),
+    )
+    s = pl.run_prelabel(
+        cfg, idf.MockIdentifier(gt), log=lambda *_: None
+    )  # the mock has no verify(): only the reviewer judges
     frames = read_proposals(gt, "arsenal_mancity_seg010")["runs"][s.run_id]["frames"]
     assert frames["7"]["status"] == "proposed" and frames["8"]["status"] == "failed"
     v = frames["7"]["verify"]
-    assert v["match"] is False and v["reason"] == "off by a box" and v["reviewer"]["backend"] == "codex-cli"
-    assert "verify" not in frames["8"] and len(rlog.read_text().splitlines()) == 1  # only fitted frames are reviewed
+    assert (
+        v["match"] is False
+        and v["reason"] == "off by a box"
+        and v["reviewer"]["backend"] == "codex-cli"
+    )
+    assert (
+        "verify" not in frames["8"] and len(rlog.read_text().splitlines()) == 1
+    )  # only fitted frames are reviewed
     # no reviewer and no verify flag: nobody is asked
-    s2 = pl.run_prelabel(pl.RunConfig(gt_dir=gt, clips_dir=clips, clips=["arsenal_mancity_seg010"], frames=[7],
-                                      skip_gt=False, run_id="noreview"), idf.MockIdentifier(gt), log=lambda *_: None)
-    assert "verify" not in read_proposals(gt, "arsenal_mancity_seg010")["runs"][s2.run_id]["frames"]["7"]
+    s2 = pl.run_prelabel(
+        pl.RunConfig(
+            gt_dir=gt,
+            clips_dir=clips,
+            clips=["arsenal_mancity_seg010"],
+            frames=[7],
+            skip_gt=False,
+            run_id="noreview",
+        ),
+        idf.MockIdentifier(gt),
+        log=lambda *_: None,
+    )
+    assert (
+        "verify"
+        not in read_proposals(gt, "arsenal_mancity_seg010")["runs"][s2.run_id][
+            "frames"
+        ]["7"]
+    )
 
 
 def _faint_far_edge_frame(bright_base: bool = False):
@@ -695,7 +1017,9 @@ def _faint_far_edge_frame(bright_base: bool = False):
     grass = np.zeros((300, 600, 3), np.uint8)
     grass[:] = (40, 150, 60)  # BGR: saturated green, V=150
     img[100:] = grass[100:]
-    strip = (200, 230, 230) if bright_base else (95, 150, 140)  # bright white vs grass-bright, desaturated
+    strip = (
+        (200, 230, 230) if bright_base else (95, 150, 140)
+    )  # bright white vs grass-bright, desaturated
     img[96:101] = strip
     return cv2.GaussianBlur(img, (3, 3), 0.8)
 
@@ -715,9 +1039,16 @@ def test_far_edge_line_finds_a_faint_strip_but_not_a_bright_board_base():
 
 def test_pipeline_skips_not_broadcast_frames(run_env):
     from footy_track.calibration.frame_type import update_frame_types
+
     gt, clips = run_env
-    update_frame_types(gt, "arsenal_mancity_seg010", lambda d: d["frames"].update({"1": {"type": "not_broadcast"}}))
-    cfg = pl.RunConfig(gt_dir=gt, clips_dir=clips, clips=["mancity_seg010"], every=1, limit=3)
+    update_frame_types(
+        gt,
+        "arsenal_mancity_seg010",
+        lambda d: d["frames"].update({"1": {"type": "not_broadcast"}}),
+    )
+    cfg = pl.RunConfig(
+        gt_dir=gt, clips_dir=clips, clips=["mancity_seg010"], every=1, limit=3
+    )
     s = pl.run_prelabel(cfg, idf.MockIdentifier(gt), log=lambda *_: None)
     frames = set(read_proposals(gt, "mancity_seg010")["runs"][s.run_id]["frames"])
     assert frames == {"0", "2", "3"}
@@ -725,10 +1056,21 @@ def test_pipeline_skips_not_broadcast_frames(run_env):
 
 def test_pipeline_skips_too_few_points_frames(run_env):
     from footy_track.calibration.frame_type import update_frame_types
+
     gt, clips = run_env
-    update_frame_types(gt, "arsenal_mancity_seg010", lambda d: d["frames"].update(
-        {"1": {"type": "too_few_points", "tags": ["halfway_line"]}, "2": {"type": "not_broadcast"}}))
-    cfg = pl.RunConfig(gt_dir=gt, clips_dir=clips, clips=["mancity_seg010"], every=1, limit=3)
+    update_frame_types(
+        gt,
+        "arsenal_mancity_seg010",
+        lambda d: d["frames"].update(
+            {
+                "1": {"type": "too_few_points", "tags": ["halfway_line"]},
+                "2": {"type": "not_broadcast"},
+            }
+        ),
+    )
+    cfg = pl.RunConfig(
+        gt_dir=gt, clips_dir=clips, clips=["mancity_seg010"], every=1, limit=3
+    )
     s = pl.run_prelabel(cfg, idf.MockIdentifier(gt), log=lambda *_: None)
     frames = set(read_proposals(gt, "mancity_seg010")["runs"][s.run_id]["frames"])
     assert frames == {"0", "3", "4"}

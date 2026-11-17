@@ -78,7 +78,7 @@ import yaml
 
 from footy_track.clip_id import canonical_clip_id
 from footy_track.feature_store.store import FeatureStore
-from footy_track.match_splits import is_heldout_clip  # noqa: F401  (re-exported)
+from footy_track.match_splits import is_heldout_clip, load_register  # noqa: F401
 
 BALL_LABELS = ("ball", "in_play_ball", "out_of_play_ball")
 BALL_CLASS_ID = 0
@@ -489,6 +489,9 @@ def export(
 ) -> dict:
     """Export a leakage-free YOLO dataset.
 
+    Raises ``match_splits.RegisterError`` up front (before any query or write) when the match
+    split register is missing/invalid.
+
     ``classes`` is ``None`` for the original ball-only mode (single ``ball``
     class, id 0). Otherwise it's an explicit list of store label strings to
     export (already resolved from ``--classes all`` if that was requested);
@@ -506,6 +509,7 @@ def export(
     positives (the export has no negatives/background notion, so they are
     simply excluded); ``include_rejected=True`` keeps them.
     """
+    load_register()  # fail closed before touching the store or out_dir
     multiclass = classes is not None
     if multiclass:
         class_names = sorted(set(classes))

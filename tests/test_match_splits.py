@@ -42,9 +42,21 @@ def test_register_file_wins(tmp_path):
     assert ms.split_for_match("chelsea-vs-x-2026-27") == "heldout"
 
 
-def test_invalid_file_falls_back(tmp_path):
-    (tmp_path / "match_splits.json").write_text("not json")
-    assert ms.is_heldout_clip("arsenal_nottinghamforest_seg001")
+def test_missing_file_fails_closed(monkeypatch):
+    monkeypatch.delenv("FOOTY_MATCH_SPLITS_ALLOW_SEED")
+    ms.clear_cache()
+    with pytest.raises(ms.RegisterError, match="not found"):
+        ms.is_heldout_clip("arsenal_nottinghamforest_seg001")
+    assert ms.load_register(allow_seed=True) == ms.DEFAULT_REGISTER
+
+
+@pytest.mark.parametrize("text", ["not json", "[]", '{"a": {"split": "bogus"}}'])
+def test_invalid_file_always_raises(tmp_path, text):
+    (tmp_path / "match_splits.json").write_text(text)
+    with pytest.raises(ms.RegisterError, match="invalid"):
+        ms.is_heldout_clip("arsenal_nottinghamforest_seg001")
+    with pytest.raises(ms.RegisterError):
+        ms.load_register(allow_seed=True)
 
 
 def test_default_split_deterministic_and_about_quarter():

@@ -296,7 +296,9 @@ class _BlockingLabeller:
         return iter(())
 
 
-def test_submit_uses_fresh_stop_event_so_old_thread_is_not_revived(monkeypatch, tmp_path):
+def test_submit_uses_fresh_stop_event_so_old_thread_is_not_revived(
+    monkeypatch, tmp_path
+):
     """A thread that outlived pause()'s join keeps its own (set) event."""
     import footy_track.labeller.video_utils as vu  # noqa: PLC0415
 

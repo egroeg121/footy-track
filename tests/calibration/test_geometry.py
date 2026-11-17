@@ -18,7 +18,9 @@ def _camera_h() -> np.ndarray:
     K = np.array([[f, 0, W / 2], [0, f, H / 2], [0, 0, 1.0]])
     pan, tilt = np.deg2rad(10), np.deg2rad(28)
     # world: x long axis, y far touchline, z up. Camera looks toward +y, down.
-    fwd = np.array([np.sin(pan) * np.cos(tilt), np.cos(pan) * np.cos(tilt), -np.sin(tilt)])
+    fwd = np.array(
+        [np.sin(pan) * np.cos(tilt), np.cos(pan) * np.cos(tilt), -np.sin(tilt)]
+    )
     right = np.cross(fwd, [0, 0, 1.0])
     right /= np.linalg.norm(right)
     down = np.cross(fwd, right)
@@ -35,8 +37,13 @@ def _camera_h() -> np.ndarray:
 def _spread_keypoints(n=8):
     pitch = PitchModel()
     ids = [
-        "L_PEN_BOX_TOP_OUTER", "L_PEN_BOX_BOTTOM_OUTER", "CENTRE_SPOT",
-        "HALFWAY_TOP", "HALFWAY_BOTTOM", "CENTRE_CIRCLE_TOP", "L_PEN_SPOT",
+        "L_PEN_BOX_TOP_OUTER",
+        "L_PEN_BOX_BOTTOM_OUTER",
+        "CENTRE_SPOT",
+        "HALFWAY_TOP",
+        "HALFWAY_BOTTOM",
+        "CENTRE_CIRCLE_TOP",
+        "L_PEN_SPOT",
         "L_GOAL_AREA_TOP_OUTER",
     ][:n]
     kp = pitch.keypoints()
@@ -166,7 +173,9 @@ def test_orient_homography_makes_sign_irrelevant():
         Ho = geo.orient_homography(sgn * Htrue * 7.0, pts)
         assert np.isclose(np.linalg.norm(Ho), 1.0)
         assert np.all(geo.apply_homography(Ho, pts)[1] > 0)
-        assert len(geo.project_polyline_to_image(Ho, np.array([[-20.0, 0], [20, 0]]))) >= 1
+        assert (
+            len(geo.project_polyline_to_image(Ho, np.array([[-20.0, 0], [20, 0]]))) >= 1
+        )
 
 
 _PITCH = PitchModel().keypoints()
@@ -178,7 +187,12 @@ def _fit_ids(ids):
     return geo.fit_homography(img, d)
 
 
-COLLINEAR3 = ["R_PEN_BOX_TOP_OUTER", "R_PEN_ARC_TOP", "R_GOAL_AREA_TOP_OUTER", "R_PEN_ARC_BOTTOM"]
+COLLINEAR3 = [
+    "R_PEN_BOX_TOP_OUTER",
+    "R_PEN_ARC_TOP",
+    "R_GOAL_AREA_TOP_OUTER",
+    "R_PEN_ARC_BOTTOM",
+]
 
 
 def test_fit_rejects_three_collinear_of_four_and_names_them():
@@ -189,7 +203,12 @@ def test_fit_rejects_three_collinear_of_four_and_names_them():
 def test_fit_accepts_three_collinear_plus_two_others():
     H, inl = _fit_ids([*COLLINEAR3, "R_GOALPOST_TOP"])
     assert inl.all()
-    assert geo.analyse_configuration(*_cfg([*COLLINEAR3, "R_GOALPOST_TOP"]))["n_general_subsets"] == 1
+    assert (
+        geo.analyse_configuration(*_cfg([*COLLINEAR3, "R_GOALPOST_TOP"]))[
+            "n_general_subsets"
+        ]
+        == 1
+    )
 
 
 def _cfg(ids):
@@ -199,7 +218,9 @@ def _cfg(ids):
 
 
 def test_fit_rejects_collinear_in_image_space_only():
-    img, d = _cfg(["L_PEN_BOX_TOP_OUTER", "L_PEN_BOX_BOTTOM_OUTER", "CENTRE_SPOT", "HALFWAY_TOP"])
+    img, d = _cfg(
+        ["L_PEN_BOX_TOP_OUTER", "L_PEN_BOX_BOTTOM_OUTER", "CENTRE_SPOT", "HALFWAY_TOP"]
+    )
     img[:3] = np.array([[0.1, 0.2], [0.3, 0.4], [0.5, 0.6]])  # 1,2,3 on an image line
     with pytest.raises(ValueError, match=r"points 1, 2, 3 lie on one image line"):
         geo.fit_homography(img, d)
@@ -209,4 +230,17 @@ def test_fit_many_points_skips_subset_search():
     pts = np.array([[i * 0.05, i * 0.05] for i in range(14)])
     with pytest.raises(ValueError, match="degenerate"):
         geo.fit_homography(pts, pts * 10)
-    assert geo.conditioning(*_cfg(["L_PEN_BOX_TOP_OUTER", "L_PEN_BOX_BOTTOM_OUTER", "CENTRE_SPOT", "HALFWAY_TOP"]), _camera_h()) < 100
+    assert (
+        geo.conditioning(
+            *_cfg(
+                [
+                    "L_PEN_BOX_TOP_OUTER",
+                    "L_PEN_BOX_BOTTOM_OUTER",
+                    "CENTRE_SPOT",
+                    "HALFWAY_TOP",
+                ]
+            ),
+            _camera_h(),
+        )
+        < 100
+    )

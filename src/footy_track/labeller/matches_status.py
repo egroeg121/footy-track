@@ -569,7 +569,10 @@ def scan() -> dict:
     from footy_track import match_splits
 
     for r in rows:
-        r["split"] = match_splits.split_for_match(r["key"], r.get("prefixes"))
+        try:
+            r["split"] = match_splits.split_for_match(r["key"], r.get("prefixes"))
+        except match_splits.RegisterError:
+            r["split"] = "unknown"
         for k in STAGES:
             r["stages"].setdefault(k, _stage("none", ""))
             r["stages"][k]["link"] = _run_link(r["stages"][k].get("run_id"))

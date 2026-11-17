@@ -8,7 +8,10 @@ from pathlib import Path
 
 import pytest
 
-PAGE = Path(__file__).resolve().parents[2] / "src/footy_track/labeller/web/calibration_review.html"
+PAGE = (
+    Path(__file__).resolve().parents[2]
+    / "src/footy_track/labeller/web/calibration_review.html"
+)
 
 CHECK = r"""
 const assert = require("assert");

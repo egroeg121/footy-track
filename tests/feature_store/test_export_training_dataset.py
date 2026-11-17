@@ -633,7 +633,9 @@ def test_heldout_match_is_never_exportable():
 
     assert is_heldout_clip("arsenal_nottinghamforest_seg012")
     assert is_heldout_clip("arsenal_nottinghamforest_seg012.mp4")
-    assert is_heldout_clip("arsenal_norwich_seg012")  # the old, mistaken name of the same match
+    assert is_heldout_clip(
+        "arsenal_norwich_seg012"
+    )  # the old, mistaken name of the same match
     assert not is_heldout_clip("arsenal_mancity_20250925_seg012")
 
 
@@ -662,3 +664,26 @@ def test_register_heldout_match_excluded_from_train_val(tmp_path, monkeypatch):
     assert is_heldout_clip("chelsea_vs_x_2026_27_seg004")
     assert not is_heldout_clip("arsenal_mancity_20250925_seg004")
     match_splits.clear_cache()
+
+
+def test_export_fails_closed_without_register(tmp_path, monkeypatch):
+    import pytest
+
+    from footy_track import match_splits
+    from footy_track.scripts import export_training_dataset as etd
+
+    monkeypatch.setenv("FOOTY_MATCH_SPLITS", str(tmp_path / "absent.json"))
+    monkeypatch.delenv("FOOTY_MATCH_SPLITS_ALLOW_SEED")
+    match_splits.clear_cache()
+    out = tmp_path / "out"
+    with pytest.raises(match_splits.RegisterError):
+        etd.export(
+            None,  # never touched: the register check runs first
+            out_dir=out,
+            video_dir=tmp_path,
+            eval_dir=tmp_path,
+            extra_exclude=set(),
+            val_fraction=0.2,
+            tag="t",
+        )
+    assert not out.exists()

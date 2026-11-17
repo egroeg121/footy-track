@@ -24,10 +24,27 @@ def numbered_clip(tmp_path):
     import cv2
 
     for i in range(N):
-        cv2.imwrite(str(frames / f"{i:03d}.png"), np.full((64, 96, 3), 20 + 7 * i, np.uint8))
+        cv2.imwrite(
+            str(frames / f"{i:03d}.png"), np.full((64, 96, 3), 20 + 7 * i, np.uint8)
+        )
     subprocess.run(
-        ["ffmpeg", "-v", "error", "-y", "-framerate", str(FPS), "-i", str(frames / "%03d.png"),
-         "-c:v", "libx264", "-pix_fmt", "yuv420p", "-qp", "0", str(path)],
+        [
+            "ffmpeg",
+            "-v",
+            "error",
+            "-y",
+            "-framerate",
+            str(FPS),
+            "-i",
+            str(frames / "%03d.png"),
+            "-c:v",
+            "libx264",
+            "-pix_fmt",
+            "yuv420p",
+            "-qp",
+            "0",
+            str(path),
+        ],
         check=True,
     )
     vid.clear_cache()
@@ -66,7 +83,9 @@ def test_cv2_path_used_and_cached_when_it_works(numbered_clip):
     assert vid.reader_for(numbered_clip) == "cv2"
 
 
-def test_black_cv2_frames_fall_back_to_ffmpeg_and_are_cached(numbered_clip, monkeypatch):
+def test_black_cv2_frames_fall_back_to_ffmpeg_and_are_cached(
+    numbered_clip, monkeypatch
+):
     calls = {"cv2": 0}
 
     def black(video, idx):
@@ -86,7 +105,10 @@ def test_black_cv2_frames_fall_back_to_ffmpeg_and_are_cached(numbered_clip, monk
 
 def test_cv2_failure_falls_back(numbered_clip, monkeypatch):
     monkeypatch.setattr(vid, "_cv2_frame", lambda v, i: None)
-    assert abs(_level(vid.read_frame(numbered_clip, 3)) - _reference(numbered_clip)[3]) < 1.5
+    assert (
+        abs(_level(vid.read_frame(numbered_clip, 3)) - _reference(numbered_clip)[3])
+        < 1.5
+    )
 
 
 def test_missing_video_returns_none(tmp_path):

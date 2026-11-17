@@ -99,3 +99,19 @@ def test_matches_page_and_api(client, tmp_path, monkeypatch):
     assert (
         d["matches"][0]["stages"]["download"]["state"] == "running"
     )  # active rows first
+
+
+def test_matches_api_split_unknown_when_register_missing(client, tmp_path, monkeypatch):
+    _build(tmp_path)
+    monkeypatch.setenv("FOOTY_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("FOOTY_RUNS_DIR", str(tmp_path / "no_runs"))
+    monkeypatch.setenv("MATCHES_PREFECT_API", "http://127.0.0.1:9/api")
+    monkeypatch.setattr(matches_status, "_api_cache", {"t": 0.0, "runs": []})
+    monkeypatch.setenv("FOOTY_MATCH_SPLITS", str(tmp_path / "absent.json"))
+    monkeypatch.delenv("FOOTY_MATCH_SPLITS_ALLOW_SEED")
+    from footy_track import match_splits
+
+    match_splits.clear_cache()
+    r = client.get("/api/matches?refresh=true")
+    assert r.status_code == 200
+    assert {m["split"] for m in r.json()["matches"]} == {"unknown"}

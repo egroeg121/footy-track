@@ -10,12 +10,16 @@ torch = pytest.importorskip("torch")
 pytest.importorskip("ultralytics")
 cv2 = pytest.importorskip("cv2")
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "experiments" / "temporal_detector"))
+sys.path.insert(
+    0, str(Path(__file__).resolve().parents[2] / "experiments" / "temporal_detector")
+)
 import multichannel as mc  # noqa: E402
 
 
 def test_inflate_stem_weight_places_rgb_on_bgr_slots():
-    w3 = torch.arange(2 * 3 * 3 * 3, dtype=torch.float32).reshape(2, 3, 3, 3)  # channels R, G, B
+    w3 = torch.arange(2 * 3 * 3 * 3, dtype=torch.float32).reshape(
+        2, 3, 3, 3
+    )  # channels R, G, B
     w5 = mc.inflate_stem_weight(w3)
     assert w5.shape == (2, 5, 3, 3)
     assert torch.equal(w5[:, 3], w3[:, 0])  # R -> input 3
@@ -40,7 +44,9 @@ def test_inflated_net_equals_3ch_net_at_step_0(tmp_path):
 
     x_bgr_t = torch.rand(1, 3, 128, 128)  # B,G,R of frame t
     x_rgb = x_bgr_t[:, [2, 1, 0]]
-    x5 = torch.cat([torch.rand(1, 1, 128, 128), x_bgr_t, torch.rand(1, 1, 128, 128)], 1)  # random neighbours
+    x5 = torch.cat(
+        [torch.rand(1, 1, 128, 128), x_bgr_t, torch.rand(1, 1, 128, 128)], 1
+    )  # random neighbours
     with torch.no_grad():
         y3 = m3(x_rgb)
         y5 = m5(x5)
@@ -66,12 +72,17 @@ def test_border_patch_pads_every_channel_with_114():
     assert out.shape == (100, 100, 5)
     assert (out[0, 0] == 114).all() and (out[50, 50] == 200).all()
     out3 = cv2.warpPerspective(
-        im, np.vstack([M, [0, 0, 1]]).astype(np.float32), (100, 100), borderValue=(114, 114, 114)
+        im,
+        np.vstack([M, [0, 0, 1]]).astype(np.float32),
+        (100, 100),
+        borderValue=(114, 114, 114),
     )
     assert (out3[0, 0] == 114).all()
     # 3-channel images keep the stock behaviour
     im3 = np.full((100, 100, 3), 200, np.uint8)
-    assert (cv2.warpAffine(im3, M, (100, 100), borderValue=(114, 114, 114))[0, 0] == 114).all()
+    assert (
+        cv2.warpAffine(im3, M, (100, 100), borderValue=(114, 114, 114))[0, 0] == 114
+    ).all()
 
 
 def test_identical_channels_stay_identical_through_geometric_aug():
@@ -83,13 +94,24 @@ def test_identical_channels_stay_identical_through_geometric_aug():
     rng = np.random.default_rng(0)
     g = cv2.GaussianBlur(rng.integers(0, 255, (320, 320), dtype=np.uint8), (0, 0), 3)
     img = np.repeat(g[..., None], 5, axis=2)
-    persp = RandomPerspective(degrees=5, translate=0.1, scale=0.5, shear=2, border=(-160, -160))
+    persp = RandomPerspective(
+        degrees=5, translate=0.1, scale=0.5, shear=2, border=(-160, -160)
+    )
     flip = RandomFlip(p=1.0, direction="horizontal")
     for _ in range(5):
-        inst = Instances(np.array([[100.0, 100.0, 120.0, 120.0]], np.float32), segments=np.zeros((0, 1000, 2), np.float32),
-                         bbox_format="xyxy", normalized=False)
-        labels = {"img": img.copy(), "cls": np.zeros((1, 1)), "instances": inst, "resized_shape": (320, 320),
-                  "ori_shape": (320, 320)}
+        inst = Instances(
+            np.array([[100.0, 100.0, 120.0, 120.0]], np.float32),
+            segments=np.zeros((0, 1000, 2), np.float32),
+            bbox_format="xyxy",
+            normalized=False,
+        )
+        labels = {
+            "img": img.copy(),
+            "cls": np.zeros((1, 1)),
+            "instances": inst,
+            "resized_shape": (320, 320),
+            "ori_shape": (320, 320),
+        }
         labels = flip(persp(labels))
         out = labels["img"]
         assert out.shape[2] == 5

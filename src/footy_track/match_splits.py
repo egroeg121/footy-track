@@ -11,8 +11,10 @@ the training pool, whose *clips* are then split train/val by the existing clip-l
 New downloaded matches are assigned once (``sha1(key) % 4 == 0`` -> heldout, ~25%) by the jobs repo
 (``footy_splits.py``); manual edits always win. The rule here mirrors that file.
 
-When the register file is missing or unreadable the built-in seed (``DEFAULT_REGISTER``) is used,
-so tests/CI behave exactly as the old hard-coded ``HELDOUT_CLIP_PREFIXES`` tuple did.
+Fail closed: a missing or invalid register raises ``RegisterError`` (a host without the file
+would otherwise leak newly held-out matches into training). Only with
+``FOOTY_MATCH_SPLITS_ALLOW_SEED=1`` (tests/CI) is a *missing* file replaced by the built-in seed
+``DEFAULT_REGISTER``, i.e. the old hard-coded tuple; an invalid file always raises.
 """
 
 from __future__ import annotations
@@ -47,8 +49,20 @@ def register_path() -> Path:
     return Path(os.environ.get("FOOTY_MATCH_SPLITS", DEFAULT_PATH))
 
 
-def load_register(path: Path | None = None) -> dict[str, dict]:
-    """The register, or ``DEFAULT_REGISTER`` when the file is missing/invalid. Cached briefly."""
+class RegisterError(RuntimeError):
+    """The split register is missing or invalid (fail closed: never guess held-out matches)."""
+
+
+def _allow_seed() -> bool:
+    return os.environ.get("FOOTY_MATCH_SPLITS_ALLOW_SEED", "") not in ("", "0")
+
+
+def load_register(
+    path: Path | None = None, allow_seed: bool | None = None
+) -> dict[str, dict]:
+    """The register. Raises ``RegisterError`` when the file is invalid (always) or missing
+    (unless ``allow_seed`` / env ``FOOTY_MATCH_SPLITS_ALLOW_SEED=1``, which uses the built-in
+    ``DEFAULT_REGISTER`` seed - tests/CI only). Cached briefly."""
     p = path or register_path()
     now = time.monotonic()
     if (
@@ -58,12 +72,27 @@ def load_register(path: Path | None = None) -> dict[str, dict]:
     ):
         return _cache["data"]
     try:
-        data = json.loads(p.read_text())
-        if not isinstance(data, dict):
-            raise ValueError("register must be a JSON object")
-        data = {k: v for k, v in data.items() if isinstance(v, dict)}
-    except (OSError, ValueError):
-        data = DEFAULT_REGISTER
+        text = p.read_text()
+    except FileNotFoundError:
+        if allow_seed if allow_seed is not None else _allow_seed():
+            data = DEFAULT_REGISTER
+            _cache.update(path=str(p), data=data, t=now)
+            return data
+        raise RegisterError(
+            f"match split register not found: {p} (set FOOTY_MATCH_SPLITS, or "
+            "FOOTY_MATCH_SPLITS_ALLOW_SEED=1 to use the built-in seed for tests)"
+        ) from None
+    except OSError as e:
+        raise RegisterError(f"cannot read match split register {p}: {e}") from e
+    try:
+        data = json.loads(text)
+        if not isinstance(data, dict) or not all(
+            isinstance(v, dict) and v.get("split") in (HELDOUT, TRAIN)
+            for v in data.values()
+        ):
+            raise ValueError("expected {key: {split: heldout|train, ...}}")
+    except ValueError as e:
+        raise RegisterError(f"invalid match split register {p}: {e}") from e
     _cache.update(path=str(p), data=data, t=now)
     return data
 

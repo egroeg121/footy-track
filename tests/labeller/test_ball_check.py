@@ -294,7 +294,16 @@ def test_crop_returns_jpeg_and_caches(
 
     # A different pad is a different cache entry, not a stale hit.
     client.get("/ball_check/crop/clip/0/0.jpg?pad=20")
-    assert ("calib", "sidecar", "clip", 0, 0, 20.0, True, 0) in ball_check._BC_CROP_CACHE
+    assert (
+        "calib",
+        "sidecar",
+        "clip",
+        0,
+        0,
+        20.0,
+        True,
+        0,
+    ) in ball_check._BC_CROP_CACHE
 
     # reticle=false is its own entry: the page draws its own draggable box.
     client.get("/ball_check/crop/clip/0/0.jpg?reticle=false")
