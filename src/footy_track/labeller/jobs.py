@@ -1168,9 +1168,14 @@ def dispatch_prepare(job: dict) -> dict:
 def _prefect_dispatch(job: dict, where: str) -> str:
     from footy_track.labeller import prefect_client  # noqa: PLC0415
 
-    return prefect_client.create_flow_run(
-        {"job": job["id"], "where": where}, name=f"bc-prepare-{job['id']}"
-    )
+    params: dict = {"job": job["id"], "where": where}
+    # A server that is not the live one (tests, a throwaway port) tells the flow how to reach it and
+    # which footy-track ``src`` to render with; unset, the flow's defaults (live :8011, deployed main) apply.
+    if os.environ.get("FOOTY_LABELLER_URL"):
+        params["labeller_url"] = os.environ["FOOTY_LABELLER_URL"]
+    if os.environ.get("FOOTY_BALLCHECK_PREPARE_CODE"):
+        params["code"] = os.environ["FOOTY_BALLCHECK_PREPARE_CODE"]
+    return prefect_client.create_flow_run(params, name=f"bc-prepare-{job['id']}")
 
 
 def start_prepare(job_id: str, *, hold: bool = False, where: str | None = None) -> dict:
@@ -1186,7 +1191,9 @@ def prepare_event(job_id: str, action: str, **kw) -> dict:  # noqa: PLR0912
             raise JobError(404, f"no job {job_id!r}")
         p = dict(job.get("prepare") or {})
         now = time.time()
-        if not p and action == "run":  # a run started by hand (``$PF run ballcheck-prepare/...``)
+        if (
+            not p and action == "run"
+        ):  # a run started by hand (``$PF run ballcheck-prepare/...``)
             p = _new_prepare(_where(kw.get("where")), hold=False, total=0)
         if not p:
             raise JobError(409, "job has no prepare request")

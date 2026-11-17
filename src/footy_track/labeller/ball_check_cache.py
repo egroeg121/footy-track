@@ -362,7 +362,7 @@ def cache() -> RenderCache | None:
 # ---------------------------------------------------------------------------
 
 
-def gc(  # noqa: PLR0912
+def gc(  # noqa: PLR0912, PLR0915
     rc: RenderCache,
     jobs: dict[str, dict],
     now: float | None = None,

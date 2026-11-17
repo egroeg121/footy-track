@@ -7,6 +7,8 @@ Fixtures ``two`` / ``web`` (conftest) give two datasets (calib default, nottingh
 
 from __future__ import annotations
 
+import base64
+import http.server
 import json
 import os
 import tarfile
@@ -16,7 +18,7 @@ from pathlib import Path
 
 import pytest
 
-from footy_track.labeller import ball_check, jobs, jobs_client
+from footy_track.labeller import ball_check, jobs, jobs_client, prefect_client
 from footy_track.labeller import ball_check_cache as bcc
 from footy_track.scripts import ballcheck_prepare as prep
 
@@ -901,3 +903,62 @@ def test_gc_endpoint_dry_run_reports_and_changes_nothing(web, two, clip_file):
     web.post(f"/api/jobs/{jid}/done")
     r = web.post("/api/jobs/gc?dry_run=true")
     assert r.status_code == 200 and r.json()["dry_run"] is True and rc.has(*keys[0])
+
+
+def test_prefect_client_queues_a_run_with_basic_auth_read_from_the_env_file(
+    tmp_path, monkeypatch
+):
+    seen: list[tuple[str, str, str | None, bytes]] = []
+
+    class H(http.server.BaseHTTPRequestHandler):
+        def _reply(self, doc):
+            body = json.dumps(doc).encode()
+            self.send_response(200)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def do_GET(self):
+            seen.append(("GET", self.path, self.headers.get("Authorization"), b""))
+            self._reply({"id": "dep-1"})
+
+        def do_POST(self):
+            n = int(self.headers.get("Content-Length") or 0)
+            seen.append(
+                (
+                    "POST",
+                    self.path,
+                    self.headers.get("Authorization"),
+                    self.rfile.read(n),
+                )
+            )
+            self._reply({"id": "run-9"})
+
+        def log_message(self, *a):
+            pass
+
+    srv = http.server.HTTPServer(("127.0.0.1", 0), H)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    env = tmp_path / "prefect.env"
+    env.write_text("OTHER=1\nPREFECT_API_AUTH_STRING=user:pw\n")
+    monkeypatch.setenv("PREFECT_API_URL", f"http://127.0.0.1:{srv.server_port}/api")
+    monkeypatch.setenv("FOOTY_PREFECT_ENV_FILE", str(env))
+    monkeypatch.delenv("PREFECT_API_AUTH_STRING", raising=False)
+    try:
+        assert (
+            prefect_client.create_flow_run({"job": "j-1", "where": "mini"}, name="bc")
+            == "run-9"
+        )
+    finally:
+        srv.shutdown()
+    auth = "Basic " + base64.b64encode(b"user:pw").decode()
+    assert seen[0][:3] == (
+        "GET",
+        "/api/deployments/name/ballcheck-prepare/ballcheck-prepare",
+        auth,
+    )
+    assert seen[1][:3] == ("POST", "/api/deployments/dep-1/create_flow_run", auth)
+    assert json.loads(seen[1][3]) == {
+        "parameters": {"job": "j-1", "where": "mini"},
+        "name": "bc",
+    }
