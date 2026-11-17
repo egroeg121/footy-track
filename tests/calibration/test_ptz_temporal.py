@@ -240,3 +240,55 @@ def test_finder_style_point_anchors_pin_a_frame_with_no_line_evidence():
     back, _ = est.image_to_pitch(u[okg])
     assert np.median(np.linalg.norm(back - g[okg], axis=1)) < 1.0
     assert np.degrees(abs(poses[0, 0] - truth[0, 0])) < 0.15  # motion carries the pinned pose to its neighbours
+
+
+def _shared_units(rng, k1=0.014):
+    cams = [_cam(70.0 + 6 * k, 12.0 + (k % 3) * 2.5, 2400.0 + 500 * (k % 4), roll_deg=0.2, k1=k1) for k in range(10)]
+    cams = [c for c in cams if len(_visible_keypoints(c)) >= 4]
+    truth = np.array([[c.pan, c.tilt, c.logf] for c in cams])
+    return cams, [pt.Unit(k, [0], (truth[k] + rng.normal(0, 1, 3) * [0.004, 0.003, 0.02])[None], {0: _evidence(c)})
+                  for k, c in enumerate(cams)]
+
+
+def test_reseed_states_keeps_the_image_of_the_pitch_at_another_centre():
+    cam = _cam(80.0, 15.0, 3000.0, k1=0.014)
+    st = np.array([[cam.pan, cam.tilt, cam.logf]])
+    src = pt.Shared(C_TRUE, cam.roll, cam.k1)
+    dst = pt.Shared(C_TRUE + [1.0, 4.0, -1.5], cam.roll, cam.k1)
+    same = pt.reseed_states(st, src, src)
+    assert np.allclose(same, st, atol=1e-6)
+    new = pt.reseed_states(st, src, dst)
+    gx, gy = np.meshgrid(np.linspace(-30, 30, 7), np.linspace(-20, 20, 5))
+    g = np.column_stack([gx.ravel(), gy.ravel()])
+    u0, ok0 = cam.pitch_to_image(g)
+    u1, ok1 = pt.cam_from_state(new[0], dst).pitch_to_image(g)
+    ok = ok0 & ok1 & np.all((u0 > 0.05) & (u0 < 0.95), axis=1)
+    assert ok.sum() >= 8
+    assert np.abs((u1[ok] - u0[ok]) * ptz.CANON).max() < 40.0  # px at 1920 over the visible pitch
+    assert not np.allclose(new, st, atol=1e-3)  # the pose did move
+
+
+def test_seed_offsets_grid_is_centred_and_ordered_by_distance():
+    offs = pt.seed_offsets(step=(3.0, 4.0, 3.0), n=(1, 2, 1))
+    assert len(offs) == 3 * 5 * 3
+    assert np.allclose(offs[0], 0.0)
+    d = [np.linalg.norm(o) for o in offs]
+    assert d == sorted(d)
+    assert np.allclose(np.mean(offs, axis=0), 0.0, atol=1e-9)
+
+
+def test_multistart_shared_fit_converges_from_a_start_5m_off():
+    """A single start from C + (2, 5, -2) m stalls on the y / z ridge; seeds around the prior keep the lowest cost."""
+    rng = np.random.default_rng(2)
+    cams, units = _shared_units(rng)
+    truth_src = pt.Shared(C_TRUE, cams[0].roll, 0.014)
+    rig0 = ptz.Rig(C_TRUE + [2.0, 5.0, -2.0], cams[0].roll, 0.014, (5.0, 10.0, 3.0))
+    offs = pt.seed_offsets(step=(3.0, 4.0, 3.0), n=(1, 2, 1))
+    shn, _, info = pt.fit_shared_multistart(units, rig0, PitchModel(), states_at=truth_src, offsets=offs, top_k=3,
+                                            free=("Cx", "Cy", "Cz", "roll"), n_iter=60)
+    assert len(info["starts"]) == len(offs)
+    finals = [s for s in info["starts"] if "final_cost" in s]
+    assert len(finals) == 3
+    assert info["starts"][info["best_start"]]["final_cost"] == min(s["final_cost"] for s in finals)
+    assert np.linalg.norm(shn.C - C_TRUE) < 0.6  # from 5.7 m off (a single start ends ~2 m off)
+    assert np.linalg.norm(rig0.C - C_TRUE) > 5.0
