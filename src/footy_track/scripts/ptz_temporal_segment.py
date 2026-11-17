@@ -14,7 +14,7 @@ Thin wrapper over the research driver :mod:`footy_track.scripts.ptz_temporal` (`
 * ``meta.json`` and ``solve_full.json``; every file is written atomically.
 
 **Recovery pass** (``--no-recover`` skips it): when the standard pass accepts < 50% of the frames, the run is repeated on a
-trimmed segment (non-pitch tails cut) with anchors from a pose-band, multi-start lines-only search (and, in a second stage,
+segment with anchors from a pose-band, multi-start lines-only search (and, in a second stage,
 the centre-circle / penalty-D finders) that other candidates must confirm along the motion chain
 (:mod:`footy_track.calibration.ptz_recover`). The recovered result replaces the standard one only if it accepts more
 frames, and then an evidence frame must also sit on the rig's pose band; ``meta.json["recovery"]`` records both passes
@@ -139,7 +139,7 @@ def _ensure_candidates(cache, rig_v, prior, pitch, cands: dict, frames: list[int
             cp.write_text(json.dumps(cands, default=float))
 
 
-def recover_pass(cache, rig, shot_info, out: Path) -> dict:
+def recover_pass(cache, rig, shot_info, out: Path, trim: bool = False) -> dict:
     """Recovery of a segment the standard pass left uncalibrated (see :mod:`ptz_recover`). Trim non-pitch tails; choose the
     camera position (``pr.rig_variants``: the stand's centre position or one of the two penalty-area-line positions) from a
     few probe frames; then stage A: multi-start prior-band lines-only and finder candidates on ``REC_FRAMES`` frames,
@@ -149,8 +149,10 @@ def recover_pass(cache, rig, shot_info, out: Path) -> dict:
     pitch = pte.PITCH
     pm = {t: pt.pmain_of(cache, t) for t in cache.ev_frames}
     base_runs = [(x["start"], x["end"]) for x in shot_info if x["p_main"] >= 0.5]
-    runs = pr.trim_runs(base_runs, cache, pm)
-    pte.log(f"recovery: main shots {base_runs} -> trimmed runs {runs}")
+    # trimming is opt-in: cutting where the main-camera probability drops also cut valid zoomed goal-area views (Man City seg108
+    # f130-174: 100% accepted untrimmed, 75% trimmed; seg073 80% vs 72%), and the F1 acceptance already rejects real tails
+    runs = pr.trim_runs(base_runs, cache, pm) if trim else base_runs
+    pte.log(f"recovery: main shots {base_runs} -> runs {runs}")
     cp = out / "anchors_rec.json"
     allc = json.loads(cp.read_text()) if cp.exists() else {}
     # --- which camera position: best mean candidate F1 over a few probe frames (the default wins ties)
@@ -209,7 +211,8 @@ def recover_pass(cache, rig, shot_info, out: Path) -> dict:
     return best or {"stages": stages, "runs": runs}
 
 
-def run(video: Path, clip: str, rig_json: Path, out_root: Path, anchor_step: int = 100, recover: bool = True) -> dict:
+def run(video: Path, clip: str, rig_json: Path, out_root: Path, anchor_step: int = 100, recover: bool = True,
+        trim: bool = False, force_recover: bool = False) -> dict:
     t0, cpu0 = time.time(), time.process_time()
     pte.ROOT = out_root
     pte.VIDEO_PATH = video
@@ -229,12 +232,12 @@ def run(video: Path, clip: str, rig_json: Path, out_root: Path, anchor_step: int
 
     f1rep = line_f1_report(cache, states, shared, anchors, segs)
     recovery = None
-    if recover and f1rep["accepted_frac_of_frames"] < RECOVER_BELOW:
+    if recover and (force_recover or f1rep["accepted_frac_of_frames"] < RECOVER_BELOW):
         pte.log(f"standard pass accepts {100 * f1rep['accepted_frac_of_frames']:.0f}% of the frames: recovery pass")
-        rec = recover_pass(cache, rig, shot_info, out)
+        rec = recover_pass(cache, rig, shot_info, out, trim)
         recovery = {"standard_accepted_frac": f1rep["accepted_frac_of_frames"], "stages": rec["stages"],
-                    "trimmed_runs": [list(map(int, r)) for r in rec["runs"]], "used": False}
-        if rec.get("f1rep") and rec["f1rep"]["accepted_frac_of_frames"] > f1rep["accepted_frac_of_frames"]:
+                    "runs": [list(map(int, r)) for r in rec["runs"]], "used": False}
+        if rec.get("f1rep") and (force_recover or rec["f1rep"]["accepted_frac_of_frames"] > f1rep["accepted_frac_of_frames"]):
             recovery["used"] = True
             recovery["standard_anchors"] = f1rep["anchors"]
             states, infos, segs, anchors = rec["states"], rec["infos"], rec["segs"], rec["anchors"]
@@ -276,8 +279,13 @@ def main() -> None:
     ap.add_argument("--out-root", type=Path, default=pte.ROOT)
     ap.add_argument("--anchor-step", type=int, default=100)
     ap.add_argument("--no-recover", action="store_true", help="skip the recovery pass for segments the standard pass leaves weak")
+    ap.add_argument("--force-recover", action="store_true",
+                    help="evaluation only: run the recovery pass on any segment and keep its result (accuracy of the recovery path on segments the standard pass solves)")
+    ap.add_argument("--trim", action="store_true",
+                    help="recovery pass: cut stretches whose main-camera probability is low before solving (off by default, see recover_pass)")
     a = ap.parse_args()
-    run(a.video, a.clip, a.rig_json, a.out_root, a.anchor_step, recover=not a.no_recover)
+    run(a.video, a.clip, a.rig_json, a.out_root, a.anchor_step, recover=not a.no_recover, trim=a.trim,
+        force_recover=a.force_recover)
 
 
 if __name__ == "__main__":

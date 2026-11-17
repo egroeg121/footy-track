@@ -16,8 +16,10 @@ visible. What this module changes, all of it only for runs the standard pass lef
   positions; their PTZ point solve is a second, independent anchor source.
 * **Confirmation** (:func:`confirm_anchors`): a relaxed-F1 candidate only becomes an anchor when another candidate,
   carried along the motion chain, lands on the same camera (or when it is very strong).
-* **Trimming** (:func:`trim_runs`): evidence frames that are not main-camera views (logo wipe, close-up, crowd, scoreboard)
-  cut the run, so they stay out of the joint solve.
+* **Trimming** (:func:`trim_runs`, opt-in, off in the runner): evidence frames that are not main-camera views (logo wipe,
+  close-up, crowd, scoreboard) cut the run. Measured on the weak segments it did not help: the classifier also rejects
+  valid zoomed goal-area views (seg108 f130-174: 100% accepted untrimmed, 75% trimmed), and the F1 acceptance already
+  rejects real tails.
 """
 
 # ruff: noqa: PLR0913, PLR0912, PLR0915, PLC0415, N806, E741
