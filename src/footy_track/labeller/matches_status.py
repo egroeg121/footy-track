@@ -566,7 +566,13 @@ def scan() -> dict:
     runs = _flow_runs()
     rows = _download_rows(root / "full_matches", runs) + _existing_rows(root)
     _fill_downstream(rows, root, _store_runs(runs_root()), runs)
+    from footy_track import match_splits
+
     for r in rows:
+        try:
+            r["split"] = match_splits.split_for_match(r["key"], r.get("prefixes"))
+        except match_splits.RegisterError:
+            r["split"] = "unknown"
         for k in STAGES:
             r["stages"].setdefault(k, _stage("none", ""))
             r["stages"][k]["link"] = _run_link(r["stages"][k].get("run_id"))
