@@ -39,6 +39,9 @@ SVC_ENV[calib]=""
 # service -> datasets whose Ball Check crop/clip caches are warmed after a restart (they
 # serve a ball_check_list; a restart empties the in-memory caches).
 declare -A WARM_DATASETS=([calib]="nottinghamforest")
+# service -> datasets whose detector-candidate pool is built after a restart (the first
+# `source=candidates` request otherwise pays ~13 s; later ones 0.14 s).
+declare -A WARM_POOL_DATASETS=([calib]="nottinghamforest")
 
 DRY=0
 FORCE=0
@@ -227,6 +230,18 @@ start_warm() {
     (cd "$SERVE_DIR" && PYTHONPATH=src nohup nice -n 19 "$PY" -m footy_track.scripts.warm_ball_check \
       --base "http://$HOST:$port" --dataset "$ds" >>"$log" 2>&1 &)
     echo "$svc: warming Ball Check caches of dataset $ds in the background (log: $log)"
+  done
+  for ds in ${WARM_POOL_DATASETS[$svc]:-}; do
+    log="$LOG_DIR/$svc-warm-pool-$ds.log"
+    if ((DRY)); then
+      echo "# would build $svc's candidate pool for dataset $ds in the background (disable with --no-warm):"
+      printf '+ (cd %q && PYTHONPATH=src nohup nice -n 19 %q -m footy_track.scripts.warm_ball_check --source candidates --base http://%s:%s --dataset %s >> %q 2>&1 &)\n' \
+        "$SERVE_DIR" "$PY" "$HOST" "$port" "$ds" "$log"
+      continue
+    fi
+    (cd "$SERVE_DIR" && PYTHONPATH=src nohup nice -n 19 "$PY" -m footy_track.scripts.warm_ball_check \
+      --source candidates --base "http://$HOST:$port" --dataset "$ds" >>"$log" 2>&1 &)
+    echo "$svc: building the candidate pool of dataset $ds in the background (log: $log)"
   done
 }
 

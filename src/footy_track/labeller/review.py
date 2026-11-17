@@ -17,6 +17,7 @@ from __future__ import annotations
 import asyncio
 import collections
 import json
+import os
 import tempfile
 from pathlib import Path
 
@@ -35,6 +36,7 @@ from footy_track.labeller.constants import (
     PROVENANCE_TAGS,
     REVIEW_LABELS_SET,
 )
+from footy_track.labeller.names import safe_clip_name
 
 router = APIRouter()
 
@@ -126,32 +128,57 @@ def _find_video(clip_stem: str) -> Path | None:
     return None
 
 
+#: Parsed boxes per sidecar, keyed by its full path and valid while its (mtime_ns, size, inode) and the
+#: clip's video path are unchanged. Writers replace sidecars atomically (new inode) or append (new
+#: size), so a stale hit would need a same-size in-place rewrite inside one timestamp tick. Rescanning
+#: every sidecar per request took 1.5-1.9 s on the Ball Check ``sidecar`` queue and 3.3 s on
+#: ``/review/queue`` (B13); now only a file that changed is re-parsed. Callers must not mutate records.
+_BOX_CACHE: dict[str, tuple[tuple, Path | None, list[dict]]] = {}
+
+
+def _sidecar_boxes(jsonl_path: Path, video_path: Path | None) -> list[dict] | None:
+    """Box records of one sidecar (``box_index`` assigned), or None when it cannot be read."""
+    try:
+        st = jsonl_path.stat()
+    except OSError:
+        return None
+    sig = (st.st_mtime_ns, st.st_size, st.st_ino)
+    hit = _BOX_CACHE.get(str(jsonl_path))
+    if hit is not None and hit[0] == sig and hit[1] == video_path:
+        return hit[2]
+    try:
+        lines = jsonl_path.read_text().splitlines()
+    except OSError:
+        return None
+    clip_stem = jsonl_path.stem
+    frame_boxes: dict[int, list[dict]] = {}
+    for raw_line in lines:
+        stripped = raw_line.strip()
+        if not stripped:
+            continue
+        rec = _parse_jsonl_box(stripped, clip_stem, video_path)
+        if rec is None:
+            continue
+        frame_boxes.setdefault(rec["frame_index"], []).append(rec)
+    records: list[dict] = []
+    for _frame_idx, boxes in sorted(frame_boxes.items()):
+        for box_idx, rec in enumerate(boxes):
+            rec["box_index"] = box_idx
+            records.append(rec)
+    _BOX_CACHE[str(jsonl_path)] = (sig, video_path, records)
+    return records
+
+
 def _read_all_boxes() -> list[dict]:
-    """Scan all JSONL sidecars and return a flat list of box records."""
+    """Scan all JSONL sidecars and return a flat list of box records (per-file mtime cache)."""
     records: list[dict] = []
     marks_dir = _gt_marks_dir()
     if not marks_dir.exists():
         return records
     for jsonl_path in sorted(marks_dir.glob("*.jsonl")):
-        clip_stem = jsonl_path.stem
-        video_path = _find_video(clip_stem)
-        try:
-            lines = jsonl_path.read_text().splitlines()
-        except OSError:
-            continue
-        frame_boxes: dict[int, list[dict]] = {}
-        for raw_line in lines:
-            stripped = raw_line.strip()
-            if not stripped:
-                continue
-            rec = _parse_jsonl_box(stripped, clip_stem, video_path)
-            if rec is None:
-                continue
-            frame_boxes.setdefault(rec["frame_index"], []).append(rec)
-        for _frame_idx, boxes in sorted(frame_boxes.items()):
-            for box_idx, rec in enumerate(boxes):
-                rec["box_index"] = box_idx
-                records.append(rec)
+        boxes = _sidecar_boxes(jsonl_path, _find_video(jsonl_path.stem))
+        if boxes:
+            records.extend(boxes)
     return records
 
 
@@ -306,10 +333,33 @@ async def review_crop(clip_stem: str, frame_idx: int, box_idx: int) -> Response:
     return Response(content=data, media_type="image/jpeg")
 
 
+def _write_text_atomic(path: Path, text: str) -> None:
+    """Replace *path* with *text* via a unique temp file + fsync + ``os.replace``.
+
+    A crash (or a reader) mid-write must never see a truncated sidecar: this is the file the
+    labeller and the feature-store ingest treat as ground truth. Keeps an existing file's mode.
+    """
+    try:
+        mode = path.stat().st_mode & 0o777
+    except FileNotFoundError:
+        mode = 0o664
+    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=path.name, suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w") as fh:
+            fh.write(text)
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.chmod(tmp, mode)  # mkstemp creates 0600
+        os.replace(tmp, path)
+    except BaseException:
+        Path(tmp).unlink(missing_ok=True)
+        raise
+
+
 @router.post("/review/correct")
 async def review_correct(body: dict) -> dict:
     """Write a corrected box (PROV_LABELLER) to the clip's JSONL sidecar."""
-    clip = body["clip"]
+    clip = safe_clip_name(body.get("clip"))
     frame_index = int(body["frame_index"])
     box_index = int(body["box_index"])
     label = body["label"]
@@ -338,7 +388,7 @@ async def review_correct(body: dict) -> dict:
         }
     )
     marks_dir.mkdir(parents=True, exist_ok=True)
-    jsonl_path.write_text("\n".join(lines) + "\n")
+    _write_text_atomic(jsonl_path, "\n".join(lines) + "\n")
     # Invalidate crop cache for this box
     _CROP_CACHE.pop((datasets.current_name(), clip, frame_index, box_index), None)
     hooks.emit("ball_place", clip=clip, unit=frame_index, verdict="corrected")
@@ -348,7 +398,7 @@ async def review_correct(body: dict) -> dict:
 @router.post("/review/delete")
 async def review_delete(body: dict) -> dict:
     """Remove a box from the clip's JSONL sidecar."""
-    clip = body["clip"]
+    clip = safe_clip_name(body.get("clip"))
     frame_index = int(body["frame_index"])
     box_index = int(body["box_index"])
 
@@ -362,7 +412,7 @@ async def review_delete(body: dict) -> dict:
         return {"ok": False, "error": "box_index out of range"}
 
     del lines[line_indices[box_index]]
-    jsonl_path.write_text("\n".join(lines) + "\n")
+    _write_text_atomic(jsonl_path, "\n".join(lines) + "\n")
     _CROP_CACHE.pop((datasets.current_name(), clip, frame_index, box_index), None)
     hooks.emit("ball_place", clip=clip, unit=frame_index, verdict="deleted")
     return {"ok": True}

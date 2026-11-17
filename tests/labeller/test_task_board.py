@@ -132,6 +132,19 @@ def test_warm_helper_urls_and_walks_only_undone_cards(monkeypatch):
     ]
 
 
+def test_warm_helper_candidate_pool(monkeypatch):
+    """``--source candidates`` builds the pool with ONE queue request and renders no cards."""
+    seen: list[str] = []
+
+    def fake_get(url, timeout):
+        seen.append(url)
+        return json.dumps({"source": "candidates", "items": []}).encode()
+
+    monkeypatch.setattr(W, "_get", fake_get)
+    assert W.main(["--base", "http://x:1", "--source", "candidates", "--dataset", "nottinghamforest"]) == 0
+    assert seen == ["http://x:1/ball_check/queue?source=candidates&limit=1&dataset=nottinghamforest"]
+
+
 # ------------------------------------------------------------------ self-completing tasks (done_when)
 
 CLIP = "arsenal_bournemouth_1st_seg030"

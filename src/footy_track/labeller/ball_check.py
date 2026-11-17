@@ -46,6 +46,7 @@ from footy_track.labeller.constants import (
     NOT_BROADCAST_TAG,
     PROV_LABELLER,
 )
+from footy_track.labeller.names import safe_clip_name
 from footy_track.labeller.review import (
     _clips_dir,
     _find_video,
@@ -1430,6 +1431,7 @@ async def ball_check_save_box(body: dict) -> dict:
         return {"ok": False, "error": "clip, frame_index, box_index and bbox required"}
     if bw <= 0 or bh <= 0:
         return {"ok": False, "error": "box has no area"}
+    safe_clip_name(clip)  # 422: the name becomes <marks>/<clip>.jsonl
 
     label = body.get("label") or "in_play_ball"
     if label not in BALL_LABELS:
@@ -1593,6 +1595,7 @@ async def ball_check_verdict(body: dict) -> dict:
         box_index = int(body["box_index"])
     except (KeyError, TypeError, ValueError):
         return {"ok": False, "error": "clip, frame_index and box_index are required"}
+    safe_clip_name(clip)  # 422: the name becomes ball_checks/<clip>.jsonl
 
     rec = {
         "clip": clip,
@@ -1624,6 +1627,7 @@ async def ball_check_undo(body: dict) -> dict:
         box_index = int(body["box_index"])
     except (KeyError, TypeError, ValueError):
         return {"ok": False, "error": "clip, frame_index and box_index are required"}
+    safe_clip_name(clip)
     if not _verdict_path(clip).exists():
         return {"ok": False, "error": "no verdicts for clip"}
     await asyncio.to_thread(

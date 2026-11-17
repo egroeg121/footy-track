@@ -239,9 +239,7 @@ async def accept_proposal(clip: str, run_id: str, idx: int, body: dict | None = 
     gt_rec = cal._gt_record(idx, res, fit_body, origin)
 
     def _store() -> None:
-        doc = cal._read_gt(clip)
-        doc["frames"][str(idx)] = gt_rec
-        cal._write_gt(clip, doc)
+        cal.update_gt(clip, lambda doc: doc["frames"].update({str(idx): gt_rec}))
         if idx in cal.too_few_points_frames(_gt_marks_dir(), clip):
             cal.clear_too_few_points(clip, idx)   # accepted after all: it had enough points
         hooks.emit("calibration_gt", clip=cal.canonical_clip_id(clip), unit=idx, verdict="gt")
