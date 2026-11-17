@@ -115,3 +115,86 @@ def test_matches_api_split_unknown_when_register_missing(client, tmp_path, monke
     r = client.get("/api/matches?refresh=true")
     assert r.status_code == 200
     assert {m["split"] for m in r.json()["matches"]} == {"unknown"}
+
+
+def _seg_run(rid, state, match, name=""):
+    return {
+        "id": rid,
+        "state": state,
+        "state_name": name or state.title(),
+        "params": {"match": match, "source": "/x.mp4"},
+        "flow": "match-segment",
+    }
+
+
+_n = iter(range(1000))
+
+
+def _seg_cells(tmp_path, monkeypatch, runs):
+    tmp_path = tmp_path / f"case{next(_n)}"
+    tmp_path.mkdir()
+    _build(tmp_path)
+    monkeypatch.setenv("FOOTY_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("FOOTY_RUNS_DIR", str(tmp_path / "no_runs"))
+    monkeypatch.setenv("MATCHES_PREFECT_API", "http://127.0.0.1:9/api")
+    monkeypatch.setattr(
+        matches_status, "_api_cache", {"t": 9e12, "runs": runs}
+    )  # fresh cache -> no network
+    monkeypatch.setattr(matches_status, "_cache", {"t": 0.0, "data": None})
+    d = matches_status.get_status(force=True)
+    return {m["key"]: m for m in d["matches"]}
+
+
+def test_segments_cell_queued_running_failed(tmp_path, monkeypatch):
+    k = "arsenal-vs-chelsea-2026-27"
+    cases = [
+        ([_seg_run("q1", "SCHEDULED", k, "Scheduled")], "queued", "q1"),
+        ([_seg_run("q1", "SCHEDULED", k, "Late")], "queued", "q1"),
+        ([_seg_run("p1", "PENDING", k)], "queued", "p1"),
+        ([_seg_run("r1", "RUNNING", k)], "running", "r1"),
+        ([_seg_run("f1", "FAILED", k)], "failed", "f1"),
+        # newest first: the queued retry beats the older failure
+        ([_seg_run("q2", "SCHEDULED", k), _seg_run("f1", "FAILED", k)], "queued", "q2"),
+    ]
+    for runs, state, rid in cases:
+        by = _seg_cells(tmp_path, monkeypatch, runs)
+        seg = by[k]["stages"]["segments"]
+        assert (seg["state"], seg["run_id"]) == (state, rid), runs
+        assert seg["link"].endswith("/runs/flow-run/" + rid)
+
+
+def test_segments_cell_other_match_ignored_and_download_unaffected(
+    tmp_path, monkeypatch
+):
+    k = "arsenal-vs-chelsea-2026-27"
+    runs = [_seg_run("q1", "SCHEDULED", "someone-else-2026-27")]
+    by = _seg_cells(tmp_path, monkeypatch, runs)
+    assert by[k]["stages"]["segments"]["state"] == "none"
+    # a segment run for the key must not become the download run link
+    live = "tottenham-hotspur-vs-coventry-city-2026-27"
+    runs = [_seg_run("q1", "SCHEDULED", live)]
+    by = _seg_cells(tmp_path, monkeypatch, runs)
+    assert by[live]["stages"]["download"]["run_id"] == "run-123"  # from the lock
+    assert by[live]["stages"]["segments"]["state"] == "queued"
+    done = "chelsea-vs-manchester-united-2026-27"
+    by = _seg_cells(tmp_path, monkeypatch, [_seg_run("q1", "SCHEDULED", done)])
+    assert by[done]["stages"]["download"]["run_id"] is None
+
+
+def test_segments_exist_link_completing_run(tmp_path, monkeypatch):
+    runs = [
+        _seg_run("new", "SCHEDULED", "arsenal_x"),
+        _seg_run("done", "COMPLETED", "arsenal_x"),
+        _seg_run("old", "FAILED", "arsenal_x"),
+    ]
+    by = _seg_cells(tmp_path, monkeypatch, runs)
+    seg = by["arsenal_x"]["stages"]["segments"]
+    assert seg["state"] == "done" and seg["run_id"] == "done"
+
+
+def test_find_run_ignores_segment_runs():
+    runs = [
+        _seg_run("s", "SCHEDULED", "k"),
+        {"id": "d", "state": "COMPLETED", "params": {"match": "k"}},
+    ]
+    assert matches_status._find_run(runs, match="k") == "d"
