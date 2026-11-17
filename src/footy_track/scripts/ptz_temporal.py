@@ -7,7 +7,7 @@
 Everything is cached under ``/mnt/storage/footy_data/scratch/temporal/<clip>/``. One process, no workers.
 """
 
-# ruff: noqa: PLR0915, PLR0912, PLC0415, E702
+# ruff: noqa: PLR0915, PLR0912, PLC0415, E702, C408, C416, F841, PLC3002, PLW0603
 from __future__ import annotations
 
 import argparse
@@ -36,7 +36,7 @@ ANCHOR_STEP = 50
 
 
 def log(*a):
-    print(time.strftime("%H:%M:%S"), *a, flush=True)
+    print(time.strftime("%H:%M:%S"), f"[cpu {time.process_time():.0f}s]", *a, flush=True)
 
 
 def clip_gt(clip: str) -> list[pv.GTFrame]:
@@ -197,6 +197,9 @@ def solve_variant(cache, segs, pairs, anchors, rig, gt_frames, hold: int | None,
     return states, infos
 
 
+EXTRA_VARIANTS = {"sm3": {"sigma_motion": 3.0}, "sm10": {"sigma_motion": 10.0}, "sl1": {"sigma_line": 1.5}}
+
+
 def err5(cam, truth) -> dict:
     """Pitch error (m) of ``cam`` over the 5 m grid of the GT-visible pitch."""
     P, uv, near = pv.gt_grid(truth, step=5.0)
@@ -298,6 +301,22 @@ def cmd_solve(args):
         st, infos = solve_variant(cache, segs, pairs, anchors, rig, [f.frame for f in gt], hold, tag)
         np.save(out / f"states_{tag}.npy", st)
         (out / f"solve_{tag}.json").write_text(json.dumps(infos, default=float))
+    for tag, kw in EXTRA_VARIANTS.items():
+        if (out / f"states_{tag}.npy").exists() and not args.force:
+            continue
+        st, infos = solve_variant(cache, segs, pairs, anchors, rig, [f.frame for f in gt], None, tag, **kw)
+        np.save(out / f"states_{tag}.npy", st)
+    # rig quantities estimated from the line evidence of every segment of the match (no GT): solve the clip with them
+    sp_ = ROOT / "shared" / "shared_mancity.json"
+    if sp_.exists() and args.clip.startswith(("arsenal_mancity", "arsenal_astonvilla")):
+        est = json.loads(sp_.read_text())["lines_plus_motion"]
+        sh = pt.Shared(np.array(est["C"]), np.radians(est["roll_deg"]), est["k1"])
+        for tag, hold in (("est", None), ("esthold", 2)):
+            if (out / f"states_{tag}.npy").exists() and not args.force:
+                continue
+            st, infos = solve_variant(cache, segs, pairs, anchors, rig, [f.frame for f in gt], hold, tag, shared=sh)
+            np.save(out / f"states_{tag}.npy", st)
+            (out / f"shared_{tag}.json").write_text(json.dumps(sh.vec().tolist()))
     # ablation: no motion constraints (per-frame line evidence + anchors only, same solver)
     if (out / "states_nomotion.npy").exists() and not args.force:
         return
@@ -321,11 +340,13 @@ def cmd_eval(args):
     out = ROOT / args.clip
     sh = pt.Shared.from_rig(rig)
     res = {"clip": args.clip, "n_gt": len(gt), "rig": {"C": rig.C.tolist(), "k1": rig.k1, "roll": rig.roll}}
-    S_ = {v: np.load(out / f"states_{v}.npy") for v in ("full", "hold", "nomotion") if (out / f"states_{v}.npy").exists()}
+    S_ = {f.stem.removeprefix("states_"): np.load(f) for f in sorted(out.glob("states_*.npy"))}
     recs = {"a_lines": [], "b_finders": [], **{f"c_{v}": [] for v in S_}}
     per = []
     fp = out / "finders.json"
     fcache = json.loads(fp.read_text()) if fp.exists() else {}
+    SH = {v: (pt.Shared.from_vec(np.array(json.loads((out / f"shared_{v}.json").read_text())))
+              if (out / f"shared_{v}.json").exists() else sh) for v in S_}
     for g in gt:
         truth = g.truth()
         row = {"key": g.key, "t": g.frame}
@@ -357,7 +378,7 @@ def cmd_eval(args):
             recs["b_finders"].append(None)
         for v, st in S_.items():
             if np.all(np.isfinite(st[g.frame])):
-                rc = err5(pt.cam_from_state(st[g.frame], sh), truth)
+                rc = err5(pt.cam_from_state(st[g.frame], SH[v]), truth)
                 row[f"c_{v}"] = rc
                 recs[f"c_{v}"].append(rc)
             else:
@@ -372,7 +393,7 @@ def cmd_eval(args):
     main_frames = sum(b - a + 1 for a, b in segs)
     cov = {}
     for v, st in S_.items():
-        f1 = line_f1(cache, st, sh, ev_ts)
+        f1 = line_f1(cache, st, SH[v], ev_ts)
         good = {t: f1.get(t, -1.0) >= 0.5 for t in ev_ts}
         acc = np.zeros(cache.n, bool)
         for t in range(cache.n):  # accepted when the evidence frames on both sides of t agree with the solved camera
@@ -394,7 +415,7 @@ def cmd_eval(args):
             flow[p.i] = float(np.median(np.linalg.norm(p.b - p.a, axis=1)))
     jit = {}
     for v, st in S_.items():
-        cs = [pt.cam_from_state(st[t], sh) if np.all(np.isfinite(st[t])) else None for t in range(cache.n)]
+        cs = [pt.cam_from_state(st[t], SH[v]) if np.all(np.isfinite(st[t])) else None for t in range(cache.n)]
         u = np.array([(c.pitch_to_image(np.zeros((1, 2)))[0][0] * ptz.CANON) if c else [np.nan, np.nan] for c in cs])
         jump = np.linalg.norm(np.diff(u, axis=0), axis=1)  # (n-1,) px at 1920 between t and t+1
         acc2 = np.linalg.norm(u[2:] - 2 * u[1:-1] + u[:-2], axis=1)  # second difference: ~0 for a smooth pan
@@ -423,7 +444,8 @@ def cmd_sheet(args):
     st = np.load(out / "states_full.npy")
     sth = np.load(out / "states_hold.npy")
     tiles = []
-    for g in sorted(gt, key=lambda f: f.frame)[:: max(1, len(gt) // 12)][:12]:
+    gts = sorted(gt, key=lambda f: f.frame)
+    for g in [gts[i] for i in sorted(set(np.linspace(0, len(gts) - 1, min(12, len(gts) // 3 * 3)).astype(int)))]:
         a = anchors.get(str(g.frame))
         ca = None
         if a and a.get("ok") and "refit" in a:
@@ -536,7 +558,7 @@ def cmd_shared(args):
             if ev is None:
                 continue
             st = np.array([[r["pan"], r["tilt"], r["logf"]]])
-            units.append(pt.Unit(uid, [t], st, {t: ev}, [], {t: st[0]}))
+            units.append(pt.Unit(uid, [t], st, {t: ev}))  # the anchor only initialises (it was found with C free)
             uid += 1
     log(f"{len(units)} anchored frames from {len({u.uid for u in units})} samples")
     res = {"n_units": len(units), "rig_prior": {"C": rig.C.tolist(), "roll_deg": float(np.degrees(rig.roll)), "k1": rig.k1}}

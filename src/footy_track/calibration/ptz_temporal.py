@@ -18,10 +18,9 @@ Conventions as in :mod:`ptz`: canonical 1920 x 1080 px with the principal point 
 division-model ``k1``. Work images are ``WORK_W`` wide (``S = WORK_W / 1920`` per canonical px).
 """
 
-# ruff: noqa: PLR0915, PLR0912, PLR0913, PLC0415, N806, N803, E741
+# ruff: noqa: PLR0915, PLR0912, PLR0913, PLC0415, N806, N803, E741, C408, C416, F841, B007, B008
 from __future__ import annotations
 
-import json
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -144,7 +143,12 @@ class ClipCache:
         self.ev_frames = sorted(int(p.stem) for p in (self.root / "masks").glob("*.npz"))
 
     def _save_masks(self, t: int, bgr: Array) -> None:
-        from footy_track.calibration.prelabel.candidates import LINE_SAT_REL, grass_mask, line_mask, resize_to_work
+        from footy_track.calibration.prelabel.candidates import (
+            LINE_SAT_REL,
+            grass_mask,
+            line_mask,
+            resize_to_work,
+        )
 
         work, _ = resize_to_work(bgr)
         grass = grass_mask(work)
@@ -953,7 +957,8 @@ class SegmentResult:
 def solve_segment(cache: ClipCache, t0: int, t1: int, pairs: list[Pair], anchors: dict[int, Array], rig: ptz.Rig,
                   pitch: PitchModel, *, evidence_frames: list[int], shared: Shared | None = None,
                   free_shared: tuple[str, ...] = (), shared_sigma=None, points=None, sigma_line: float = 3.0,
-                  anchor_sigma=(0.004, 0.004, 0.04), use_motion: bool = True, log=None) -> SegmentResult:
+                  anchor_sigma=(0.004, 0.004, 0.04), use_motion: bool = True, sigma_motion: float = 1.0, log=None
+                  ) -> SegmentResult:
     """Joint solve of the frames ``t0 .. t1`` (one motion-connected main-camera segment). ``anchors``: frame -> accepted
     lines-only (pan, tilt, logf); ``evidence_frames``: frames whose line evidence enters the cost (the caller decides,
     e.g. withholds the scored frames)."""
@@ -984,7 +989,7 @@ def solve_segment(cache: ClipCache, t0: int, t1: int, pairs: list[Pair], anchors
         return joint_solve(F, sh, x0, ev_list, lf, pairs if use_motion else [],
                            {t - t0: (anc[t], np.array(anchor_sigma, float)) for t in anc}, pitch,
                            free_shared=free_shared, shared_sigma=shared_sigma, points=pts_l, sigma_line=sigma_line,
-                           t0=t0, log=log)
+                           t0=t0, sigma_motion=sigma_motion, log=log)
 
     out_sh, poses, info = run(anchors_k, x_init)
     # pass 2: a confidently wrong lines-only anchor that no neighbouring anchor contradicts (the motion vote above
@@ -1009,8 +1014,8 @@ def solve_segment(cache: ClipCache, t0: int, t1: int, pairs: list[Pair], anchors
 
 def joint_solve(F: int, sh: Shared, x_init: Array, evs: list[ptz.LineEvidence], line_frames: Array, pairs: list[Pair],
                 anchors: dict[int, tuple[Array, Array]], pitch: PitchModel, *, free_shared=(), shared_sigma=None,
-                points=(), sigma_line: float = 3.0, t0: int = 0, seg_of=None, smooth: bool = True, log=None
-                ) -> tuple[Shared, Array, dict]:
+                points=(), sigma_line: float = 3.0, sigma_motion: float = 1.0, t0: int = 0, seg_of=None,
+                smooth: bool = True, n_iter: int = 20, log=None) -> tuple[Shared, Array, dict]:
     """Two-stage (blurred / sharp line distance transform) LM of F frames' (pan, tilt, log f) + the free shared
     quantities. ``pairs`` carry frame indices ``t0 + local``; ``line_frames`` are local indices into ``evs``."""
     free = np.array([n in set(free_shared) for n in SHARED_NAMES])
@@ -1022,11 +1027,11 @@ def joint_solve(F: int, sh: Shared, x_init: Array, evs: list[ptz.LineEvidence], 
     for stage, (blur, trunc) in enumerate(((1.8, 12.0), (0.0, 5.0))):
         stack = build_dt_stack(evs, blur) if evs else np.zeros((1, 2, 2), np.uint8)
         pb = ShotProblem(t0, F, sh, sig, free, pairs, np.asarray(line_frames, int), samples, dict(anchors),
-                         list(points), sigma_line=sigma_line, seg_of=seg_of)
+                         list(points), sigma_line=sigma_line, sigma_motion=sigma_motion, seg_of=seg_of)
         if not smooth:
             pb.sigma_acc = None
         rs = _Resid(pb, stack, trunc)
-        x, inf = lm_solve(rs, x, n_iter=20, log=log, tag=f"stage{stage + 1}")
+        x, inf = lm_solve(rs, x, n_iter=n_iter, log=log, tag=f"stage{stage + 1}")
         info[f"stage{stage + 1}"] = inf
         shn, poses = rs.split(x)
     return shn, poses, info
@@ -1051,7 +1056,7 @@ class Unit:
 
 
 def fit_shared(units: list[Unit], rig: ptz.Rig, pitch: PitchModel, *, free=("Cx", "Cy", "Cz", "roll", "k1"),
-               sigma=(5.0, 10.0, 3.0, np.deg2rad(2.0), 0.05), sigma_line: float = 3.0, log=None
+               sigma=(5.0, 10.0, 3.0, np.deg2rad(2.0), 0.05), sigma_line: float = 3.0, n_iter: int = 20, log=None
                ) -> tuple[Shared, list[Array], dict]:
     """Bundle-adjustment style fit of the rig quantities (``C``, roll, ``k1``) over the frames of many shots at once:
     every frame has its own (pan, tilt, log f); the shared quantities see all the line evidence and all the motion
@@ -1081,7 +1086,7 @@ def fit_shared(units: list[Unit], rig: ptz.Rig, pitch: PitchModel, *, free=("Cx"
     sh0 = Shared.from_rig(rig)
     shn, poses, info = joint_solve(len(frames_all), sh0, np.array(x0), evs, np.array(lf, int), pairs, anchors, pitch,
                                    free_shared=free, shared_sigma=sigma, sigma_line=sigma_line,
-                                   seg_of=np.array(seg_of), smooth=False, log=log)
+                                   seg_of=np.array(seg_of), smooth=False, n_iter=n_iter, log=log)
     out, k = [], 0
     for u in units:
         out.append(poses[k:k + len(u.frames)])

@@ -215,3 +215,28 @@ def test_shared_centre_is_recovered_from_many_views():
     # the y / z ridge is weakly determined: demand improvement on the horizontal-distance-like combination
     err0 = np.linalg.norm(rig0.C - C_TRUE)
     assert np.linalg.norm(shn.C - C_TRUE) < 0.6 * err0
+
+
+def test_finder_style_point_anchors_pin_a_frame_with_no_line_evidence():
+    """Point correspondences (the finders' output) of one frame enter the joint solve as reprojection residuals."""
+    cams = _sweep(5)
+    rng = np.random.default_rng(4)
+    rig = ptz.Rig(C_TRUE, cams[0].roll, cams[0].k1, (1.0, 3.0, 1.0))
+    sh = pt.Shared.from_rig(rig)
+    truth = np.array([[c.pan, c.tilt, c.logf] for c in cams])
+    ids, xy = PitchModel().keypoint_array()
+    uv, ok = cams[2].pitch_to_image(xy)
+    ok &= np.all((uv > 0.05) & (uv < 0.95), axis=1)
+    assert ok.sum() >= 4
+    obs = ptz.undistort_px(uv[ok] * ptz.CANON, 0.0) + rng.normal(0, 1.0, (ok.sum(), 2))  # observed px (distorted)
+    x0 = truth + [0.008, -0.004, 0.03]
+    points = [(2, xy[ok], obs, 2.0)]
+    shn, poses, _ = pt.joint_solve(5, sh, x0, [], np.zeros(0, int), _pairs(cams, rng), {}, PitchModel(), points=points)
+    est = pt.cam_from_state(poses[2], shn)
+    gx, gy = np.meshgrid(np.linspace(-20, 20, 5), np.linspace(-12, 12, 5))
+    g = np.column_stack([gx.ravel(), gy.ravel()])
+    u, okg = cams[2].pitch_to_image(g)
+    okg &= np.all((u > 0.03) & (u < 0.97), axis=1)
+    back, _ = est.image_to_pitch(u[okg])
+    assert np.median(np.linalg.norm(back - g[okg], axis=1)) < 1.0
+    assert np.degrees(abs(poses[0, 0] - truth[0, 0])) < 0.15  # motion carries the pinned pose to its neighbours
