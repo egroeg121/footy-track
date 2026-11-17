@@ -30,6 +30,8 @@
   .done .bar i { background:var(--green); }
   a.run { color:var(--accent); text-decoration:none; font-size:11px; }
   tr.queued td { opacity:.65; }
+  td.split { font-size:12px; font-weight:600; color:var(--muted); }
+  td.split.heldout { color:var(--red); } td.split.train { color:var(--green); }
   label { font-size:12px; color:var(--muted); }
 </style>
 </head>
@@ -73,12 +75,13 @@ function cell(c) {
 async function load() {
   try {
     const d = await (await fetch("/api/matches")).json();
-    document.getElementById("head").innerHTML = "<th>Match</th>" + d.stages.map(s => `<th>${TITLES[s]}</th>`).join("");
+    document.getElementById("head").innerHTML = "<th>Match</th><th>Split</th>" + d.stages.map(s => `<th>${TITLES[s]}</th>`).join("");
     const showQ = document.getElementById("showQueued").checked;
     document.getElementById("rows").innerHTML = d.matches
       .filter(m => showQ || m.stages.download.state !== "queued")
       .map(m => `<tr class="${esc(m.stages.download.state)}"><td class="match"><b>${esc(m.title)}</b>` +
-        `<div class="src">${esc(m.source)}</div></td>` + d.stages.map(s => cell(m.stages[s])).join("") + "</tr>").join("");
+        `<div class="src">${esc(m.source)}</div></td>` +
+        `<td class="split ${esc(m.split)}">${esc(m.split)}</td>` + d.stages.map(s => cell(m.stages[s])).join("") + "</tr>").join("");
     document.getElementById("stamp").textContent = "updated " + new Date().toLocaleTimeString() + " (auto-refresh 30s)";
     document.getElementById("note").textContent = d.links_available ? "" : "Prefect API unreachable: flow-run links omitted.";
   } catch (e) {

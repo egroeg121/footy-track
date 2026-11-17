@@ -1,0 +1,20 @@
+{
+ "C": [
+  0.10019769029554788,
+  -66.57647707436182,
+  15.743475255654927
+ ],
+ "roll": -0.002277934861682635,
+ "k1": 0.014741623916663997,
+ "sigma_C": [
+  1.0,
+  3.0,
+  1.0
+ ],
+ "pitch": [
+  105.0,
+  68.0
+ ],
+ "ground": "emirates",
+ "note": "Camera-rig prior from the exp/calibration-ptz branch (fixed centre of projection per ground); fit on the calibration GT frames."
+}

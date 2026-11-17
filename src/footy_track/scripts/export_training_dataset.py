@@ -78,6 +78,7 @@ import yaml
 
 from footy_track.clip_id import canonical_clip_id
 from footy_track.feature_store.store import FeatureStore
+from footy_track.match_splits import is_heldout_clip, load_register  # noqa: F401
 
 BALL_LABELS = ("ball", "in_play_ball", "out_of_play_ball")
 BALL_CLASS_ID = 0
@@ -96,18 +97,11 @@ _NOT_REJECTED = """
           )"""
 
 
-#: Matches that must NEVER reach a training export (held-out evaluation matches).
-#: ``arsenal_nottinghamforest`` is the only match absent from every detector training set; its
-#: clips are ``arsenal_nottinghamforest_segNNN``. Checked on the canonical clip id, in addition
-#: to the eval-dir / --exclude-clip mechanism, so it holds even if nobody passes a flag.
-#: (``arsenal_norwich`` is the old, mistaken name of the same match; kept as a belt-and-braces
-#: guard in case a name is ever checked without going through ``canonical_clip_id``.)
-HELDOUT_CLIP_PREFIXES: tuple[str, ...] = ("arsenal_nottinghamforest", "arsenal_norwich")
-
-
-def is_heldout_clip(name: str) -> bool:
-    """True if ``name`` (any alias of a clip) belongs to a held-out match."""
-    return canonical_clip_id(name).startswith(HELDOUT_CLIP_PREFIXES)
+# Held-out (evaluation-only) matches come from the per-match split register
+# (footy_track.match_splits; /mnt/storage/footy_data/match_splits.json, falling back to the
+# built-in seed when absent). A held-out match never reaches a training export, checked on the
+# canonical clip id in addition to the eval-dir / --exclude-clip mechanism.
+# Training-pool matches keep the clip-level train/val split below.
 
 
 def _eval_clip_stems(eval_dir: Path) -> set[str]:
@@ -495,6 +489,9 @@ def export(
 ) -> dict:
     """Export a leakage-free YOLO dataset.
 
+    Raises ``match_splits.RegisterError`` up front (before any query or write) when the match
+    split register is missing/invalid.
+
     ``classes`` is ``None`` for the original ball-only mode (single ``ball``
     class, id 0). Otherwise it's an explicit list of store label strings to
     export (already resolved from ``--classes all`` if that was requested);
@@ -512,6 +509,7 @@ def export(
     positives (the export has no negatives/background notion, so they are
     simply excluded); ``include_rejected=True`` keeps them.
     """
+    load_register()  # fail closed before touching the store or out_dir
     multiclass = classes is not None
     if multiclass:
         class_names = sorted(set(classes))

@@ -31,6 +31,9 @@ ball_check      pointer card ``{clip, frame_index, box_index, source?}`` (``sour
                 when the verdict log has a live verdict for it.
 identity        ``{clip}``. Labelled when an identity pair/review record
                 mentions the clip.
+broadcast_review ``{clip: <match key>, frame, ts_s?, p_yes?, pred?, reason?}`` (one
+                classifier frame; ``reason`` = ``edge`` / ``random``). Labelled when
+                ``<marks>/broadcast_review/<match>.json`` has a verdict (yes/no/unsure).
 other           anything; no computed progress (close it by hand).
 ==============  ==============================================================
 
@@ -78,7 +81,7 @@ from footy_track.labeller import datasets
 from footy_track.labeller.constants import BALL_LABELS, NO_BALL_TAG, NOT_BROADCAST_TAG
 
 DEFAULT_JOBS_DIR = "/mnt/storage/footy_data/labelling_jobs"
-KINDS = ("ball_place", "ball_check", "calibration", "frame_type", "identity", "other")
+KINDS = ("ball_place", "ball_check", "calibration", "frame_type", "identity", "broadcast_review", "other")
 STATUSES = ("preparing", "open", "in_progress", "done", "cancelled")
 LIVE = ("open", "in_progress")
 #: ``preparing`` = renders are being made ahead of time; the phone and the board do not offer it yet.
@@ -260,7 +263,7 @@ def _unit_cap(kind: str, raw_max: object) -> tuple[int | None, int | None]:
     """``(effective cap, hard ceiling)`` for a kind, honouring a requested ``max_cards``."""
     if kind == "ball_check":
         default, hard = MAX_CARDS_DEFAULT, MAX_CARDS_HARD
-    elif kind in _FRAME_KINDS:
+    elif kind in (*_FRAME_KINDS, "broadcast_review"):
         default, hard = MAX_FRAMES_DEFAULT, MAX_FRAMES_HARD
     else:
         return None, None
@@ -305,6 +308,8 @@ def _normalise_items(kind: str, raw: object, max_cards: object = None) -> list[d
                 it["step"] = _int(it.get("step") or 1, f"items[{i}].step")
                 if it["step"] < 1 or it["frame_end"] < it["frame_start"]:
                     raise JobError(422, f"items[{i}]: need frame_end >= frame_start and step >= 1")
+        elif kind == "broadcast_review":
+            it["frame"] = _int(it.get("frame"), f"items[{i}].frame")
         elif kind == "ball_check":
             if _wants_inline(it):  # inline card: carries its own geometry
                 it["frame_index"] = _int(
@@ -376,6 +381,8 @@ def _item_units(kind: str, item: dict) -> list:
         return [(item["source"], item["frame_index"], item.get("box_index"))]
     if kind == "identity":
         return [item["clip"]]
+    if kind == "broadcast_review":
+        return [item["frame"]]
     return []
 
 
@@ -748,6 +755,19 @@ def compute(job: dict) -> dict:  # noqa: PLR0912
                     first_missing = {
                         "clip": it["clip"], "source": unit[0], "frame": unit[1], "box_index": unit[2]
                     }  # fmt: skip
+        elif kind == "broadcast_review":
+            from footy_track.labeller import broadcast_review as br
+
+            store = br.read_store(ds, it["clip"])
+            stores[it["clip"]] = {"clip": it["clip"], "store": f"broadcast_review/{it['clip']}.json"}
+            for f in units:
+                rec = store.get(f)
+                if rec is not None:
+                    n_done += 1
+                    labels.append({"clip": it["clip"], "frame": f, **rec,
+                                   **{k: it[k] for k in ("p_yes", "pred", "reason", "ts_s") if k in it}})  # fmt: skip
+                elif first_missing is None:
+                    first_missing = {"clip": it["clip"], "frame": f}
         elif kind == "identity":
             recs = [r for r in ident if it["clip"] in _identity_clips(r)]
             if recs:
@@ -873,6 +893,9 @@ def deep_link(job: dict, c: dict | None = None) -> str:
         if any(is_inline(it) for it in items):
             q["source"] = "list"
         page = "/ball_check"
+    elif kind == "broadcast_review":
+        q["job"] = job["id"]
+        page = "/broadcast_review"
     elif kind == "identity":
         page = "/identity"
     else:

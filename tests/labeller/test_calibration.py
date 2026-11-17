@@ -308,12 +308,17 @@ def test_auto_points_centre_returns_circle_pairs(client, auto_env):
     assert r.status_code == 200
     d = r.json()
     assert d["ok"] and d["kind"] == "centre" and d["confidence"] > 0.55
-    assert [c["pitch_id"] for c in d["correspondences"]] == ["CENTRE_CIRCLE_TOP", "CENTRE_CIRCLE_BOTTOM"]
+    # the two seen circle x halfway-line points come first; a shape fit (when one is accepted) adds points computed
+    # from its homography, which the response carries
+    assert [c["pitch_id"] for c in d["correspondences"]][:2] == ["CENTRE_CIRCLE_TOP", "CENTRE_CIRCLE_BOTTOM"]
     kps = PitchModel().keypoints()
     for c in d["correspondences"]:
-        assert c["pitch_xy"] == list(kps[c["pitch_id"]]) and c["derived"] is False
-    got = np.array([c["image"] for c in d["correspondences"]])
+        if c["pitch_id"]:
+            assert c["pitch_xy"] == list(kps[c["pitch_id"]])
+    assert not any(c["derived"] for c in d["correspondences"][:2])
+    got = np.array([c["image"] for c in d["correspondences"][:2]])
     assert np.linalg.norm((got - auto_env["truth"]) * [1280, 720], axis=1).max() < 8
+    assert ("H" in d) == bool(d["fit"].get("accepted")) and (len(d["correspondences"]) >= 4 if "H" in d else True)
 
 
 def test_auto_points_centre_with_touchline_adds_the_end_and_derived_points(client, auto_env):
@@ -325,6 +330,13 @@ def test_auto_points_centre_with_touchline_adds_the_end_and_derived_points(clien
     free = [c for c in d["correspondences"] if c["pitch_id"] is None]
     assert free and all(c["derived"] and len(c["pitch_xy"]) == 2 for c in free)
     assert len(d["correspondences"]) >= 5
+    # the fitted pitch -> undistorted normalised image homography comes with the points (the page can draw the shape)
+    H = np.array(d["H"])
+    assert H.shape == (3, 3) and d["H_convention"] == "pitch_m_to_undistorted_normalised_image"
+    assert d["fit"]["accepted"] in ("touchline", "rig", "rig+touchline")
+    for c in d["correspondences"]:
+        p = H @ [c["pitch_xy"][0], c["pitch_xy"][1], 1.0]
+        assert np.abs(p[:2] / p[2] - c["image"]).max() < 1e-6  # every point is H applied to its pitch coordinates
 
 
 def test_auto_points_d_returns_the_penalty_area(client, auto_env):

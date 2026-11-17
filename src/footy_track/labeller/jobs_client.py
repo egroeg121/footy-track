@@ -261,7 +261,7 @@ def main(argv: list[str] | None = None) -> int:  # noqa: PLR0912, PLR0915
 
     s = sub.add_parser("submit", help="create a job (prints id, url, status)")
     s.add_argument("--title", required=True)
-    s.add_argument("--kind", default="ball_place", choices=["ball_place", "ball_check", "calibration", "frame_type", "identity", "other"])
+    s.add_argument("--kind", default="ball_place", choices=["ball_place", "ball_check", "calibration", "frame_type", "identity", "broadcast_review", "other"])
     s.add_argument("--dataset")
     s.add_argument("--items", help="CSV or JSON file of items")
     s.add_argument("--step", type=int, help="default step for window items without one")
