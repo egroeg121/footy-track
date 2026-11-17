@@ -16,7 +16,7 @@
         <link rel="prev" href="../../ball-tracking-eval/">
       
       
-        <link rel="next" href="../pipeline_overview/">
+        <link rel="next" href="../datasets_and_progress/">
       
       
       <link rel="icon" href="../../assets/images/favicon.png">
@@ -806,6 +806,28 @@
   
   
   
+    <li class="md-nav__item">
+      <a href="../datasets_and_progress/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Versioned datasets and progress
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
     
     
     
@@ -815,10 +837,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_10" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_11" >
         
           
-          <label class="md-nav__link" for="__nav_10" id="__nav_10_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_11" id="__nav_11_label" tabindex="0">
             
   
   
@@ -831,8 +853,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_10_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_10">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_11_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_11">
             <span class="md-nav__icon md-icon"></span>
             Design
           </label>
@@ -1067,10 +1089,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_11" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_12" >
         
           
-          <label class="md-nav__link" for="__nav_11" id="__nav_11_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_12" id="__nav_12_label" tabindex="0">
             
   
   
@@ -1083,8 +1105,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_11_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_11">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_12_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_12">
             <span class="md-nav__icon md-icon"></span>
             Development
           </label>
@@ -1532,6 +1554,7 @@
 
 <h1 id="feature-store-design">Feature Store — Design<a class="headerlink" href="#feature-store-design" title="Permanent link">&para;</a></h1>
 <p>Status: <strong>IMPLEMENTED (v1)</strong> · Code: <code>src/footy_track/feature_store/</code> · Tests: <code>tests/feature_store/</code></p>
+<p>Dataset versions, the one-shot <code>ingest_all</code>, and model results (<code>eval_result</code>, <code>dataset_version</code>, <code>broadcast_label</code>, <code>gt_frame</code> tables) are in <a href="../datasets_and_progress/">datasets_and_progress.md</a>.</p>
 <p>This document proposes a single, queryable <strong>feature store</strong> for footy-track:
 the consolidated home for everything we know about a match's frames —
 per-frame metadata, broadcast classification, pitch segmentation,

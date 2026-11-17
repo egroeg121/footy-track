@@ -1,0 +1,1740 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Tracking players, actions, and events in football matches.">
+      
+      
+      
+        <link rel="canonical" href="https://egroeg121.github.io/footy-track/design/datasets_and_progress/">
+      
+      
+        <link rel="prev" href="../feature_store/">
+      
+      
+        <link rel="next" href="../pipeline_overview/">
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.6.20">
+    
+    
+      
+        <title>Versioned datasets and progress - Footy Scan</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.e53b48f4.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+    
+  </head>
+  
+  
+    <body dir="ltr">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#versioned-datasets-and-progress-tracking" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="Footy Scan" class="md-header__button md-logo" aria-label="Footy Scan" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Footy Scan
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Versioned datasets and progress
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="Footy Scan" class="md-nav__button md-logo" aria-label="Footy Scan" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Footy Scan
+  </label>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Overview
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Architecture
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../pipeline-and-labels/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Pipeline and labels
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../data/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Data
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    Training
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            Training
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../training/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Training
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../training/notable_runs/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Notable Training Runs
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../inference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Inference
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../inference-web/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Inference web app
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../ball-tracking-eval/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Ball tracking evaluation
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../feature_store/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Feature store
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    Versioned datasets and progress
+    
+  </span>
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    Versioned datasets and progress
+    
+  </span>
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-goal" class="md-nav__link">
+    <span class="md-ellipsis">
+      1. Goal
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-the-pipeline" class="md-nav__link">
+    <span class="md-ellipsis">
+      2. The pipeline
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-the-three-datasets-and-their-items" class="md-nav__link">
+    <span class="md-ellipsis">
+      3. The three datasets and their items
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-split-tiers" class="md-nav__link">
+    <span class="md-ellipsis">
+      4. Split tiers
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-versioning-rules" class="md-nav__link">
+    <span class="md-ellipsis">
+      5. Versioning rules
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="5. Versioning rules">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#content-hash" class="md-nav__link">
+    <span class="md-ellipsis">
+      Content hash
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-snapshot-layout-and-immutability" class="md-nav__link">
+    <span class="md-ellipsis">
+      6. Snapshot layout and immutability
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-manifest" class="md-nav__link">
+    <span class="md-ellipsis">
+      7. Manifest
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-eval-results" class="md-nav__link">
+    <span class="md-ellipsis">
+      8. Eval results
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="8. Eval results">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#cohorts-reading-a-growing-eval-set" class="md-nav__link">
+    <span class="md-ellipsis">
+      Cohorts: reading a growing eval set
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#9-eval-adapters" class="md-nav__link">
+    <span class="md-ellipsis">
+      9. Eval adapters
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#10-contamination-flags" class="md-nav__link">
+    <span class="md-ellipsis">
+      10. Contamination flags
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#11-planned-not-built-yet" class="md-nav__link">
+    <span class="md-ellipsis">
+      11. Planned, not built yet
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#12-how-to" class="md-nav__link">
+    <span class="md-ellipsis">
+      12. How to
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#13-why-not-lancedb" class="md-nav__link">
+    <span class="md-ellipsis">
+      13. Why not LanceDB
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="13. Why not LanceDB">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#appendix-lance-facts-worth-keeping-from-the-rejected-design" class="md-nav__link">
+    <span class="md-ellipsis">
+      Appendix: Lance facts worth keeping (from the rejected design)
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_11" >
+        
+          
+          <label class="md-nav__link" for="__nav_11" id="__nav_11_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    Design
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_11_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_11">
+            <span class="md-nav__icon md-icon"></span>
+            Design
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../pipeline_overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Pipeline Overview
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../player_reid/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Player Re-ID
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tracking-pipeline/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Tracking Pipeline Design
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../claude_autolabel_loop/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Claude-assisted Ball Labelling
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../system_design/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    System Design
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../system_overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    System Overview
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../pipeline_architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Pipeline Architecture
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../timings/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Time Formats
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../data_formats/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Data Formats
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_12" >
+        
+          
+          <label class="md-nav__link" for="__nav_12" id="__nav_12_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    Development
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_12_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_12">
+            <span class="md-nav__icon md-icon"></span>
+            Development
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Getting Started
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../agent_guidelines/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Agent Guidelines
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../contributing-docs/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    How to contribute to the docs
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../todo/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    TODO
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-goal" class="md-nav__link">
+    <span class="md-ellipsis">
+      1. Goal
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-the-pipeline" class="md-nav__link">
+    <span class="md-ellipsis">
+      2. The pipeline
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-the-three-datasets-and-their-items" class="md-nav__link">
+    <span class="md-ellipsis">
+      3. The three datasets and their items
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-split-tiers" class="md-nav__link">
+    <span class="md-ellipsis">
+      4. Split tiers
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-versioning-rules" class="md-nav__link">
+    <span class="md-ellipsis">
+      5. Versioning rules
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="5. Versioning rules">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#content-hash" class="md-nav__link">
+    <span class="md-ellipsis">
+      Content hash
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-snapshot-layout-and-immutability" class="md-nav__link">
+    <span class="md-ellipsis">
+      6. Snapshot layout and immutability
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-manifest" class="md-nav__link">
+    <span class="md-ellipsis">
+      7. Manifest
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-eval-results" class="md-nav__link">
+    <span class="md-ellipsis">
+      8. Eval results
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="8. Eval results">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#cohorts-reading-a-growing-eval-set" class="md-nav__link">
+    <span class="md-ellipsis">
+      Cohorts: reading a growing eval set
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#9-eval-adapters" class="md-nav__link">
+    <span class="md-ellipsis">
+      9. Eval adapters
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#10-contamination-flags" class="md-nav__link">
+    <span class="md-ellipsis">
+      10. Contamination flags
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#11-planned-not-built-yet" class="md-nav__link">
+    <span class="md-ellipsis">
+      11. Planned, not built yet
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#12-how-to" class="md-nav__link">
+    <span class="md-ellipsis">
+      12. How to
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#13-why-not-lancedb" class="md-nav__link">
+    <span class="md-ellipsis">
+      13. Why not LanceDB
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="13. Why not LanceDB">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#appendix-lance-facts-worth-keeping-from-the-rejected-design" class="md-nav__link">
+    <span class="md-ellipsis">
+      Appendix: Lance facts worth keeping (from the rejected design)
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+
+<h1 id="versioned-datasets-and-progress-tracking">Versioned datasets and progress tracking<a class="headerlink" href="#versioned-datasets-and-progress-tracking" title="Permanent link">&para;</a></h1>
+<p>Status: <strong>datasets, ingest-all, eval results and CPU eval adapters are built</strong>
+(<code>src/footy_track/datasets/</code>, <code>src/footy_track/feature_store/ingest_all.py</code>, tests in
+<code>tests/datasets/</code>). The nightly flow and the <code>/progress</code> page are <strong>planned, not built</strong>
+(<a href="#11-planned-not-built-yet">section 11</a>).</p>
+<h2 id="1-goal">1. Goal<a class="headerlink" href="#1-goal" title="Permanent link">&para;</a></h2>
+<blockquote>
+<p>"A clear dataset for tracking, broadcast view, and pitch calibration that we can track dataset
+changes and performance changes."</p>
+</blockquote>
+<p>Three <strong>independently versioned</strong> datasets, <code>tracking</code>, <code>broadcast</code> and <code>calibration</code>. Each has a
+train part and an eval part, taken from the one <a href="../../data/#traineval-partitioning">split authority</a>
+(<code>footy_track.splits.split_of</code>). A version is bumped when the labels (or their split) change, and
+every model is scored on a dataset version, so two questions are always answerable:</p>
+<ul>
+<li><em>what changed in the data?</em> (the manifest diff between two versions)</li>
+<li><em>what changed in performance?</em> (<code>eval_result</code>, one row per dataset version x model x split x metric)</li>
+</ul>
+<p>Why it is needed (found 2026-11-17): labelling never reached the feature store (every labeller writes
+JSON/JSONL, ingest was a manual CLI, no live store existed); a GT re-ingest replaces rows, so the
+store had no history; and the broadcast classifier's accuracy went from 0.98 to 0.41-0.44 when a
+Roboflow dataset changed underneath it with nothing recording that it had.</p>
+<h2 id="2-the-pipeline">2. The pipeline<a class="headerlink" href="#2-the-pipeline" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code>label files (labeller)                    DuckDB store                    snapshots                  results
+ball_gt_marks/*.jsonl            \                                   datasets/tracking/vN/
+ball_gt_marks/ball_checks/        \   ingest_all   feature_store.duckdb   datasets/broadcast/vN/    eval_result
+calibration_gt/ frame_type/        &gt;------------&gt;  (detection, gt_frame,  datasets/calibration/vN/   (dataset version x
+calibration_proposals/            /   idempotent    calibration, ...,                                  model x split/cohort)
+broadcast_review/&lt;video&gt;.json    /    single writer  broadcast_label)  --datasets bump--&gt; items.parquet + manifest.json
+</code></pre></div>
+<ol>
+<li><code>python -m footy_track.feature_store.ingest_all</code> copies every label source into the store.</li>
+<li><code>python -m footy_track.datasets bump all</code> builds each dataset's item table from the store and
+   writes a new immutable snapshot only if the content hash changed.</li>
+<li>Evaluations score a model on a snapshot and append rows to <code>eval_result</code>
+   (<code>python -m footy_track.datasets results ...</code> or <code>eval_adapters.evaluate_and_record</code>).</li>
+</ol>
+<p>The store is a rebuildable <em>index</em> over the label files; the snapshots are the <em>record</em>.</p>
+<h2 id="3-the-three-datasets-and-their-items">3. The three datasets and their items<a class="headerlink" href="#3-the-three-datasets-and-their-items" title="Permanent link">&para;</a></h2>
+<p>An <strong>item</strong> is the unit that is counted, hashed, split and diffed. Every item has: <code>item_id</code>,
+<code>split</code>, <code>match_key</code>, <code>clip</code> (canonical clip id), <code>game_id</code>, <code>frame_index</code>, <code>label_kind</code>, <code>tier</code>,
+a canonical JSON <code>payload</code>, an <code>item_hash</code> and <code>first_version</code>.</p>
+<table>
+<thead>
+<tr>
+<th>dataset</th>
+<th>item (granularity)</th>
+<th><code>item_id</code></th>
+<th>label kinds</th>
+<th>payload</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>tracking</code></td>
+<td>one labelled <strong>frame</strong> of a clip</td>
+<td><code>&lt;game_id&gt;:&lt;frame&gt;</code></td>
+<td><code>ball</code>, <code>other_boxes</code>, <code>no_ball</code>, <code>not_broadcast</code>, <code>check_only</code>, <code>empty</code></td>
+<td>every box (<code>label</code>, <code>source</code>, <code>tier</code>, <code>rejected</code>, x/y/w/h), the Ball Check verdicts on the frame, the sidecar's skip marker</td>
+</tr>
+<tr>
+<td><code>broadcast</code></td>
+<td>one human <strong>frame verdict</strong></td>
+<td><code>&lt;video stem&gt;:&lt;frame&gt;</code></td>
+<td><code>yes</code>, <code>no</code>, <code>unsure</code></td>
+<td>verdict, plus the classifier's stored call (<code>pred</code>, <code>p_yes</code>), why it was sampled (<code>reason</code>), <code>ts_s</code></td>
+</tr>
+<tr>
+<td><code>calibration</code></td>
+<td>one <strong>frame correspondence set</strong></td>
+<td><code>&lt;canonical clip&gt;:&lt;frame&gt;</code></td>
+<td><code>homography</code>, <code>not_broadcast</code>, <code>too_few_points</code></td>
+<td>the human image to pitch point pairs, the fitted <code>H</code> (<code>norm_image-&gt;pitch_m</code>), <code>distortion_k1</code>, image size</td>
+</tr>
+</tbody>
+</table>
+<p>Details that matter when reading the numbers:</p>
+<ul>
+<li><strong>tracking.</strong> The frame set is every frame a ball-GT sidecar mentions (<code>gt_frame</code>) plus every frame
+  with a Ball Check verdict. <code>ball</code> = at least one ball box that no Ball Check rejected. <code>no_ball</code> and
+  <code>not_broadcast</code> are the sidecar's own skip markers (the detection table drops them, so ingest keeps
+  them in <code>gt_frame</code>). <code>check_only</code> = no sidecar box, only verdicts on detector candidates (hard
+  negatives and positives from Ball Check). <code>tier</code> is the best tier among the frame's ball boxes (or
+  all boxes when there is no ball): <strong>1</strong> human-placed (<code>labeller</code>), <strong>2</strong> machine box a human
+  confirmed (<code>human_checked</code>, or a Ball Check <code>ball</code>/<code>corrected</code> verdict), <strong>3</strong> machine only. A
+  consumer chooses its own GT rule (<code>ball_eval</code> uses tier 1, optionally tier 2); tier 3 is stored but is
+  not ground truth. One physical clip can be several <code>game_id</code>s (<code>arsenal_mancity_seg010</code> and
+  <code>arsenal_mancity_20250925_seg010</code>): they stay separate items (each is a different sidecar) with the same
+  canonical <code>clip</code>, so they always share a split.</li>
+<li><strong>broadcast.</strong> Today the only source is the broadcast review (<code>labeller/broadcast_review.py</code>):
+  frames the classifier was unsure about plus a random sample, judged yes/no/unsure by a human. They
+  have no clip, so a 6,000-frame window <code>&lt;match&gt;_wNNNN</code> stands in for one (<code>splits.broadcast_window_id</code>).
+  <code>unsure</code> items are kept but never scored. The sampling is biased towards hard frames, so a stored
+  classifier's accuracy here is not its accuracy on a random frame; <code>accuracy_random</code> is the unbiased subset.</li>
+<li><strong>calibration.</strong> Human GT only (<code>calibration_gt/</code>) plus the human <code>frame_type/</code> flags. Machine
+  proposals are stored in the store but are the thing being <em>evaluated</em>, not part of the dataset. A file is
+  copied to every alias <code>game_id</code> of its clip; the dataset keeps one item per canonical clip and frame.</li>
+</ul>
+<h2 id="4-split-tiers">4. Split tiers<a class="headerlink" href="#4-split-tiers" title="Permanent link">&para;</a></h2>
+<p><code>split</code> comes from <code>footy_track.splits.split_of(match_key, clip)</code>, never from a stored column (it would
+go stale as the registers grow). See <a href="../../data/#traineval-partitioning">data.md</a>.</p>
+<table>
+<thead>
+<tr>
+<th>split</th>
+<th>meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>eval_heldout_match</code></td>
+<td>a whole match that is evaluation only (<code>match_splits.json</code>)</td>
+</tr>
+<tr>
+<td><code>eval_in_match</code></td>
+<td>one clip in five of a train match (<code>clip_splits.json</code>, <code>sha1(clip) % 5 == 0</code>)</td>
+</tr>
+<tr>
+<td><code>train</code></td>
+<td>everything else</td>
+</tr>
+</tbody>
+</table>
+<p>Assignments are sticky and the eval set only grows. <code>build</code> raises if a needed register is missing (fail
+closed); <code>FOOTY_CLIP_SPLITS_PREVIEW=1</code> lets <code>build</code> (read-only) show what the hash rule would give while
+<code>clip_splits.json</code> does not exist yet. <code>bump</code> refuses to write from missing registers unless
+<code>--allow-preview</code> (never do that for a version anyone will compare against).</p>
+<h2 id="5-versioning-rules">5. Versioning rules<a class="headerlink" href="#5-versioning-rules" title="Permanent link">&para;</a></h2>
+<ul>
+<li>A dataset's version is bumped <strong>only when its content hash changes</strong>; <code>bump</code> is idempotent and safe to run
+  nightly.</li>
+<li>Datasets version independently: new broadcast labels do not bump <code>tracking</code>.</li>
+<li>Versions are integers starting at 1, parent = previous version. Snapshots are never edited or removed.</li>
+<li>The content hash covers: item ids, splits, match, clip, game id, frame, label kind, tier and the label
+  payload. It does <strong>not</strong> cover time stamps, paths, git sha, version numbers or <code>first_version</code>. A label edit,
+  a new or removed item, or a split reassignment all change it.</li>
+<li>Bump on a meaningful change (a labelling session, a new match, a new batch of Ball Check clips), not
+  on every save; the nightly job does it for you.</li>
+<li>A tag of the producing code (<code>git_sha</code>, <code>git_dirty</code>) is in the manifest but never in the hash.</li>
+</ul>
+<h3 id="content-hash">Content hash<a class="headerlink" href="#content-hash" title="Permanent link">&para;</a></h3>
+<p>sha256 over a header line (<code>{"dataset": ..., "schema": 1}</code>) followed by one line per item sorted by
+<code>item_id</code>: <code>[item_id, split, match_key, clip, game_id, frame_index, label_kind, tier, payload]</code> as compact
+JSON. Payloads are canonical JSON: sorted keys, no spaces, floats rounded to 6 places. Loading a snapshot
+re-derives the hash and raises <code>SnapshotTampered</code> if it does not match the manifest (the next <code>bump</code> also
+refuses to build on a tampered parent). Changing <code>ITEM_SCHEMA</code> in <code>datasets/items.py</code> forces a new version.</p>
+<h2 id="6-snapshot-layout-and-immutability">6. Snapshot layout and immutability<a class="headerlink" href="#6-snapshot-layout-and-immutability" title="Permanent link">&para;</a></h2>
+<p>Root: <code>/mnt/storage/footy_data</code> (env <code>FOOTY_DATASETS_ROOT</code>, then <code>FOOTY_DATA</code>; <code>--root</code>).</p>
+<div class="highlight"><pre><span></span><code>datasets/
+  tracking/v1/items.parquet  manifest.json
+  tracking/v2/...
+  broadcast/v1/...
+  calibration/v1/...
+</code></pre></div>
+<p><code>items.parquet</code> columns: <code>item_id, dataset, split, match_key, clip, game_id, frame_index, label_kind,
+tier, payload, item_hash, first_version</code>. Snapshots are written to a temp directory, made read-only and
+renamed into place; an existing <code>vN</code> is never overwritten (<code>SnapshotExists</code>). Writes need the store's write
+lock. Every version is also indexed in the store's <code>dataset_version</code> table; the files are authoritative and
+<code>bump</code> re-syncs the table from them.</p>
+<h2 id="7-manifest">7. Manifest<a class="headerlink" href="#7-manifest" title="Permanent link">&para;</a></h2>
+<p><code>manifest.json</code> per version:</p>
+<table>
+<thead>
+<tr>
+<th>field</th>
+<th>meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>dataset</code>, <code>version</code>, <code>created_at</code>, <code>note</code></td>
+<td>identity</td>
+</tr>
+<tr>
+<td><code>content_hash</code>, <code>item_schema</code></td>
+<td>see section 5</td>
+</tr>
+<tr>
+<td><code>parent_version</code>, <code>parent_content_hash</code></td>
+<td><code>null</code> for v1</td>
+</tr>
+<tr>
+<td><code>counts</code></td>
+<td><code>n_items</code>; <code>by_split</code>; <code>by_split_kind</code> (split x label kind); <code>by_split_tier</code>; <code>clips_by_split</code></td>
+</tr>
+<tr>
+<td><code>split_registers</code></td>
+<td>sha256 of <code>match_splits.json</code> and <code>clip_splits.json</code>, their paths, the in-match rule, <code>preview</code> (true if a register file was missing)</td>
+</tr>
+<tr>
+<td><code>n_items_unregistered_match</code></td>
+<td>items whose match is in neither register (they are treated as train-pool)</td>
+</tr>
+<tr>
+<td><code>git_sha</code>, <code>git_dirty</code></td>
+<td>code that built it</td>
+</tr>
+<tr>
+<td><code>diff_vs_parent</code></td>
+<td>items <code>added</code> / <code>removed</code> / <code>changed</code> in total and <code>*_by_split</code>; "changed" = same item id, different content</td>
+</tr>
+</tbody>
+</table>
+<p><code>python -m footy_track.datasets diff &lt;dataset&gt; A B</code> lists the added / removed / changed item ids.</p>
+<h2 id="8-eval-results">8. Eval results<a class="headerlink" href="#8-eval-results" title="Permanent link">&para;</a></h2>
+<p>Table <code>eval_result</code>, append-only, in the feature store:</p>
+<table>
+<thead>
+<tr>
+<th>column</th>
+<th>meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>task</code></td>
+<td><code>tracking</code> / <code>broadcast</code> / <code>calibration</code></td>
+</tr>
+<tr>
+<td><code>dataset</code>, <code>dataset_version</code></td>
+<td>the snapshot the number was measured on</td>
+</tr>
+<tr>
+<td><code>split</code></td>
+<td><code>train</code>, <code>eval_heldout_match</code>, <code>eval_in_match</code>, <code>eval_all</code> (both eval tiers)</td>
+</tr>
+<tr>
+<td><code>cohort_version</code></td>
+<td>NULL = the full current split; N = only items with <code>first_version &lt;= N</code></td>
+</tr>
+<tr>
+<td><code>model_name</code>, <code>model_version</code></td>
+<td>weights sha256, Roboflow version, or a proposals run id</td>
+</tr>
+<tr>
+<td><code>metric</code>, <code>value</code>, <code>n_items</code></td>
+<td>the number and how many items it covers</td>
+</tr>
+<tr>
+<td><code>run_at</code>, <code>code_sha</code></td>
+<td>when and with which code</td>
+</tr>
+<tr>
+<td><code>contaminated</code>, <code>contamination_note</code></td>
+<td>see section 10 (NULL = not checked)</td>
+</tr>
+</tbody>
+</table>
+<p>Results are tied to the version they were measured on and are never joined to "current labels". A re-run
+appends; the view <code>eval_result_latest</code> is the newest run per (task, dataset, version, split, cohort, model,
+model_version, metric). <code>record_results(...)</code> / <code>list_results(...)</code> in <code>footy_track.datasets.results</code>;
+CLI: <code>python -m footy_track.datasets results list|record</code>.</p>
+<h3 id="cohorts-reading-a-growing-eval-set">Cohorts: reading a growing eval set<a class="headerlink" href="#cohorts-reading-a-growing-eval-set" title="Permanent link">&para;</a></h3>
+<p>Because the eval set only grows, <code>eval(vN)</code> contains <code>eval(vN-1)</code>, and a model scored on v5 is not
+comparable to one scored on v2 on the full set. Each model run therefore records <strong>two</strong> lines per
+metric and eval split:</p>
+<ul>
+<li><strong>full current</strong> (<code>cohort_version</code> NULL): everything in the split at that version. Best estimate today.</li>
+<li><strong>fixed cohort</strong> (<code>cohort_version = k</code>): only items that were already in the dataset at version k.
+  Apples to apples across every model scored on version &gt;= k. Pick k = the version of the oldest model you
+  still compare against.</li>
+</ul>
+<p><code>evaluate_and_record(..., cohorts=[1])</code> writes both. A progress chart plots the cohort line for trend
+and the full line for the current truth.</p>
+<h2 id="9-eval-adapters">9. Eval adapters<a class="headerlink" href="#9-eval-adapters" title="Permanent link">&para;</a></h2>
+<p><code>footy_track/datasets/eval_adapters.py</code>: <code>adapter.evaluate(model, dataset_version, split, cohort) -&gt;
+EvalOutput(metrics, n_items)</code>; <code>evaluate_and_record(...)</code> runs one over every split and cohort, attaches
+contamination flags and records the rows.</p>
+<table>
+<thead>
+<tr>
+<th>adapter</th>
+<th>task</th>
+<th>status</th>
+<th>metrics</th>
+<th>model</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>CalibrationAdapter</code></td>
+<td>calibration</td>
+<td><strong>works, CPU</strong></td>
+<td><code>success_at_5px</code>, <code>success_at_10px</code>, <code>mean_/median_reprojection_px</code>, <code>mean_reprojection_m</code>, <code>failed_rate</code>, <code>keypoint_agreement</code>, <code>coverage</code></td>
+<td><code>ProposalRunModel(run_id, gt_dirs)</code>: a stored proposals run in <code>calibration_proposals/</code> (reuses <code>prelabel.evaluate.eval_frame</code>); any object with <code>.proposal(item)</code> works</td>
+</tr>
+<tr>
+<td><code>BroadcastAdapter</code></td>
+<td>broadcast</td>
+<td><strong>works, CPU</strong></td>
+<td><code>accuracy</code>, <code>precision_yes</code>, <code>recall_yes</code>, <code>f1_yes</code>, <code>accuracy_random</code>, <code>n_yes</code>, <code>n_no</code></td>
+<td><code>StoredPredictionModel</code>: the classifier's call recorded with each frame when it was queued for review (the number the review page shows). Any object with <code>.says_yes(item)</code> works</td>
+</tr>
+<tr>
+<td><code>BallTrackerAdapter</code></td>
+<td>tracking</td>
+<td><strong>works on CPU given a candidate cache</strong></td>
+<td><code>ball_precision_/recall_/wrong_per_prediction_</code> at 10 px and 25 px, <code>clips_scored</code>, <code>clips_without_cache</code></td>
+<td><code>BallTrackerReplay(kind, cache_dir, ...)</code>: replays <code>online</code>/<code>bidirectional</code>/<code>viterbi</code> over <code>&lt;clip&gt;.jsonl</code> caches from <code>ball_tracking_eval cache</code> (reuses <code>ball_eval.detection_replay</code>)</td>
+</tr>
+<tr>
+<td><code>DetectorAdapter</code></td>
+<td>tracking</td>
+<td><strong>stub</strong> (<code>NotImplementedError</code>)</td>
+<td>detector P / R / mAP50</td>
+<td>needs GPU inference over every eval frame</td>
+</tr>
+</tbody>
+</table>
+<p>TODO (Prefect): the detector eval, and the candidate-cache step the ball-tracker replay depends on, run
+on the <code>gpu</code> work pool (desktop RTX 2070); they should call <code>record_results</code> when done. The calibration,
+broadcast and tracker-replay evals are CPU and belong on the <code>cpu</code> pool.</p>
+<h2 id="10-contamination-flags">10. Contamination flags<a class="headerlink" href="#10-contamination-flags" title="Permanent link">&para;</a></h2>
+<p>A number is only an honest estimate if the model did not train on the items it is scored on.
+<code>contamination_flags(TrainingData, dataset_version)</code> returns a flag per result split:</p>
+<ul>
+<li><strong>Roboflow / YOLO export dir</strong> (<code>TrainingData(roboflow_dir=...)</code>): <code>splits.contamination</code> maps each
+  training image name to a match / clip and counts those that belong to a held-out match or an eval clip.
+  Images that name a match but not a clip (frames of a full-match video) cannot be placed, and the note says
+  so, so "not contaminated" can still hide in-match overlap for those models.</li>
+<li><strong>A dataset version</strong> (<code>TrainingData(dataset=, version=)</code>): eval items that share a clip (in-match) or a
+  match (held-out) with that version's train items. Sticky assignment makes this empty unless a register was
+  edited.</li>
+<li><strong>Not declared</strong>: every flag is NULL (unchecked), never an implicit "clean".</li>
+</ul>
+<p><code>contaminated</code> is true / false / NULL; the note says how many and which clips. <code>results record
+--train-roboflow-dir DIR</code> or <code>--train-dataset D --train-version N</code> sets it on the CLI. Known cases on
+2026-11-17 (preview split): the Roboflow v11 detector has 212 of 1,035 train images in an eval clip
+(<code>bournemouth_1st_seg070</code>); the broadcast classifier's Roboflow 9 / 10 train sets hold about 13%
+Nottingham Forest (held-out) frames. Such results should be recorded with <code>contaminated = true</code> until the
+models are retrained on authority-based exports.</p>
+<h2 id="11-planned-not-built-yet">11. Planned, not built yet<a class="headerlink" href="#11-planned-not-built-yet" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>Nightly Prefect flow</strong>: <code>ingest_all</code>, then <code>bump all</code>, then queue evals for any new version (GPU on the
+  desktop, the rest on the mini). Its job is to make the CLI above run unattended.</li>
+<li><strong><code>/progress</code> page</strong> on the labelling site (:8011): per task, the metric over dataset versions and models,
+  full and cohort lines, contaminated points marked, built from <code>eval_result_latest</code> and the manifests.</li>
+<li>Not wired yet: detector P / R / mAP50; more broadcast sources than the review (e.g. the
+  <code>frame_type</code> not-broadcast flags); Roboflow imports into <code>tracking</code>; a per-clip <code>eval_result</code> for paired bootstrap.</li>
+</ul>
+<h2 id="12-how-to">12. How to<a class="headerlink" href="#12-how-to" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><span class="c1"># 1. ingest every label source (idempotent; --dry-run parses into memory only)</span>
+python<span class="w"> </span>-m<span class="w"> </span>footy_track.feature_store.ingest_all<span class="w">                </span><span class="c1"># store: $FOOTY_FEATURE_STORE or /mnt/storage/footy_data/feature_store/feature_store.duckdb</span>
+
+<span class="c1"># 2. what would change?  (read-only)</span>
+python<span class="w"> </span>-m<span class="w"> </span>footy_track.datasets<span class="w"> </span>build<span class="w"> </span>tracking
+<span class="c1"># 3. write the next version if (and only if) the content changed</span>
+python<span class="w"> </span>-m<span class="w"> </span>footy_track.datasets<span class="w"> </span>bump<span class="w"> </span>all<span class="w"> </span>--note<span class="w"> </span><span class="s2">&quot;after Nottingham Forest ball checks&quot;</span>
+python<span class="w"> </span>-m<span class="w"> </span>footy_track.datasets<span class="w"> </span>list
+python<span class="w"> </span>-m<span class="w"> </span>footy_track.datasets<span class="w"> </span>show<span class="w"> </span>tracking<span class="w"> </span>v2
+python<span class="w"> </span>-m<span class="w"> </span>footy_track.datasets<span class="w"> </span>diff<span class="w"> </span>tracking<span class="w"> </span>v1<span class="w"> </span>v2
+
+<span class="c1"># 4. record a result (contamination from the model&#39;s training export)</span>
+python<span class="w"> </span>-m<span class="w"> </span>footy_track.datasets<span class="w"> </span>results<span class="w"> </span>record<span class="w"> </span>--task<span class="w"> </span>broadcast<span class="w"> </span>--dataset<span class="w"> </span>broadcast<span class="w"> </span>--dataset-version<span class="w"> </span><span class="m">2</span><span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--split<span class="w"> </span>eval_heldout_match<span class="w"> </span>--model<span class="w"> </span>broadcast_classifier<span class="w"> </span>--model-version<span class="w"> </span>&lt;sha256&gt;<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--metric<span class="w"> </span>accuracy<span class="w"> </span>--value<span class="w"> </span><span class="m">0</span>.91<span class="w"> </span>--n-items<span class="w"> </span><span class="m">120</span><span class="w"> </span>--train-roboflow-dir<span class="w"> </span>/path/to/roboflow_dataset_10
+python<span class="w"> </span>-m<span class="w"> </span>footy_track.datasets<span class="w"> </span>results<span class="w"> </span>list<span class="w"> </span>--dataset<span class="w"> </span>broadcast
+</code></pre></div>
+<p>In Python: <code>from footy_track.datasets import eval_adapters as ea</code>;
+<code>ea.evaluate_and_record(ea.BroadcastAdapter(), ea.StoredPredictionModel(), load_version("broadcast"), db,
+cohorts=[1])</code>.</p>
+<p>Ingest takes an exclusive lock on <code>&lt;store&gt;.lock</code> (single writer; a second writer fails fast with
+<code>StoreLocked</code>). <code>bump</code> and <code>results record</code> take it too; <code>build</code> and <code>results list</code> take the shared lock.
+Only the <code>broadcast_label</code>, <code>gt_frame</code> and the eval / version tables are new; the other tables are the
+existing ones (<code>feature_store.md</code>).</p>
+<p>Environment on the Mac mini: duckdb 1.3.x to 1.5.3 only (2.0 crashes without AVX2); keep CPU use light (one
+heavy process at a time). A full ingest of the real labels takes a couple of minutes.</p>
+<p>Ingest notes: GT sidecars and calibration files are read from every <code>marks_dir</code> of the labeller's
+<code>labeller_datasets.json</code> (the calib set, the held-out Nottingham Forest sets, the broadcast-review set), so
+backup copies (<code>ball_gt_marks.bak-*</code>, <code>ball_gt_marks_MERGED</code>) are never read. Ball Check logs of one clip in
+several dirs are merged by timestamp. Deleting a <em>file</em> is not propagated (the labeller truncates, it does not
+delete); emptying a file is.</p>
+<h2 id="13-why-not-lancedb">13. Why not LanceDB<a class="headerlink" href="#13-why-not-lancedb" title="Permanent link">&para;</a></h2>
+<p>A LanceDB feature store was designed and spiked first (a native table version per write, tags, time
+travel, <code>merge_insert</code> upserts). It was rejected because <strong><code>import lancedb</code> / <code>import lance</code> abort with
+SIGILL on the Mac mini</strong> (i7-2635QM: AVX, no AVX2), and the mini hosts Prefect, the labeller and
+<code>/mnt/storage</code>. Tested and all crash: lancedb 0.15.0, 0.22.0, 0.30.0, 0.41.0 and pylance 0.19.1. The same
+install works on desktop-ubuntu (Ryzen 5 5600G). DuckDB 1.3 to 1.5.3 works on the mini (2.0 does not).</p>
+<p>DuckDB plus content-hashed Parquet snapshots delivers the three goals that matter (independent versions,
+tracked results, a growing eval set) on the hardware that exists. <strong>Revisit if the host changes</strong> (a CPU with
+AVX2, or the store moving to the desktop): Lance would add native time travel and cheaper incremental
+versions, nothing else we need.</p>
+<h3 id="appendix-lance-facts-worth-keeping-from-the-rejected-design">Appendix: Lance facts worth keeping (from the rejected design)<a class="headerlink" href="#appendix-lance-facts-worth-keeping-from-the-rejected-design" title="Permanent link">&para;</a></h3>
+<p>Measured with lancedb 0.41.0 / duckdb 1.5.3 on desktop-ubuntu, for whoever revisits it:</p>
+<ul>
+<li>Every write is a new table version; <code>checkout</code>, <code>restore</code> and per-table <strong>tags</strong> exist, but tags are per
+  table, so a multi-table dataset version = the same tag on each table plus a manifest row.</li>
+<li><code>optimize(cleanup_older_than=...)</code> prunes untagged versions and keeps tagged ones; never run it while a
+  reader or writer is active.</li>
+<li><code>merge_insert</code> is the upsert. A no-op merge <strong>still creates a version</strong>; unconditional
+  <code>when_matched_update_all</code> rewrites unchanged rows; <strong>four concurrent threads inserting the same new key
+  produced four duplicate rows</strong> (there is no primary key), so every writer needs a file lock plus a
+  <code>row_hash</code> pre-diff to avoid no-op versions.</li>
+<li>Commit atomicity relies on object-store put-if-not-exists; the spec says nothing about local disk or NFS, so
+  multi-host writers over NFS are untested.</li>
+<li>The DuckDB <code>lance</code> extension returned 404 for duckdb 1.5.3; the working route is
+  <code>con.register(name, table.to_arrow())</code>.</li>
+<li>The design's useful ideas live on here: the dataset manifest, the <code>eval_result</code> schema with cohorts, a
+  <code>broadcast_label</code> table, <code>first_version</code>, and the consumer map below.</li>
+</ul>
+<p>Consumer / producer map (writers all go through <code>FeatureStore</code>; readers of JSON sidecars are unaffected):
+<code>ingest_gt</code> (per-clip delete then upsert), <code>ingest_calibration</code>, <code>ball_checks</code> (per-row <code>UPDATE reviewed</code>,
+the riskiest to port), <code>importers</code>, <code>ingest</code>/<code>detect_objects</code>, <code>difficulty</code> (uses the private <code>_conn</code>),
+<code>export_training_dataset</code> (reads via <code>query</code>; its per-row <code>UPDATE dataset_tag</code> is replaced by recording an
+export as a dataset version), <code>claude_verify_v2</code> (JSONL only). <code>ball_eval</code>, <code>labeller/*</code> and
+<code>broadcast_review</code> read sidecars directly.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      <script id="__config" type="application/json">{"base": "../..", "features": [], "search": "../../assets/javascripts/workers/search.973d3a69.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.f55a23d4.min.js"></script>
+      
+    
+  </body>
+</html>

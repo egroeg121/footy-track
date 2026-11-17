@@ -383,6 +383,15 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#versioned-datasets-and-results" class="md-nav__link">
+    <span class="md-ellipsis">
+      Versioned datasets and results
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#feature-store" class="md-nav__link">
     <span class="md-ellipsis">
       Feature store
@@ -611,6 +620,28 @@
   
   
   
+    <li class="md-nav__item">
+      <a href="../design/datasets_and_progress/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Versioned datasets and progress
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
     
     
     
@@ -620,10 +651,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_10" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_11" >
         
           
-          <label class="md-nav__link" for="__nav_10" id="__nav_10_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_11" id="__nav_11_label" tabindex="0">
             
   
   
@@ -636,8 +667,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_10_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_10">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_11_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_11">
             <span class="md-nav__icon md-icon"></span>
             Design
           </label>
@@ -872,10 +903,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_11" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_12" >
         
           
-          <label class="md-nav__link" for="__nav_11" id="__nav_11_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_12" id="__nav_12_label" tabindex="0">
             
   
   
@@ -888,8 +919,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_11_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_11">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_12_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_12">
             <span class="md-nav__icon md-icon"></span>
             Development
           </label>
@@ -1083,6 +1114,15 @@
   <a href="#traineval-partitioning" class="md-nav__link">
     <span class="md-ellipsis">
       Train/eval partitioning
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#versioned-datasets-and-results" class="md-nav__link">
+    <span class="md-ellipsis">
+      Versioned datasets and results
     </span>
   </a>
   
@@ -1553,6 +1593,8 @@ python<span class="w"> </span>-m<span class="w"> </span>footy_track.splits<span 
 </tbody>
 </table>
 <p>The hash rule is blind to how much data a clip carries. <code>bournemouth_1st_seg070</code> is the second-largest GT clip (3,840 rows) and the hash puts it in the eval tier, which is why one clip accounts for the whole v11 figure. If an eval tier that large for one clip is not wanted, pin it with a manual <code>train</code> entry in <code>clip_splits.json</code> before applying; the register keeps manual entries.</p>
+<h2 id="versioned-datasets-and-results">Versioned datasets and results<a class="headerlink" href="#versioned-datasets-and-results" title="Permanent link">&para;</a></h2>
+<p>The labels are also frozen into three independently versioned datasets (<code>tracking</code>, <code>broadcast</code>, <code>calibration</code>), each with train and eval parts from the split authority above. A version is a content-hashed, read-only Parquet snapshot written only when the labels change, and model metrics are stored per dataset version, split and cohort (<code>eval_result</code>). One command ingests every label source: <code>python -m footy_track.feature_store.ingest_all</code>; <code>python -m footy_track.datasets bump all</code> writes new versions. See <a href="../design/datasets_and_progress/">Versioned datasets and progress tracking</a> for the item definitions, manifest, cohorts and contamination flags.</p>
 <h2 id="feature-store">Feature store<a class="headerlink" href="#feature-store" title="Permanent link">&para;</a></h2>
 <p>DuckDB (open with <code>read_only=True</code>; see <a href="../development/#environment-notes">Environment notes</a> for the version pin). The keys, the diagram and the list of what is not in the store are in <a href="../design/feature_store/#71-keys-as-implemented-and-what-is-not-in-the-store">Feature store design, section 7.1</a>. The state of the newest copy:</p>
 <ul>
