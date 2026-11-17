@@ -35,6 +35,11 @@ def _isolated_labeller_datasets(tmp_path, monkeypatch):
     """
     monkeypatch.setenv("FOOTY_LABELLER_DATASETS", str(tmp_path / "no-such-registry.json"))
     monkeypatch.setenv("FOOTY_LABELLING_JOBS_DIR", str(tmp_path / "labelling_jobs"))
+    monkeypatch.setenv(
+        "FOOTY_BALLCHECK_RENDERS_DIR", str(tmp_path / "ballcheck_renders")
+    )
+    monkeypatch.setenv("FOOTY_BALLCHECK_MIN_FREE_GB", "0")
+    monkeypatch.setenv("FOOTY_JOBS_GC_INTERVAL_S", "0")
     for var in _LABELLER_ENV:
         monkeypatch.delenv(var, raising=False)
 
