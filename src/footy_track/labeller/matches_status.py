@@ -21,6 +21,7 @@ Signals per stage (see ``scan`` below):
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import re
@@ -112,6 +113,9 @@ def _count(names: list[str], prefixes: list[str], suffix: str) -> int:
 
 
 # ------------------------------------------------------------------ Prefect (best effort)
+SEGMENT_FLOW = "match-segment"
+_STARTED_STATES = ["RUNNING", "COMPLETED", "FAILED", "CRASHED", "CANCELLED"]
+_QUEUED_STATES = ("SCHEDULED", "PENDING")  # SCHEDULED includes the Late state
 _api_cache: dict = {"t": 0.0, "runs": []}
 
 
@@ -129,48 +133,64 @@ def _auth_header() -> dict[str, str]:
     return {"Authorization": "Basic " + b64encode(s.encode()).decode()} if s else {}
 
 
+def _fetch_runs(
+    flow_names: list[str], states: list[str], sort: str, limit: int
+) -> list[dict]:
+    body = json.dumps(
+        {
+            "flows": {"name": {"any_": flow_names}},
+            "flow_runs": {"state": {"type": {"any_": states}}},
+            "sort": sort,
+            "limit": limit,
+        }
+    ).encode()
+    req = urllib.request.Request(
+        prefect_api() + "/flow_runs/filter",
+        data=body,
+        headers={"content-type": "application/json", **_auth_header()},
+    )
+    with urllib.request.urlopen(req, timeout=3) as r:
+        return [
+            {
+                "id": x["id"],
+                "state": (x.get("state") or {}).get("type", ""),
+                "state_name": (x.get("state") or {}).get("name", ""),
+                "params": x.get("parameters") or {},
+            }
+            for x in json.load(r)
+        ]
+
+
 def _flow_runs() -> list[dict]:
-    """Recent match-download / footy-infer-pipeline runs; cached, [] on any failure."""
+    """Recent runs; cached, [] on any failure.
+
+    ``match-download`` / ``footy-infer-pipeline`` runs (started states only) come first, then
+    ``match-segment`` runs in every state incl. queued ones (SCHEDULED/PENDING/LATE), newest
+    expected-start first, tagged ``flow="match-segment"``. Queued runs have no start time, so
+    the segment query sorts by expected start and is separate from the 200-run download query.
+    """
     if time.time() - _api_cache["t"] < CACHE_TTL_S:
         return _api_cache["runs"]
     runs: list[dict] = []
     try:
-        body = json.dumps(
-            {
-                "flows": {"name": {"any_": ["match-download", "footy-infer-pipeline"]}},
-                "flow_runs": {
-                    "state": {
-                        "type": {
-                            "any_": [
-                                "RUNNING",
-                                "COMPLETED",
-                                "FAILED",
-                                "CRASHED",
-                                "CANCELLED",
-                            ]
-                        }
-                    }
-                },
-                "sort": "START_TIME_DESC",
-                "limit": 200,
-            }
-        ).encode()
-        req = urllib.request.Request(
-            prefect_api() + "/flow_runs/filter",
-            data=body,
-            headers={"content-type": "application/json", **_auth_header()},
+        runs = _fetch_runs(
+            ["match-download", "footy-infer-pipeline"],
+            ["RUNNING", "COMPLETED", "FAILED", "CRASHED", "CANCELLED"],
+            "START_TIME_DESC",
+            200,
         )
-        with urllib.request.urlopen(req, timeout=3) as r:
-            runs = [
-                {
-                    "id": x["id"],
-                    "state": (x.get("state") or {}).get("type", ""),
-                    "params": x.get("parameters") or {},
-                }
-                for x in json.load(r)
-            ]
     except Exception:  # noqa: BLE001 - links are optional
         runs = []
+    with contextlib.suppress(Exception):  # links are optional
+        runs += [
+            {**r, "flow": SEGMENT_FLOW}
+            for r in _fetch_runs(
+                [SEGMENT_FLOW],
+                ["SCHEDULED", "PENDING", *_STARTED_STATES],
+                "EXPECTED_START_TIME_DESC",
+                300,
+            )
+        ]
     _api_cache.update(t=time.time(), runs=runs)
     return runs
 
@@ -185,10 +205,26 @@ def _find_run(runs: list[dict], **want) -> str | None:
     """Latest run (list is newest first) whose parameters equal all non-empty ``want`` values;
     a COMPLETED/RUNNING run beats a failed one."""
     hits = [
-        r for r in runs if any(v and r["params"].get(k) == v for k, v in want.items())
+        r
+        for r in runs
+        if r.get("flow") != SEGMENT_FLOW  # segment runs have their own lookup
+        and any(v and r["params"].get(k) == v for k, v in want.items())
     ]
     good = [r for r in hits if r["state"] in ("COMPLETED", "RUNNING")]
     return (good or hits or [{}])[0].get("id")
+
+
+def _segment_run(runs: list[dict], key: str, have_segments: bool) -> dict | None:
+    """Newest match-segment run for ``key`` (list is newest first). Once segments exist the run
+    that completed them is the interesting one, so a COMPLETED run beats newer ones."""
+    mine = [
+        r
+        for r in runs
+        if r.get("flow") == SEGMENT_FLOW and r["params"].get("match") == key
+    ]
+    if have_segments:
+        mine = [r for r in mine if r["state"] == "COMPLETED"] or mine
+    return mine[0] if mine else None
 
 
 # ------------------------------------------------------------------ downloads
@@ -449,7 +485,7 @@ def _progress(state_done: int, total: int | None, noun: str) -> dict:
     )
 
 
-def _fill_downstream(
+def _fill_downstream(  # noqa: PLR0912, PLR0915
     rows: list[dict], root: Path, store: list[dict], runs: list[dict]
 ) -> None:
     clips = _names(root / "clips")
@@ -502,6 +538,27 @@ def _fill_downstream(
             )
         else:
             seg = _stage("none", "")
+        srun = _segment_run(runs, r["key"], bool(n_seg))
+        if srun and (n_seg or seg["state"] == "none"):
+            seg["run_id"] = srun["id"]
+            if not n_seg:
+                if srun["state"] in _QUEUED_STATES:
+                    late = srun.get("state_name") == "Late"
+                    seg = _stage(
+                        "queued",
+                        "queued (late: no free worker)" if late else "queued",
+                        run_id=srun["id"],
+                    )
+                elif srun["state"] == "RUNNING":
+                    seg = _stage("running", "segmenting", run_id=srun["id"])
+                elif srun["state"] in ("FAILED", "CRASHED"):
+                    seg = _stage(
+                        "failed",
+                        f"segment run {srun['state'].lower()}",
+                        run_id=srun["id"],
+                    )
+                else:  # cancelled / completed without output: keep "none" but still link it
+                    seg["run_id"] = srun["id"]
         st["segments"] = seg
         n_total = total or n_seg or None
         # detection
