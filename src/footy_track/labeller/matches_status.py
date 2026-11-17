@@ -546,7 +546,7 @@ def _fill_downstream(  # noqa: PLR0912, PLR0915
                     late = srun.get("state_name") == "Late"
                     seg = _stage(
                         "queued",
-                        "queued (late: no free worker)" if late else "queued",
+                        "queued (waiting for GPU)" if late else "queued",
                         run_id=srun["id"],
                     )
                 elif srun["state"] == "RUNNING":
