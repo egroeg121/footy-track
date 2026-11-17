@@ -213,11 +213,6 @@ def test_ball_tracker_adapter_replays_cached_detections(versions, tmp_path):
     assert out.metrics["clips_without_cache"] == 1 and out.n_items == 0
 
 
-def test_detector_adapter_is_a_stub(versions):
-    with pytest.raises(NotImplementedError, match="gpu"):
-        ea.DetectorAdapter().evaluate(object(), dv(versions, "tracking"), "eval_all")
-
-
 def test_evaluate_and_record_writes_full_and_cohort_rows_with_flags(versions, tmp_path):
     # v2: a new eval frame in the held-out match
     versions.sidecar("hmatch_seg001", [box(0, "in_play_ball"), box(0, "player", x=0.2), box(1, "in_play_ball"),

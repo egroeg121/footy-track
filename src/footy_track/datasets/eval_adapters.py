@@ -9,7 +9,8 @@ adapter        runs on                                 status
 calibration    CPU (proposal files vs GT correspond.)  working: success@5px / @10px, reprojection
 broadcast      CPU (stored classifier calls)           working: accuracy / precision / recall / F1
 ball tracker   CPU (replays cached detections)         working given a candidate cache
-detector       GPU (RT-DETR / YOLO inference)          stub: NotImplementedError (Prefect gpu pool)
+detector       CPU (scores stored GPU detections)      working: P / R / AP50 per class; the GPU pass is
+                                                       datasets/detector_run.py (also builds the cache)
 =============  =====================================  =========================================
 
 :func:`evaluate_and_record` runs one adapter over every requested split (and fixed cohort),
@@ -234,23 +235,22 @@ class BroadcastAdapter:
 # tracking
 # --------------------------------------------------------------------------------------------
 class DetectorAdapter:
-    """Detector precision / recall / mAP50 on the tracking items' boxes.
+    """Detector precision / recall / AP on the tracking items' boxes, from stored detections (CPU).
 
-    Needs the detector weights run over the frames of every eval item: GPU work. Not wired:
-    TODO(prefect): a flow on the ``gpu`` work pool (desktop RTX 2070) that loads the weights,
-    runs inference over ``dataset_version.select(split)`` frames, computes P / R / mAP50 against
-    the item boxes (tiers 1-2, ``rejected`` boxes excluded) and calls
-    ``datasets results record`` (or :func:`footy_track.datasets.results.record_results`).
+    ``model`` is a :class:`footy_track.datasets.detector_eval.DetectionStore`: the detector's output
+    over the eval clips' frames, made once on the GPU by :mod:`footy_track.datasets.detector_run`
+    (the same pass writes the ball-tracker candidate cache). Per class (player / referee / ball),
+    matching rules, ground-truth tiers and metric names: see :mod:`footy_track.datasets.detector_eval`.
     """
 
     task = "tracking"
     dataset = "tracking"
 
     def evaluate(self, model: Any, dataset_version: DatasetVersion, split: str, cohort: int | None = None) -> EvalOutput:
-        raise NotImplementedError(
-            "detector eval runs inference over every eval frame (GPU); run it as a Prefect flow on "
-            "the gpu pool and record the metrics with `python -m footy_track.datasets results record`"
-        )
+        from footy_track.datasets.detector_eval import score_items  # noqa: PLC0415
+
+        s = score_items(_items(dataset_version, split, cohort), model)
+        return EvalOutput(s.metrics, s.n_items)
 
 
 @dataclass
