@@ -1606,7 +1606,7 @@ Prefect flow `broadcast-review` (jobs repo, `footy_broadcast_review.py`). Item:
 `{clip: <match key>, frame, ts_s, p_yes, pred, reason: edge_mid|edge_boundary|random, dist_to_transition_s}`.
 Frames are `<dataset clips_dir>/<match>/f<frame>.jpg`; verdicts (`yes`/`no`/`unsure`) are written to
 `<marks_dir>/broadcast_review/<match>.json` and counted as progress. Page: `/broadcast_review?dataset=..&job=<id>`
-(Y / N / U keys; the model's call is shown only after answering). Training: `python -m
+(Y / N / U keys; the model's call and `p_yes` are shown while answering). Training: `python -m
 footy_track.scripts.export_broadcast_review --dataset broadcast_review --out <dir>` writes `train/{Yes,No}/`
 for `scripts/train_classifier.py --local-dataset` (`unsure` skipped; `--valid-matches` keeps a match whole in `valid/`).
 

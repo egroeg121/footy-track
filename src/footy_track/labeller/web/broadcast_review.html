@@ -60,7 +60,8 @@ function render() {
   const f = job.frames[i];
   if (!f) { v.innerHTML = '<div class="done">Empty job.</div>'; return; }
   const url = `/broadcast_review/frame/${encodeURIComponent(f.clip)}/${f.frame}.jpg?${dsq}`;
-  const ans = f.verdict ? `you: <b>${f.verdict}</b> &middot; model: ${f.pred ?? "?"} (p_yes ${f.p_yes?.toFixed?.(2) ?? "?"}, ${f.reason ?? ""})` : "";
+  const model = `model: <b>${f.pred ?? "?"}</b> (p_yes ${f.p_yes?.toFixed?.(2) ?? "?"}, ${f.reason ?? ""})`;
+  const ans = f.verdict ? `you: <b>${f.verdict}</b> &middot; ${model}` : model;
   v.innerHTML = `
     <img src="${url}" alt="frame">
     <div class="q">Is this a main-camera broadcast view of play? &middot; #${i + 1} &middot; match time ${fmt(f.ts_s)}</div>
