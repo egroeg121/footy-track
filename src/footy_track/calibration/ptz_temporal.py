@@ -486,6 +486,34 @@ def compute_motion(cache: ClipCache, start: int, end: int, f_nom: Array, k1: flo
     return pairs, stats
 
 
+def reject_weak_pairs(pairs: list[Pair], frac: float = 0.3, ang_mult: float = 3.0, ang_floor_deg: float = 0.3,
+                      neighbours: int = 5) -> tuple[list[Pair], list[int]]:
+    """Weak-pair guard. A gap-1 pair is rejected (``ok=False``, i.e. a chain break, like a failed pair) when BOTH hold:
+    (i) it has fewer than ``frac`` x the median inlier count of the clip's ok gap-1 pairs, and (ii) its rotation angle is
+    large compared with its neighbours (``neighbours`` ok non-weak pairs on each side): > ``ang_mult`` x their median +
+    ``ang_floor_deg``. Few inliers alone (a blurred but smooth pan) or a big angle alone (a fast, well-tracked pan) is kept;
+    together they are the signature of a bad RANSAC fit (Bournemouth seg060, frames 563-564: 131 inliers against ~850
+    and a 6.6 deg pan step that the solve accepted). Returns (new pair list, rejected ``i`` of gap-1 pairs); input untouched.
+    """
+    g1 = {p.i: p for p in pairs if p.j - p.i == 1 and p.ok}
+    if len(g1) < 10:
+        return pairs, []
+    thr = frac * float(np.median([p.n_in for p in g1.values()]))
+    ang = {i: float(np.linalg.norm(p.w)) for i, p in g1.items()}
+    solid = {i for i, p in g1.items() if p.n_in >= thr}
+    floor = np.radians(ang_floor_deg)
+    weak = set()
+    for i, p in g1.items():
+        if p.n_in >= thr:
+            continue
+        nb = [ang[k] for k in range(i - neighbours, i + neighbours + 1) if k != i and k in solid]
+        if ang[i] > ang_mult * (float(np.median(nb)) if nb else 0.0) + floor:
+            weak.add(i)
+    if not weak:
+        return pairs, []
+    return [replace(p, ok=False) if p.j - p.i == 1 and p.i in weak else p for p in pairs], sorted(weak)
+
+
 # --------------------------------------------------------------------------
 # 5. joint solve
 # --------------------------------------------------------------------------

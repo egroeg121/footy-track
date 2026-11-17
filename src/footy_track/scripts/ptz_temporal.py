@@ -358,6 +358,9 @@ def load_clip(clip):
     cache, shots, shot_info, anchors = prep(clip, rig)
     anchors = refit_anchors(cache, anchors, rig)
     pairs = motion(cache, shots, shot_info, anchors, rig)
+    pairs, weak = pt.reject_weak_pairs(pairs)  # chain break at a gap-1 pair with few inliers AND a jump in rotation
+    if weak:
+        log(f"weak-pair guard: rejected gap-1 pairs at frames {weak}")
     segs = segments(shot_info, pairs)
     return rig, cache, shot_info, anchors, pairs, segs
 

@@ -292,3 +292,50 @@ def test_multistart_shared_fit_converges_from_a_start_5m_off():
     assert info["starts"][info["best_start"]]["final_cost"] == min(s["final_cost"] for s in finals)
     assert np.linalg.norm(shn.C - C_TRUE) < 0.6  # from 5.7 m off (a single start ends ~2 m off)
     assert np.linalg.norm(rig0.C - C_TRUE) > 5.0
+
+
+def _chain(n=60, n_in=850, step_deg=0.1, seed=0):
+    """Gap-1 pairs of a slow pan: ~``n_in`` inliers, rotation ~``step_deg`` each (a small jitter on both)."""
+    rng = np.random.default_rng(seed)
+    return [pt.Pair(i, i + 1, np.zeros((20, 2)), np.zeros((20, 2)), np.array([0.0, np.radians(step_deg) * (1 + 0.1 * rng.normal()), 0.0]),
+                    0.0, 0.3, int(n_in * (1 + 0.05 * rng.normal())), n_in) for i in range(n)]
+
+
+def _set(pairs, i, n_in, ang_deg):
+    from dataclasses import replace
+
+    pairs[i] = replace(pairs[i], n_in=n_in, w=np.array([0.0, np.radians(ang_deg), 0.0]))
+
+
+def test_weak_pair_guard_rejects_few_inliers_with_a_big_rotation_jump():
+    pairs = _chain()
+    _set(pairs, 30, 131, 6.6)  # the seg060 case: 131 inliers vs ~850, a 6.6 deg step among 0.1 deg ones
+    out, weak = pt.reject_weak_pairs(pairs)
+    assert weak == [30]
+    assert [p.i for p in out if not p.ok] == [30]
+    assert all(p.ok for p in pairs)  # the input is not mutated
+
+
+def test_weak_pair_guard_keeps_either_symptom_alone():
+    pairs = _chain()
+    _set(pairs, 10, 131, 0.1)  # few inliers, but a normal step (blurred, smooth pan)
+    _set(pairs, 40, 850, 6.6)  # a big step with the usual inlier count (a genuine fast whip)
+    _, weak = pt.reject_weak_pairs(pairs)
+    assert weak == []
+
+
+def test_weak_pair_guard_ignores_noise_on_a_static_camera():
+    pairs = _chain(step_deg=0.0)
+    _set(pairs, 20, 200, 0.1)  # tiny absolute step: below the angle floor
+    assert pt.reject_weak_pairs(pairs)[1] == []
+
+
+def test_weak_pair_is_a_chain_break_in_segments():
+    from footy_track.scripts import ptz_temporal as pte
+
+    pairs = _chain(n=60)
+    _set(pairs, 30, 131, 6.6)
+    shot = [{"start": 0, "end": 60, "p_main": 1.0, "n_ev": 12}]
+    assert pte.segments(shot, pairs) == [(0, 60)]  # unguarded: one run across the bad pair
+    guarded, _ = pt.reject_weak_pairs(pairs)
+    assert pte.segments(shot, guarded) == [(0, 30), (31, 60)]
