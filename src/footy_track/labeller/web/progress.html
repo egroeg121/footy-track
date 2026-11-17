@@ -61,6 +61,25 @@
   .health { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:10px; }
   .health > div { background:var(--panel); border:1px solid var(--border); border-radius:8px; padding:8px 12px; }
   .health .big { font-size:18px; font-weight:700; }
+
+  /* ---- chart view */
+  :root { --c-train:#3987e5; --c-inmatch:#d95926; --c-heldout:#199e70; --p1:#9085e9; --p2:#d55181; --p3:#0ca30c; --grid:#2d3742; }
+  section.stage { margin:22px 0 28px; }
+  section.stage > h2 { font-size:18px; margin:0 0 10px; }
+  .charts { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr)); gap:14px; }
+  .card { background:var(--panel); border:1px solid var(--border); border-radius:8px; padding:10px 12px 8px; min-width:0; position:relative; }
+  .card h3 { margin:0 0 4px; }
+  .card svg text { fill:var(--muted); font-size:10px; }
+  .card svg .vtxt { fill:var(--ink); font-size:10.5px; font-weight:600; }
+  .nodata { fill:var(--muted); font-size:12px; }
+  .legend i.ln { display:inline-block; width:14px; height:0; border-top:2px solid; margin-right:5px; vertical-align:3px; }
+  .legend .off { opacity:.5; }
+  .tip { position:fixed; z-index:10; pointer-events:none; background:#0b0f13; border:1px solid var(--border); border-radius:6px;
+         padding:6px 9px; font-size:12px; line-height:1.45; max-width:260px; box-shadow:0 4px 14px rgba(0,0,0,.5); display:none; }
+  .tip b { font-weight:600; } .tip .m { color:var(--muted); }
+  .foot { font-size:12px; color:var(--muted); margin:6px 2px 0; }
+  details.more { margin:28px 0 0; border-top:1px solid var(--border); padding-top:10px; }
+  details.more > summary { cursor:pointer; font-size:14px; font-weight:600; color:var(--muted); padding:4px 0; }
 </style>
 </head>
 <body>
@@ -71,9 +90,15 @@
     <span class="muted" id="stamp">loading...</span>
     <a href="#" id="refresh">refresh</a>
   </header>
-  <div id="top"></div>
-  <div id="datasets"><p class="muted">Loading...</p></div>
-  <p class="muted" id="paths"></p>
+  <div id="stages"><p class="muted">Loading...</p></div>
+  <p class="foot" id="foot"></p>
+  <details class="more" id="more">
+    <summary>Details</summary>
+    <div id="top"></div>
+    <div id="datasets"></div>
+    <p class="muted" id="paths"></p>
+  </details>
+  <div class="tip" id="tip"></div>
 </main>
 <script>
 const SPLITS = ["train", "eval_in_match", "eval_heldout_match"];
@@ -115,31 +140,6 @@ function healthTop(d) {
 }
 
 // ---------------------------------------------------------------- dataset growth
-function growthChart(versions) {
-  const W = 420, H = 170, L = 40, B = 24, T = 8, R = 8;
-  const max = Math.max(1, ...versions.map(v => v.n_items));
-  const bw = Math.min(46, (W - L - R) / versions.length * 0.7);
-  const step = (W - L - R) / versions.length;
-  const y = n => T + (H - T - B) * (1 - n / max);
-  let g = "";
-  for (const t of [0, .5, 1]) {
-    const yy = y(max * t);
-    g += `<line x1="${L}" x2="${W - R}" y1="${yy}" y2="${yy}" stroke="#2d3742"/><text x="${L - 4}" y="${yy + 3}" text-anchor="end">${Math.round(max * t)}</text>`;
-  }
-  versions.forEach((v, i) => {
-    const x = L + step * i + (step - bw) / 2;
-    let acc = 0;
-    for (const s of SPLITS) {
-      const n = v.by_split[s] || 0;
-      if (!n) continue;
-      g += `<rect x="${x}" y="${y(acc + n)}" width="${bw}" height="${y(acc) - y(acc + n)}" fill="${SPLIT_COLOR[s]}"><title>v${v.version} ${SPLIT_LABEL[s]}: ${n}</title></rect>`;
-      acc += n;
-    }
-    g += `<text x="${x + bw / 2}" y="${H - 8}" text-anchor="middle">v${v.version}</text>`;
-  });
-  const legend = SPLITS.map(s => `<span><i class="sw" style="background:${SPLIT_COLOR[s]}"></i>${SPLIT_LABEL[s]}</span>`).join("");
-  return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="items per dataset version by split">${g}</svg><div class="legend">${legend}</div>`;
-}
 function signed(n, cls) { return n ? `<span class="${cls}">${cls === "pos" ? "+" : cls === "neg" ? "-" : "~"}${n}</span>` : `<span class="muted">0</span>`; }
 function growthTable(versions) {
   const kinds = [...new Set(versions.flatMap(v => Object.keys(v.by_kind)))].sort();
@@ -161,7 +161,7 @@ function growthTable(versions) {
 // ---------------------------------------------------------------- model performance
 const pointState = (series, p) => series.split === "train" ? "train" : p.contaminated === true ? "bad" : p.contaminated == null ? "unk" : "ok";
 
-function perfChart(series, versions) {
+function metricChart(series, versions) {
   const vs = versions;
   const W = 420, H = 150, L = 40, B = 22, T = 8, R = 10;
   const vals = series.flatMap(s => s.points.map(p => p.value)).filter(v => v != null);
@@ -253,7 +253,7 @@ function modelBlock(ds, m, versions) {
   const modelV = String(m.model_version).length > 14 ? String(m.model_version).slice(0, 12) + "…" : m.model_version;
   return `<div class="model"><h4>${esc(m.model_name)} <span class="muted" title="${esc(m.model_version)}">@ ${esc(modelV)} &middot; ${esc(m.task)}</span> ${flags}</h4>` +
     headlineStrip(m) +
-    `<div class="row"><div><label class="muted">metric <select data-key="${esc(key)}">${opts}</select></label>${selNote}${perfChart(m.metrics[sel], versions)}</div>` +
+    `<div class="row"><div><label class="muted">metric <select data-key="${esc(key)}">${opts}</select></label>${selNote}${metricChart(m.metrics[sel], versions)}</div>` +
     `<div>${tierTable(m, "full", versions)}${tierTable(m, "cohort", versions)}</div></div></div>`;
 }
 function perfSection(ds, x, d) {
@@ -266,25 +266,166 @@ function perfSection(ds, x, d) {
     cmd(`python -m footy_track.datasets results record --task ${ds} --dataset ${ds} --dataset-version <N> --split eval_all --model <name> --model-version <v> --metric accuracy --value <x> --n-items <n>`) + `</div>`;
 }
 
+// ---------------------------------------------------------------- the two charts per stage
+const STAGES = {tracking:"Tracking", broadcast:"Broadcast view", calibration:"Pitch calibration"};
+const SIZE_COLOR = {train:"var(--c-train)", eval_in_match:"var(--c-inmatch)", eval_heldout_match:"var(--c-heldout)"};
+const PERF_COLOR = ["var(--p1)", "var(--p2)", "var(--p3)"];
+const SVGNS = "http://www.w3.org/2000/svg";
+
+function niceMax(n) {
+  if (n <= 0) return 1;
+  const p = Math.pow(10, Math.floor(Math.log10(n))), f = n / p;
+  return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * p;
+}
+function shortV(v) { v = String(v ?? ""); return v.length > 14 ? v.slice(0, 12) + "…" : v; }
+const fmtN = n => n == null ? "?" : Number(n).toLocaleString("en");
+
+// series: [{key,label,color,points:[{version,value,...}]}]; versions: [{version,date}]
+// opts: {max, ticks, fmt, tip(version,date,pointsByKey), contaminated(p), kind}
+function lineChart(series, versions, opts) {
+  const W = 400, H = 190, L = 40, R = 40, T = 12, B = 26;
+  const pw = W - L - R, ph = H - T - B, pad = versions.length > 1 ? 18 : 0;
+  const idx = Object.fromEntries(versions.map((v, i) => [v.version, i]));
+  const x = v => versions.length === 1 ? L + pw / 2 : L + pad + idx[v] * (pw - 2 * pad) / (versions.length - 1);
+  const y = val => T + ph * (1 - val / opts.max);
+  let g = "";
+  for (const t of opts.ticks) {
+    g += `<line x1="${L}" x2="${W - R}" y1="${y(t)}" y2="${y(t)}" stroke="var(--grid)" stroke-width="${t === 0 ? 1.2 : .6}"/>` +
+         `<text x="${L - 5}" y="${y(t) + 3}" text-anchor="end">${opts.fmt(t)}</text>`;
+  }
+  const every = Math.ceil(versions.length / 8);
+  versions.forEach((v, i) => { if (i % every === 0 || i === versions.length - 1) g += `<text x="${x(v.version)}" y="${H - 8}" text-anchor="middle">v${v.version}</text>`; });
+  const any = series.some(s => s.points.length);
+  if (!any) g += `<text class="nodata" x="${L + pw / 2}" y="${T + ph / 2}" text-anchor="middle">${esc(opts.empty || "no results yet")}</text>`;
+  let hollow = false, dashed = false;
+  const ends = [];
+  for (const s of series) {
+    const pts = s.points.filter(p => p.value != null && idx[p.version] != null).sort((a, b) => a.version - b.version);
+    for (let i = 1; i < pts.length; i++) {
+      const a = pts[i - 1], b = pts[i], changed = opts.modelChanged && a.model_version !== b.model_version;
+      if (changed) dashed = true;
+      g += `<line x1="${x(a.version)}" y1="${y(a.value)}" x2="${x(b.version)}" y2="${y(b.value)}" stroke="${s.color}" stroke-width="2" stroke-linecap="round"${changed ? ' stroke-dasharray="4 4"' : ""}/>`;
+    }
+    for (const p of pts) {
+      const cx = x(p.version), cy = y(p.value);
+      if (opts.contaminated && opts.contaminated(p)) { hollow = true; g += `<circle cx="${cx}" cy="${cy}" r="4.5" fill="var(--panel)" stroke="${s.color}" stroke-width="2"/>`; }
+      else g += `<circle cx="${cx}" cy="${cy}" r="4.5" fill="${s.color}" stroke="var(--panel)" stroke-width="2"/>`;
+    }
+    const last = pts[pts.length - 1];
+    if (last && opts.label) ends.push({x: x(last.version), y: y(last.value) + 3.5, v: last.value, color: s.color});
+  }
+  // direct value label to the right of each line's last point, nudged apart when they would collide
+  ends.sort((a, b) => a.y - b.y);
+  ends.forEach((e, i) => { if (i && e.y - ends[i - 1].y < 12) e.y = ends[i - 1].y + 12; });
+  for (const e of ends) g += `<text class="vtxt" x="${e.x + 9}" y="${e.y}">${opts.fmt(e.v)}</text>`;
+  // one invisible hit column per version: hover (or tap) shows every line at that version
+  versions.forEach((v, i) => {
+    const w = versions.length === 1 ? pw : (pw - 2 * pad) / (versions.length - 1);
+    g += `<rect class="hit" data-v="${v.version}" x="${x(v.version) - w / 2}" y="${T}" width="${w}" height="${ph + B}" fill="transparent"/>`;
+  });
+  g += `<line class="guide" x1="0" x2="0" y1="${T}" y2="${T + ph}" stroke="var(--muted)" stroke-dasharray="2 3" visibility="hidden"/>`;
+  const legend = series.map(s => `<span class="${s.points.length ? "" : "off"}"><i class="ln" style="border-color:${s.color}"></i>${esc(s.label)}</span>`).join("");
+  const el = document.createElement("div");
+  el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(opts.aria)}">${g}</svg><div class="legend">${legend}</div>`;
+  const svg = el.querySelector("svg"), guide = svg.querySelector(".guide");
+  const show = (ev, v) => {
+    const ver = versions.find(q => q.version === v);
+    const byKey = Object.fromEntries(series.map(s => [s.key, s.points.find(p => p.version === v)]));
+    const tip = document.getElementById("tip");
+    tip.innerHTML = opts.tip(ver, series, byKey);
+    tip.style.display = "block";
+    const r = tip.getBoundingClientRect(), px = ev.clientX, py = ev.clientY;
+    tip.style.left = Math.max(4, Math.min(innerWidth - r.width - 4, px + 14)) + "px";
+    tip.style.top = Math.max(4, Math.min(innerHeight - r.height - 4, py + 14)) + "px";
+    guide.setAttribute("x1", x(v)); guide.setAttribute("x2", x(v)); guide.setAttribute("visibility", "visible");
+  };
+  const hide = () => { document.getElementById("tip").style.display = "none"; guide.setAttribute("visibility", "hidden"); };
+  svg.querySelectorAll(".hit").forEach(r => {
+    const v = +r.dataset.v;
+    r.addEventListener("mousemove", ev => show(ev, v));
+    r.addEventListener("click", ev => show(ev, v));
+    r.addEventListener("mouseleave", hide);
+  });
+  el.flags = {hollow, dashed};
+  return el;
+}
+
+function sizeChart(c) {
+  const series = c.size.map(s => ({key: s.split, label: s.label, color: SIZE_COLOR[s.split], points: s.points}));
+  const top = niceMax(Math.max(1, ...series.flatMap(s => s.points.map(p => p.value))));
+  return lineChart(series, c.versions, {
+    max: top, ticks: [0, top / 2, top], fmt: v => fmtN(Math.round(v)), label: true,
+    aria: "items per dataset version, by split",
+    tip: (ver, ss, by) => `<b>v${ver.version}</b> <span class="m">${esc(ver.date || "")}</span>` +
+      ss.map(s => by[s.key] ? `<div><span style="color:${s.color}">&#9679;</span> ${esc(s.label)}: <b>${fmtN(by[s.key].value)}</b></div>` : "").join(""),
+  });
+}
+function perfChart(c) {
+  const series = c.performance.map((s, i) => ({...s, color: PERF_COLOR[i % PERF_COLOR.length]}));
+  return lineChart(series, c.versions, {
+    max: 1, ticks: [0, .5, 1], fmt: v => v === 0 ? "0" : v === 1 ? "1" : v.toFixed(2).replace(/0$/, ""), label: true,
+    modelChanged: true, contaminated: p => p.contaminated === true,
+    aria: "headline metric per model over dataset versions",
+    tip: (ver, ss, by) => `<b>v${ver.version}</b> <span class="m">${esc(ver.date || "")}</span>` +
+      ss.map(s => { const p = by[s.key]; return p ? `<div><span style="color:${s.color}">&#9679;</span> ${esc(s.label)}: <b>${fmtVal(p.value)}</b>` +
+        `<div class="m">n=${fmtN(p.n_items)} &middot; ${esc(p.model_name)} @ ${esc(shortV(p.model_version))}${p.contaminated === true ? " &middot; contaminated" : ""}</div></div>` : ""; }).join(""),
+  });
+}
+function stageSection(ds, x, d) {
+  const sec = document.createElement("section");
+  sec.className = "stage"; sec.id = "stage-" + ds;
+  sec.innerHTML = `<h2>${esc(STAGES[ds] || ds)}</h2><div class="charts"></div>`;
+  const row = sec.querySelector(".charts"), flags = {hollow: false, dashed: false};
+  const c = x.charts;
+  for (const [title, build] of [["Dataset size", sizeChart], ["Performance", perfChart]]) {
+    const card = document.createElement("div"); card.className = "card";
+    card.innerHTML = `<h3>${title}</h3>`;
+    if (!c.versions.length) card.insertAdjacentHTML("beforeend", `<div class="empty">No dataset versions yet.</div>`);
+    else {
+      const ch = build(c); card.appendChild(ch);
+      flags.hollow ||= ch.flags.hollow; flags.dashed ||= ch.flags.dashed;
+    }
+    row.appendChild(card);
+  }
+  sec.flags = flags;
+  return sec;
+}
+function renderStages(d) {
+  const root = document.getElementById("stages");
+  root.replaceChildren();
+  const f = {hollow: false, dashed: false};
+  for (const [ds, x] of Object.entries(d.datasets)) {
+    const sec = stageSection(ds, x, d);
+    f.hollow ||= sec.flags.hollow; f.dashed ||= sec.flags.dashed;
+    root.appendChild(sec);
+  }
+  const notes = [];
+  if (f.hollow) notes.push("Hollow marker: the model was trained on some of this eval data, so the score is inflated (contaminated).");
+  if (f.dashed) notes.push("Dashed segment: the model changed between versions.");
+  document.getElementById("foot").textContent = notes.join(" ");
+}
+
 // ---------------------------------------------------------------- page
 function datasetSection(ds, x, d) {
   const g = x.growth, h = x.health;
   const warn = h.warnings.map(w => `<div class="banner ${w.level === "action" ? "action" : "warn"}">${w.level === "action" ? "<b>Action needed:</b> " : ""}${esc(w.message)}</div>`).join("");
   let growth;
-  if (g.versions.length) growth = `<div class="row growth"><div>${growthChart(g.versions)}</div><div>${growthTable(g.versions)}</div></div>`;
+  if (g.versions.length) growth = `<div class="row growth"><div>${growthTable(g.versions)}</div></div>`;
   else {
     const first = d.store.state === "missing" ? `The feature store does not exist yet. Create it: ${cmd(d.commands.ingest)}<br>then snapshot: ` : "";
     growth = `<div class="empty">No versions yet. ${first}${cmd(d.commands.bump)}</div>`;
   }
   const errs = g.errors.map(e => `<div class="banner warn">Unreadable manifest ${esc(e)}</div>`).join("");
   return `<section class="ds" id="ds-${esc(ds)}"><h2>${esc(ds)} <span class="muted">${g.latest != null ? "latest v" + g.latest : "no versions"}</span></h2>` +
-    warn + `<h3>Dataset growth</h3>${errs}${growth}<h3>Model performance</h3>${perfSection(ds, x, d)}</section>`;
+    warn + `<h3>Dataset versions</h3>${errs}${growth}<h3>Model performance</h3>${perfSection(ds, x, d)}</section>`;
 }
 function render() {
   const d = DATA;
+  renderStages(d);
   document.getElementById("top").innerHTML = healthTop(d);
   document.getElementById("datasets").innerHTML = Object.entries(d.datasets).map(([ds, x]) => datasetSection(ds, x, d)).join("");
   document.getElementById("paths").textContent = `datasets root: ${d.paths.datasets_root} · store: ${d.paths.store} (${d.store.exists ? "found" : "not found"})`;
+  if (new URLSearchParams(location.search).get("details") === "1") document.getElementById("more").open = true;
   document.getElementById("stamp").textContent = "updated " + new Date().toLocaleTimeString() + " (server cache ~60s)";
 }
 async function load(refresh) {

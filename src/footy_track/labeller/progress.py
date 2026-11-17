@@ -13,10 +13,15 @@ Nothing here raises for a missing file: each section reports its own ``state`` (
 ``empty`` / ``missing`` / ``error`` / ``busy``) plus the CLI command that creates it. The payload
 is cached for :data:`CACHE_TTL_S` seconds, keyed on the mtimes of the files it was built from.
 See ``docs/design/datasets_and_progress.md``.
+
+The page itself is two small line charts per stage (dataset size, one headline metric per model);
+:data:`PERFORMANCE_SERIES` below says which metric each line plots. Everything else (tables,
+diagnostics, warnings) is still in the payload and sits behind the page's "Details" section.
 """
 
 from __future__ import annotations
 
+import fnmatch
 import json
 import threading
 import time
@@ -49,6 +54,56 @@ _HELDOUT_TODO = {
     ),
     "tracking": "No held-out tracking eval items: label ball marks / Ball Checks in a held-out match.",
     "calibration": "No held-out calibration eval items: calibrate frames of a held-out match at /calibration.",
+}
+
+
+# --------------------------------------------------------------------------------------------
+# what the two charts per stage plot  (edit here to change a chart)
+# --------------------------------------------------------------------------------------------
+#: Dataset-size lines, the same for every stage: ``(split, legend label)``.
+SIZE_SERIES = (
+    (splits.TRAIN, "train"),
+    (splits.EVAL_IN_MATCH, "eval (in-match)"),
+    (splits.EVAL_HELDOUT, "eval (held-out match)"),
+)
+
+#: Performance lines per stage, one headline metric per model (keep it to about 3). Each entry:
+#:
+#: * ``label``: legend text;
+#: * ``metric`` / ``split``: the ``eval_result_latest`` metric and split to plot (always the full
+#:   current eval, ``cohort_version IS NULL``);
+#: * ``model`` / ``exclude_model``: fnmatch patterns on ``model_name`` choosing which model(s) feed the
+#:   line (``exclude_model`` is optional);
+#: * ``pick`` (optional): when several ``model_version`` rows share one dataset version, ``"latest"``
+#:   (default) takes the most recent run and ``"max_n"`` the one scored on most items (ties: latest).
+#:
+#: Metric names are the ones the adapters write (``datasets/eval_adapters.py``,
+#: ``datasets/detector_eval.py``): ``<cls>_<recall|f1>[_10px]`` for the detector, ``ball_recall_10px``
+#: for the ball tracker (the same name, told apart by ``model_name = ball_tracker_<kind>``),
+#: ``accuracy`` (random stratum only) for broadcast, ``success_at_5px`` for calibration.
+PERFORMANCE_SERIES: dict[str, tuple[dict[str, Any], ...]] = {
+    "tracking": (
+        # Ball found within 10 px: the question tracking needs answered (IoU 0.5 only measures box
+        # tightness on an 11 px ball). Held-out match = the clean number.
+        {"label": "Ball F1 @10px (held-out)", "metric": "ball_f1_10px", "split": splits.EVAL_HELDOUT,
+         "model": "*", "exclude_model": "ball_tracker_*"},
+        {"label": "Player recall (in-match)", "metric": "player_recall", "split": splits.EVAL_IN_MATCH,
+         "model": "*", "exclude_model": "ball_tracker_*"},
+        {"label": "Ball tracker recall @10px (held-out)", "metric": "ball_recall_10px",
+         "split": splits.EVAL_HELDOUT, "model": "ball_tracker_*"},
+    ),
+    "broadcast": (
+        # `accuracy` is the random stratum only; the edge / all-biased variants are diagnostics.
+        {"label": "Classifier, re-scored (accuracy)", "metric": "accuracy", "split": splits.EVAL_IN_MATCH,
+         "model": "broadcast_classifier"},
+        {"label": "Calls at review time (accuracy)", "metric": "accuracy", "split": splits.EVAL_IN_MATCH,
+         "model": "broadcast_classifier_at_review"},
+    ),
+    "calibration": (
+        # Several proposal runs are scored on one version: show the best-evidenced one.
+        {"label": "Reprojection success @5px", "metric": "success_at_5px", "split": splits.EVAL_IN_MATCH,
+         "model": "calibration_proposals", "pick": "max_n"},
+    ),
 }
 
 _COLS = (
@@ -339,6 +394,61 @@ def _annotate_broadcast(model: dict) -> None:
 
 
 # --------------------------------------------------------------------------------------------
+# the two charts per stage
+# --------------------------------------------------------------------------------------------
+def _matches(model_name: str, spec: dict[str, Any]) -> bool:
+    if not fnmatch.fnmatchcase(model_name, spec.get("model", "*")):
+        return False
+    excl = spec.get("exclude_model")
+    return not (excl and fnmatch.fnmatchcase(model_name, excl))
+
+
+def _pick(rows: list[dict], how: str) -> dict:
+    if how == "max_n":
+        return max(rows, key=lambda r: (r["n_items"] or 0, r["run_at"] or ""))
+    return max(rows, key=lambda r: r["run_at"] or "")
+
+
+def performance_series(dataset: str, rows: list[dict]) -> list[dict]:
+    """One entry per :data:`PERFORMANCE_SERIES` line: ``{key, label, metric, split, points}`` with at
+    most one point per dataset version (see the config for how a version's model is chosen)."""
+    out = []
+    for i, spec in enumerate(PERFORMANCE_SERIES.get(dataset, ())):
+        by_version: dict[int, list[dict]] = defaultdict(list)
+        for r in rows:
+            if (r["dataset"] == dataset and r["metric"] == spec["metric"] and r["split"] == spec["split"]
+                    and r["cohort_version"] is None and r["value"] is not None and _matches(r["model_name"], spec)):
+                by_version[r["dataset_version"]].append(r)
+        points = []
+        for v in sorted(by_version):
+            r = _pick(by_version[v], spec.get("pick", "latest"))
+            points.append({
+                "version": v, "value": r["value"], "n_items": r["n_items"], "model_name": r["model_name"],
+                "model_version": r["model_version"], "run_at": r["run_at"],
+                "contaminated": r["contaminated"], "note": r["contamination_note"],
+            })
+        out.append({"key": f"{dataset}-{i}", "label": spec["label"], "metric": spec["metric"],
+                    "split": spec["split"], "points": points})
+    return out
+
+
+def _charts(dataset: str, growth: dict, rows: list[dict]) -> dict[str, Any]:
+    """``{versions, size, performance}`` for one stage: what the page's two charts draw."""
+    gv = {v["version"]: v for v in growth["versions"]}
+    perf = performance_series(dataset, rows)
+    versions = sorted(set(gv) | {p["version"] for s in perf for p in s["points"]})
+    size = [{"split": sp, "label": label,
+             "points": [{"version": v, "value": gv[v]["by_split"][sp]} for v in sorted(gv)]}
+            for sp, label in SIZE_SERIES]
+    return {
+        "versions": [{"version": v, "date": ((gv.get(v) or {}).get("created_at") or "")[:10] or None}
+                     for v in versions],
+        "size": size,
+        "performance": perf,
+    }
+
+
+# --------------------------------------------------------------------------------------------
 # split health
 # --------------------------------------------------------------------------------------------
 def _register_health() -> dict[str, Any]:
@@ -424,6 +534,7 @@ def _build(root: Path, db: Path) -> dict[str, Any]:
             "models": models,
             "results_state": results["state"] if not models else "ok",
             "health": health["datasets"][ds],
+            "charts": _charts(ds, growth[ds], results["rows"]),
         }
     return {
         "generated_at": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),

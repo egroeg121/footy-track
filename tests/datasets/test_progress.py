@@ -353,6 +353,122 @@ def test_reads_real_manifests(world, client):
     assert d["datasets"]["tracking"]["health"]["warnings"] == []
 
 
+# ---- charts: two small line charts per stage -------------------------------------------------------------
+def test_performance_config_names_real_adapter_metrics():
+    """The config dict is the one place to change a chart; it must cover the three stages and stay small."""
+    cfg = progress.PERFORMANCE_SERIES
+    assert set(cfg) == {"tracking", "broadcast", "calibration"}
+    assert all(1 <= len(v) <= 3 for v in cfg.values())
+    metrics = {(ds, s["metric"]) for ds, v in cfg.items() for s in v}
+    assert ("broadcast", "accuracy") in metrics            # random stratum headline, not accuracy_edge / _all_biased
+    assert ("calibration", "success_at_5px") in metrics
+    assert ("tracking", "ball_recall_10px") in metrics and ("tracking", "player_recall") in metrics
+    assert not any(m.endswith(("_edge", "_all_biased")) for _, m in metrics)
+    assert [s for s, _ in progress.SIZE_SERIES] == ["train", "eval_in_match", "eval_heldout_match"]
+
+
+def test_single_version_renders_points_not_a_stretched_axis(env, client):
+    registers(env)
+    write_manifest(env, manifest("broadcast", 1, {"train": 129, "eval_in_match": 72, "eval_heldout_match": 0}))
+    seed_results(env / "feature_store" / "fs.duckdb", [
+        rr(model_name="broadcast_classifier", model_version="sha1", value=0.79, n_items=23),
+        rr(model_name="broadcast_classifier_at_review", model_version="unknown-stored", value=0.5, n_items=23),
+    ])
+    c = client.get("/api/progress").json()["datasets"]["broadcast"]["charts"]
+    assert c["versions"] == [{"version": 1, "date": "2026-11-17"}]
+    size = {s["split"]: s["points"] for s in c["size"]}
+    assert size == {"train": [{"version": 1, "value": 129}], "eval_in_match": [{"version": 1, "value": 72}],
+                    "eval_heldout_match": [{"version": 1, "value": 0}]}
+    lines = c["performance"]
+    assert [len(s["points"]) for s in lines] == [1, 1]
+    assert [s["points"][0]["model_name"] for s in lines] == ["broadcast_classifier", "broadcast_classifier_at_review"]
+    assert lines[0]["points"][0]["value"] == 0.79 and lines[0]["points"][0]["n_items"] == 23
+
+
+def test_tracking_lines_split_detector_from_ball_tracker_and_skip_other_splits(env, client):
+    registers(env)
+    for v in (1, 2, 3):
+        write_manifest(env, manifest("tracking", v, {"train": 10 * v, "eval_in_match": 5, "eval_heldout_match": 3},
+                                     parent=v - 1 or None, created=f"2026-11-{16 + v}T10:00:00Z"))
+    t = dict(task="tracking", dataset="tracking")
+    seed_results(env / "feature_store" / "fs.duckdb", [
+        rr(**t, dataset_version=1, split="eval_heldout_match", model_name="rtdetr", model_version="w1",
+           metric="ball_f1_10px", value=0.60, contaminated=True),
+        rr(**t, dataset_version=2, split="eval_heldout_match", model_name="rtdetr", model_version="w2",
+           metric="ball_f1_10px", value=0.70, contaminated=False),
+        rr(**t, dataset_version=2, split="eval_in_match", model_name="rtdetr", model_version="w2",
+           metric="ball_f1_10px", value=0.99),                       # wrong split: not on the held-out line
+        rr(**t, dataset_version=2, split="eval_heldout_match", model_name="rtdetr", model_version="w2",
+           metric="ball_recall_10px", value=0.80),                    # detector recall: not the tracker line
+        rr(**t, dataset_version=2, split="eval_heldout_match", model_name="ball_tracker_kalman",
+           model_version="w1", metric="ball_recall_10px", value=0.50),
+        rr(**t, dataset_version=3, split="eval_heldout_match", model_name="rtdetr", model_version="w2",
+           metric="ball_f1_10px", value=None, n_items=0),            # nothing scored: no point
+    ])
+    c = client.get("/api/progress").json()["datasets"]["tracking"]["charts"]
+    assert [v["version"] for v in c["versions"]] == [1, 2, 3]
+    assert [v["date"] for v in c["versions"]] == ["2026-11-17", "2026-11-18", "2026-11-19"]
+    f1, player, tracker = c["performance"]
+    assert [(p["version"], p["value"], p["model_version"], p["contaminated"]) for p in f1["points"]] == [
+        (1, 0.60, "w1", True), (2, 0.70, "w2", False)]
+    assert player["points"] == []
+    assert [(p["version"], p["value"], p["model_name"]) for p in tracker["points"]] == [(2, 0.50, "ball_tracker_kalman")]
+    assert [p["value"] for p in c["size"][0]["points"]] == [10, 20, 30]
+
+
+def test_calibration_picks_the_best_evidenced_run_per_version(env, client):
+    registers(env)
+    write_manifest(env, manifest("calibration", 1, {"train": 5, "eval_in_match": 20, "eval_heldout_match": 4}))
+    write_manifest(env, manifest("calibration", 2, {"train": 6, "eval_in_match": 22, "eval_heldout_match": 4}, parent=1))
+    k = dict(task="calibration", dataset="calibration", model_name="calibration_proposals",
+             metric="success_at_5px", split="eval_in_match")
+    seed_results(env / "feature_store" / "fs.duckdb", [
+        rr(**k, dataset_version=1, model_version="batch1", value=0.64, n_items=14),
+        rr(**k, dataset_version=1, model_version="tiny", value=0.0, n_items=2),
+        rr(**k, dataset_version=2, model_version="batch1", value=0.70, n_items=14),
+    ])
+    (line,) = client.get("/api/progress").json()["datasets"]["calibration"]["charts"]["performance"]
+    assert [(p["version"], p["value"], p["model_version"]) for p in line["points"]] == [
+        (1, 0.64, "batch1"), (2, 0.70, "batch1")]
+    # the default pick is the most recent run
+    rows = [
+        {"dataset": "x", "metric": "m", "split": "s", "cohort_version": None, "value": v, "model_name": "a",
+         "model_version": mv, "run_at": ra, "n_items": n, "dataset_version": 1, "contaminated": None,
+         "contamination_note": None}
+        for v, mv, ra, n in [(0.1, "old", "2026-01-01", 99), (0.2, "new", "2026-01-02", 1)]
+    ]
+    progress.PERFORMANCE_SERIES["x"] = ({"label": "l", "metric": "m", "split": "s", "model": "*"},)
+    try:
+        assert progress.performance_series("x", rows)[0]["points"][0]["model_version"] == "new"
+    finally:
+        del progress.PERFORMANCE_SERIES["x"]
+
+
+def test_no_results_still_gives_size_chart_and_empty_performance_lines(env, client):
+    registers(env)
+    write_manifest(env, manifest("tracking", 1, {"train": 10, "eval_in_match": 5, "eval_heldout_match": 3}))
+    c = client.get("/api/progress").json()["datasets"]["tracking"]["charts"]
+    assert [len(s["points"]) for s in c["size"]] == [1, 1, 1]
+    assert len(c["performance"]) == 3 and all(s["points"] == [] for s in c["performance"])
+    empty = client.get("/api/progress").json()["datasets"]["calibration"]["charts"]
+    assert empty["versions"] == [] and all(s["points"] == [] for s in empty["size"])
+
+
+def test_page_is_charts_first_with_everything_else_behind_details():
+    html = (LABELLER / "web" / "progress.html").read_text()
+    body = html.split("<body>")[1].split("<script>")[0]
+    assert body.index('id="stages"') < body.index("<details") < body.index('id="datasets"')
+    assert body.count("<details") == 1 and 'id="top"' in body.split("<details")[1]   # health + tables inside Details
+    assert "<table" not in body and "banner" not in body                             # nothing noisy on the main view
+    for stage in ("Tracking", "Broadcast view", "Pitch calibration"):
+        assert stage in html
+    assert 'get("details") === "1"' in html   # ?details=1 opens it
+    # contaminated: hollow marker + one footnote; the tables / diagnostics code is still there
+    assert "Hollow marker" in html and "fill=\"var(--panel)\"" in html
+    assert "tierTable" in html and "growthTable" in html and "headlineStrip" in html and "healthTop" in html
+    assert "cdn" not in html and "unpkg" not in html
+
+
 # ---- wiring ---------------------------------------------------------------------------------------------
 def test_wired_into_server_and_hub():
     assert "progress_routes.router" in (LABELLER / "server.py").read_text()

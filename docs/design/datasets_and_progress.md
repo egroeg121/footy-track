@@ -280,27 +280,46 @@ models are retrained on authority-based exports.
 
 `http://<labeller>:8011/progress` (linked from the hub), JSON at `/api/progress`
 (`labeller/progress.py`, `progress_routes.py`, `web/progress.html`). It is the one view of project
-progress and is global: the `?dataset=` labelling-dataset parameter is ignored. Per dataset
-(`tracking`, `broadcast`, `calibration`):
+progress and is global: the `?dataset=` labelling-dataset parameter is ignored.
 
-1. **Dataset growth.** A stacked bar chart (inline SVG) and a table of v1..vN from the snapshot
-   manifests only (never `items.parquet`): created_at, items by split (train / in-match eval /
-   held-out eval), counts by label kind, and the diff vs the parent (added / removed / changed).
-2. **Model performance.** From `eval_result_latest`: per model and metric, the value at each dataset
-   version, as a line chart plus two tables, "full current eval" (`cohort_version` NULL) and "fixed
-   cohort" (shown separately, the tier is part of every row). A contaminated result
-   (`contaminated = true`) is drawn red with a warning mark; unknown contamination (NULL) is amber
-   with a "?"; neither is ever styled as clean. Hover shows `n_items`, the run time and the
-   contamination note. The train split is shown but contamination does not apply to it.
-3. **Split health.** Matches held-out vs train (`match_splits.json`) and clips eval vs train
+**Main view: three sections (Tracking, Broadcast view, Pitch calibration), two small line charts each.**
+X is the dataset version (v1, v2, ...; the date is in the hover tooltip; one version draws dots, not a
+stretched axis). Hover or tap a version for a tooltip.
+
+1. **Dataset size:** items per version for train, eval (in-match) and eval (held-out match), from the
+   snapshot manifests only (never `items.parquet`); Y starts at 0.
+2. **Performance:** one headline metric per model, at most about 3 lines, Y 0 to 1. Which metrics: the
+   `PERFORMANCE_SERIES` dict at the top of `labeller/progress.py` (metric key, split, `model_name`
+   pattern, how to pick one run when several `model_version`s share a dataset version). Today: tracking
+   = ball F1 @10px on the held-out split, player recall on in-match eval, ball-tracker recall @10px on
+   held-out; broadcast = `accuracy` (random stratum only) of the re-scored classifier and of the calls
+   made at review time, in-match eval; calibration = `success_at_5px`, in-match eval. Always the full
+   current eval (`cohort_version` NULL). Tooltip: value, `n_items`, model name @ version. A dashed
+   segment means the model changed between the two versions. A contaminated result
+   (`contaminated = true`) is a hollow marker, explained by one footnote under the charts.
+
+Everything else is still on the page, collapsed under one **Details** section (open it, or load
+`/progress?details=1`):
+
+3. **Dataset versions table** (created_at, items by split, label kinds, diff vs the parent) and **model
+   performance**: per model and metric, the value at each dataset version as a line chart plus two
+   tables, "full current eval" and "fixed cohort". A contaminated result is drawn red with a warning
+   mark; unknown contamination (NULL) is amber with a "?"; neither is ever styled as clean. The broadcast
+   edge and all-biased metrics are greyed as diagnostic, and the headline carries its random-frame `n`
+   with a small-sample warning.
+4. **Split health.** Matches held-out vs train (`match_splits.json`) and clips eval vs train
    (`clip_splits.json`), the latest version's eval counts per dataset, and warnings: **zero held-out
    eval items** (a call to action; broadcast has none until a held-out match's broadcast-review frames
    are labelled), no in-match eval, items in an unregistered match, a preview split, and split
    registers that changed since the latest snapshot (run `bump`).
-4. **Empty states** with the exact command: no store (`python -m footy_track.feature_store.ingest_all`),
+5. **Empty states** with the exact command: no store (`python -m footy_track.feature_store.ingest_all`),
    no versions (`python -m footy_track.datasets bump all`), no results (a `results record` example), no
    clip register (`python -m footy_track.splits assign --apply`). Missing, unreadable or locked files
-   degrade the affected section; the page never returns a 500.
+   degrade the affected section; the page never returns a 500. On the main view a chart with no data
+   just says "no results yet".
+
+The JSON keeps every field the Details view needs and adds `datasets.<ds>.charts`
+(`{versions, size, performance}`), which is what the two charts draw.
 
 Implementation: the store is opened `read_only` for a single query under the shared store lock and
 closed again (a writer mid-ingest gives a "store busy" note, not a hang). The payload is cached for 60 s
