@@ -835,6 +835,7 @@ def lm_solve(rs: _Resid, x0: Array, n_iter: int = 25, log=None, tag: str = "") -
 # --------------------------------------------------------------------------
 
 MIN_F1 = 0.55
+ANCHOR_TOL_M = 1.0  # an anchor farther than this (pitch metres) from the solved camera is an outlier
 MARGIN = 0.08
 
 
@@ -976,11 +977,28 @@ def solve_segment(cache: ClipCache, t0: int, t1: int, pairs: list[Pair], anchors
         x_init[~ok, k] = np.interp(idx[~ok], idx[ok], x_init[ok, k])
     evs = [(t, cache.evidence(t)) for t in evidence_frames if t0 <= t <= t1]
     evs = [(t, e) for t, e in evs if e is not None]
-    out_sh, poses, info = joint_solve(
-        F, sh, x_init, [e for _, e in evs], np.array([t - t0 for t, _ in evs], int),
-        pairs if use_motion else [], {t - t0: (anchors_k[t], np.array(anchor_sigma, float)) for t in anchors_k},
-        pitch, free_shared=free_shared, shared_sigma=shared_sigma,
-        points=[(t - t0, *rest) for t, *rest in (points or [])], sigma_line=sigma_line, t0=t0, log=log)
+    pts_l = [(t - t0, *rest) for t, *rest in (points or [])]
+    ev_list, lf = [e for _, e in evs], np.array([t - t0 for t, _ in evs], int)
+
+    def run(anc, x0):
+        return joint_solve(F, sh, x0, ev_list, lf, pairs if use_motion else [],
+                           {t - t0: (anc[t], np.array(anchor_sigma, float)) for t in anc}, pitch,
+                           free_shared=free_shared, shared_sigma=shared_sigma, points=pts_l, sigma_line=sigma_line,
+                           t0=t0, log=log)
+
+    out_sh, poses, info = run(anchors_k, x_init)
+    # pass 2: a confidently wrong lines-only anchor that no neighbouring anchor contradicts (the motion vote above
+    # has nothing to compare it with) stands out against the solution of everything else: drop it and re-solve
+    if use_motion and len(anchors_k) > 1:
+        bad = [t for t in anchors_k if np.all(np.isfinite(poses[t - t0]))
+               and _state_dist(anchors_k[t], poses[t - t0], out_sh) > ANCHOR_TOL_M]
+        info["anchor_outliers"] = bad
+        if bad and len(bad) < len(anchors_k):
+            anchors_k = {t: v for t, v in anchors_k.items() if t not in bad}
+            res.n_anchors = len(anchors_k)
+            res.dropped_anchors = res.dropped_anchors + bad
+            out_sh, poses, info2 = run(anchors_k, poses.copy())
+            info["pass2"] = info2
     res.shared = out_sh
     out = poses.copy()
     out[~ok] = np.nan

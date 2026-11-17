@@ -30,6 +30,7 @@ ROOT = Path(os.environ.get("PTZ_TEMPORAL_DIR", "/mnt/storage/footy_data/scratch/
 CLIPS = Path("/mnt/storage/footy_data/eval_clips_kf10")
 PITCH = PitchModel()
 EV_STEP = 5
+STATIC_FLOW = 1.0  # work px / frame: a 'near-static' camera pair
 SEARCH_LIGHT = dict(n_cells=20, n_refine=4)
 ANCHOR_STEP = 50
 
@@ -40,6 +41,13 @@ def log(*a):
 
 def clip_gt(clip: str) -> list[pv.GTFrame]:
     return [f for f in pv.load_gt(("mancity", "villa")) if f.clip == clip]
+
+
+def clip_video(clip: str) -> Path:
+    for name in (clip, clip.removeprefix("arsenal_")):
+        if (CLIPS / f"{name}.mp4").exists():
+            return CLIPS / f"{name}.mp4"
+    raise FileNotFoundError(clip)
 
 
 def n_frames(video: Path) -> int:
@@ -63,7 +71,7 @@ def leave_clip_out_rig(clip: str) -> ptz.Rig:
 
 
 def prep(clip: str, rig: ptz.Rig, gaps=(1, 5)):
-    video = CLIPS / f"{clip}.mp4"
+    video = clip_video(clip)
     gt = clip_gt(clip)
     ev = set(range(0, n_frames(video), EV_STEP)) | {f.frame for f in gt}
     cache = pt.ClipCache(video, ROOT / clip).build(ev, log=log)
@@ -94,6 +102,27 @@ def prep(clip: str, rig: ptz.Rig, gaps=(1, 5)):
             f"({len(anchors)} done)")
     ap.write_text(json.dumps(anchors))
     return cache, shots, shot_info, anchors
+
+
+def refit_anchors(cache, anchors, rig) -> dict:
+    """``search_lines`` optimises C inside its prior, but the anchor record keeps (pan, tilt, log f) only: re-run the line
+    refinement from it twice -- C free within the rig prior (reproduces the lines-only camera, baseline (a)) and C
+    hard-fixed to the rig (consistent anchor for the joint solve, which keeps C fixed)."""
+    rp = ROOT / cache.root.name / "anchors_refit.json"
+    done = json.loads(rp.read_text()) if rp.exists() else {}
+    for t, a in anchors.items():
+        if t in done or "pan" not in a:
+            continue
+        ev = cache.evidence(int(t))
+        cam0 = ptz.Camera(a["pan"], a["tilt"], a["logf"], rig.roll, np.array(rig.C, float), rig.k1)
+        cf = ptz._refine_lines(cam0, ev, rig, PITCH)
+        cx = ptz._refine_lines(cam0, ev, rig.with_sigma((0.0, 0.0, 0.0)), PITCH)
+        done[t] = {"free": [cf.pan, cf.tilt, cf.logf, *cf.C], "fixed": [cx.pan, cx.tilt, cx.logf]}
+        rp.write_text(json.dumps(done))
+    for t, d in done.items():
+        if t in anchors:
+            anchors[t]["refit"] = d
+    return anchors
 
 
 def f_nominal(cache, anchors) -> np.ndarray:
@@ -141,8 +170,8 @@ def segments(shot_info, pairs) -> list[tuple[int, int]]:
 
 
 def anchors_state(anchors, ts) -> dict[int, np.ndarray]:
-    return {t: np.array([anchors[str(t)]["pan"], anchors[str(t)]["tilt"], anchors[str(t)]["logf"]])
-            for t in ts if str(t) in anchors and anchors[str(t)]["ok"]}
+    return {t: np.array(anchors[str(t)]["refit"]["fixed"]) for t in ts
+            if str(t) in anchors and anchors[str(t)]["ok"] and "refit" in anchors[str(t)]}
 
 
 def solve_variant(cache, segs, pairs, anchors, rig, gt_frames, hold: int | None, tag: str, free_shared=(), **kw):
@@ -252,6 +281,7 @@ def render(cache, t, cams: dict, truth=None, width=960):
 def load_clip(clip):
     rig = leave_clip_out_rig(clip)
     cache, shots, shot_info, anchors = prep(clip, rig)
+    anchors = refit_anchors(cache, anchors, rig)
     pairs = motion(cache, shots, shot_info, anchors, rig)
     segs = segments(shot_info, pairs)
     return rig, cache, shot_info, anchors, pairs, segs
@@ -300,7 +330,10 @@ def cmd_eval(args):
         truth = g.truth()
         row = {"key": g.key, "t": g.frame}
         a = anchors.get(str(g.frame))
-        ca = pt.cam_from_state(np.array([a["pan"], a["tilt"], a["logf"]]), sh) if a and "pan" in a else None
+        ca = None
+        if a and "refit" in a:
+            q = a["refit"]["free"]
+            ca = ptz.Camera(q[0], q[1], q[2], rig.roll, np.array(q[3:6]), rig.k1)
         row["a_ok"] = bool(a and a["ok"])
         row["a_f1"] = a.get("f1") if a else None
         ra = err5(ca, truth) if ca is not None else None
@@ -340,18 +373,15 @@ def cmd_eval(args):
     cov = {}
     for v, st in S_.items():
         f1 = line_f1(cache, st, sh, ev_ts)
-        good = np.array([f1.get(t, -1.0) >= 0.5 for t in ev_ts])
+        good = {t: f1.get(t, -1.0) >= 0.5 for t in ev_ts}
         acc = np.zeros(cache.n, bool)
-        for k, t in enumerate(ev_ts):
-            if good[k]:
-                lo = ev_ts[k - 1] if k and good[k - 1] else t
-                hi = ev_ts[k + 1] if k + 1 < len(ev_ts) and good[k + 1] else t
-                acc[max(lo, t - 3 if lo == t else lo):hi + 1 if hi != t else t + 4] = True
-        for a, b in segs:
-            pass
+        for t in range(cache.n):  # accepted when the evidence frames on both sides of t agree with the solved camera
+            prev = max((e for e in ev_ts if e <= t), default=None)
+            nxt = min((e for e in ev_ts if e >= t), default=None)
+            acc[t] = all(good[e] for e in (prev, nxt) if e is not None)
         valid = np.array([np.all(np.isfinite(st[t])) for t in range(cache.n)])
         cov[v] = {"f1_median_ev": float(np.median(list(f1.values()))) if f1 else None,
-                  "frac_ev_f1_ge_0.5": float(np.mean(good)), "accepted_frac_of_main": float((acc & valid).sum() / max(main_frames, 1)),
+                  "frac_ev_f1_ge_0.5": float(np.mean(list(good.values()))), "accepted_frac_of_main": float((acc & valid).sum() / max(main_frames, 1)),
                   "calibrated_frac_of_main": float(valid.sum() / max(main_frames, 1))}
     ak = [t for t in ev_ts if t % ANCHOR_STEP == 0 and str(t) in anchors]
     cov["a_lines"] = {"accepted_frac_of_anchor_frames": float(np.mean([anchors[str(t)]["ok"] for t in ak])), "n": len(ak)}
@@ -364,21 +394,19 @@ def cmd_eval(args):
             flow[p.i] = float(np.median(np.linalg.norm(p.b - p.a, axis=1)))
     jit = {}
     for v, st in S_.items():
-        d_px, d_m = [], []
-        for t, fl in flow.items():
-            if fl < 0.35 and np.all(np.isfinite(st[t])) and np.all(np.isfinite(st[t + 1])):
-                c0, c1 = pt.cam_from_state(st[t], sh), pt.cam_from_state(st[t + 1], sh)
-                u0, _ = c0.pitch_to_image(np.zeros((1, 2)))
-                u1, _ = c1.pitch_to_image(np.zeros((1, 2)))
-                d_px.append(float(np.linalg.norm((u1 - u0) * ptz.CANON)))
-                g0, _ = c0.image_to_pitch(np.array([[0.5, 0.5]]))
-                g1, _ = c1.image_to_pitch(np.array([[0.5, 0.5]]))
-                d_m.append(float(np.linalg.norm(g1 - g0)))
-        jit[v] = {"n": len(d_px), "px_median": float(np.median(d_px)) if d_px else None,
-                  "px_p95": float(np.percentile(d_px, 95)) if d_px else None,
-                  "m_median": float(np.median(d_m)) if d_m else None, "m_p95": float(np.percentile(d_m, 95)) if d_m else None}
+        cs = [pt.cam_from_state(st[t], sh) if np.all(np.isfinite(st[t])) else None for t in range(cache.n)]
+        u = np.array([(c.pitch_to_image(np.zeros((1, 2)))[0][0] * ptz.CANON) if c else [np.nan, np.nan] for c in cs])
+        jump = np.linalg.norm(np.diff(u, axis=0), axis=1)  # (n-1,) px at 1920 between t and t+1
+        acc2 = np.linalg.norm(u[2:] - 2 * u[1:-1] + u[:-2], axis=1)  # second difference: ~0 for a smooth pan
+        slow = np.array([flow.get(t, 99.0) < STATIC_FLOW for t in range(cache.n - 1)])
+        jit[v] = {"n_slow_pairs": int(slow.sum()),
+                  "jump_px_median_slow": float(np.nanmedian(jump[slow])) if slow.any() else None,
+                  "jump_px_p95_slow": float(np.nanpercentile(jump[slow], 95)) if slow.any() else None,
+                  "flow_px_median_slow": float(np.median([flow[t] * 2 for t in range(cache.n - 1) if slow[t]])) if slow.any() else None,
+                  "accel_px_median_all": float(np.nanmedian(acc2)), "accel_px_p95_all": float(np.nanpercentile(acc2, 95)),
+                  "accel_px_max_all": float(np.nanmax(acc2))}
     res["jitter_near_static"] = jit
-    res["n_static_pairs"] = int(sum(f < 0.35 for f in flow.values()))
+    res["n_static_pairs"] = int(sum(f < STATIC_FLOW for f in flow.values()))
     res["motion"] = {"pairs": len(pairs), "ok": int(sum(p.ok for p in pairs)),
                      "median_inliers": float(np.median([p.n_in for p in pairs if p.ok])),
                      "median_rms_canon_px": float(np.nanmedian([p.rms for p in pairs if p.ok]))}
@@ -397,7 +425,10 @@ def cmd_sheet(args):
     tiles = []
     for g in sorted(gt, key=lambda f: f.frame)[:: max(1, len(gt) // 12)][:12]:
         a = anchors.get(str(g.frame))
-        ca = pt.cam_from_state(np.array([a["pan"], a["tilt"], a["logf"]]), sh) if a and a.get("ok") else None
+        ca = None
+        if a and a.get("ok") and "refit" in a:
+            q = a["refit"]["free"]
+            ca = ptz.Camera(q[0], q[1], q[2], rig.roll, np.array(q[3:6]), rig.k1)
         cams = {"temporal(full)": (pt.cam_from_state(st[g.frame], sh) if np.all(np.isfinite(st[g.frame])) else None,
                                    (0, 255, 0)),
                 "temporal(hold)": (pt.cam_from_state(sth[g.frame], sh) if np.all(np.isfinite(sth[g.frame])) else None,
@@ -430,7 +461,11 @@ def match_segments(match: str) -> list[dict]:
     return [sg for sg in segs if sg["path"].exists()]
 
 
-SHARED_SEARCH = SEARCH_LIGHT
+#: 3.6x fewer grid cells than the production lines-only grid, restricted to the pan / tilt range of the Emirates main
+#: camera: the shared fit only needs *some* confident frames per segment, not an answer for every one
+SHARED_GRID = ptz._grid(n_pan=36, n_tilt=11, n_f=12, pan_range=(np.deg2rad(55.0), np.deg2rad(125.0)),
+                        tilt_range=(np.deg2rad(5.0), np.deg2rad(32.0)), f_range=(1400.0, 8000.0))
+SHARED_SEARCH = dict(n_cells=20, n_refine=4, grid=SHARED_GRID)
 
 
 def sample_frames(seg: dict, per: int) -> list[int]:
@@ -523,15 +558,79 @@ def cmd_shared(args):
         (root / f"shared_{args.match}.json").write_text(json.dumps(res, indent=1, default=float))
 
 
+def cmd_jitter(args):
+    """Per-frame lines-only (a) on consecutive frames of the most static span vs the temporal solve there."""
+    rig, cache, shot_info, anchors, pairs, segs = load_clip(args.clip)
+    sh = pt.Shared.from_rig(rig)
+    flow = {p.i: float(np.median(np.linalg.norm(p.b - p.a, axis=1))) for p in pairs if p.j - p.i == 1 and p.ok}
+    n = args.n
+    best = None
+    for t in sorted(flow):
+        w = [flow.get(t + k, 9.0) for k in range(n)]
+        if max(w) < 2.0 and (best is None or sum(w) < best[0]):
+            best = (sum(w), t)
+    if best is None:
+        log("no static span found")
+        return
+    t0 = best[1]
+    log(f"static span {t0}..{t0 + n} (summed flow {best[0]:.2f} px)")
+    jp = ROOT / args.clip / "jitter_lines.json"
+    rec = json.loads(jp.read_text()) if jp.exists() else {}
+    for t in range(t0, t0 + n + 1):
+        if str(t) in rec:
+            continue
+        if not cache.mask_path(t).exists():
+            cache._save_masks(t, cache.read_full(t))
+        rec[str(t)] = pt.lines_anchor(cache.evidence(t), rig, PITCH)
+        jp.write_text(json.dumps(rec))
+        log("lines-only", t, rec[str(t)]["ok"])
+    stf = np.load(ROOT / args.clip / "states_full.npy")
+
+    def jumps(get):
+        u = []
+        for t in range(t0, t0 + n + 1):
+            c = get(t)
+            u.append(c.pitch_to_image(np.zeros((1, 2)))[0][0] * ptz.CANON if c is not None else [np.nan, np.nan])
+        u = np.array(u)
+        return (np.linalg.norm(np.diff(u, axis=0), axis=1).tolist(),
+                np.linalg.norm(u[2:] - 2 * u[1:-1] + u[:-2], axis=1).tolist())
+
+    def lines_cam(t):
+        r = rec.get(str(t))
+        if not r or "pan" not in r:
+            return None
+        cam0 = ptz.Camera(r["pan"], r["tilt"], r["logf"], rig.roll, np.array(rig.C, float), rig.k1)
+        return ptz._refine_lines(cam0, cache.evidence(t), rig, PITCH)  # C free inside its prior, as the search returns it
+
+    def temporal_cam(t):
+        return pt.cam_from_state(stf[t], sh) if np.all(np.isfinite(stf[t])) else None
+
+    jl, al = jumps(lines_cam)
+    jt, at = jumps(temporal_cam)
+    out = {"span": [t0, t0 + n], "flow_px_canon_median": float(2 * np.median([flow[t] for t in range(t0, t0 + n)])),
+           "lines_only": {"jump_px": jl, "accel_px": al, "accel_median": float(np.nanmedian(al)),
+                          "accel_max": float(np.nanmax(al))},
+           "temporal": {"jump_px": jt, "accel_px": at, "accel_median": float(np.nanmedian(at)),
+                        "accel_max": float(np.nanmax(at))},
+           "lines_only_accepted": [bool(rec[str(t)]["ok"]) for t in range(t0, t0 + n + 1)]}
+    (ROOT / args.clip / "jitter.json").write_text(json.dumps(out, indent=1))
+    print(json.dumps(out, indent=1))
+
+
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=["prep", "solve", "eval", "sheet", "shared"])
+    ap.add_argument("cmd", choices=["prep", "solve", "eval", "sheet", "shared", "jitter"])
     ap.add_argument("--clip", default="arsenal_mancity_seg010")
     ap.add_argument("--force", action="store_true")
     ap.add_argument("--match", default="mancity")
     ap.add_argument("--per", type=int, default=1)
+    ap.add_argument("--n", type=int, default=8)
+    ap.add_argument("--anchor-step", type=int, default=None)
     ap.add_argument("--out", default=None)
     args = ap.parse_args()
+    if args.anchor_step:
+        global ANCHOR_STEP
+        ANCHOR_STEP = args.anchor_step
     if args.cmd == "prep":
         load_clip(args.clip)
     elif args.cmd == "solve":
@@ -542,6 +641,8 @@ def main():
         cmd_sheet(args)
     elif args.cmd == "shared":
         cmd_shared(args)
+    elif args.cmd == "jitter":
+        cmd_jitter(args)
 
 
 if __name__ == "__main__":
