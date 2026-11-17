@@ -1,0 +1,32 @@
+conf only                                     LOCO AUROC 0.912 AP 0.885
+                                              unseen-frames AUROC 0.915 AP 0.891
+conf + full 72-d descriptor (LR, C=0.05)      LOCO AUROC 0.926 AP 0.876
+                                              unseen-frames AUROC 0.946 AP 0.910
+conf + hue-hist only (LR)                     LOCO AUROC 0.930 AP 0.881
+                                              unseen-frames AUROC 0.946 AP 0.913
+false_looks_like_ref                                  clip  frame  conf  d_all
+354   arsenal_mancity_20250925_seg010    437  0.53   0.66
+382   arsenal_mancity_20250925_seg010    462  0.57   0.67
+909   arsenal_mancity_20250925_seg050    193  0.49   0.68
+814   arsenal_mancity_20250925_seg050    105  0.77   0.69
+1216  arsenal_mancity_20250925_seg050    519  0.40   0.69
+817   arsenal_mancity_20250925_seg050    124  0.62   0.69
+216   arsenal_mancity_20250925_seg010    353  0.46   0.72
+1206  arsenal_mancity_20250925_seg050    416  0.50   0.76
+549   arsenal_mancity_20250925_seg020    145  0.60   0.77
+705   arsenal_mancity_20250925_seg031     57  0.43   0.77
+1197  arsenal_mancity_20250925_seg050    338  0.46   0.78
+540   arsenal_mancity_20250925_seg020    131  0.61   0.78
+true_far_from_ref                                  clip  frame  conf  d_all
+1336  arsenal_mancity_20250925_seg060     70  0.81   1.28
+1339  arsenal_mancity_20250925_seg060     71  0.75   1.23
+1722  arsenal_mancity_20250925_seg110     94  0.13   1.20
+1718  arsenal_mancity_20250925_seg110     94  0.77   1.20
+1344  arsenal_mancity_20250925_seg060     72  0.82   1.19
+1348  arsenal_mancity_20250925_seg060     73  0.86   1.18
+1589  arsenal_mancity_20250925_seg110     56  0.59   1.16
+1731  arsenal_mancity_20250925_seg110     96  0.16   1.16
+1710  arsenal_mancity_20250925_seg110     92  0.74   1.15
+1355  arsenal_mancity_20250925_seg060     74  0.69   1.15
+1354  arsenal_mancity_20250925_seg060     74  0.77   1.14
+1580  arsenal_mancity_20250925_seg110     53  0.62   1.13

@@ -45,7 +45,7 @@ commands are in the Appendix.
 | **M5** | Crowding / occlusion | **6.3%** of player instances overlap another player at IoU>0.2; **2.6%** at IoU>0.5; **36.5%** of frames contain ≥1 overlapping pair | seg002, n=6,242 instances / 430 frames |
 | **M6** | Kit-colour team separability | k=2 on torso HSV → split **541 / 712**, **1.0%** ambiguous. Centroids hue **185°** (sky blue) and **23°** (red). k=3 adds a 255-crop hue-61° cluster (likely referee/GK). | seg002, n=**1,253** torso crops, every 5th frame, conf≥0.5 |
 | **M7** | Corpus composition | **all 162 clips are one match** (`arsenal_mancity_20250925`). 97,625 frames = **65.1 min**. Clip length min 50 / p25 225 / **median 430** / p75 785 / max 2,535 frames. | `machine_labels/_manifest.json` |
-| **M8** | Per-class detector reliability | `player` median conf **0.919** (74.3% ≥0.5) · `coach` 0.925 · `referee` **0.335** (44.5% ≥0.5) · `in_play_ball` 0.222 · `person` n=50, median **0.123**, 0% ≥0.25 · `player_sub` n=11, median 0.113 | seg002, n=11,512 detections |
+| **M8** | Per-class detector reliability | `player` median conf **0.919** (74.3% ≥0.5) · `coach` 0.925 · `referee` **0.335** (44.5% ≥0.5) · `in_play_ball` 0.222 · `person` n=50, median **0.123**, 0% ≥0.25 · `player_sub` n=11, median 0.113. **Correction (2026-11-15):** the referee figure is a median over *all* referee detections and is dragged down by junk boxes at 0.1–0.2 (only 4.5% of those match a GT referee). Matched against GT on detector-unseen frames, GT referees score median **0.916**, **93.1% ≥0.5** (n=418); referee AP 0.936. Referee *recall* is fine; the low-conf referee tail is a precision problem. See `reports/colour_prior_experiment/README.md`. | seg002, n=11,512 detections (correction: Roboflow v11 test split, arsenal_mancity) |
 
 ### What these imply
 
@@ -67,7 +67,9 @@ commands are in the Appendix.
 5. **M7 means cross-match re-ID is currently unmeasurable.** There is exactly
    one match in `machine_labels/`.
 6. **M8 means the `person` and `player_sub` classes are noise** (0% of instances
-   above conf 0.25) and `referee` is weak. Filter accordingly.
+   above conf 0.25). `referee` looked weak on raw medians, but against GT it is
+   strong (median 0.916 on true referees). A 0.5 threshold gives P 0.93 / R 0.92;
+   best F1 (0.925) is at ~0.6. Note GT `referee` includes linesmen.
 
 ---
 
@@ -322,6 +324,15 @@ cost to `inf` across teams. Then handle the exceptions explicitly:
 **goalkeepers and referees are their own clusters** (the k=3 hue-61° cluster of
 255 crops is the likely referee/GK population — must be verified before this is
 trusted).
+
+> **Colour-prior experiment (2026-11-15, `reports/colour_prior_experiment/`).**
+> Using a per-match kit palette to *rescore* detector classes did not help:
+> referee AP fell from 0.936 to 0.81–0.85, mainly because linesmen in front of
+> red hoardings were flipped to "player". A learned weight gave +0.002 (n.s.).
+> Colour alone separates referees from players at AUROC 0.976, but adds nothing
+> on top of the detector. Unsupervised clustering absorbed goalkeepers into team
+> clusters (~38/40 crops team-consistent by eye; no team GT exists). So use
+> colour here, as a tracking constraint and QA flag, not as a detector rescorer.
 
 ### 3.7 Jersey-number OCR — **do NOT build**
 
@@ -632,7 +643,7 @@ first milestone cheap.
 | **R2** | **M2–M6 and M8 come from ONE clip** (seg002, 430 frames, one wide angle). Close-ups, replays and goalmouth scrambles may behave completely differently. This is structurally the same error as the 44-instance ball mAP. | Could invalidate the "IoU is easy" premise and the whole milestone-1 plan. | **Re-run M2, M4, M4b, M5, M8 across all 162 clips from the JSONL alone** — no video decode, minutes of laptop CPU. **Do this before anything else in this document.** M6 needs video, so sample ~20 clips. |
 | **R3** | **Existing trackers may simply not work.** `trackers/` is written-but-unexercised scaffolding: `tests/tracking/` has fixtures and **no test file**; `TrackedDetection.is_interpolated` documents a Kalman filter that neither tracker has. | Milestone 1 stalls on debugging, not measuring. | Run both over one clip and eyeball the overlay video **before** building the benchmark harness. This is the direct VitTrack lesson — it was assumed workable for a year. |
 | **R4** | **Detector recall drives everything.** If RT-DETR misses players, tracks fragment and no association algorithm recovers them. The autolabelling architecture review already found detection was **100%** of the ball failure. | A bad HOTA would be misattributed to the tracker. | HOTA's **DetA/AssA decomposition** separates these for free. Also: the §4 labels give player-detection recall as a by-product — measure it in the same pass. |
-| **R5** | **Referee detections are weak** (M8: median conf 0.335) and `person`/`player_sub` are pure noise (0% above conf 0.25). Refs mis-typed as players pollute team clustering. | Team constraint (§3.6) misfires; a whole failure class reappears. | Verify whether the k=3 hue-61° cluster (n=255) is the referee/GK population — one afternoon on existing crops. |
+| **R5** | ~~Referee detections are weak (M8: median conf 0.335)~~ — *largely retired 2026-11-15: true referees score median 0.916, AP 0.936; residual risk is linesmen and the low-conf referee junk tail (see M8 correction).* `person`/`player_sub` are pure noise (0% above conf 0.25). Refs mis-typed as players pollute team clustering. | Team constraint (§3.6) misfires; a whole failure class reappears. | Verify whether the k=3 hue-61° cluster (n=255) is the referee/GK population — one afternoon on existing crops. |
 | **R6** | **Purity target unreachable if the human-unknown rate is high.** | The ≥0.95 bar would be incoherent (§4.4). | Report the unknown rate from the **first labelled clip**; restate targets relative to the resolvable fraction. |
 | **R7** | **Value risk: is P2 worth doing at all?** SoccerNet's own ReID dataset defines identity **only within an action**, not persistently across a match — strong evidence that persistent broadcast identity is both hard and often unnecessary. | We could spend weeks on cross-clip identity nobody consumes. | **Write down the actual downstream queries** and mark which genuinely need persistent identity vs. which are satisfied by per-shot tracklets + team + pitch position. Costs an hour and may delete P2. |
 | **R8** | **Positional-index fragility.** The review UI keys boxes by ordinal `box_index`; machine JSONL has no `detection_id`. | Identity labels silently rebind to the wrong boxes — the worst possible failure, because it is invisible. | The §4.5 `detection_id` prerequisite. Non-negotiable and must land first. |
