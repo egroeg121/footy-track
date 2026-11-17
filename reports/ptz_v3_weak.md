@@ -52,10 +52,10 @@ halfway line, boxes are clean even under heavy shadow); the failures are in the 
   camera position and each stage; `anchors_rec.json` holds the candidates. `--no-recover`, `--trim`, `--force-recover` (evaluation only).
   Segments the standard pass accepts are bit-identical to before.
 
-## Results (final code bd4f786, desktop, Man City, rig emirates)
+## Results (code bd4f786; HEAD 4f28ad1 differs only by lint fixes, desktop, Man City, rig emirates)
 
 ### 22 weak segments: accepted fraction before / after
-"before" = the standard pass (reproduced bit-for-bit from the flow's outputs); "after" = standard pass + recovery pass.
+"before" = the standard pass (re-run here, same accepted fractions as the flow outputs); "after" = standard pass + recovery pass.
 accepted = frames whose two neighbouring evidence frames both have F1 >= 0.5 (and, for a recovered segment, sit on the pose band).
 
 | seg | frames | accepted before | accepted after | calibrated after | camera position | confirmed anchors | cpu s |
