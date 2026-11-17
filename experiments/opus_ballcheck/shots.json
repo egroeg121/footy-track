@@ -1,0 +1,6 @@
+{
+ "cfea4830d5": "Not the match ball: it is a ball-shaped object lying still beyond the touchline by the boards across every tile, a spare ball.",
+ "bcf380f1fe": "Not a ball: the boxed whitish blob is a player's sock/lower leg and moves with him; no ball appears at that place in neighbouring tiles.",
+ "a07b286173": "Ball is at the player's foot and moves with his touches, but the box is about three times too tall, covering his shin as well: box_off.",
+ "de62e8402f": "A faint, white, blurred small ball behind the goal netting; the -2, 0 and +2 positions lie on one straight line, so it is the in-play ball moving fast: ball."
+}
