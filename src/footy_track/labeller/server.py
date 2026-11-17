@@ -89,6 +89,9 @@ app.include_router(identity_routes.router)
 from footy_track.labeller import matches_routes  # noqa: E402
 
 app.include_router(matches_routes.router)
+from footy_track.labeller import progress_routes  # noqa: E402
+
+app.include_router(progress_routes.router)
 from footy_track.labeller import broadcast_review as _broadcast_review  # noqa: E402
 
 app.include_router(_broadcast_review.router)

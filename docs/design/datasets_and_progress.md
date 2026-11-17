@@ -2,8 +2,8 @@
 
 Status: **datasets, ingest-all, eval results and CPU eval adapters are built**
 (`src/footy_track/datasets/`, `src/footy_track/feature_store/ingest_all.py`, tests in
-`tests/datasets/`). The nightly flow and the `/progress` page are **planned, not built**
-([section 11](#11-planned-not-built-yet)).
+`tests/datasets/`) and the **`/progress` page is built** ([section 11](#11-progress-page-built)). The
+nightly flow is **planned, not built** ([section 12](#12-planned-not-built-yet)).
 
 ## 1. Goal
 
@@ -220,16 +220,45 @@ A number is only an honest estimate if the model did not train on the items it i
 Nottingham Forest (held-out) frames. Such results should be recorded with `contaminated = true` until the
 models are retrained on authority-based exports.
 
-## 11. Planned, not built yet
+## 11. `/progress` page (built)
+
+`http://<labeller>:8011/progress` (linked from the hub), JSON at `/api/progress`
+(`labeller/progress.py`, `progress_routes.py`, `web/progress.html`). It is the one view of project
+progress and is global: the `?dataset=` labelling-dataset parameter is ignored. Per dataset
+(`tracking`, `broadcast`, `calibration`):
+
+1. **Dataset growth.** A stacked bar chart (inline SVG) and a table of v1..vN from the snapshot
+   manifests only (never `items.parquet`): created_at, items by split (train / in-match eval /
+   held-out eval), counts by label kind, and the diff vs the parent (added / removed / changed).
+2. **Model performance.** From `eval_result_latest`: per model and metric, the value at each dataset
+   version, as a line chart plus two tables, "full current eval" (`cohort_version` NULL) and "fixed
+   cohort" (shown separately, the tier is part of every row). A contaminated result
+   (`contaminated = true`) is drawn red with a warning mark; unknown contamination (NULL) is amber
+   with a "?"; neither is ever styled as clean. Hover shows `n_items`, the run time and the
+   contamination note. The train split is shown but contamination does not apply to it.
+3. **Split health.** Matches held-out vs train (`match_splits.json`) and clips eval vs train
+   (`clip_splits.json`), the latest version's eval counts per dataset, and warnings: **zero held-out
+   eval items** (a call to action; broadcast has none until a held-out match's broadcast-review frames
+   are labelled), no in-match eval, items in an unregistered match, a preview split, and split
+   registers that changed since the latest snapshot (run `bump`).
+4. **Empty states** with the exact command: no store (`python -m footy_track.feature_store.ingest_all`),
+   no versions (`python -m footy_track.datasets bump all`), no results (a `results record` example), no
+   clip register (`python -m footy_track.splits assign --apply`). Missing, unreadable or locked files
+   degrade the affected section; the page never returns a 500.
+
+Implementation: the store is opened `read_only` for a single query under the shared store lock and
+closed again (a writer mid-ingest gives a "store busy" note, not a hang). The payload is cached for 60 s
+and invalidated early when a manifest, the store (or its WAL) or a register changes; `?refresh=true`
+forces a rebuild. Charts are inline SVG, no external scripts.
+
+## 12. Planned, not built yet
 
 - **Nightly Prefect flow**: `ingest_all`, then `bump all`, then queue evals for any new version (GPU on the
   desktop, the rest on the mini). Its job is to make the CLI above run unattended.
-- **`/progress` page** on the labelling site (:8011): per task, the metric over dataset versions and models,
-  full and cohort lines, contaminated points marked, built from `eval_result_latest` and the manifests.
 - Not wired yet: detector P / R / mAP50; more broadcast sources than the review (e.g. the
   `frame_type` not-broadcast flags); Roboflow imports into `tracking`; a per-clip `eval_result` for paired bootstrap.
 
-## 12. How to
+## 13. How to
 
 ```bash
 # 1. ingest every label source (idempotent; --dry-run parses into memory only)
@@ -268,7 +297,7 @@ backup copies (`ball_gt_marks.bak-*`, `ball_gt_marks_MERGED`) are never read. Ba
 several dirs are merged by timestamp. Deleting a *file* is not propagated (the labeller truncates, it does not
 delete); emptying a file is.
 
-## 13. Why not LanceDB
+## 14. Why not LanceDB
 
 A LanceDB feature store was designed and spiked first (a native table version per write, tags, time
 travel, `merge_insert` upserts). It was rejected because **`import lancedb` / `import lance` abort with
