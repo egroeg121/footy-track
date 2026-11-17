@@ -231,6 +231,50 @@ def test_results_surface_contamination_and_cohort(env, client):
     assert d["datasets"]["tracking"]["models"] == []
 
 
+def test_broadcast_edge_and_all_biased_metrics_are_flagged_diagnostic(env, client):
+    registers(env)
+    write_manifest(env, manifest("broadcast", 1, {"train": 5, "eval_in_match": 72}))
+    db = Path(os.environ["FOOTY_FEATURE_STORE"])
+    seed_results(db, [
+        rr(metric="accuracy", value=0.87, n_items=72), rr(metric="f1_yes", value=0.9, n_items=72),
+        rr(metric="n_random", value=23, n_items=72), rr(metric="accuracy_random", value=0.87, n_items=72),
+        rr(metric="accuracy_edge", value=0.33, n_items=72), rr(metric="n_edge", value=49, n_items=72),
+        rr(metric="accuracy_all_biased", value=0.50, n_items=72),
+        rr(metric="f1_yes_all_biased", value=0.55, n_items=72),
+    ])
+    m = client.get("/api/progress").json()["datasets"]["broadcast"]["models"][0]
+    meta = m["metric_meta"]
+    for metric in ("accuracy_edge", "accuracy_all_biased", "f1_yes_all_biased"):
+        assert meta[metric]["role"] == "diagnostic" and "Diagnostic only" in meta[metric]["note"]
+    assert meta["accuracy"]["role"] == meta["f1_yes"]["role"] == "headline"
+    assert meta["n_random"]["role"] == "count"
+    # headline with its n; each metric's n is its own stratum's, not the all-frames n_items
+    (h,) = m["headline"]
+    assert h["accuracy"] == 0.87 and h["n"] == 23
+    assert m["metrics"]["accuracy"][0]["points"][0]["n_items"] == 23
+    assert m["metrics"]["accuracy_edge"][0]["points"][0]["n_items"] == 49
+    # fewer than 50 random frames: warned
+    assert "small eval sample" in h["warning"]
+
+
+def test_broadcast_headline_no_warning_at_50_and_legacy_all_frames_flagged(env, client):
+    registers(env)
+    write_manifest(env, manifest("broadcast", 1, {"train": 5, "eval_in_match": 72}))
+    db = Path(os.environ["FOOTY_FEATURE_STORE"])
+    seed_results(db, [
+        rr(metric="accuracy", value=0.8), rr(metric="n_random", value=50),
+        rr(model_name="old", metric="accuracy", value=0.5, n_items=72),  # recorded before strata existed
+    ])
+    models = {m["model_name"]: m for m in client.get("/api/progress").json()["datasets"]["broadcast"]["models"]}
+    assert models["clf"]["headline"][0]["warning"] is None and models["clf"]["headline"][0]["n"] == 50
+    assert models["old"]["headline"][0]["n"] is None and "edge-weighted" in models["old"]["headline"][0]["warning"]
+
+
+def test_progress_page_greys_diagnostic_metrics():
+    html = (LABELLER / "web" / "progress.html").read_text()
+    assert "tr.diag" in html and "(diagnostic)" in html and "small eval sample" in html and "headlineStrip" in html
+
+
 def test_latest_run_wins(env, client):
     registers(env)
     db = Path(os.environ["FOOTY_FEATURE_STORE"])

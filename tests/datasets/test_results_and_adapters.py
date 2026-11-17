@@ -138,12 +138,17 @@ def test_contamination_flag_from_a_dataset_version(versions):
 # ---- adapters --------------------------------------------------------------------------------
 def test_broadcast_adapter_scores_stored_predictions(versions):
     out = ea.BroadcastAdapter().evaluate(ea.StoredPredictionModel(), dv(versions, "broadcast"), "eval_heldout_match")
-    # frames: 10 yes/Yes (tp), 11 no/Yes (fp), 12 no/No (tn), 13 yes/No (fn); 14 unsure is excluded
+    # frames: 10 yes/Yes edge (tp), 11 no/Yes random (fp), 12 no/No random (tn), 13 yes/No edge (fn);
+    # 14 unsure is excluded
     m = out.metrics
     assert out.n_items == 4
-    assert m["accuracy"] == 0.5 and m["precision_yes"] == 0.5 and m["recall_yes"] == 0.5 and m["f1_yes"] == 0.5
-    assert m["accuracy_random"] == 0.5  # frames 11 and 12: one right, one wrong
-    assert (m["n_yes"], m["n_no"]) == (2, 2)
+    # headline = the random stratum (frames 11 and 12: one right, one wrong)
+    assert m["accuracy"] == 0.5 and m["accuracy_random"] == 0.5 and m["n_random"] == 2
+    assert m["precision_yes"] == 0.0 and m["recall_yes"] is None and m["f1_yes"] is None
+    assert (m["n_yes"], m["n_no"]) == (0, 2)
+    # edge stratum (10 right, 13 wrong) and all frames are separate, diagnostic metrics
+    assert m["accuracy_edge"] == 0.5 and m["n_edge"] == 2
+    assert m["accuracy_all_biased"] == 0.5 and m["f1_yes_all_biased"] == 0.5
     assert ea.BroadcastAdapter().evaluate(ea.StoredPredictionModel(), dv(versions, "broadcast"), "train").n_items == 0
 
 
@@ -156,7 +161,58 @@ class AlwaysYes:
 
 def test_broadcast_adapter_accepts_any_model(versions):
     out = ea.BroadcastAdapter().evaluate(AlwaysYes(), dv(versions, "broadcast"), "eval_all")
-    assert out.metrics["recall_yes"] == 1.0 and out.metrics["precision_yes"] == 0.5
+    # random frames: 11 no, 12 no -> never right; edge frames 10 yes, 13 yes -> both right
+    assert out.metrics["accuracy"] == 0.0 and out.metrics["accuracy_edge"] == 1.0
+    assert out.metrics["accuracy_all_biased"] == 0.5 and out.metrics["precision_yes"] == 0.0
+
+
+class _FakeDV:
+    """Just enough of DatasetVersion for the adapter: ``select`` returns the item rows."""
+
+    def __init__(self, rows):
+        self.rows = rows
+
+    def select(self, split, cohort=None):
+        return self.rows
+
+
+def _bitem(i, verdict, p_yes, reason):
+    payload = {"verdict": verdict, "p_yes": p_yes, "pred": "Yes" if p_yes >= 0.5 else "No", "ts_s": i / 10}
+    if reason is not None:
+        payload["reason"] = reason
+    return {"item_id": f"m:{i}", "label_kind": verdict, "payload": json.dumps(payload)}
+
+
+def test_broadcast_adapter_reports_random_accuracy_as_headline():
+    rows = [
+        # 6 edge frames at p ~ 0.5: stored call is Yes (0.51) but every one is a human "no" -> edge acc 0
+        *[_bitem(i, "no", 0.51, "edge_mid") for i in range(4)],
+        *[_bitem(i, "no", 0.49, "edge_boundary") for i in range(4, 6)],
+        # 4 random frames: 3 right, 1 wrong
+        _bitem(10, "yes", 0.95, "random"), _bitem(11, "no", 0.02, "random"),
+        _bitem(12, "yes", 0.90, "random"), _bitem(13, "yes", 0.10, "random"),
+        # legacy frames with no reason: never assumed random
+        _bitem(20, "yes", 0.9, None), _bitem(21, "no", 0.9, None),
+    ]
+    out = ea.BroadcastAdapter().evaluate(ea.StoredPredictionModel(), _FakeDV(rows), "eval_all")
+    m = out.metrics
+    assert m["accuracy"] == m["accuracy_random"] == 0.75 and m["n_random"] == 4  # the headline
+    assert m["f1_yes"] == m["f1_yes_random"] == pytest.approx(0.8)  # tp=2 fp=0 fn=1
+    # edge: 4 x 0.51 -> Yes (wrong), 2 x 0.49 -> No (right)
+    assert m["accuracy_edge"] == pytest.approx(2 / 6) and m["n_edge"] == 6
+    assert m["f1_yes_edge"] is None or m["f1_yes_edge"] == 0.0
+    # all frames, edge-weighted: right = 2 edge + 3 random + 1 legacy = 6 of 12
+    assert m["accuracy_all_biased"] == 0.5 and "f1_yes_all_biased" in m
+    assert m["n_unknown"] == 2 and out.n_items == 12  # legacy frames excluded from the headline only
+
+
+def test_broadcast_stratum_never_assumes_legacy_is_random():
+    s = ea.broadcast_stratum
+    assert s(_bitem(0, "yes", 0.5, "random")) == "random"
+    assert s(_bitem(0, "yes", 0.5, "edge")) == "edge"  # legacy review value
+    assert s(_bitem(0, "yes", 0.5, "edge_mid")) == s(_bitem(0, "yes", 0.5, "edge_boundary")) == "edge"
+    assert s(_bitem(0, "yes", 0.5, None)) == "unknown"
+    assert s(_bitem(0, "yes", 0.5, "band")) == "unknown"
 
 
 def test_calibration_adapter_reprojection(versions, tmp_path):
@@ -239,6 +295,8 @@ def test_evaluate_and_record_writes_full_and_cohort_rows_with_flags(versions, tm
     by = {(r["split"], r["cohort_version"], r["metric"]): r for r in stored}
     full, cohort = by[("eval_all", None, "accuracy")], by[("eval_all", 1, "accuracy")]
     assert full["n_items"] == 5 and cohort["n_items"] == 4  # the cohort is the v1 eval set
-    assert cohort["value"] == 0.5 and full["value"] == pytest.approx(0.6)
+    # headline = random frames only: the v1 cohort has 11 (wrong) and 12 (right); v2 adds 15 (right)
+    assert cohort["value"] == 0.5 and full["value"] == pytest.approx(2 / 3)
+    assert by[("eval_all", None, "n_random")]["value"] == 3 and by[("eval_all", None, "accuracy_all_biased")]["value"] == pytest.approx(0.6)
     assert full["contaminated"] is True and by[("eval_heldout_match", None, "accuracy")]["contaminated"] is True
     assert by[("eval_in_match", None, "accuracy")]["contaminated"] is False
