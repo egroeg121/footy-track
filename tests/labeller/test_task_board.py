@@ -34,24 +34,10 @@ def test_missing_file_is_seeded(client, tasks_file):
 
 def test_existing_file_is_not_reseeded_and_reread_each_request(client, tasks_file):
     tasks_file.parent.mkdir(parents=True)
-    tasks_file.write_text(
-        json.dumps({"tasks": [{"id": "a", "title": "A", "priority": 3}]})
-    )
+    tasks_file.write_text(json.dumps({"tasks": [{"id": "a", "title": "A", "priority": 3}]}))
     assert [t["id"] for t in client.get("/api/tasks").json()["tasks"]] == ["a"]
-    tasks_file.write_text(
-        json.dumps(
-            {
-                "tasks": [
-                    {"id": "b", "title": "B"},
-                    {"id": "c", "title": "C", "priority": 1},
-                ]
-            }
-        )
-    )
-    assert [t["id"] for t in client.get("/api/tasks").json()["tasks"]] == [
-        "c",
-        "b",
-    ]  # priority order
+    tasks_file.write_text(json.dumps({"tasks": [{"id": "b", "title": "B"}, {"id": "c", "title": "C", "priority": 1}]}))
+    assert [t["id"] for t in client.get("/api/tasks").json()["tasks"]] == ["c", "b"]  # priority order
 
 
 @pytest.mark.parametrize("body", ["{not json", '{"tasks": "nope"}', "[1, 2"])
@@ -66,38 +52,13 @@ def test_malformed_file_returns_200_with_error(client, tasks_file, body):
 
 
 def test_cli_add_done_roundtrip(client, tasks_file, capsys):
-    assert (
-        cli.main(
-            [
-                "add",
-                "Check X",
-                "--url",
-                "/ball_check",
-                "--why",
-                "because",
-                "--device",
-                "phone",
-                "--priority",
-                "0",
-                "--count-url",
-                "/api/x",
-                "--count-label",
-                "left",
-                "--owner",
-                "me",
-            ]
-        )
-        == 0
-    )
+    assert cli.main(["add", "Check X", "--url", "/ball_check", "--why", "because", "--device", "phone",
+                     "--priority", "0", "--count-url", "/api/x", "--count-label", "left", "--owner", "me"]) == 0
     tid = capsys.readouterr().out.strip()
     assert tid.startswith("t-")
     tasks = client.get("/api/tasks").json()["tasks"]
     mine = next(t for t in tasks if t["id"] == tid)
-    assert (
-        mine["title"] == "Check X"
-        and mine["device"] == "phone"
-        and mine["owner"] == "me"
-    )
+    assert mine["title"] == "Check X" and mine["device"] == "phone" and mine["owner"] == "me"
     assert mine["count_url"] == "/api/x" and mine["added"]
     assert tasks[0]["id"] == tid  # lowest priority number sorts first
 
@@ -134,22 +95,10 @@ def test_server_info_shape(client, monkeypatch):
     assert r.status_code == 200
     j = r.json()
     assert j["name"] == "calib" and j["port"] == 8011
-    assert {
-        "sha",
-        "short_sha",
-        "branch",
-        "describe",
-        "dirty",
-        "started",
-        "uptime_s",
-        "env",
-        "repo",
-    } <= set(j)
+    assert {"sha", "short_sha", "branch", "describe", "dirty", "started", "uptime_s", "env", "repo"} <= set(j)
     assert j["uptime_s"] >= 0
     assert j["env"]["FOOTY_GT_MARKS_DIR"] == "/x/gt"
-    assert (
-        r.headers["access-control-allow-origin"] == "*"
-    )  # cross-origin reads from the other server's home page
+    assert r.headers["access-control-allow-origin"] == "*"  # cross-origin reads from the other server's home page
 
 
 def test_home_page_smoke(client):
@@ -157,13 +106,7 @@ def test_home_page_smoke(client):
         r = client.get(route)
         assert r.status_code == 200
         assert "no-store" in r.headers["cache-control"]
-        for needle in (
-            "To do now",
-            "/api/tasks",
-            "/api/server_info",
-            "/ball_check",
-            "/calibration/review",
-        ):
+        for needle in ("To do now", "/api/tasks", "/api/server_info", "/ball_check", "/calibration/review"):
             assert needle in r.text
 
 
@@ -176,24 +119,16 @@ def test_warm_helper_urls_and_walks_only_undone_cards(monkeypatch):
 
     def fake_get(url, timeout):
         if "/ball_check/queue" in url:
-            return json.dumps(
-                {
-                    "items": [
-                        {"clip": "a", "frame_index": 1, "box_index": 4},
-                        {"clip": "b", "frame_index": 2, "box_index": 5},
-                    ]
-                }
-            ).encode()
+            return json.dumps({"items": [{"clip": "a", "frame_index": 1, "box_index": 4},
+                                         {"clip": "b", "frame_index": 2, "box_index": 5}]}).encode()
         seen.append(url)
         return b""
 
     monkeypatch.setattr(W, "_get", fake_get)
     assert W.main(["--base", "http://x:1", "--sleep", "0"]) == 0
     assert [u.split("?")[0] for u in seen] == [
-        "http://x:1/ball_check/crop/a/1/4.jpg",
-        "http://x:1/ball_check/clip/a/1/4.mp4",
-        "http://x:1/ball_check/crop/b/2/5.jpg",
-        "http://x:1/ball_check/clip/b/2/5.mp4",
+        "http://x:1/ball_check/crop/a/1/4.jpg", "http://x:1/ball_check/clip/a/1/4.mp4",
+        "http://x:1/ball_check/crop/b/2/5.jpg", "http://x:1/ball_check/clip/b/2/5.mp4",
     ]
 
 
@@ -228,9 +163,7 @@ def _save_gt(clip, frame, ts="2026-11-16T10:00:00+0000"):
     cal._write_gt(clip, doc)
 
 
-def test_task_without_done_when_keeps_todays_behaviour(
-    client, tasks_file, gt_marks_dir
-):
+def test_task_without_done_when_keeps_todays_behaviour(client, tasks_file, gt_marks_dir):
     _post(tasks_file, {"id": "a", "title": "A", "url": "/ball_check"})
     by_id, _ = _board(client)
     assert by_id["a"]["done"] is False
@@ -238,77 +171,48 @@ def test_task_without_done_when_keeps_todays_behaviour(
 
 
 def test_gt_done_when_resolves_clip_aliases(client, tasks_file, gt_marks_dir):
-    _post(
-        tasks_file,
-        {"id": "a", "title": "A", "done_when": {"gt": {"clip": CLIP, "frame": 205}}},
-    )
+    _post(tasks_file, {"id": "a", "title": "A", "done_when": {"gt": {"clip": CLIP, "frame": 205}}})
     assert _board(client)[0]["a"]["done"] is False
     _save_gt(ALIAS, 205)  # saved under another alias of the clip
     assert _board(client)[0]["a"]["done"] is True
-    _post(
-        tasks_file,
-        {"id": "b", "title": "B", "done_when": {"gt": {"clip": ALIAS, "frame": 205}}},
-        {"id": "c", "title": "C", "done_when": {"gt": {"clip": CLIP, "frame": 206}}},
-    )
+    _post(tasks_file, {"id": "b", "title": "B", "done_when": {"gt": {"clip": ALIAS, "frame": 205}}},
+          {"id": "c", "title": "C", "done_when": {"gt": {"clip": CLIP, "frame": 206}}})
     by_id, _ = _board(client)
-    assert (
-        by_id["b"]["done"] is True and by_id["c"]["done"] is False
-    )  # other frame: untouched
+    assert by_id["b"]["done"] is True and by_id["c"]["done"] is False  # other frame: untouched
 
 
 def test_proposal_done_when_status_in(client, tasks_file, gt_marks_dir):
     rec = lambda st: {"runs": {"r1": {"frames": {"205": {"status": st}}}}}  # noqa: E731
     dw = {"proposal": {"clip": ALIAS, "run": "r1", "frame": 205}}
-    _post(
-        tasks_file,
-        {"id": "a", "title": "A", "done_when": dw},
-        {"id": "b", "title": "B", "done_when": {**dw, "status_in": ["rejected"]}},
-    )
+    _post(tasks_file, {"id": "a", "title": "A", "done_when": dw},
+          {"id": "b", "title": "B", "done_when": {**dw, "status_in": ["rejected"]}})
     write_proposals(gt_marks_dir, CLIP, {"clip": CLIP, **rec("proposed")})
     by_id, _ = _board(client)
     assert not by_id["a"]["done"] and not by_id["b"]["done"]
     write_proposals(gt_marks_dir, CLIP, {"clip": CLIP, **rec("edited")})
     by_id, _ = _board(client)
-    assert (
-        by_id["a"]["done"] is True and by_id["b"]["done"] is False
-    )  # default: accepted/edited
+    assert by_id["a"]["done"] is True and by_id["b"]["done"] is False  # default: accepted/edited
     write_proposals(gt_marks_dir, CLIP, {"clip": CLIP, **rec("rejected")})
     by_id, _ = _board(client)
     assert by_id["a"]["done"] is False and by_id["b"]["done"] is True
 
 
-def test_frames_done_when_counts_gt_and_frame_type_marks_with_progress(
-    client, tasks_file, gt_marks_dir
-):
+def test_frames_done_when_counts_gt_and_frame_type_marks_with_progress(client, tasks_file, gt_marks_dir):
     frames = [[CLIP, 1], [CLIP, 2], [CLIP, 3], ["arsenal_mancity_seg010", 4]]
     _post(tasks_file, {"id": "a", "title": "A", "done_when": {"frames": frames}})
     t = _board(client)[0]["a"]
     assert t["done"] is False and t["progress"] == {"done": 0, "total": 4}
     _save_gt(ALIAS, 1)
-    update_frame_types(
-        gt_marks_dir,
-        CLIP,
-        lambda d: d["frames"].update({"2": {"type": "not_broadcast"}}),
-    )
-    update_frame_types(
-        gt_marks_dir,
-        CLIP,
-        lambda d: d["frames"].update({"3": {"type": "too_few_points"}}),
-    )
+    update_frame_types(gt_marks_dir, CLIP, lambda d: d["frames"].update({"2": {"type": "not_broadcast"}}))
+    update_frame_types(gt_marks_dir, CLIP, lambda d: d["frames"].update({"3": {"type": "too_few_points"}}))
     t = _board(client)[0]["a"]
     assert t["done"] is False and t["progress"] == {"done": 3, "total": 4}
-    update_frame_types(
-        gt_marks_dir,
-        "mancity_seg010",
-        lambda d: d["frames"].update({"4": {"type": "not_broadcast"}}),
-    )
+    update_frame_types(gt_marks_dir, "mancity_seg010", lambda d: d["frames"].update({"4": {"type": "not_broadcast"}}))
     t = _board(client)[0]["a"]
     assert t["done"] is True and t["progress"] == {"done": 4, "total": 4}
 
 
-def test_count_zero_uses_count_url_and_unreachable_is_not_done(
-    client, tasks_file, monkeypatch
-):
+def test_count_zero_uses_count_url_and_unreachable_is_not_done(client, tasks_file, monkeypatch):
     left = {"total": 3}
     seen = []
 
@@ -319,29 +223,15 @@ def test_count_zero_uses_count_url_and_unreachable_is_not_done(
         return left
 
     monkeypatch.setattr(TD, "fetch_json", fake)
-    _post(
-        tasks_file,
-        {
-            "id": "a",
-            "title": "A",
-            "count_url": "http://mac-mini-i7:8011/x?limit=1",
-            "done_when": {"count_zero": True},
-        },
-        {
-            "id": "b",
-            "title": "B",
-            "count_url": "/y",
-            "count_path": "progress.remaining",
-            "done_when": {"count_zero": True},
-        },
-    )
+    _post(tasks_file, {"id": "a", "title": "A", "count_url": "http://mac-mini-i7:8011/x?limit=1",
+                       "done_when": {"count_zero": True}},
+          {"id": "b", "title": "B", "count_url": "/y", "count_path": "progress.remaining",
+           "done_when": {"count_zero": True}})
     left = {"total": 3, "progress": {"remaining": 0}}
     by_id, _ = _board(client)
     assert by_id["a"]["done"] is False and by_id["a"]["progress"] == {"remaining": 3}
     assert by_id["b"]["done"] is True
-    assert (
-        "http://testserver/x?limit=1" in seen
-    )  # our own host is fetched through the request base
+    assert "http://testserver/x?limit=1" in seen  # our own host is fetched through the request base
     left = {"total": 0, "progress": {"remaining": 1}}
     by_id, _ = _board(client)
     assert by_id["a"]["done"] is True and by_id["b"]["done"] is False
@@ -350,33 +240,18 @@ def test_count_zero_uses_count_url_and_unreachable_is_not_done(
     assert by_id["a"]["done"] is False  # a failing count url never completes a task
 
 
-def test_inference_from_url_and_count_url_without_touching_the_file(
-    client, tasks_file, gt_marks_dir, monkeypatch
-):
+def test_inference_from_url_and_count_url_without_touching_the_file(client, tasks_file, gt_marks_dir, monkeypatch):
     monkeypatch.setattr(TD, "fetch_json", lambda url: {"total": 0})
-    url = (
-        f"http://mac-mini-i7:8011/calibration?clip={CLIP}&frame=205&proposal=bmth_pre1"
-    )
-    _post(
-        tasks_file,
-        {"id": "gt", "title": "G", "url": url, "added": "2026-11-15"},
-        {
-            "id": "q",
-            "title": "Q",
-            "url": "/calibration/review?run=x",
-            "count_url": "/api/q",
-        },
-        {"id": "plain", "title": "P", "url": "/ball_check"},
-    )
+    url = f"http://mac-mini-i7:8011/calibration?clip={CLIP}&frame=205&proposal=bmth_pre1"
+    _post(tasks_file,
+          {"id": "gt", "title": "G", "url": url, "added": "2026-11-15"},
+          {"id": "q", "title": "Q", "url": "/calibration/review?run=x", "count_url": "/api/q"},
+          {"id": "plain", "title": "P", "url": "/ball_check"})
     before = tasks_file.read_text()
     by_id, _ = _board(client)
-    assert by_id["gt"]["done_when"] == {
-        "gt": {"clip": CLIP, "frame": 205, "since": "added"}
-    }
+    assert by_id["gt"]["done_when"] == {"gt": {"clip": CLIP, "frame": 205, "since": "added"}}
     assert by_id["gt"]["done_when_inferred"] is True and by_id["gt"]["done"] is False
-    assert (
-        by_id["q"]["done_when"] == {"count_zero": True} and by_id["q"]["done"] is True
-    )
+    assert by_id["q"]["done_when"] == {"count_zero": True} and by_id["q"]["done"] is True
     assert "done_when" not in by_id["plain"] and by_id["plain"]["done"] is False
     _save_gt(CLIP, 205, ts="2026-11-16T09:00:00+0000")
     assert _board(client)[0]["gt"]["done"] is True  # the Bournemouth seg030 f205 case
@@ -386,23 +261,13 @@ def test_inference_from_url_and_count_url_without_touching_the_file(
 def test_inferred_gt_ignores_gt_older_than_the_task(client, tasks_file, gt_marks_dir):
     """A recheck task opens a frame that already has GT: only a save after it was added completes it."""
     _save_gt(CLIP, 87, ts="2026-11-10T09:00:00+0000")
-    _post(
-        tasks_file,
-        {
-            "id": "r",
-            "title": "R",
-            "added": "2026-11-15",
-            "url": f"/calibration?clip={CLIP}&frame=87",
-        },
-    )
+    _post(tasks_file, {"id": "r", "title": "R", "added": "2026-11-15", "url": f"/calibration?clip={CLIP}&frame=87"})
     assert _board(client)[0]["r"]["done"] is False
     _save_gt(CLIP, 87, ts="2026-11-16T09:00:00+0000")
     assert _board(client)[0]["r"]["done"] is True
 
 
-def test_seed_tasks_are_not_done_on_an_empty_dataset(
-    client, tasks_file, gt_marks_dir, monkeypatch
-):
+def test_seed_tasks_are_not_done_on_an_empty_dataset(client, tasks_file, gt_marks_dir, monkeypatch):
     monkeypatch.setattr(TD, "fetch_json", lambda url: {"total": 5})
     by_id, _ = _board(client)
     assert len(by_id) == 4 and not any(t["done"] for t in by_id.values())
@@ -410,22 +275,13 @@ def test_seed_tasks_are_not_done_on_an_empty_dataset(
     assert by_id["t-seed-bmth-nonbroadcast"]["done_when"] == {"count_zero": True}
 
 
-def test_done_tasks_sort_last_age_off_after_two_days_and_reopen(
-    client, tasks_file, gt_marks_dir, monkeypatch
-):
+def test_done_tasks_sort_last_age_off_after_two_days_and_reopen(client, tasks_file, gt_marks_dir, monkeypatch):
     clock = [datetime(2026, 11, 16, 12, 0, tzinfo=UTC)]
     monkeypatch.setattr(TD, "now_utc", lambda: clock[0])
-    _post(
-        tasks_file,
-        {
-            "id": "first",
-            "title": "F",
-            "priority": 1,
-            "done_when": {"gt": {"clip": CLIP, "frame": 1}},
-        },
-        {"id": "mid", "title": "M", "priority": 2},
-        {"id": "last", "title": "L", "priority": 3},
-    )
+    _post(tasks_file,
+          {"id": "first", "title": "F", "priority": 1, "done_when": {"gt": {"clip": CLIP, "frame": 1}}},
+          {"id": "mid", "title": "M", "priority": 2},
+          {"id": "last", "title": "L", "priority": 3})
     _save_gt(CLIP, 1)
     by_id, order = _board(client)
     assert order == ["mid", "last", "first"]  # done last despite priority 1
@@ -434,9 +290,7 @@ def test_done_tasks_sort_last_age_off_after_two_days_and_reopen(
     assert _board(client)[1] == ["mid", "last", "first"]
     clock[0] += timedelta(hours=2)
     assert _board(client)[1] == ["mid", "last"]  # past 2 days: dropped from the board
-    assert "first" in [
-        t["id"] for t in json.loads(tasks_file.read_text())["tasks"]
-    ]  # ...but never deleted from the file
+    assert "first" in [t["id"] for t in json.loads(tasks_file.read_text())["tasks"]]  # ...but never deleted from the file
     # GT removed -> the task is active again and its done timestamp is forgotten
     doc = cal._read_gt(CLIP)
     doc["frames"].clear()
@@ -446,17 +300,12 @@ def test_done_tasks_sort_last_age_off_after_two_days_and_reopen(
     assert json.loads(TD.sidecar_path(tasks_file).read_text()) == {}
 
 
-def test_done_evaluation_is_cached_for_a_few_seconds(
-    client, tasks_file, gt_marks_dir, monkeypatch
-):
+def test_done_evaluation_is_cached_for_a_few_seconds(client, tasks_file, gt_marks_dir, monkeypatch):
     monkeypatch.setattr(TD, "CACHE_TTL", 60.0)
     calls = []
     real = TD._evaluate
     monkeypatch.setattr(TD, "_evaluate", lambda *a: calls.append(1) or real(*a))
-    _post(
-        tasks_file,
-        {"id": "a", "title": "A", "done_when": {"gt": {"clip": CLIP, "frame": 5}}},
-    )
+    _post(tasks_file, {"id": "a", "title": "A", "done_when": {"gt": {"clip": CLIP, "frame": 5}}})
     assert not _board(client)[0]["a"]["done"]
     _save_gt(CLIP, 5)
     assert not _board(client)[0]["a"]["done"]  # still the cached answer
@@ -466,36 +315,22 @@ def test_done_evaluation_is_cached_for_a_few_seconds(
 
 
 def test_bad_done_when_never_breaks_the_board(client, tasks_file, gt_marks_dir):
-    _post(
-        tasks_file,
-        {"id": "a", "title": "A", "done_when": {"gt": {"clip": CLIP}}},
-        {"id": "b", "title": "B", "done_when": {"frames": "nope"}},
-        {"id": "c", "title": "C", "done_when": {"count_zero": True}},  # no count_url
-        {"id": "d", "title": "D", "done_when": {"wat": 1}},
-    )
+    _post(tasks_file, {"id": "a", "title": "A", "done_when": {"gt": {"clip": CLIP}}},
+          {"id": "b", "title": "B", "done_when": {"frames": "nope"}},
+          {"id": "c", "title": "C", "done_when": {"count_zero": True}},  # no count_url
+          {"id": "d", "title": "D", "done_when": {"wat": 1}})
     by_id, _ = _board(client)
     assert len(by_id) == 4 and not any(t["done"] for t in by_id.values())
 
 
 def test_cli_add_done_when_flags(client, tasks_file, capsys):
     assert cli.main(["add", "G", "--done-when-gt", f"{CLIP}:205"]) == 0
-    assert (
-        cli.main(
-            ["add", "F", "--done-when-frames", f"{CLIP}:1,arsenal_mancity_seg010:4"]
-        )
-        == 0
-    )
-    assert (
-        cli.main(["add", "Z", "--count-url", "/api/z", "--done-when-count-zero"]) == 0
-    )
+    assert cli.main(["add", "F", "--done-when-frames", f"{CLIP}:1,arsenal_mancity_seg010:4"]) == 0
+    assert cli.main(["add", "Z", "--count-url", "/api/z", "--done-when-count-zero"]) == 0
     capsys.readouterr()
     by_title = {t["title"]: t for t in json.loads(tasks_file.read_text())["tasks"]}
-    assert by_title["G"]["done_when"] == {
-        "gt": {"clip": CLIP, "frame": 205, "since": "added"}
-    }
-    assert by_title["F"]["done_when"] == {
-        "frames": [[CLIP, 1], ["arsenal_mancity_seg010", 4]]
-    }
+    assert by_title["G"]["done_when"] == {"gt": {"clip": CLIP, "frame": 205, "since": "added"}}
+    assert by_title["F"]["done_when"] == {"frames": [[CLIP, 1], ["arsenal_mancity_seg010", 4]]}
     assert by_title["Z"]["done_when"] == {"count_zero": True}
     with pytest.raises(SystemExit):
         cli.main(["add", "bad", "--done-when-gt", "no-frame-here"])

@@ -55,98 +55,58 @@ POL = cc.Policy(check_every=3, work_width=W)
 
 def test_keyframes_propagate_both_ways_and_stop_at_the_cut(clip, masks):
     path, cams, motion = clip
-    cal = cc.calibrate_clip(
-        path,
-        {0: (cams[0], None), N_A - 1: (cams[N_A - 1], None)},
-        policy=POL,
-        motion=motion,
-        masks=masks,
-    )
+    cal = cc.calibrate_clip(path, {0: (cams[0], None), N_A - 1: (cams[N_A - 1], None)}, policy=POL, motion=motion, masks=masks)
     t = cal.table
     assert len(t) == 22 and t["ok"].iloc[:N_A].all()
     for f in range(N_A):
         assert _perr(cal.H(f), cams[f]) < 0.6, f  # metres
-    assert (t["source"].iloc[[0, N_A - 1]] == cc.KEYFRAME).all() and (
-        t["gap"].iloc[[0, N_A - 1]] == 0
-    ).all()
+    assert (t["source"].iloc[[0, N_A - 1]] == cc.KEYFRAME).all() and (t["gap"].iloc[[0, N_A - 1]] == 0).all()
     # nearest keyframe wins
     assert t["key_frame"].iloc[2] == 0 and t["key_frame"].iloc[13] == N_A - 1
     # the second shot has no keyframe: no extrapolation across the cut
     after = t.iloc[N_A:]
-    assert (
-        not after["ok"].any()
-        and (after["source"] == cc.NONE).all()
-        and after["H"].map(lambda h: np.isnan(h).all()).all()
-    )
+    assert not after["ok"].any() and (after["source"] == cc.NONE).all() and after["H"].map(lambda h: np.isnan(h).all()).all()
     assert cal.H(N_A + 2) is None and cal.H_any(N_A + 2) is None
     assert t["shot_id"].iloc[0] == 0 and t["shot_id"].iloc[N_A] == 1
 
 
 def test_single_keyframe_carries_the_whole_shot(clip, masks):
     path, cams, motion = clip
-    cal = cc.calibrate_clip(
-        path, {7: cams[7]}, policy=POL, motion=motion, masks=masks
-    )  # a bare H is accepted
+    cal = cc.calibrate_clip(path, {7: cams[7]}, policy=POL, motion=motion, masks=masks)  # a bare H is accepted
     assert cal.table["ok"].iloc[:N_A].all()
     assert max(_perr(cal.H(f), cams[f]) for f in range(N_A)) < 0.8
     assert cal.table["gap"].iloc[0] == 7 and cal.table["key_frame"].iloc[0] == 7
-    assert (
-        cal.table["confidence"].iloc[7] == 1.0 and cal.table["confidence"].iloc[0] < 1.0
-    )
+    assert cal.table["confidence"].iloc[7] == 1.0 and cal.table["confidence"].iloc[0] < 1.0
 
 
 def test_a_wrong_calibration_is_not_ok(clip, masks):
     path, cams, motion = clip
-    bad = geo.orient_homography(
-        cams[4]
-        @ np.array([[1, 0, 0.0], [0, 1, 0.0], [0, 0, 1.0]])
-        @ np.array([[1, 0, 0.08], [0, 1, 0.06], [0, 0, 1.0]]),
-        [[0.5, 0.5]],
-    )
+    bad = geo.orient_homography(cams[4] @ np.array([[1, 0, 0.0], [0, 1, 0.0], [0, 0, 1.0]]) @ np.array([[1, 0, 0.08], [0, 1, 0.06], [0, 0, 1.0]]), [[0.5, 0.5]])
     pol = cc.Policy(check_every=3, work_width=W, refine=False)
-    cal = cc.calibrate_clip(
-        path, {4: (bad, None)}, policy=pol, motion=motion, masks=masks
-    )
+    cal = cc.calibrate_clip(path, {4: (bad, None)}, policy=pol, motion=motion, masks=masks)
     t = cal.table.iloc[:N_A]
     assert t["ok"].iloc[4]  # the keyframe is trusted by definition
-    assert (
-        not t["ok"].iloc[[0, 1, 2, 8, 9, 12]].any()
-    )  # the lines are nowhere near the model lines
+    assert not t["ok"].iloc[[0, 1, 2, 8, 9, 12]].any()  # the lines are nowhere near the model lines
     assert t["confidence"][~t["ok"]].max() <= 0.2
-    good = cc.calibrate_clip(
-        path, {4: cams[4]}, policy=pol, motion=motion, masks=masks
-    ).table.iloc[:N_A]
+    good = cc.calibrate_clip(path, {4: cams[4]}, policy=pol, motion=motion, masks=masks).table.iloc[:N_A]
     assert np.nanmean(t["line_cost"]) > 3 * np.nanmean(good["line_cost"])
 
 
 def test_trigger_refinement_is_gated_and_keeps_the_error_small(clip, masks):
     path, cams, motion = clip
-    pol = cc.Policy(
-        check_every=3, work_width=W, max_anchor_gap=4, refine_cooldown=3
-    )  # re-anchor often
+    pol = cc.Policy(check_every=3, work_width=W, max_anchor_gap=4, refine_cooldown=3)  # re-anchor often
     cal = cc.calibrate_clip(path, {0: cams[0]}, policy=pol, motion=motion, masks=masks)
     assert cal.stats["n_refine"] > 0
     assert cal.stats["n_accepted"] + cal.stats["n_rejected"] == cal.stats["n_refine"]
-    assert (
-        max(_perr(cal.H(f), cams[f]) for f in range(N_A) if cal.H(f) is not None) < 1.0
-    )
+    assert max(_perr(cal.H(f), cams[f]) for f in range(N_A) if cal.H(f) is not None) < 1.0
     refined = cal.table[cal.table["source"] == cc.REFINED]
     assert (refined["anchor_frame"] == refined["frame"]).all()
 
 
 def test_no_refine_policy_is_pure_propagation(clip, masks):
     path, cams, motion = clip
-    cal = cc.calibrate_clip(
-        path,
-        {0: cams[0]},
-        policy=cc.Policy(check_every=3, work_width=W, refine=False),
-        motion=motion,
-        masks=masks,
-    )
-    assert (
-        set(cal.table["source"]) <= {cc.KEYFRAME, cc.PROPAGATED, cc.NONE}
-        and cal.stats["n_refine"] == 0
-    )
+    cal = cc.calibrate_clip(path, {0: cams[0]}, policy=cc.Policy(check_every=3, work_width=W, refine=False), motion=motion, masks=masks)
+    assert set(cal.table["source"]) <= {cc.KEYFRAME, cc.PROPAGATED, cc.NONE} and cal.stats["n_refine"] == 0
 
 
 def test_keyframe_outside_clip_or_none_is_an_error(clip, masks):
@@ -160,36 +120,15 @@ def test_keyframe_outside_clip_or_none_is_an_error(clip, masks):
 def test_distortion_is_carried_and_records_round_trip(clip, masks, tmp_path):
     path, cams, motion = clip
     dist = geo.make_distortion(0.02, W / H)
-    cal = cc.calibrate_clip(
-        path, {0: (cams[0], dist)}, policy=POL, motion=motion, masks=masks
-    )
+    cal = cc.calibrate_clip(path, {0: (cams[0], dist)}, policy=POL, motion=motion, masks=masks)
     assert cal.distortion(5)["k1"] == pytest.approx(0.02)
     rec = cal.records()
-    assert (
-        len(rec) == 22
-        and rec[5]["H"].shape == (3, 3)
-        and rec[5]["distortion"]["k1"] == pytest.approx(0.02)
-    )
+    assert len(rec) == 22 and rec[5]["H"].shape == (3, 3) and rec[5]["distortion"]["k1"] == pytest.approx(0.02)
     assert rec[20]["H"] is None and rec[20]["ok"] is False
-    assert {
-        "frame",
-        "H",
-        "distortion",
-        "source",
-        "anchor_frame",
-        "gap",
-        "line_cost",
-        "confidence",
-        "shot_id",
-        "ok",
-    } <= set(rec[0])
+    assert {"frame", "H", "distortion", "source", "anchor_frame", "gap", "line_cost", "confidence", "shot_id", "ok"} <= set(rec[0])
     cal.save(tmp_path / "cal.parquet")
     back = cc.ClipCalibration.load(tmp_path / "cal.parquet", W / H)
-    assert (
-        np.allclose(back.H(5), cal.H(5))
-        and back.H(20) is None
-        and list(back.table["source"]) == list(cal.table["source"])
-    )
+    assert np.allclose(back.H(5), cal.H(5)) and back.H(20) is None and list(back.table["source"]) == list(cal.table["source"])
 
 
 def test_mask_store_round_trip(masks, tmp_path):
@@ -197,11 +136,7 @@ def test_mask_store_round_trip(masks, tmp_path):
     back = cc.MaskStore.load(tmp_path / "m.npz")
     assert back.frames == masks.frames and back.work_width == W
     a, b = masks.get(3), back.get(3)
-    assert (
-        np.array_equal(a.lines, b.lines)
-        and np.array_equal(a.grass, b.grass)
-        and a.lines.shape == (H, W)
-    )
+    assert np.array_equal(a.lines, b.lines) and np.array_equal(a.grass, b.grass) and a.lines.shape == (H, W)
     assert masks.get(999) is None
 
 
@@ -210,11 +145,5 @@ def test_line_cost_is_low_for_the_true_h_and_high_for_a_shifted_one(clip, masks)
     s = model_samples(PitchModel())
     m = masks.get(3)
     good = cc.line_cost(cams[3], m, s)
-    bad = cc.line_cost(
-        geo.orient_homography(
-            cams[3] @ np.array([[1, 0, 0.05], [0, 1, 0.04], [0, 0, 1.0]]), [[0.5, 0.5]]
-        ),
-        m,
-        s,
-    )
+    bad = cc.line_cost(geo.orient_homography(cams[3] @ np.array([[1, 0, 0.05], [0, 1, 0.04], [0, 0, 1.0]]), [[0.5, 0.5]]), m, s)
     assert good < 3.0 < bad

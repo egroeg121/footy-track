@@ -20,38 +20,18 @@ CLIP = "arsenal_mancity_seg010"
 
 def _record(score, status="proposed", shift=0.0, with_outlier=False):
     pitch = PitchModel()
-    img, _ = geo.apply_homography(
-        np.linalg.inv(_camera_h()), np.array([pitch.keypoints()[k] for k in KP])
-    )
-    corr = [
-        {
-            "image": [float(p[0]) + shift, float(p[1])],
-            "pitch_id": k,
-            "pitch_xy": list(pitch.keypoints()[k]),
-            "confidence": 0.9,
-            "candidate_id": i + 1,
-        }
-        for i, (p, k) in enumerate(zip(img, KP, strict=True))
-    ]
+    img, _ = geo.apply_homography(np.linalg.inv(_camera_h()), np.array([pitch.keypoints()[k] for k in KP]))
+    corr = [{"image": [float(p[0]) + shift, float(p[1])], "pitch_id": k, "pitch_xy": list(pitch.keypoints()[k]),
+             "confidence": 0.9, "candidate_id": i + 1} for i, (p, k) in enumerate(zip(img, KP, strict=True))]
     inl = [True] * len(corr)
     if with_outlier:
         corr[0]["image"] = [0.9, 0.9]
         inl[0] = False
     return {
-        "frame_index": 0,
-        "correspondences": corr,
-        "H": _camera_h().tolist(),
-        "H_convention": "normalised_image_to_pitch_m",
-        "pitch_dims": [105, 68],
-        "image_size": [W, H],
-        "method": "ransac",
-        "inliers": inl,
-        "mean_err_m": 0.0,
-        "err_px": [0.0] * len(corr),
-        "ts": "t",
-        "status": status,
-        "score": score,
-        "failure": None if status != "failed" else "unusable: close-up",
+        "frame_index": 0, "correspondences": corr, "H": _camera_h().tolist(),
+        "H_convention": "normalised_image_to_pitch_m", "pitch_dims": [105, 68], "image_size": [W, H],
+        "method": "ransac", "inliers": inl, "mean_err_m": 0.0, "err_px": [0.0] * len(corr), "ts": "t",
+        "status": status, "score": score, "failure": None if status != "failed" else "unusable: close-up",
         "view": {"end": "L", "camera_side": "main_wide", "notes": "left end"},
     }
 
@@ -61,28 +41,12 @@ def prop_env(client, clips_dir, gt_marks_dir, monkeypatch):
     (clips_dir / "arsenal_mancity_20250925_seg010.mp4").touch()
     frame = np.full((H, W, 3), 90, np.uint8)
     monkeypatch.setattr(cal, "_read_frame", lambda v, i: frame)
-    doc = {
-        "clip": CLIP,
-        "runs": {
-            "claude-x-p1-20260101T000000": {
-                "source": "claude",
-                "created": "2026-01-01",
-                "params": {"model": "x"},
-                "frames": {
-                    "0": _record(0.9),
-                    "1": _record(0.2),
-                    "2": _record(0.5),
-                    "3": _record(0.0, "failed"),
-                },
-            },
-            "mock-20260102T000000": {
-                "source": "classical",
-                "created": "2026-01-02",
-                "params": {},
-                "frames": {"10": _record(0.7)},
-            },
-        },
-    }
+    doc = {"clip": CLIP, "runs": {
+        "claude-x-p1-20260101T000000": {"source": "claude", "created": "2026-01-01", "params": {"model": "x"},
+            "frames": {"0": _record(0.9), "1": _record(0.2), "2": _record(0.5), "3": _record(0.0, "failed")}},
+        "mock-20260102T000000": {"source": "classical", "created": "2026-01-02", "params": {},
+            "frames": {"10": _record(0.7)}},
+    }}
     write_proposals(gt_marks_dir, CLIP, doc)
     return gt_marks_dir
 
@@ -95,14 +59,9 @@ def test_pages_served(client):
 
 
 def test_list_filters_and_sorts_by_score(client, prop_env):
-    d = client.get(
-        "/calibration/api/proposals"
-    ).json()  # default: status=proposed, worst first
+    d = client.get("/calibration/api/proposals").json()  # default: status=proposed, worst first
     assert [i["score"] for i in d["items"]] == [0.2, 0.5, 0.7, 0.9]
-    assert {r["run_id"] for r in d["runs"]} == {
-        "claude-x-p1-20260101T000000",
-        "mock-20260102T000000",
-    }
+    assert {r["run_id"] for r in d["runs"]} == {"claude-x-p1-20260101T000000", "mock-20260102T000000"}
     d = client.get("/calibration/api/proposals?sort=score_desc").json()
     assert [i["score"] for i in d["items"]] == [0.9, 0.7, 0.5, 0.2]
     d = client.get("/calibration/api/proposals?run=mock-20260102T000000").json()
@@ -112,150 +71,72 @@ def test_list_filters_and_sorts_by_score(client, prop_env):
     assert client.get("/calibration/api/proposals?status=all").json()["total"] == 5
     assert client.get("/calibration/api/proposals?status=bogus").status_code == 400
     assert client.get("/calibration/api/proposals?sort=zig").status_code == 400
-    run = next(
-        r
-        for r in client.get("/calibration/api/proposals").json()["runs"]
-        if r["source"] == "claude"
-    )
+    run = next(r for r in client.get("/calibration/api/proposals").json()["runs"] if r["source"] == "claude")
     assert run["counts"]["proposed"] == 3 and run["counts"]["failed"] == 1
 
 
 def test_get_one_has_overlay_and_404(client, prop_env):
-    r = client.get(
-        f"/calibration/api/proposals/{CLIP}/claude-x-p1-20260101T000000/0"
-    ).json()
-    assert (
-        r["status"] == "proposed"
-        and r["view"]["notes"] == "left end"
-        and "HALFWAY_LINE" in r["overlay"]
-    )
+    r = client.get(f"/calibration/api/proposals/{CLIP}/claude-x-p1-20260101T000000/0").json()
+    assert r["status"] == "proposed" and r["view"]["notes"] == "left end" and "HALFWAY_LINE" in r["overlay"]
     assert client.get(f"/calibration/api/proposals/{CLIP}/nope/0").status_code == 404
-    assert (
-        client.get(
-            f"/calibration/api/proposals/{CLIP}/claude-x-p1-20260101T000000/99"
-        ).status_code
-        == 404
-    )
+    assert client.get(f"/calibration/api/proposals/{CLIP}/claude-x-p1-20260101T000000/99").status_code == 404
     # alias of the clip resolves to the same file
-    assert (
-        client.get(
-            "/calibration/api/proposals/mancity_seg010/claude-x-p1-20260101T000000/0"
-        ).status_code
-        == 200
-    )
+    assert client.get("/calibration/api/proposals/mancity_seg010/claude-x-p1-20260101T000000/0").status_code == 200
 
 
 def test_accept_copies_to_gt_with_origin_and_flips_status(client, prop_env):
     run = "claude-x-p1-20260101T000000"
     r = client.post(f"/calibration/api/proposals/{CLIP}/{run}/0/accept")
     assert r.status_code == 200 and r.json()["status"] == "accepted"
-    gt = json.loads((prop_env / "calibration_gt" / f"{CLIP}.json").read_text())[
-        "frames"
-    ]["0"]
-    assert gt["origin"] == {
-        "source": "claude",
-        "run_id": run,
-        "proposal_status": "accepted",
-    }
-    assert gt["H_convention"] == "normalised_image_to_pitch_m" and len(
-        gt["correspondences"]
-    ) == len(KP)
-    assert (
-        read_proposals(prop_env, CLIP)["runs"][run]["frames"]["0"]["status"]
-        == "accepted"
-    )
+    gt = json.loads((prop_env / "calibration_gt" / f"{CLIP}.json").read_text())["frames"]["0"]
+    assert gt["origin"] == {"source": "claude", "run_id": run, "proposal_status": "accepted"}
+    assert gt["H_convention"] == "normalised_image_to_pitch_m" and len(gt["correspondences"]) == len(KP)
+    assert read_proposals(prop_env, CLIP)["runs"][run]["frames"]["0"]["status"] == "accepted"
     # the GT record loads through the normal GT route and the accepted item leaves the queue
     assert client.get(f"/calibration/api/gt/{CLIP}/0").json()["origin"]["run_id"] == run
-    assert 0.9 not in [
-        i["score"] for i in client.get("/calibration/api/proposals").json()["items"]
-    ]
+    assert 0.9 not in [i["score"] for i in client.get("/calibration/api/proposals").json()["items"]]
     # a second accept would clobber GT: refused unless overwrite
-    assert (
-        client.post(f"/calibration/api/proposals/{CLIP}/{run}/0/accept").status_code
-        == 409
-    )
-    assert (
-        client.post(
-            f"/calibration/api/proposals/{CLIP}/{run}/0/accept",
-            json={"overwrite": True},
-        ).status_code
-        == 200
-    )
+    assert client.post(f"/calibration/api/proposals/{CLIP}/{run}/0/accept").status_code == 409
+    assert client.post(f"/calibration/api/proposals/{CLIP}/{run}/0/accept", json={"overwrite": True}).status_code == 200
 
 
-def test_accept_drops_outliers_and_does_not_touch_real_gt_of_other_frames(
-    client, prop_env
-):
+def test_accept_drops_outliers_and_does_not_touch_real_gt_of_other_frames(client, prop_env):
     run = "claude-x-p1-20260101T000000"
     doc = read_proposals(prop_env, CLIP)
     doc["runs"][run]["frames"]["1"] = _record(0.4, with_outlier=True)
     write_proposals(prop_env, CLIP, doc)
     r = client.post(f"/calibration/api/proposals/{CLIP}/{run}/1/accept").json()
-    assert (
-        r["status"] == "accepted" and len(r["record"]["correspondences"]) == len(KP) - 1
-    )
+    assert r["status"] == "accepted" and len(r["record"]["correspondences"]) == len(KP) - 1
 
 
 def test_accept_with_changed_points_is_edited(client, prop_env):
     run = "claude-x-p1-20260101T000000"
     rec = client.get(f"/calibration/api/proposals/{CLIP}/{run}/2").json()
-    pts = [
-        {"image": c["image"], "pitch_id": c["pitch_id"]} for c in rec["correspondences"]
-    ]
-    same = client.post(
-        f"/calibration/api/proposals/{CLIP}/{run}/2/accept",
-        json={"correspondences": pts},
-    )
+    pts = [{"image": c["image"], "pitch_id": c["pitch_id"]} for c in rec["correspondences"]]
+    same = client.post(f"/calibration/api/proposals/{CLIP}/{run}/2/accept", json={"correspondences": pts})
     assert same.json()["status"] == "accepted"
     pts[0]["image"] = [pts[0]["image"][0] + 0.01, pts[0]["image"][1]]
-    r = client.post(
-        f"/calibration/api/proposals/{CLIP}/{run}/1/accept",
-        json={"correspondences": pts, "overwrite": True},
-    )
+    r = client.post(f"/calibration/api/proposals/{CLIP}/{run}/1/accept", json={"correspondences": pts, "overwrite": True})
     assert r.json()["status"] == "edited"
     assert r.json()["record"]["origin"]["proposal_status"] == "edited"
-    assert (
-        read_proposals(prop_env, CLIP)["runs"][run]["frames"]["1"]["status"] == "edited"
-    )
+    assert read_proposals(prop_env, CLIP)["runs"][run]["frames"]["1"]["status"] == "edited"
 
 
 def test_accept_failed_needs_points_and_bad_points_400(client, prop_env):
     run = "claude-x-p1-20260101T000000"
-    assert (
-        client.post(f"/calibration/api/proposals/{CLIP}/{run}/3/accept").status_code
-        == 409
-    )
-    assert (
-        client.post(
-            f"/calibration/api/proposals/{CLIP}/{run}/1/accept",
-            json={
-                "correspondences": [{"image": [0.1, 0.1], "pitch_id": "CENTRE_SPOT"}]
-            },
-        ).status_code
-        == 400
-    )
-    assert (
-        not (prop_env / "calibration_gt").exists()
-        or not (prop_env / "calibration_gt" / f"{CLIP}.json").exists()
-    )
+    assert client.post(f"/calibration/api/proposals/{CLIP}/{run}/3/accept").status_code == 409
+    assert client.post(f"/calibration/api/proposals/{CLIP}/{run}/1/accept",
+                       json={"correspondences": [{"image": [0.1, 0.1], "pitch_id": "CENTRE_SPOT"}]}).status_code == 400
+    assert not (prop_env / "calibration_gt").exists() or not (prop_env / "calibration_gt" / f"{CLIP}.json").exists()
 
 
 def test_reject_flips_status_and_writes_no_gt(client, prop_env):
     run = "claude-x-p1-20260101T000000"
-    assert (
-        client.post(
-            f"/calibration/api/proposals/{CLIP}/{run}/1/reject",
-            json={"reason": "mirrored"},
-        ).status_code
-        == 200
-    )
+    assert client.post(f"/calibration/api/proposals/{CLIP}/{run}/1/reject", json={"reason": "mirrored"}).status_code == 200
     f = read_proposals(prop_env, CLIP)["runs"][run]["frames"]["1"]
     assert f["status"] == "rejected" and f["reject_reason"] == "mirrored"
     assert not (prop_env / "calibration_gt" / f"{CLIP}.json").exists()
-    assert (
-        client.post(f"/calibration/api/proposals/{CLIP}/{run}/77/reject").status_code
-        == 404
-    )
+    assert client.post(f"/calibration/api/proposals/{CLIP}/{run}/77/reject").status_code == 404
     rej = client.get("/calibration/api/proposals?status=rejected").json()
     assert [i["frame_index"] for i in rej["items"]] == [1]
 
@@ -263,14 +144,7 @@ def test_reject_flips_status_and_writes_no_gt(client, prop_env):
 def _human_gt(idx, marker):
     """A hand-labelled GT record (no ``origin``) for ``idx``; ``marker`` makes it recognisable."""
     pts = _record(0.9)["correspondences"]
-    res = cal._fit(
-        {
-            "correspondences": pts,
-            "pitch_dims": [105, 68],
-            "image_size": [W, H],
-            "method": "dlt",
-        }
-    )
+    res = cal._fit({"correspondences": pts, "pitch_dims": [105, 68], "image_size": [W, H], "method": "dlt"})
     rec = cal._gt_record(idx, res, {"image_size": [W, H], "method": "dlt"})
     rec["note"] = marker
     doc = cal._read_gt(CLIP)
@@ -284,100 +158,61 @@ def test_accept_never_silently_overwrites_hand_gt(client, prop_env):
     r = client.post(f"/calibration/api/proposals/{CLIP}/{run}/0/accept")
     assert r.status_code == 409
     body = r.json()
-    assert (
-        body["ok"] is False
-        and body["existing_gt"] == "human"
-        and "hand-labelled" in body["error"]
-    )
+    assert body["ok"] is False and body["existing_gt"] == "human" and "hand-labelled" in body["error"]
     assert "overwrite=true" in body["error"]
     # the hand GT is untouched and the proposal still waits for review
     assert cal._read_gt(CLIP)["frames"]["0"]["note"] == "hand-labelled"
     assert "origin" not in cal._read_gt(CLIP)["frames"]["0"]
-    assert (
-        read_proposals(prop_env, CLIP)["runs"][run]["frames"]["0"]["status"]
-        == "proposed"
-    )
+    assert read_proposals(prop_env, CLIP)["runs"][run]["frames"]["0"]["status"] == "proposed"
     # operator-edited points do not bypass it either
     pts = _record(0.9)["correspondences"]
-    assert (
-        client.post(
-            f"/calibration/api/proposals/{CLIP}/{run}/0/accept",
-            json={"correspondences": pts},
-        ).status_code
-        == 409
-    )
+    assert client.post(f"/calibration/api/proposals/{CLIP}/{run}/0/accept", json={"correspondences": pts}).status_code == 409
     assert cal._read_gt(CLIP)["frames"]["0"]["note"] == "hand-labelled"
     # only an explicit overwrite replaces it, and the result is marked as machine-origin
-    r = client.post(
-        f"/calibration/api/proposals/{CLIP}/{run}/0/accept", json={"overwrite": True}
-    )
+    r = client.post(f"/calibration/api/proposals/{CLIP}/{run}/0/accept", json={"overwrite": True})
     assert r.status_code == 200
     assert cal._read_gt(CLIP)["frames"]["0"]["origin"]["run_id"] == run
 
 
 def test_accept_conflict_with_machine_gt_is_labelled_as_such(client, prop_env):
     run = "claude-x-p1-20260101T000000"
-    assert (
-        client.post(f"/calibration/api/proposals/{CLIP}/{run}/0/accept").status_code
-        == 200
-    )
+    assert client.post(f"/calibration/api/proposals/{CLIP}/{run}/0/accept").status_code == 200
     r = client.post(f"/calibration/api/proposals/{CLIP}/mock-20260102T000000/10/accept")
     assert r.status_code == 200  # a different frame is fine
     _record_again = client.post(f"/calibration/api/proposals/{CLIP}/{run}/0/accept")
-    assert (
-        _record_again.status_code == 409
-        and _record_again.json()["existing_gt"] == "machine"
-    )
+    assert _record_again.status_code == 409 and _record_again.json()["existing_gt"] == "machine"
     assert "hand-labelled" not in _record_again.json()["error"]
 
 
 def test_review_page_has_an_explicit_replace_flow(client):
     html = client.get("/calibration/review").text
-    assert (
-        "already has hand GT" in html
-        and 'id="btnReplace"' in html
-        and "existing_gt" in html
-    )
+    assert "already has hand GT" in html and 'id="btnReplace"' in html and "existing_gt" in html
 
 
 def test_review_page_defaults_to_warp_view(client):
     html = client.get("/calibration/review").text
-    assert "warpMode = true, peek = false" in html  # warp on at load
-    assert "warpMode = true; peek = false" in html  # and reset to warp on every item
-    assert (
-        "peek = true; requestView()" in html and "peek = false; requestView()" in html
-    )  # hold flips, release restores
+    assert "warpMode = true, peek = false" in html                # warp on at load
+    assert "warpMode = true; peek = false" in html                # and reset to warp on every item
+    assert "peek = true; requestView()" in html and "peek = false; requestView()" in html   # hold flips, release restores
     assert 'class="small on" id="btnWarp"' in html
 
 
 # Real pilot1 frame 575 of arsenal_mancity_seg010: three of the four stored points
 # (centre-circle top/bottom, halfway top) are collinear on the halfway line, so a plain
 # refit is refused as degenerate although the proposal's refined H is fine.
-_H575 = [
-    [0.30689886890777746, -0.0032974663368638937, -0.04531593329474465],
-    [-0.06717557418107739, -0.7736163471902385, 0.5482814194446377],
-    [-0.00042308278220137564, 0.011401708985898248, 0.003342736441704121],
-]
-_P575 = [
-    ("CENTRE_CIRCLE_TOP", (0.0, 9.15), (0.15387401734159936, 0.5785740889480612)),
-    ("CENTRE_CIRCLE_BOTTOM", (0.0, -9.15), (0.1567715987628685, 0.8482552228581172)),
-    ("CENTRE_CIRCLE_RIGHT", (9.15, 0.0), (0.475382351302383, 0.6674462592675481)),
-    ("HALFWAY_TOP", (0.0, 34.0), (0.1516048116935509, 0.3673765889403585)),
-]
+_H575 = [[0.30689886890777746, -0.0032974663368638937, -0.04531593329474465],
+         [-0.06717557418107739, -0.7736163471902385, 0.5482814194446377],
+         [-0.00042308278220137564, 0.011401708985898248, 0.003342736441704121]]
+_P575 = [("CENTRE_CIRCLE_TOP", (0.0, 9.15), (0.15387401734159936, 0.5785740889480612)),
+         ("CENTRE_CIRCLE_BOTTOM", (0.0, -9.15), (0.1567715987628685, 0.8482552228581172)),
+         ("CENTRE_CIRCLE_RIGHT", (9.15, 0.0), (0.475382351302383, 0.6674462592675481)),
+         ("HALFWAY_TOP", (0.0, 34.0), (0.1516048116935509, 0.3673765889403585))]
 
 
 def _degenerate_record():
     rec = _record(0.57)
-    rec["correspondences"] = [
-        {
-            "image": list(uv),
-            "pitch_id": k,
-            "pitch_xy": list(xy),
-            "confidence": 0.8,
-            "candidate_id": None,
-        }
-        for k, xy, uv in _P575
-    ]
+    rec["correspondences"] = [{"image": list(uv), "pitch_id": k, "pitch_xy": list(xy), "confidence": 0.8,
+                               "candidate_id": None} for k, xy, uv in _P575]
     rec.update(H=_H575, inliers=[True] * 4, err_px=[0.0] * 4)
     return rec
 
@@ -391,27 +226,18 @@ def test_accept_pads_collinear_points_and_reproduces_the_stored_h(client, prop_e
     assert r.status_code == 200, r.text
     rec = r.json()["record"]
     assert len(rec["correspondences"]) > 4 and rec["origin"]["padded_synthetic"]
-    grid = np.array(
-        [(u, v) for u in np.linspace(0.05, 0.95, 5) for v in np.linspace(0.05, 0.95, 5)]
-    )
+    grid = np.array([(u, v) for u in np.linspace(0.05, 0.95, 5) for v in np.linspace(0.05, 0.95, 5)])
     a, _ = geo.apply_homography(np.array(_H575), grid)
     b, _ = geo.apply_homography(np.array(rec["H"]), grid)
     assert np.abs(a - b).max() < 1e-2  # metres
-    assert (
-        read_proposals(prop_env, CLIP)["runs"][run]["frames"]["575"]["status"]
-        == "accepted"
-    )
+    assert read_proposals(prop_env, CLIP)["runs"][run]["frames"]["575"]["status"] == "accepted"
 
 
 def test_edited_points_are_still_refused_when_degenerate(client, prop_env):
     run = "claude-x-p1-20260101T000000"
-    pts = [
-        {"image": list(uv), "pitch_id": k} for k, _xy, uv in _P575[:2] + _P575[3:]
-    ] + [{"image": [0.3, 0.5], "pitch_id": "HALFWAY_BOTTOM"}]
-    r = client.post(
-        f"/calibration/api/proposals/{CLIP}/{run}/0/accept",
-        json={"correspondences": pts},
-    )
+    pts = [{"image": list(uv), "pitch_id": k} for k, _xy, uv in _P575[:2] + _P575[3:]] + [
+        {"image": [0.3, 0.5], "pitch_id": "HALFWAY_BOTTOM"}]
+    r = client.post(f"/calibration/api/proposals/{CLIP}/{run}/0/accept", json={"correspondences": pts})
     assert r.status_code == 400 and "degenerate configuration" in r.json()["error"]
 
 
@@ -422,31 +248,17 @@ def test_pad_points_breaks_collinearity_in_the_pipeline():
     uv = np.array([p[2] for p in _P575])
     xy = np.array([p[1] for p in _P575])
     assert refit_gap_m(np.array(_H575), uv, xy) == float("inf")
-    add = pad_points(
-        np.array(_H575),
-        [tuple(u) for u in uv],
-        [p[0] for p in _P575],
-        [tuple(x) for x in xy],
-        pitch,
-    )
+    add = pad_points(np.array(_H575), [tuple(u) for u in uv], [p[0] for p in _P575], [tuple(x) for x in xy], pitch)
     assert add and all(0.03 < u < 0.97 and 0.03 < v < 0.97 for _k, (u, v), _xy in add)
-    assert (
-        refit_gap_m(
-            np.array(_H575),
-            np.vstack([uv, [a[1] for a in add]]),
-            np.vstack([xy, [a[2] for a in add]]),
-        )
-        < 0.25
-    )
+    assert refit_gap_m(np.array(_H575), np.vstack([uv, [a[1] for a in add]]),
+                       np.vstack([xy, [a[2] for a in add]])) < 0.25
 
 
 def test_proposal_with_distortion_overlays_and_accepts_with_its_lens(client, prop_env):
     pitch = PitchModel()
     lens = geo.make_distortion(-0.03, W / H)
     rec = _record(0.8)
-    obs, _ = geo.pitch_to_image(
-        _camera_h(), np.array([pitch.keypoints()[k] for k in KP]), lens
-    )
+    obs, _ = geo.pitch_to_image(_camera_h(), np.array([pitch.keypoints()[k] for k in KP]), lens)
     for c, p in zip(rec["correspondences"], obs, strict=True):
         c["image"] = p.tolist()
     rec["distortion"] = lens
@@ -460,15 +272,9 @@ def test_proposal_with_distortion_overlays_and_accepts_with_its_lens(client, pro
     assert got["overlay"]["TOUCHLINE_TOP"] != plain["overlay"]["TOUCHLINE_TOP"]
     r = client.post(f"/calibration/api/proposals/{CLIP}/{run}/5/accept")
     assert r.status_code == 200
-    gt = json.loads((prop_env / "calibration_gt" / f"{CLIP}.json").read_text())[
-        "frames"
-    ]["5"]
+    gt = json.loads((prop_env / "calibration_gt" / f"{CLIP}.json").read_text())["frames"]["5"]
     assert gt["distortion"]["k1"] == -0.03 and max(gt["err_px"]) < 0.05
-    assert np.allclose(
-        np.array(gt["H"]) / np.linalg.norm(gt["H"]),
-        _camera_h() / np.linalg.norm(_camera_h()),
-        atol=1e-5,
-    )
+    assert np.allclose(np.array(gt["H"]) / np.linalg.norm(gt["H"]), _camera_h() / np.linalg.norm(_camera_h()), atol=1e-5)
 
 
 # --- not a broadcast frame (LAB-1222) ---------------------------------------------------------
@@ -477,45 +283,30 @@ RUN = "claude-x-p1-20260101T000000"
 
 
 def _nb(client, run, idx, **body):
-    return client.post(
-        f"/calibration/api/proposals/{CLIP}/{run}/{idx}/not_broadcast", json=body
-    )
+    return client.post(f"/calibration/api/proposals/{CLIP}/{run}/{idx}/not_broadcast", json=body)
 
 
 def test_not_broadcast_sets_status_flag_and_leaves_queue(client, prop_env):
     r = _nb(client, RUN, 1)
     assert r.status_code == 200 and r.json()["status"] == "not_broadcast"
     f = read_proposals(prop_env, CLIP)["runs"][RUN]["frames"]["1"]
-    assert (
-        f["status"] == "not_broadcast"
-        and f["prev_status"] == "proposed"
-        and f["reviewed_at"]
-    )
+    assert f["status"] == "not_broadcast" and f["prev_status"] == "proposed" and f["reviewed_at"]
     # frame-level flag in its own sidecar, mode 0664, canonical clip name
     p = prop_env / "frame_type" / f"{CLIP}.json"
     assert json.loads(p.read_text())["frames"]["1"]["type"] == "not_broadcast"
     assert p.stat().st_mode & 0o777 == 0o664
     assert not (prop_env / "calibration_gt" / f"{CLIP}.json").exists()  # no GT written
     # filters / counters
-    assert 0.2 not in [
-        i["score"] for i in client.get("/calibration/api/proposals").json()["items"]
-    ]
+    assert 0.2 not in [i["score"] for i in client.get("/calibration/api/proposals").json()["items"]]
     d = client.get("/calibration/api/proposals?status=not_broadcast").json()
     assert [i["frame_index"] for i in d["items"]] == [1]
-    run = next(
-        x
-        for x in client.get("/calibration/api/proposals").json()["runs"]
-        if x["run_id"] == RUN
-    )
+    run = next(x for x in client.get("/calibration/api/proposals").json()["runs"] if x["run_id"] == RUN)
     assert run["counts"]["not_broadcast"] == 1 and run["counts"]["proposed"] == 2
     # the editor sees the flag
     assert client.get(f"/calibration/api/gt/{CLIP}").json()["not_broadcast"] == [1]
     # re-marking is idempotent and keeps the original prev_status
     assert _nb(client, RUN, 1).status_code == 200
-    assert (
-        read_proposals(prop_env, CLIP)["runs"][RUN]["frames"]["1"]["prev_status"]
-        == "proposed"
-    )
+    assert read_proposals(prop_env, CLIP)["runs"][RUN]["frames"]["1"]["prev_status"] == "proposed"
 
 
 def test_not_broadcast_works_on_failed_items(client, prop_env):
@@ -523,39 +314,24 @@ def test_not_broadcast_works_on_failed_items(client, prop_env):
     f = read_proposals(prop_env, CLIP)["runs"][RUN]["frames"]["3"]
     assert f["status"] == "not_broadcast" and f["prev_status"] == "failed"
     assert client.get("/calibration/api/proposals?status=failed").json()["total"] == 0
-    assert (
-        _nb(client, RUN, 99).status_code == 404
-        and _nb(client, "nope", 1).status_code == 404
-    )
+    assert _nb(client, RUN, 99).status_code == 404 and _nb(client, "nope", 1).status_code == 404
 
 
 def test_not_broadcast_409_over_gt_unless_overwrite(client, prop_env):
     _human_gt(0, "hand-labelled")
     r = _nb(client, RUN, 0)
-    assert (
-        r.status_code == 409
-        and r.json()["existing_gt"] == "human"
-        and "overwrite=true" in r.json()["error"]
-    )
-    assert cal._read_gt(CLIP)["frames"]["0"]["note"] == "hand-labelled"  # untouched
-    assert not (prop_env / "frame_type").exists()  # nothing flagged
-    assert (
-        read_proposals(prop_env, CLIP)["runs"][RUN]["frames"]["0"]["status"]
-        == "proposed"
-    )
+    assert r.status_code == 409 and r.json()["existing_gt"] == "human" and "overwrite=true" in r.json()["error"]
+    assert cal._read_gt(CLIP)["frames"]["0"]["note"] == "hand-labelled"      # untouched
+    assert not (prop_env / "frame_type").exists()                           # nothing flagged
+    assert read_proposals(prop_env, CLIP)["runs"][RUN]["frames"]["0"]["status"] == "proposed"
     # accepted machine GT is protected the same way
-    assert (
-        client.post(f"/calibration/api/proposals/{CLIP}/{RUN}/2/accept").status_code
-        == 200
-    )
+    assert client.post(f"/calibration/api/proposals/{CLIP}/{RUN}/2/accept").status_code == 200
     r = client.put(f"/calibration/api/frame_type/{CLIP}/2")
     assert r.status_code == 409 and r.json()["existing_gt"] == "machine"
     # explicit overwrite flags the frame and drops that GT
     r = _nb(client, RUN, 0, overwrite=True)
     assert r.status_code == 200 and r.json()["removed_gt"] is True
-    assert (
-        "0" not in cal._read_gt(CLIP)["frames"] and "2" in cal._read_gt(CLIP)["frames"]
-    )
+    assert "0" not in cal._read_gt(CLIP)["frames"] and "2" in cal._read_gt(CLIP)["frames"]
     # ...but the GT is only set aside, never destroyed: undo puts the hand label back
     assert client.delete(f"/calibration/api/frame_type/{CLIP}/0").status_code == 200
     assert cal._read_gt(CLIP)["frames"]["0"]["note"] == "hand-labelled"
@@ -569,111 +345,64 @@ def test_not_broadcast_flags_other_open_runs_and_undo_restores(client, prop_env)
     runs = read_proposals(prop_env, CLIP)["runs"]
     assert runs["mock-20260102T000000"]["frames"]["1"]["status"] == "not_broadcast"
     # a flagged frame cannot be accepted or saved as GT until cleared
-    assert (
-        client.post(f"/calibration/api/proposals/{CLIP}/{RUN}/1/accept").status_code
-        == 409
-    )
-    assert (
-        client.put(
-            f"/calibration/api/gt/{CLIP}/1",
-            json={
-                "correspondences": _record(0.9)["correspondences"],
-                "image_size": [W, H],
-            },
-        ).status_code
-        == 409
-    )
+    assert client.post(f"/calibration/api/proposals/{CLIP}/{RUN}/1/accept").status_code == 409
+    assert client.put(f"/calibration/api/gt/{CLIP}/1", json={"correspondences": _record(0.9)["correspondences"],
+                                                            "image_size": [W, H]}).status_code == 409
     assert client.delete(f"/calibration/api/frame_type/{CLIP}/5").status_code == 404
-    assert (
-        client.delete(f"/calibration/api/frame_type/{CLIP}/1").json()["not_broadcast"]
-        == []
-    )
+    assert client.delete(f"/calibration/api/frame_type/{CLIP}/1").json()["not_broadcast"] == []
     runs = read_proposals(prop_env, CLIP)["runs"]
-    assert (
-        runs[RUN]["frames"]["1"]["status"] == "proposed"
-        and "prev_status" not in runs[RUN]["frames"]["1"]
-    )
+    assert runs[RUN]["frames"]["1"]["status"] == "proposed" and "prev_status" not in runs[RUN]["frames"]["1"]
     assert runs["mock-20260102T000000"]["frames"]["1"]["status"] == "proposed"
-    assert (
-        client.post(f"/calibration/api/proposals/{CLIP}/{RUN}/1/accept").status_code
-        == 200
-    )
+    assert client.post(f"/calibration/api/proposals/{CLIP}/{RUN}/1/accept").status_code == 200
 
 
 def test_review_page_has_not_broadcast_button_hint_and_filter(client):
     html = client.get("/calibration/review").text
     assert 'id="btnNotBroadcast"' in html and ">Not broadcast<" in html
     assert 'e.key === "n"' in html and "/not_broadcast" in html
-    assert (
-        '<option value="not_broadcast">' in html and 'value="proposed,failed"' in html
-    )
+    assert '<option value="not_broadcast">' in html and 'value="proposed,failed"' in html
     assert "Claude: not main camera" in html and "main_camera_wide === false" in html
-    assert "showError(`${{ accept" in html  # errors go to the red banner
+    assert "showError(`${{ accept" in html           # errors go to the red banner
     ed = client.get("/calibration").text
     assert 'id="nbBtn"' in ed and 'id="nbUndo"' in ed and "/frame_type/" in ed
 
 
 def test_pipeline_skips_not_broadcast_frames(client, prop_env):
     from footy_track.calibration.frame_type import not_broadcast_frames
-
     assert _nb(client, RUN, 1).status_code == 200
-    assert not_broadcast_frames(prop_env, "mancity_seg010") == {1}  # alias -> same file
+    assert not_broadcast_frames(prop_env, "mancity_seg010") == {1}   # alias -> same file
 
 
 # --- too few points (PTZ-solver candidates) ---------------------------------------------------
 
 
 def _tf(client, run, idx, **body):
-    return client.post(
-        f"/calibration/api/proposals/{CLIP}/{run}/{idx}/too_few_points", json=body
-    )
+    return client.post(f"/calibration/api/proposals/{CLIP}/{run}/{idx}/too_few_points", json=body)
 
 
 def test_too_few_points_sets_status_tags_flag_and_keeps_record(client, prop_env):
     before = read_proposals(prop_env, CLIP)["runs"][RUN]["frames"]["1"]
     r = _tf(client, RUN, 1, tags=["halfway_line", "centre_circle", "halfway_line"])
-    assert r.status_code == 200 and r.json() == {
-        "ok": True,
-        "status": "too_few_points",
-        "tags": ["centre_circle", "halfway_line"],
-    }
+    assert r.status_code == 200 and r.json() == {"ok": True, "status": "too_few_points",
+                                                  "tags": ["centre_circle", "halfway_line"]}
     f = read_proposals(prop_env, CLIP)["runs"][RUN]["frames"]["1"]
-    assert (
-        f["status"] == "too_few_points"
-        and f["prev_status"] == "proposed"
-        and f["reviewed_at"]
-    )
+    assert f["status"] == "too_few_points" and f["prev_status"] == "proposed" and f["reviewed_at"]
     assert f["tags"] == ["centre_circle", "halfway_line"]
-    assert (
-        f["H"] == before["H"] and f["correspondences"] == before["correspondences"]
-    )  # record kept
+    assert f["H"] == before["H"] and f["correspondences"] == before["correspondences"]   # record kept
     # frame-level flag in its own sidecar (atomic, 0664, canonical name), not mixed with GT
     p = prop_env / "frame_type" / f"{CLIP}.json"
     rec = json.loads(p.read_text())["frames"]["1"]
-    assert (
-        rec["type"] == "too_few_points"
-        and rec["tags"] == ["centre_circle", "halfway_line"]
-        and rec["run_id"] == RUN
-    )
+    assert rec["type"] == "too_few_points" and rec["tags"] == ["centre_circle", "halfway_line"] and rec["run_id"] == RUN
     assert p.stat().st_mode & 0o777 == 0o664
     assert not (prop_env / "calibration_gt" / f"{CLIP}.json").exists()
     # not a not_broadcast frame: the editor / pipeline skip-list is unaffected
     assert client.get(f"/calibration/api/gt/{CLIP}").json()["not_broadcast"] == []
-    assert client.get(f"/calibration/api/gt/{CLIP}").json()["too_few_points"] == {
-        "1": ["centre_circle", "halfway_line"]
-    }
+    assert client.get(f"/calibration/api/gt/{CLIP}").json()["too_few_points"] == {"1": ["centre_circle", "halfway_line"]}
     # status filter / counters
     d = client.get("/calibration/api/proposals?status=too_few_points").json()
     assert [i["frame_index"] for i in d["items"]] == [1]
-    assert 1 not in [
-        i["frame_index"]
-        for i in client.get("/calibration/api/proposals").json()["items"]
-    ]
-    run = next(
-        x
-        for x in client.get("/calibration/api/proposals").json()["runs"]
-        if x["run_id"] == RUN
-    )
+    assert 1 not in [i["frame_index"] for i in client.get("/calibration/api/proposals").json()["items"]]
+    run = next(x for x in client.get("/calibration/api/proposals").json()["runs"] if x["run_id"] == RUN)
     assert run["counts"]["too_few_points"] == 1 and run["counts"]["proposed"] == 2
     # re-marking is idempotent, keeps prev_status and just replaces the tags
     assert _tf(client, RUN, 1, tags=["touchline"]).status_code == 200
@@ -685,21 +414,11 @@ def test_too_few_points_sets_status_tags_flag_and_keeps_record(client, prop_env)
 def test_too_few_points_works_on_failed_items_and_validates(client, prop_env):
     assert _tf(client, RUN, 3).status_code == 200
     f = read_proposals(prop_env, CLIP)["runs"][RUN]["frames"]["3"]
-    assert (
-        f["status"] == "too_few_points"
-        and f["prev_status"] == "failed"
-        and f["tags"] == []
-    )
-    assert (
-        _tf(client, RUN, 99).status_code == 404
-        and _tf(client, "nope", 1).status_code == 404
-    )
+    assert f["status"] == "too_few_points" and f["prev_status"] == "failed" and f["tags"] == []
+    assert _tf(client, RUN, 99).status_code == 404 and _tf(client, "nope", 1).status_code == 404
     assert _tf(client, RUN, 1, tags=["moon"]).status_code == 400
     assert _tf(client, RUN, 1, tags="halfway_line").status_code == 400
-    assert (
-        read_proposals(prop_env, CLIP)["runs"][RUN]["frames"]["1"]["status"]
-        == "proposed"
-    )  # nothing written
+    assert read_proposals(prop_env, CLIP)["runs"][RUN]["frames"]["1"]["status"] == "proposed"   # nothing written
 
 
 def test_too_few_points_undo_restores_and_lists(client, prop_env):
@@ -707,18 +426,11 @@ def test_too_few_points_undo_restores_and_lists(client, prop_env):
     doc["runs"]["mock-20260102T000000"]["frames"]["1"] = _record(0.6)
     write_proposals(prop_env, CLIP, doc)
     assert _tf(client, RUN, 1, tags=["centre_circle"]).status_code == 200
-    assert (
-        read_proposals(prop_env, CLIP)["runs"]["mock-20260102T000000"]["frames"]["1"][
-            "status"
-        ]
-        == "too_few_points"
-    )
+    assert read_proposals(prop_env, CLIP)["runs"]["mock-20260102T000000"]["frames"]["1"]["status"] == "too_few_points"
     assert _tf(client, RUN, 3).status_code == 200
     # per clip (any alias) and across clips, for the PTZ proposer
     d = client.get(f"/calibration/api/too_few_points/{CLIP}").json()
-    assert d["clip"] == CLIP and [
-        (x["frame_index"], x["tags"]) for x in d["frames"]
-    ] == [(1, ["centre_circle"]), (3, [])]
+    assert d["clip"] == CLIP and [(x["frame_index"], x["tags"]) for x in d["frames"]] == [(1, ["centre_circle"]), (3, [])]
     assert d["frames"][0]["run_id"] == RUN and d["frames"][0]["ts"]
     allc = client.get("/calibration/api/too_few_points").json()
     assert allc["total"] == 2 and list(allc["clips"]) == [CLIP]
@@ -729,20 +441,13 @@ def test_too_few_points_undo_restores_and_lists(client, prop_env):
     runs = read_proposals(prop_env, CLIP)["runs"]
     for rid in (RUN, "mock-20260102T000000"):
         f = runs[rid]["frames"]["1"]
-        assert f["status"] == "proposed" and not (
-            {"prev_status", "tags", "reviewed_at"} & set(f)
-        )
+        assert f["status"] == "proposed" and not ({"prev_status", "tags", "reviewed_at"} & set(f))
     assert runs[RUN]["frames"]["3"]["status"] == "too_few_points"
     assert client.get("/calibration/api/too_few_points").json()["total"] == 1
     assert client.delete(f"/calibration/api/too_few_points/{CLIP}/3").status_code == 200
-    assert client.get("/calibration/api/too_few_points").json() == {
-        "total": 0,
-        "clips": {},
-    }
+    assert client.get("/calibration/api/too_few_points").json() == {"total": 0, "clips": {}}
     assert runs[RUN]["frames"]["3"]["prev_status"] == "failed"
-    assert (
-        read_proposals(prop_env, CLIP)["runs"][RUN]["frames"]["3"]["status"] == "failed"
-    )
+    assert read_proposals(prop_env, CLIP)["runs"][RUN]["frames"]["3"]["status"] == "failed"
 
 
 def test_too_few_points_and_not_broadcast_do_not_clobber_each_other(client, prop_env):
@@ -755,9 +460,7 @@ def test_too_few_points_and_not_broadcast_do_not_clobber_each_other(client, prop
     assert _tf(client, RUN, 1).status_code == 409
     assert _tf(client, RUN, 2).status_code == 200
     assert client.delete(f"/calibration/api/frame_type/{CLIP}/2").status_code == 404
-    assert client.get(f"/calibration/api/too_few_points/{CLIP}").json()[
-        "too_few_points"
-    ] == {"2": []}
+    assert client.get(f"/calibration/api/too_few_points/{CLIP}").json()["too_few_points"] == {"2": []}
 
 
 def test_too_few_points_409_over_gt_and_gt_save_clears_the_mark(client, prop_env):
@@ -765,32 +468,15 @@ def test_too_few_points_409_over_gt_and_gt_save_clears_the_mark(client, prop_env
     r = _tf(client, RUN, 0)
     assert r.status_code == 409 and r.json()["existing_gt"] == "human"
     assert not (prop_env / "frame_type").exists()
-    assert (
-        read_proposals(prop_env, CLIP)["runs"][RUN]["frames"]["0"]["status"]
-        == "proposed"
-    )
+    assert read_proposals(prop_env, CLIP)["runs"][RUN]["frames"]["0"]["status"] == "proposed"
     # labelled after all: saving GT / accepting drops the mark and restores the proposal status
     assert _tf(client, RUN, 1).status_code == 200
-    assert (
-        client.put(
-            f"/calibration/api/gt/{CLIP}/1",
-            json={
-                "correspondences": _record(0.9)["correspondences"],
-                "image_size": [W, H],
-            },
-        ).status_code
-        == 200
-    )
+    assert client.put(f"/calibration/api/gt/{CLIP}/1", json={"correspondences": _record(0.9)["correspondences"],
+                                                            "image_size": [W, H]}).status_code == 200
     assert client.get(f"/calibration/api/too_few_points/{CLIP}").json()["frames"] == []
-    assert (
-        read_proposals(prop_env, CLIP)["runs"][RUN]["frames"]["1"]["status"]
-        == "proposed"
-    )
+    assert read_proposals(prop_env, CLIP)["runs"][RUN]["frames"]["1"]["status"] == "proposed"
     assert _tf(client, RUN, 2).status_code == 200
-    assert (
-        client.post(f"/calibration/api/proposals/{CLIP}/{RUN}/2/accept").status_code
-        == 200
-    )
+    assert client.post(f"/calibration/api/proposals/{CLIP}/{RUN}/2/accept").status_code == 200
     assert client.get(f"/calibration/api/too_few_points/{CLIP}").json()["frames"] == []
     f = read_proposals(prop_env, CLIP)["runs"][RUN]["frames"]["2"]
     assert f["status"] == "accepted" and "tags" not in f
@@ -802,20 +488,13 @@ def test_review_and_editor_pages_have_too_few_points_button_and_filter(client):
     assert 'e.key === "t"' in html and "/too_few_points" in html
     assert '<option value="too_few_points">' in html and 'id="fewTags"' in html
     ed = client.get("/calibration").text
-    assert (
-        'id="fewBtn"' in ed
-        and 'id="fewUndo"' in ed
-        and 'id="fewBanner"' in ed
-        and "/too_few_points/" in ed
-    )
+    assert 'id="fewBtn"' in ed and 'id="fewUndo"' in ed and 'id="fewBanner"' in ed and "/too_few_points/" in ed
     assert 'e.key === "t"' in ed
 
 
 def test_get_proposal_with_nan_stats_is_valid_json(client, prop_env):
     doc = read_proposals(prop_env, CLIP)
-    doc["runs"][RUN]["frames"]["3"].update(
-        mean_err_m=float("nan"), err_px=[None, float("nan")]
-    )
+    doc["runs"][RUN]["frames"]["3"].update(mean_err_m=float("nan"), err_px=[None, float("nan")])
     write_proposals(prop_env, CLIP, doc)
     r = client.get(f"/calibration/api/proposals/{CLIP}/{RUN}/3")
     assert r.status_code == 200 and r.json()["mean_err_m"] is None
@@ -825,64 +504,23 @@ def test_list_filters_by_clip_alias_and_run(client, prop_env):
     """The editor asks per clip (any alias, here the date-infixed video stem) for one run's frames."""
     run = "claude-x-p1-20260101T000000"
     other = "arsenal_astonvilla_seg020"
-    write_proposals(
-        prop_env,
-        other,
-        {
-            "clip": other,
-            "runs": {
-                run: {
-                    "source": "claude",
-                    "created": "c",
-                    "params": {},
-                    "frames": {"7": _record(0.6)},
-                }
-            },
-        },
-    )
+    write_proposals(prop_env, other, {"clip": other, "runs": {run: {"source": "claude", "created": "c", "params": {},
+                                                                    "frames": {"7": _record(0.6)}}}})
     for alias in (CLIP, "mancity_seg010", "arsenal_mancity_20250925_seg010"):
-        d = client.get(
-            f"/calibration/api/proposals?run={run}&clip={alias}&status=all&sort=score_desc"
-        ).json()
+        d = client.get(f"/calibration/api/proposals?run={run}&clip={alias}&status=all&sort=score_desc").json()
         assert [(i["clip"], i["frame_index"], i["status"]) for i in d["items"]] == [
-            (CLIP, 0, "proposed"),
-            (CLIP, 2, "proposed"),
-            (CLIP, 1, "proposed"),
-            (CLIP, 3, "failed"),
-        ]
+            (CLIP, 0, "proposed"), (CLIP, 2, "proposed"), (CLIP, 1, "proposed"), (CLIP, 3, "failed")]
         assert d["items"][0]["score"] == 0.9 and d["items"][3]["failure"]
-    d = client.get(
-        f"/calibration/api/proposals?run={run}&clip=astonvilla_seg020&status=all"
-    ).json()
+    d = client.get(f"/calibration/api/proposals?run={run}&clip=astonvilla_seg020&status=all").json()
     assert [(i["clip"], i["frame_index"]) for i in d["items"]] == [(other, 7)]
-    assert (
-        client.get("/calibration/api/proposals?clip=no_such_clip&status=all").json()[
-            "items"
-        ]
-        == []
-    )
+    assert client.get("/calibration/api/proposals?clip=no_such_clip&status=all").json()["items"] == []
     # without clip the scan still covers every clip
-    assert (
-        client.get(f"/calibration/api/proposals?run={run}&status=all").json()["total"]
-        == 5
-    )
+    assert client.get(f"/calibration/api/proposals?run={run}&status=all").json()["total"] == 5
 
 
 def test_reject_then_list_shows_rejected_for_the_editor_chips(client, prop_env):
     run = "claude-x-p1-20260101T000000"
-    assert (
-        client.post(f"/calibration/api/proposals/{CLIP}/{run}/0/reject").json()[
-            "status"
-        ]
-        == "rejected"
-    )
-    d = client.get(
-        f"/calibration/api/proposals?run={run}&clip={CLIP}&status=all&sort=score_desc"
-    ).json()
+    assert client.post(f"/calibration/api/proposals/{CLIP}/{run}/0/reject").json()["status"] == "rejected"
+    d = client.get(f"/calibration/api/proposals?run={run}&clip={CLIP}&status=all&sort=score_desc").json()
     assert {i["frame_index"]: i["status"] for i in d["items"]}[0] == "rejected"
-    assert [
-        i["frame_index"]
-        for i in client.get(f"/calibration/api/proposals?run={run}&clip={CLIP}").json()[
-            "items"
-        ]
-    ] == [1, 2]
+    assert [i["frame_index"] for i in client.get(f"/calibration/api/proposals?run={run}&clip={CLIP}").json()["items"]] == [1, 2]

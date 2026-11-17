@@ -18,12 +18,8 @@ from footy_track.labeller import calibration as cal
 from ..calibration.test_geometry import H, W, _camera_h
 
 KP = [
-    "L_PEN_BOX_TOP_OUTER",
-    "L_PEN_BOX_BOTTOM_OUTER",
-    "CENTRE_SPOT",
-    "HALFWAY_TOP",
-    "HALFWAY_BOTTOM",
-    "L_PEN_SPOT",
+    "L_PEN_BOX_TOP_OUTER", "L_PEN_BOX_BOTTOM_OUTER", "CENTRE_SPOT",
+    "HALFWAY_TOP", "HALFWAY_BOTTOM", "L_PEN_SPOT",
 ]
 
 
@@ -33,9 +29,7 @@ def cal_env(clips_dir, gt_marks_dir, monkeypatch):
     frame = np.full((H, W, 3), 90, np.uint8)
     monkeypatch.setattr(cal, "_read_frame", lambda v, i: frame if i < 50 else None)
     monkeypatch.setattr(
-        cal,
-        "_video_meta",
-        lambda v: {"frames": 50, "fps": 25.0, "width": W, "height": H},
+        cal, "_video_meta", lambda v: {"frames": 50, "fps": 25.0, "width": W, "height": H}
     )
     return gt_marks_dir
 
@@ -47,20 +41,13 @@ def _corr(ids=KP, with_free=False):
     )
     out = [{"image": p.tolist(), "pitch_id": k} for p, k in zip(img, ids, strict=True)]
     if with_free:
-        free, _ = geo.apply_homography(
-            np.linalg.inv(_camera_h()), np.array([[10.0, 5.0]])
-        )
+        free, _ = geo.apply_homography(np.linalg.inv(_camera_h()), np.array([[10.0, 5.0]]))
         out.append({"image": free[0].tolist(), "pitch_xy": [10.0, 5.0]})
     return out
 
 
 def _body(**kw):
-    return {
-        "correspondences": _corr(),
-        "pitch_dims": [105, 68],
-        "image_size": [W, H],
-        **kw,
-    }
+    return {"correspondences": _corr(), "pitch_dims": [105, 68], "image_size": [W, H], **kw}
 
 
 def test_fit_returns_h_errors_and_overlay(client, cal_env):
@@ -110,64 +97,40 @@ def test_pitch_model_route(client, cal_env):
 
 def test_clips_meta_and_frame(client, cal_env):
     clips = client.get("/calibration/api/clips").json()["clips"]
-    assert [(c["name"], c["n_gt"]) for c in clips] == [
-        ("arsenal_mancity_20250925_seg010", 0)
-    ]
+    assert [(c["name"], c["n_gt"]) for c in clips] == [("arsenal_mancity_20250925_seg010", 0)]
     assert clips[0]["canonical"] == canonical_clip_id("arsenal_mancity_20250925_seg010")
     assert clips[0]["n_not_broadcast"] == 0
     m = client.get("/calibration/api/clips/arsenal_mancity_20250925_seg010/meta").json()
     assert m["frames"] == 50 and m["gt_frames"] == []
     r = client.get("/calibration/api/frame/arsenal_mancity_20250925_seg010/3.jpg")
     assert r.status_code == 200 and r.content[:2] == b"\xff\xd8"
-    assert (
-        client.get(
-            "/calibration/api/frame/arsenal_mancity_20250925_seg010/99.jpg"
-        ).status_code
-        == 404
-    )
+    assert client.get("/calibration/api/frame/arsenal_mancity_20250925_seg010/99.jpg").status_code == 404
     assert client.get("/calibration/api/frame/nope/0.jpg").status_code == 404
 
 
 def test_clips_list_counts_not_broadcast_frames(client, cal_env, clips_dir):
     clip = "arsenal_mancity_20250925_seg010"
     (clips_dir / "other_clip_seg001.mp4").touch()
-    assert (
-        client.put(f"/calibration/api/frame_type/{clip}/3", json={}).status_code == 200
-    )
-    assert (
-        client.put(f"/calibration/api/frame_type/{clip}/9", json={}).status_code == 200
-    )
-    by_name = {
-        c["name"]: c for c in client.get("/calibration/api/clips").json()["clips"]
-    }
+    assert client.put(f"/calibration/api/frame_type/{clip}/3", json={}).status_code == 200
+    assert client.put(f"/calibration/api/frame_type/{clip}/9", json={}).status_code == 200
+    by_name = {c["name"]: c for c in client.get("/calibration/api/clips").json()["clips"]}
     assert by_name[clip]["n_not_broadcast"] == 2 and by_name[clip]["n_gt"] == 0
     assert by_name["other_clip_seg001"]["n_not_broadcast"] == 0
     assert client.delete(f"/calibration/api/frame_type/{clip}/3").status_code == 200
-    by_name = {
-        c["name"]: c for c in client.get("/calibration/api/clips").json()["clips"]
-    }
+    by_name = {c["name"]: c for c in client.get("/calibration/api/clips").json()["clips"]}
     assert by_name[clip]["n_not_broadcast"] == 1
 
 
 def test_too_few_points_editor_endpoint_without_proposals(client, cal_env):
     clip = "arsenal_mancity_20250925_seg010"
-    r = client.put(
-        f"/calibration/api/too_few_points/{clip}/4", json={"tags": ["goal_area"]}
-    )
+    r = client.put(f"/calibration/api/too_few_points/{clip}/4", json={"tags": ["goal_area"]})
     assert r.status_code == 200 and r.json()["too_few_points"] == {"4": ["goal_area"]}
-    assert (
-        client.put(f"/calibration/api/too_few_points/{clip}/-1", json={}).status_code
-        == 400
-    )
-    assert client.get(f"/calibration/api/clips/{clip}/meta").json()[
-        "too_few_points"
-    ] == {"4": ["goal_area"]}
+    assert client.put(f"/calibration/api/too_few_points/{clip}/-1", json={}).status_code == 400
+    assert client.get(f"/calibration/api/clips/{clip}/meta").json()["too_few_points"] == {"4": ["goal_area"]}
     c = client.get("/calibration/api/clips").json()["clips"][0]
     assert c["n_too_few_points"] == 1 and c["n_not_broadcast"] == 0 and c["n_gt"] == 0
     assert client.delete(f"/calibration/api/too_few_points/{clip}/4").status_code == 200
-    assert (
-        client.get("/calibration/api/clips").json()["clips"][0]["n_too_few_points"] == 0
-    )
+    assert client.get("/calibration/api/clips").json()["clips"][0]["n_too_few_points"] == 0
 
 
 def test_warp_returns_raster_of_expected_size(client, cal_env):
@@ -176,20 +139,14 @@ def test_warp_returns_raster_of_expected_size(client, cal_env):
     fit = client.post("/calibration/api/fit", json=_body()).json()
     r = client.post(
         "/calibration/api/warp",
-        json={
-            "clip": "arsenal_mancity_20250925_seg010",
-            "frame_index": 0,
-            "H": fit["H"],
-        },
+        json={"clip": "arsenal_mancity_20250925_seg010", "frame_index": 0, "H": fit["H"]},
     )
     assert r.status_code == 200
     img = cv2.imdecode(np.frombuffer(r.content, np.uint8), cv2.IMREAD_COLOR)
     assert (img.shape[1], img.shape[0]) == geo.pitch_raster_size(
         PitchModel(), cal.WARP_PX_PER_M, cal.WARP_MARGIN_M
     )
-    bad = client.post(
-        "/calibration/api/warp", json={"clip": "x", "frame_index": 0, "H": [1, 2]}
-    )
+    bad = client.post("/calibration/api/warp", json={"clip": "x", "frame_index": 0, "H": [1, 2]})
     assert bad.status_code == 400
 
 
@@ -203,17 +160,12 @@ def test_gt_save_load_round_trip(client, cal_env):
     assert rec["H_convention"] == "normalised_image_to_pitch_m"
     assert len(rec["correspondences"]) == len(KP) and rec["ts"]
     assert rec["correspondences"][0]["pitch_id"] == KP[0]
-    assert rec["correspondences"][0]["pitch_xy"] == list(
-        PitchModel().keypoints()[KP[0]]
-    )
+    assert rec["correspondences"][0]["pitch_xy"] == list(PitchModel().keypoints()[KP[0]])
     # second frame, listing, meta indicator, clip listing counts
     client.put(f"/calibration/api/gt/{clip}/2", json=_body())
     lst = client.get(f"/calibration/api/gt/{clip}").json()
     assert [f["frame_index"] for f in lst["frames"]] == [2, 7]
-    assert client.get(f"/calibration/api/clips/{clip}/meta").json()["gt_frames"] == [
-        2,
-        7,
-    ]
+    assert client.get(f"/calibration/api/clips/{clip}/meta").json()["gt_frames"] == [2, 7]
     assert client.get("/calibration/api/clips").json()["clips"][0]["n_gt"] == 2
     # delete one
     assert client.delete(f"/calibration/api/gt/{clip}/2").json()["gt_frames"] == [7]
@@ -239,9 +191,7 @@ def test_gt_save_rejects_too_few_points_and_keeps_existing(client, cal_env):
     body = _body()
     body["correspondences"] = body["correspondences"][:2]
     assert client.put(f"/calibration/api/gt/{clip}/1", json=body).status_code == 400
-    assert len(
-        client.get(f"/calibration/api/gt/{clip}/1").json()["correspondences"]
-    ) == len(KP)
+    assert len(client.get(f"/calibration/api/gt/{clip}/1").json()["correspondences"]) == len(KP)
 
 
 def test_pages_served(client):
@@ -250,12 +200,7 @@ def test_pages_served(client):
     assert 'href="/calibration"' in client.get("/main").text
 
 
-_COLL = [
-    "R_PEN_BOX_TOP_OUTER",
-    "R_PEN_ARC_TOP",
-    "R_GOAL_AREA_TOP_OUTER",
-    "R_PEN_ARC_BOTTOM",
-]
+_COLL = ["R_PEN_BOX_TOP_OUTER", "R_PEN_ARC_TOP", "R_GOAL_AREA_TOP_OUTER", "R_PEN_ARC_BOTTOM"]
 
 
 def test_fit_route_400_names_collinear_points(client, cal_env):
@@ -283,59 +228,27 @@ def test_fit_warp_and_gt_with_distortion(client, cal_env):
     """Points are observed (distorted) coordinates; H is fitted from the undistorted ones."""
     pitch = PitchModel()
     lens = geo.make_distortion(-0.03, W / H)
-    obs, _ = geo.pitch_to_image(
-        _camera_h(), np.array([pitch.keypoints()[k] for k in KP]), lens
-    )
+    obs, _ = geo.pitch_to_image(_camera_h(), np.array([pitch.keypoints()[k] for k in KP]), lens)
     corr = [{"image": p.tolist(), "pitch_id": k} for p, k in zip(obs, KP, strict=True)]
     body = {"correspondences": corr, "pitch_dims": [105, 68], "image_size": [W, H]}
     plain = client.post("/calibration/api/fit", json=body).json()
     d = client.post("/calibration/api/fit", json={**body, "distortion": lens}).json()
     assert "distortion" not in plain and d["distortion"]["k1"] == -0.03
-    assert (
-        np.max(d["err_px"]) < 0.05 < np.max(plain["err_px"])
-    )  # the lens model explains the points
+    assert np.max(d["err_px"]) < 0.05 < np.max(plain["err_px"])  # the lens model explains the points
     assert np.allclose(d["H"], _camera_h(), atol=1e-6) or np.allclose(
-        np.array(d["H"]) / np.linalg.norm(d["H"]),
-        _camera_h() / np.linalg.norm(_camera_h()),
-        atol=1e-6,
-    )
+        np.array(d["H"]) / np.linalg.norm(d["H"]), _camera_h() / np.linalg.norm(_camera_h()), atol=1e-6)
     assert d["overlay"]["TOUCHLINE_TOP"] != plain["overlay"]["TOUCHLINE_TOP"]
     # the warp honours it, k1 = 0 leaves the bytes untouched
-    wb = {
-        "clip": "arsenal_mancity_20250925_seg010",
-        "frame_index": 0,
-        "H": d["H"],
-        "pitch_dims": [105, 68],
-        "px_per_m": 2,
-    }
+    wb = {"clip": "arsenal_mancity_20250925_seg010", "frame_index": 0, "H": d["H"], "pitch_dims": [105, 68], "px_per_m": 2}
     a = client.post("/calibration/api/warp", json=wb)
     b = client.post("/calibration/api/warp", json={**wb, "distortion": lens})
-    z = client.post(
-        "/calibration/api/warp",
-        json={**wb, "distortion": {"model": "division", "k1": 0.0}},
-    )
-    assert (
-        a.status_code == b.status_code == z.status_code == 200
-        and z.content == a.content
-    )
-    assert (
-        client.post(
-            "/calibration/api/fit", json={**body, "distortion": {"k1": "x"}}
-        ).status_code
-        == 400
-    )
+    z = client.post("/calibration/api/warp", json={**wb, "distortion": {"model": "division", "k1": 0.0}})
+    assert a.status_code == b.status_code == z.status_code == 200 and z.content == a.content
+    assert client.post("/calibration/api/fit", json={**body, "distortion": {"k1": "x"}}).status_code == 400
     # GT save keeps the lens with H
-    gt = client.put(
-        "/calibration/api/gt/arsenal_mancity_seg010/3",
-        json={**body, "distortion": lens},
-    ).json()
+    gt = client.put("/calibration/api/gt/arsenal_mancity_seg010/3", json={**body, "distortion": lens}).json()
     assert gt["record"]["distortion"]["k1"] == -0.03
-    assert (
-        "distortion"
-        not in client.put(
-            "/calibration/api/gt/arsenal_mancity_seg010/4", json=body
-        ).json()["record"]
-    )
+    assert "distortion" not in client.put("/calibration/api/gt/arsenal_mancity_seg010/4", json=body).json()["record"]
 
 
 # ---------------------------------------------------------------------------
@@ -350,9 +263,7 @@ def _circle_frame(dist=None):
         [(-20, -15), (20, -15), (20, 25), (-20, 25)],
         [(200, 650), (1080, 650), (900, 200), (380, 200)],
     )
-    img = tcc._render(
-        Hp, [tcc._line((0, -25), (0, 28)), tcc._arc(0, 0, 9.15, 0, 2 * np.pi)], dist
-    )
+    img = tcc._render(Hp, [tcc._line((0, -25), (0, 28)), tcc._arc(0, 0, 9.15, 0, 2 * np.pi)], dist)
     truth = tcc._project(Hp, [(0, 9.15), (0, -9.15)], dist) / [tcc.W, tcc.H]
     return img, truth
 
@@ -370,12 +281,10 @@ def auto_env(clips_dir, gt_marks_dir, monkeypatch):
     img, truth = _circle_frame()
     plain = np.full(img.shape, (40, 130, 40), np.uint8)
     frames = {
-        3: img,  # centre circle + halfway line (105 x 68 pitch)
+        3: img,                                              # centre circle + halfway line (105 x 68 pitch)
         4: plain,
-        5: tpf.centre_frame(PM_SMALL)[0],  # + far touchline, a 100 x 64 pitch
-        6: tpf.penalty_frame(PM_SMALL, "R")[
-            0
-        ],  # the whole right penalty area, 100 x 64
+        5: tpf.centre_frame(PM_SMALL)[0],                    # + far touchline, a 100 x 64 pitch
+        6: tpf.penalty_frame(PM_SMALL, "R")[0],              # the whole right penalty area, 100 x 64
     }
 
     def read(v, i):
@@ -399,10 +308,7 @@ def test_auto_points_centre_returns_circle_pairs(client, auto_env):
     assert r.status_code == 200
     d = r.json()
     assert d["ok"] and d["kind"] == "centre" and d["confidence"] > 0.55
-    assert [c["pitch_id"] for c in d["correspondences"]] == [
-        "CENTRE_CIRCLE_TOP",
-        "CENTRE_CIRCLE_BOTTOM",
-    ]
+    assert [c["pitch_id"] for c in d["correspondences"]] == ["CENTRE_CIRCLE_TOP", "CENTRE_CIRCLE_BOTTOM"]
     kps = PitchModel().keypoints()
     for c in d["correspondences"]:
         assert c["pitch_xy"] == list(kps[c["pitch_id"]]) and c["derived"] is False
@@ -410,18 +316,11 @@ def test_auto_points_centre_returns_circle_pairs(client, auto_env):
     assert np.linalg.norm((got - auto_env["truth"]) * [1280, 720], axis=1).max() < 8
 
 
-def test_auto_points_centre_with_touchline_adds_the_end_and_derived_points(
-    client, auto_env
-):
-    d = _post(
-        client, clip=CLIP, frame_index=5, kind="centre", pitch_dims=[100, 64]
-    ).json()
+def test_auto_points_centre_with_touchline_adds_the_end_and_derived_points(client, auto_env):
+    d = _post(client, clip=CLIP, frame_index=5, kind="centre", pitch_dims=[100, 64]).json()
     assert d["ok"]
     by = {c["pitch_id"]: c for c in d["correspondences"] if c["pitch_id"]}
-    assert (
-        by["HALFWAY_TOP"]["pitch_xy"] == [0.0, 32.0]
-        and by["HALFWAY_TOP"]["derived"] is False
-    )  # the request's width
+    assert by["HALFWAY_TOP"]["pitch_xy"] == [0.0, 32.0] and by["HALFWAY_TOP"]["derived"] is False  # the request's width
     assert by["CENTRE_SPOT"]["derived"] is True
     free = [c for c in d["correspondences"] if c["pitch_id"] is None]
     assert free and all(c["derived"] and len(c["pitch_xy"]) == 2 for c in free)
@@ -433,26 +332,12 @@ def test_auto_points_d_returns_the_penalty_area(client, auto_env):
     assert d["ok"] and d["kind"] == "d"
     by = {c["pitch_id"]: c for c in d["correspondences"]}
     assert {"R_PEN_ARC_TOP", "R_PEN_ARC_BOTTOM", "R_PEN_SPOT"} <= set(by)
-    assert (
-        by["R_PEN_SPOT"]["pitch_xy"] == [39.0, 0.0]
-        and by["R_PEN_SPOT"]["derived"] is True
-    )  # 100 / 2 - 11
+    assert by["R_PEN_SPOT"]["pitch_xy"] == [39.0, 0.0] and by["R_PEN_SPOT"]["derived"] is True  # 100 / 2 - 11
     assert len(d["correspondences"]) >= 4
     # the pair list the editor would build is fit-able with 4+ non-collinear points
-    fit = client.post(
-        "/calibration/api/fit",
-        json={
-            "correspondences": [
-                {
-                    "image": c["image"],
-                    "pitch_id": c["pitch_id"],
-                    "pitch_xy": c["pitch_xy"],
-                }
-                for c in d["correspondences"]
-            ],
-            "pitch_dims": [100, 64],
-        },
-    ).json()
+    fit = client.post("/calibration/api/fit", json={"correspondences": [
+        {"image": c["image"], "pitch_id": c["pitch_id"], "pitch_xy": c["pitch_xy"]} for c in d["correspondences"]],
+        "pitch_dims": [100, 64]}).json()
     assert fit["ok"] and fit["mean_err_m"] < 0.5
 
 
@@ -466,21 +351,12 @@ def test_auto_points_abstains_with_a_reason_and_http_200(client, auto_env):
 
 def test_auto_points_errors(client, auto_env):
     assert _post(client, clip="nope", frame_index=3, kind="d").status_code == 404
-    assert (
-        _post(client, clip=CLIP, frame_index=99, kind="d").status_code == 404
-    )  # unreadable frame
-    assert _post(client, clip=CLIP, kind="d").status_code == 400  # no frame_index
+    assert _post(client, clip=CLIP, frame_index=99, kind="d").status_code == 404   # unreadable frame
+    assert _post(client, clip=CLIP, kind="d").status_code == 400                    # no frame_index
     assert _post(client, clip=CLIP, frame_index=-1, kind="d").status_code == 400
-    assert (
-        _post(client, clip=CLIP, frame_index=3).status_code == 400
-    )  # kind is required
+    assert _post(client, clip=CLIP, frame_index=3).status_code == 400               # kind is required
     assert _post(client, clip=CLIP, frame_index=3, kind="circle").status_code == 400
-    assert (
-        _post(
-            client, clip=CLIP, frame_index=3, kind="centre", distortion={"k1": "x"}
-        ).status_code
-        == 400
-    )
+    assert _post(client, clip=CLIP, frame_index=3, kind="centre", distortion={"k1": "x"}).status_code == 400
 
 
 def test_auto_points_is_cached_per_frame_kind_dims_and_distortion(client, auto_env):
@@ -489,26 +365,21 @@ def test_auto_points_is_cached_per_frame_kind_dims_and_distortion(client, auto_e
     b = client.post("/calibration/api/auto_points", json=body).json()
     assert a == b and auto_env["reads"] == [3]
     _post(client, **body, distortion=geo.make_distortion(0.03))
-    assert auto_env["reads"] == [3, 3]  # a different lens is a different answer
+    assert auto_env["reads"] == [3, 3]          # a different lens is a different answer
     _post(client, **{**body, "kind": "d"})
-    assert auto_env["reads"] == [3, 3, 3]  # so is the other finder
+    assert auto_env["reads"] == [3, 3, 3]       # so is the other finder
     _post(client, **body, pitch_dims=[100, 64])
-    assert auto_env["reads"] == [
-        3,
-        3,
-        3,
-        3,
-    ]  # and other pitch dims (the metres / touchline end depend on them)
+    assert auto_env["reads"] == [3, 3, 3, 3]    # and other pitch dims (the metres / touchline end depend on them)
     _post(client, clip=CLIP, frame_index=4, kind="centre")
     _post(client, clip=CLIP, frame_index=4, kind="centre")
-    assert auto_env["reads"] == [3, 3, 3, 3, 4]  # abstentions are cached too
+    assert auto_env["reads"] == [3, 3, 3, 3, 4]   # abstentions are cached too
 
 
 def test_auto_points_cache_is_bounded(client, auto_env, monkeypatch):
     monkeypatch.setattr(cal, "_AUTO_CACHE_MAX", 1)
     for i in (3, 4):
         _post(client, clip=CLIP, frame_index=i, kind="centre")
-    assert [k[2] for k in cal._AUTO_CACHE] == [4]  # least recently used evicted
+    assert [k[2] for k in cal._AUTO_CACHE] == [4]   # least recently used evicted
 
 
 def test_editor_page_has_the_two_auto_buttons():
@@ -517,18 +388,9 @@ def test_editor_page_has_the_two_auto_buttons():
     from footy_track.labeller import server as labeller_server
 
     html = TestClient(labeller_server.app).get("/calibration").text
-    assert (
-        'id="autoCentreBtn"' in html
-        and ">Centre<" in html
-        and 'id="autoDBtn"' in html
-        and ">D<" in html
-    )
+    assert 'id="autoCentreBtn"' in html and ">Centre<" in html and 'id="autoDBtn"' in html and ">D<" in html
     assert 'id="autoBtn"' not in html and ">Auto circle/D<" not in html
-    assert (
-        "/auto_points" in html and 'e.key === "c"' in html and 'e.key === "d"' in html
-    )
-    assert (
-        'autoPoints("centre")' in html and 'autoPoints("d")' in html and "kind," in html
-    )
+    assert "/auto_points" in html and 'e.key === "c"' in html and 'e.key === "d"' in html
+    assert 'autoPoints("centre")' in html and 'autoPoints("d")' in html and "kind," in html
     assert "autoPairsToAdd" in html and "snapshot();" in html
     assert "add ${4 - total} more (e.g. touchline / halfway line ends) to fit" in html

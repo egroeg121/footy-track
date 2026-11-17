@@ -44,19 +44,10 @@ def render(Hp, polys, dist=None):
     img = np.zeros((H, W, 3), np.uint8)
     img[:] = (40, 130, 40)
     rng = np.random.default_rng(1)
-    img = np.clip(img.astype(int) + rng.integers(-4, 5, img.shape), 0, 255).astype(
-        np.uint8
-    )
+    img = np.clip(img.astype(int) + rng.integers(-4, 5, img.shape), 0, 255).astype(np.uint8)
     for poly in polys:
         px = project(Hp, poly, dist)
-        cv2.polylines(
-            img,
-            [np.round(px).astype(np.int32).reshape(-1, 1, 2)],
-            False,
-            (235, 235, 235),
-            4,
-            cv2.LINE_AA,
-        )
+        cv2.polylines(img, [np.round(px).astype(np.int32).reshape(-1, 1, 2)], False, (235, 235, 235), 4, cv2.LINE_AA)
     return img
 
 
@@ -77,9 +68,7 @@ def centre_frame(pm: PitchModel, dist=None, touch=True):
 
 def penalty_frame(pm: PitchModel, end="R", dist=None):
     s = 1.0 if end == "R" else -1.0
-    Hp = camera_h(
-        (s * (pm.hl - 22.0), -46.0, 16.0), (s * (pm.hl - 9.0), 0.0, 0.0), f=1500.0
-    )
+    Hp = camera_h((s * (pm.hl - 22.0), -46.0, 16.0), (s * (pm.hl - 9.0), 0.0, 0.0), f=1500.0)
     seg_, cur = pm.segments(), pm.curves()
     polys = [seg_[f"{end}_PEN_BOX_{k}"] for k in ("TOP", "BOTTOM", "FRONT")]
     polys += [seg_[f"{end}_GOAL_AREA_{k}"] for k in ("TOP", "BOTTOM", "FRONT")]
@@ -109,10 +98,7 @@ def test_centre_finder_touchline_end_and_derived_points(dims):
     assert by["HALFWAY_TOP"].pitch_xy == (0.0, pm.hw)  # the REQUEST's width, not 68
     assert not by["HALFWAY_TOP"].derived and not by["CENTRE_CIRCLE_TOP"].derived
     assert by["CENTRE_SPOT"].derived
-    assert (
-        any(p.pitch_id is None and p.derived for p in r.points)
-        or "CENTRE_CIRCLE_LEFT" in ids
-    )
+    assert any(p.pitch_id is None and p.derived for p in r.points) or "CENTRE_CIRCLE_LEFT" in ids
     # >= 4 non-collinear points: the editor's fit recovers the camera
     img_n = geo.undistort_points(np.array([p.uv for p in r.points]), None)
     Hfit, _ = geo.fit_homography(img_n, np.array([p.pitch_xy for p in r.points]))
@@ -126,18 +112,14 @@ def test_centre_finder_uses_the_requested_width():
     pm_true = PitchModel(105.0, 68.0)
     img, Hp = centre_frame(pm_true)
     good = pf.find_points("centre", img, None, pm_true).result
-    bad = pf.find_points(
-        "centre", img, None, PitchModel(105.0, 72.0)
-    ).result  # 2 m wrong half-width
+    bad = pf.find_points("centre", img, None, PitchModel(105.0, 72.0)).result  # 2 m wrong half-width
     assert good is not None and bad is not None
     g = {p.pitch_id or tuple(p.pitch_xy): p for p in good.points}
     b = {p.pitch_id or tuple(p.pitch_xy): p for p in bad.points}
     common = [k for k in g if k in b and g[k].derived]
     assert common
     shift = max(np.linalg.norm((g[k].uv - b[k].uv) * [W, H]) for k in common)
-    assert (
-        shift > 1.0
-    )  # a 4 m wider pitch moves the synthesised points (mildly: the circle pins most of the geometry)
+    assert shift > 1.0  # a 4 m wider pitch moves the synthesised points (mildly: the circle pins most of the geometry)
 
 
 def test_centre_finder_without_touchline_returns_only_the_two_circle_points():
@@ -145,10 +127,7 @@ def test_centre_finder_without_touchline_returns_only_the_two_circle_points():
     img, Hp = centre_frame(pm, touch=False)
     det = pf.find_points("centre", img, None, pm)
     assert det.result is not None
-    assert [p.pitch_id for p in det.result.points] == [
-        "CENTRE_CIRCLE_TOP",
-        "CENTRE_CIRCLE_BOTTOM",
-    ]
+    assert [p.pitch_id for p in det.result.points] == ["CENTRE_CIRCLE_TOP", "CENTRE_CIRCLE_BOTTOM"]
     assert not any(p.derived for p in det.result.points)
 
 
@@ -158,15 +137,11 @@ def test_centre_finder_with_lens():
     img, Hp = centre_frame(pm, dist)
     det = pf.find_points("centre", img, dist, pm)
     assert det.result is not None, det.reason
-    assert {"HALFWAY_TOP", "CENTRE_CIRCLE_TOP"} <= {
-        p.pitch_id for p in det.result.points
-    }
+    assert {"HALFWAY_TOP", "CENTRE_CIRCLE_TOP"} <= {p.pitch_id for p in det.result.points}
     assert _errs(det.result, Hp, dist).max() < 6.0
 
 
-@pytest.mark.parametrize(
-    "dims,end", [((105.0, 68.0), "R"), ((100.0, 64.0), "R"), ((100.0, 64.0), "L")]
-)
+@pytest.mark.parametrize("dims,end", [((105.0, 68.0), "R"), ((100.0, 64.0), "R"), ((100.0, 64.0), "L")])
 def test_d_finder_fits_the_whole_penalty_area(dims, end):
     pm = PitchModel(*dims)
     img, Hp = penalty_frame(pm, end)
@@ -177,11 +152,7 @@ def test_d_finder_fits_the_whole_penalty_area(dims, end):
     assert r.info["end"] == end
     kp = pm.keypoints()
     ids = {p.pitch_id for p in r.points}
-    assert {
-        f"{end}_PEN_ARC_TOP",
-        f"{end}_PEN_ARC_BOTTOM",
-        f"{end}_PEN_BOX_TOP_OUTER",
-    } <= ids
+    assert {f"{end}_PEN_ARC_TOP", f"{end}_PEN_ARC_BOTTOM", f"{end}_PEN_BOX_TOP_OUTER"} <= ids
     for p in r.points:
         assert p.pitch_xy == tuple(kp[p.pitch_id])  # metres from the request's dims
     assert _errs(r, Hp).max() < 6.0
@@ -191,13 +162,7 @@ def test_d_finder_fits_the_whole_penalty_area(dims, end):
     img_n = np.array([p.uv for p in r.points])
     Hfit, _ = geo.fit_homography(img_n, np.array([p.pitch_xy for p in r.points]))
     s = 1.0 if end == "R" else -1.0
-    grid = np.array(
-        [
-            (s * (pm.hl - dx), y)
-            for dx in (4.0, 12.0, 20.0, 28.0)
-            for y in (-15.0, 0.0, 15.0)
-        ]
-    )
+    grid = np.array([(s * (pm.hl - dx), y) for dx in (4.0, 12.0, 20.0, 28.0) for y in (-15.0, 0.0, 15.0)])
     back, _ = geo.apply_homography(Hfit, project(Hp, grid) / [W, H])
     assert np.abs(back - grid).max() < 0.6
 
@@ -206,18 +171,12 @@ def test_d_finder_dims_other_than_105x68_change_the_pitch_metres_only():
     pm = PitchModel(100.0, 64.0)
     img, Hp = penalty_frame(pm, "R")
     a = pf.find_points("d", img, None, pm).result
-    b = pf.find_points(
-        "d", img, None, PitchModel(104.0, 64.0)
-    ).result  # same picture, other length
+    b = pf.find_points("d", img, None, PitchModel(104.0, 64.0)).result  # same picture, other length
     assert a is not None and b is not None
     pa = {p.pitch_id: p for p in a.points}
     pb = {p.pitch_id: p for p in b.points}
-    assert pa["R_PEN_SPOT"].pitch_xy == (50.0 - 11.0, 0.0) and pb[
-        "R_PEN_SPOT"
-    ].pitch_xy == (52.0 - 11.0, 0.0)
-    assert np.allclose(
-        pa["R_PEN_ARC_TOP"].uv, pb["R_PEN_ARC_TOP"].uv, atol=2.0 / W
-    )  # same picture, same pixels
+    assert pa["R_PEN_SPOT"].pitch_xy == (50.0 - 11.0, 0.0) and pb["R_PEN_SPOT"].pitch_xy == (52.0 - 11.0, 0.0)
+    assert np.allclose(pa["R_PEN_ARC_TOP"].uv, pb["R_PEN_ARC_TOP"].uv, atol=2.0 / W)  # same picture, same pixels
 
 
 def test_d_finder_abstains_on_grass_and_on_a_lone_line():
@@ -234,13 +193,8 @@ def test_correspondences_shape_and_unknown_kind():
     pm = PitchModel()
     img, _ = centre_frame(pm)
     recs = pf.find_points("centre", img, None, pm).result.correspondences()
-    assert all(
-        {"image", "pitch_id", "pitch_xy", "confidence", "derived"} <= set(c)
-        for c in recs
-    )
+    assert all({"image", "pitch_id", "pitch_xy", "confidence", "derived"} <= set(c) for c in recs)
     assert all(0.0 <= v <= 1.0 for c in recs for v in c["image"])
-    assert all(
-        c["pitch_id"] is not None or c["derived"] for c in recs
-    )  # free points are always derived
+    assert all(c["pitch_id"] is not None or c["derived"] for c in recs)  # free points are always derived
     with pytest.raises(ValueError):
         pf.find_points("nope", img, None, pm)

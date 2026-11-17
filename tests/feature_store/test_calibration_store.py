@@ -69,18 +69,9 @@ def test_upsert_idempotent_and_keypoints(store):
     assert store.count("calibration") == 1
     assert _best(store)["quality"] == 0.5
     kp = PitchKeypointRow(
-        game_id=G,
-        source="claude",
-        run_id="r1",
-        frame_index=0,
-        point_idx=0,
-        keypoint_id="CENTRE_SPOT",
-        u=0.5,
-        v=0.5,
-        pitch_x=0.0,
-        pitch_y=0.0,
-        is_inlier=True,
-        err_px=1.0,
+        game_id=G, source="claude", run_id="r1", frame_index=0, point_idx=0,
+        keypoint_id="CENTRE_SPOT", u=0.5, v=0.5, pitch_x=0.0, pitch_y=0.0,
+        is_inlier=True, err_px=1.0,
     )
     store.upsert_pitch_keypoints([kp, kp])
     assert store.count("pitch_keypoint") == 1
@@ -98,15 +89,7 @@ def test_precedence_hand_beats_accepted_beats_proposed(store):
     b = _best(store)
     assert (b["source"], b["run_id"], b["tier"]) == ("classical", "r2", "accepted")
     store.upsert_calibrations(
-        [
-            _cal(
-                "hand_label",
-                "calibration_gt_import",
-                status="hand",
-                q=1.0,
-                reviewed=True,
-            )
-        ]
+        [_cal("hand_label", "calibration_gt_import", status="hand", q=1.0, reviewed=True)]
     )
     b = _best(store)
     assert (b["source"], b["tier"]) == ("hand_label", "hand")
@@ -126,11 +109,8 @@ def test_failed_and_rejected_never_win(store):
 
 def test_one_row_per_frame_and_ties_deterministic(store):
     store.upsert_calibrations(
-        [
-            _cal("claude", "a", fi=1, q=0.5),
-            _cal("claude", "b", fi=1, q=0.5),
-            _cal("claude", "a", fi=2, q=0.5),
-        ]
+        [_cal("claude", "a", fi=1, q=0.5), _cal("claude", "b", fi=1, q=0.5),
+         _cal("claude", "a", fi=2, q=0.5)]
     )
     df = store.query("SELECT * FROM frame_calibration_best ORDER BY frame_index")
     assert list(df["frame_index"]) == [1, 2]
@@ -140,52 +120,24 @@ def test_one_row_per_frame_and_ties_deterministic(store):
 def test_inline_frame_columns_ignored_by_view(store):
     store.upsert_games([GameRow(game_id=G)])
     store.upsert_frames(
-        [
-            FrameRow(
-                game_id=G,
-                frame_index=0,
-                frame_uri="f",
-                width=1,
-                height=1,
-                continuous_time_s=0.0,
-                homography=H_ID,
-                calibration_quality=1.0,
-            )
-        ]
+        [FrameRow(game_id=G, frame_index=0, frame_uri="f", width=1, height=1,
+                  continuous_time_s=0.0, homography=H_ID, calibration_quality=1.0)]
     )
     assert _best(store) is None  # deprecated columns are not a source
 
 
 def _det(fi, label, did, x, y, w, h):
     return DetectionRow(
-        game_id=G,
-        frame_index=fi,
-        continuous_time_s=fi / 25,
-        detection_id=did,
-        source="yolo",
-        run_id="d",
-        label=label,
-        bbox_x=x,
-        bbox_y=y,
-        bbox_w=w,
-        bbox_h=h,
+        game_id=G, frame_index=fi, continuous_time_s=fi / 25, detection_id=did,
+        source="yolo", run_id="d", label=label, bbox_x=x, bbox_y=y, bbox_w=w, bbox_h=h,
     )
 
 
 def test_detections_on_pitch_matches_projector(store):
     H = np.array(H_CAM).reshape(3, 3)
     store.upsert_calibrations(
-        [
-            _cal(
-                "hand_label",
-                "calibration_gt_import",
-                H=H_CAM,
-                q=0.8,
-                status="hand",
-                pitch_length=100.0,
-                pitch_width=60.0,
-            )
-        ]
+        [_cal("hand_label", "calibration_gt_import", H=H_CAM, q=0.8,
+              status="hand", pitch_length=100.0, pitch_width=60.0)]
     )
     dets = [
         _det(0, "player", 0, 0.30, 0.40, 0.05, 0.12),
@@ -193,18 +145,16 @@ def test_detections_on_pitch_matches_projector(store):
         _det(0, "ball", 2, 0.45, 0.50, 0.01, 0.02),
     ]
     store.upsert_detections(dets)
-    df = store.query("SELECT * FROM detections_on_pitch ORDER BY detection_id")
+    df = store.query(
+        "SELECT * FROM detections_on_pitch ORDER BY detection_id"
+    )
     proj = PitchProjector(pitch_dims=(100.0, 60.0))
     # bbox columns are FLOAT: feed the projector the stored (rounded) values.
-    stored = store.query(
-        "SELECT bbox_x, bbox_y, bbox_w, bbox_h, label FROM detection "
-        "ORDER BY detection_id"
-    )
+    stored = store.query("SELECT bbox_x, bbox_y, bbox_w, bbox_h, label FROM detection "
+                         "ORDER BY detection_id")
     exp = proj.project_frame(
-        [
-            TrackedDetection(i, 0.0, r.label, r.bbox_x, r.bbox_y, r.bbox_w, r.bbox_h)
-            for i, r in stored.iterrows()
-        ],
+        [TrackedDetection(i, 0.0, r.label, r.bbox_x, r.bbox_y, r.bbox_w, r.bbox_h)
+         for i, r in stored.iterrows()],
         H,
         0.8,
     )
@@ -230,14 +180,10 @@ def test_gt_ball_labels_use_centroid_anchor(store, label):
 def test_detections_on_pitch_nan_null_rules(store):
     # f0: low quality, f1: no calibration, f2: exactly at threshold -> projects
     store.upsert_calibrations(
-        [
-            _cal("claude", "r", fi=0, q=H_QUALITY_THRESHOLD - 0.01),
-            _cal("claude", "r", fi=2, q=H_QUALITY_THRESHOLD),
-        ]
+        [_cal("claude", "r", fi=0, q=H_QUALITY_THRESHOLD - 0.01),
+         _cal("claude", "r", fi=2, q=H_QUALITY_THRESHOLD)]
     )
-    store.upsert_detections(
-        [_det(i, "player", 0, 0.2, 0.2, 0.1, 0.1) for i in range(3)]
-    )
+    store.upsert_detections([_det(i, "player", 0, 0.2, 0.2, 0.1, 0.1) for i in range(3)])
     df = store.query("SELECT * FROM detections_on_pitch ORDER BY frame_index")
     assert df.loc[0, "projection_status"] == "low_quality"
     assert math.isnan(df.loc[0, "x_pitch"])
@@ -247,8 +193,7 @@ def test_detections_on_pitch_nan_null_rules(store):
     # the NaN row agrees with PitchProjector
     p = PitchProjector().project_frame(
         [TrackedDetection(0, 0.0, "player", 0.2, 0.2, 0.1, 0.1)],
-        np.eye(3),
-        H_QUALITY_THRESHOLD - 0.01,
+        np.eye(3), H_QUALITY_THRESHOLD - 0.01,
     )
     assert math.isnan(p[0].x_pitch)
 
@@ -256,19 +201,8 @@ def test_detections_on_pitch_nan_null_rules(store):
 def test_parquet_roundtrip_preserves_calibration(store, tmp_path):
     store.upsert_calibrations([_cal("claude", "r1", H=H_CAM)])
     store.upsert_pitch_keypoints(
-        [
-            PitchKeypointRow(
-                game_id=G,
-                source="claude",
-                run_id="r1",
-                frame_index=0,
-                point_idx=0,
-                u=0.1,
-                v=0.2,
-                pitch_x=3.0,
-                pitch_y=4.0,
-            )
-        ]
+        [PitchKeypointRow(game_id=G, source="claude", run_id="r1", frame_index=0,
+                          point_idx=0, u=0.1, v=0.2, pitch_x=3.0, pitch_y=4.0)]
     )
     store.export_parquet(tmp_path)
     s2 = FeatureStore.from_parquet(tmp_path)
@@ -282,65 +216,26 @@ def test_detections_on_pitch_undistorts_with_k1_like_the_projector(store):
     H = np.array(H_CAM).reshape(3, 3)
     k1 = 0.03
     store.upsert_calibrations(
-        [
-            _cal(
-                "hand_label",
-                "r",
-                H=H_CAM,
-                q=0.9,
-                status="hand",
-                distortion_k1=k1,
-                pitch_length=105.0,
-                pitch_width=68.0,
-                image_width=1920,
-                image_height=1080,
-            ),
-            _cal(
-                "hand_label",
-                "r",
-                fi=1,
-                H=H_CAM,
-                q=0.9,
-                status="hand",  # same H, no lens
-                pitch_length=105.0,
-                pitch_width=68.0,
-                image_width=1920,
-                image_height=1080,
-            ),
-        ]
+        [_cal("hand_label", "r", H=H_CAM, q=0.9, status="hand", distortion_k1=k1,
+              pitch_length=105.0, pitch_width=68.0, image_width=1920, image_height=1080),
+         _cal("hand_label", "r", fi=1, H=H_CAM, q=0.9, status="hand",  # same H, no lens
+              pitch_length=105.0, pitch_width=68.0, image_width=1920, image_height=1080)]
     )
-    store.upsert_detections(
-        [
-            _det(0, "player", 0, 0.10, 0.20, 0.05, 0.30),
-            _det(1, "player", 1, 0.10, 0.20, 0.05, 0.30),
-        ]
-    )
+    store.upsert_detections([_det(0, "player", 0, 0.10, 0.20, 0.05, 0.30),
+                             _det(1, "player", 1, 0.10, 0.20, 0.05, 0.30)])
     df = store.query("SELECT * FROM detections_on_pitch ORDER BY frame_index")
-    stored = store.query(
-        "SELECT bbox_x, bbox_y, bbox_w, bbox_h FROM detection ORDER BY frame_index"
-    )
-    r = stored.iloc[0].astype(
-        float
-    )  # FLOAT32 columns: do the projector's arithmetic in float64
+    stored = store.query("SELECT bbox_x, bbox_y, bbox_w, bbox_h FROM detection ORDER BY frame_index")
+    r = stored.iloc[0].astype(float)  # FLOAT32 columns: do the projector's arithmetic in float64
     want = PitchProjector().project_frame(
-        [TrackedDetection(0, 0.0, "player", r.bbox_x, r.bbox_y, r.bbox_w, r.bbox_h)],
-        H,
-        0.9,
+        [TrackedDetection(0, 0.0, "player", r.bbox_x, r.bbox_y, r.bbox_w, r.bbox_h)], H, 0.9,
         distortion=geo.make_distortion(k1, 1920 / 1080),
     )[0]
     assert df.iloc[0]["x_pitch"] == pytest.approx(want.x_pitch, abs=1e-9)
     assert df.iloc[0]["y_pitch"] == pytest.approx(want.y_pitch, abs=1e-9)
     plain = PitchProjector().project_frame(
-        [TrackedDetection(0, 0.0, "player", r.bbox_x, r.bbox_y, r.bbox_w, r.bbox_h)],
-        H,
-        0.9,
-    )[0]
-    assert df.iloc[1]["x_pitch"] == pytest.approx(
-        plain.x_pitch, abs=1e-9
-    )  # NULL k1 == old behaviour
-    assert (
-        abs(df.iloc[0]["x_pitch"] - df.iloc[1]["x_pitch"]) > 1e-3
-    )  # and the lens does matter
+        [TrackedDetection(0, 0.0, "player", r.bbox_x, r.bbox_y, r.bbox_w, r.bbox_h)], H, 0.9)[0]
+    assert df.iloc[1]["x_pitch"] == pytest.approx(plain.x_pitch, abs=1e-9)  # NULL k1 == old behaviour
+    assert abs(df.iloc[0]["x_pitch"] - df.iloc[1]["x_pitch"]) > 1e-3  # and the lens does matter
 
 
 def test_store_created_before_distortion_gets_the_k1_column(tmp_path):
@@ -354,16 +249,10 @@ def test_store_created_before_distortion_gets_the_k1_column(tmp_path):
     for stmt in DDL:
         if stmt.lstrip().startswith("ALTER TABLE calibration"):
             continue
-        con.execute(
-            stmt.replace("distortion_k1  DOUBLE,", "")
-        )  # the pre-distortion table
-    con.execute(
-        "CREATE OR REPLACE VIEW frame_calibration_best AS SELECT * FROM calibration"
-    )
-    con.execute(
-        "INSERT INTO calibration (game_id, source, run_id, frame_index, H, review_status) "
-        f"VALUES ('g', 'hand_label', 'r', 0, {H_ID}, 'hand')"
-    )
+        con.execute(stmt.replace("distortion_k1  DOUBLE,", ""))  # the pre-distortion table
+    con.execute("CREATE OR REPLACE VIEW frame_calibration_best AS SELECT * FROM calibration")
+    con.execute("INSERT INTO calibration (game_id, source, run_id, frame_index, H, review_status) "
+                f"VALUES ('g', 'hand_label', 'r', 0, {H_ID}, 'hand')")
     con.close()
     with FeatureStore.open(path) as s:
         row = s.query("SELECT distortion_k1 FROM frame_calibration_best").iloc[0]
@@ -371,36 +260,17 @@ def test_store_created_before_distortion_gets_the_k1_column(tmp_path):
 
 
 def test_not_broadcast_frame_has_no_calibration_and_no_projection(store):
-    store.upsert_calibrations(
-        [
-            _cal("claude", "r1", fi=0, q=0.9),
-            _cal("hand_label", "calibration_gt_import", fi=0, q=1.0, status="hand"),
-            _cal("claude", "r1", fi=1, q=0.9),
-            # a flag row (no H), from a different run than the proposal it vetoes
-            _cal(
-                "hand_label",
-                "frame_type_import",
-                fi=1,
-                status="not_broadcast",
-                H=None,
-                q=None,
-            ),
-            # a proposal itself marked not_broadcast (with an H) never wins either
-            _cal("claude", "r2", fi=2, q=0.99, status="not_broadcast"),
-        ]
-    )
+    store.upsert_calibrations([
+        _cal("claude", "r1", fi=0, q=0.9),
+        _cal("hand_label", "calibration_gt_import", fi=0, q=1.0, status="hand"),
+        _cal("claude", "r1", fi=1, q=0.9),
+        # a flag row (no H), from a different run than the proposal it vetoes
+        _cal("hand_label", "frame_type_import", fi=1, status="not_broadcast", H=None, q=None),
+        # a proposal itself marked not_broadcast (with an H) never wins either
+        _cal("claude", "r2", fi=2, q=0.99, status="not_broadcast"),
+    ])
     assert _best(store, 0)["tier"] == "hand"
     assert _best(store, 1) is None and _best(store, 2) is None
-    store.upsert_detections(
-        [
-            _det(0, "player", 0, 0.4, 0.3, 0.05, 0.1),
-            _det(1, "player", 1, 0.4, 0.3, 0.05, 0.1),
-        ]
-    )
-    d = store.query(
-        "SELECT frame_index, projection_status, x_pitch FROM detections_on_pitch ORDER BY frame_index"
-    )
-    assert (
-        list(d["projection_status"]) == ["ok", "no_calibration"]
-        and d["x_pitch"].isna()[1]
-    )
+    store.upsert_detections([_det(0, "player", 0, 0.4, 0.3, 0.05, 0.1), _det(1, "player", 1, 0.4, 0.3, 0.05, 0.1)])
+    d = store.query("SELECT frame_index, projection_status, x_pitch FROM detections_on_pitch ORDER BY frame_index")
+    assert list(d["projection_status"]) == ["ok", "no_calibration"] and d["x_pitch"].isna()[1]
