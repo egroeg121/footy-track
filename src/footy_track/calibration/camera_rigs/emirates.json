@@ -64,6 +64,20 @@
     "res_px": 22.731771789113985
    }
   ],
-  "fit_date": "2026-11-15"
+  "fit_date": "2026-11-15",
+  "pose_prior": {
+   "tilt_a": 96.825,
+   "tilt_b": -10.106,
+   "tilt_sigma_deg": 1.12,
+   "pan_deg": [
+    40.0,
+    145.0
+   ],
+   "f_px": [
+    1800.0,
+    8000.0
+   ],
+   "source": "tilt_deg = a + b*ln(f_px) over accepted frames (every 5th) of the 140 accepted Arsenal v Man City segments (18100 frames; pan 1-99% 51-128 deg, f 1-99% 2850-5750 px, tilt resid 1-99% -3.9..3.2 deg); ranges widened"
+  }
  }
 }

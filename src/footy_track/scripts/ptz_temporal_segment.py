@@ -32,10 +32,13 @@ from pathlib import Path
 
 import numpy as np
 
+from footy_track.calibration import ptz, ptz_recover as pr
 from footy_track.calibration import ptz_temporal as pt
 from footy_track.scripts import ptz_temporal as pte
 
 MIN_ANCHOR_STEP = 25
+RECOVER_BELOW = 0.5  # run the recovery pass when the standard pass accepts less than this fraction of the frames
+REC_FRAMES = 12  # lines-only candidate frames per segment in recovery stage A (stage B adds finders and doubles them)
 F1_ACCEPT = 0.5  # the driver's acceptance threshold for an evidence frame (cmd_eval coverage)
 
 
@@ -75,12 +78,13 @@ def _ranges(mask: np.ndarray) -> list[list[int]]:
     return out
 
 
-def line_f1_report(cache, states, shared, anchors, segs) -> dict:
+def line_f1_report(cache, states, shared, anchors, segs, prior: dict | None = None) -> dict:
     """F1 of the solved camera against the line evidence of every evidence frame (every 5th frame), the anchors' search F1,
-    and ``accepted_ranges``: frames whose two neighbouring evidence frames both reach ``F1_ACCEPT`` (the driver's coverage rule)."""
+    and ``accepted_ranges``: frames whose two neighbouring evidence frames both reach ``F1_ACCEPT`` (the driver's coverage rule).
+    With a ``prior`` (recovery pass) an evidence frame also has to sit on the rig's pose band (:func:`pr.in_prior`)."""
     ev = list(cache.ev_frames)
     f1 = pte.line_f1(cache, states, shared, ev)
-    good = {t: f1.get(t, -1.0) >= F1_ACCEPT for t in ev}
+    good = {t: f1.get(t, -1.0) >= F1_ACCEPT and (prior is None or pr.in_prior(prior, *states[t])) for t in ev}
     acc = np.zeros(cache.n, bool)
     for t in range(cache.n):
         prev = max((e for e in ev if e <= t), default=None)
@@ -94,7 +98,88 @@ def line_f1_report(cache, states, shared, anchors, segs) -> dict:
             "main_camera_runs": [list(map(int, s)) for s in segs]}
 
 
-def run(video: Path, clip: str, rig_json: Path, out_root: Path, anchor_step: int = 100) -> dict:
+def candidate_frames(cache, runs: list[tuple[int, int]], n: int) -> list[int]:
+    """``n`` evidence frames spread evenly over the runs (all of them when there are fewer)."""
+    ev = [t for t in cache.ev_frames if any(a <= t <= b for a, b in runs)]
+    if len(ev) <= n:
+        return ev
+    return [ev[i] for i in np.unique(np.linspace(0, len(ev) - 1, n).round().astype(int))]
+
+
+def usable_candidates(cands: dict, frames: list[int]) -> dict[int, dict]:
+    """Best usable record per frame: on the pose band and a relaxed F1 with C at the rig (what the joint solve uses)."""
+    out = {}
+    for t in frames:
+        recs = [r for r in (cands.get(str(t)) or {}).values() if r and r["prior_ok"] and r["f1_fixed"] >= pr.F1_CAND]
+        if recs:
+            out[t] = max(recs, key=lambda r: r["f1_fixed"])
+    return out
+
+
+def recover_pass(cache, rig, shot_info, out: Path) -> dict:
+    """Recovery of a segment the standard pass left uncalibrated (see :mod:`ptz_recover`). Stage A: trim non-pitch tails,
+    multi-start prior-band lines-only candidates on ``REC_FRAMES`` frames, motion confirmation, joint solve. Stage B
+    (only when stage A still accepts < ``RECOVER_BELOW``): finder candidates and twice the frames. Returns the better of
+    the stages: ``{"states", "infos", "segs", "anchors", "f1rep", "stages", "runs"}``."""
+    prior = pr.pose_prior(rig)
+    pitch = pte.PITCH
+    sh = pt.Shared.from_rig(rig)
+    pm = {t: pt.pmain_of(cache, t) for t in cache.ev_frames}
+    base_runs = [(x["start"], x["end"]) for x in shot_info if x["p_main"] >= 0.5]
+    runs = pr.trim_runs(base_runs, cache, pm)
+    pte.log(f"recovery: main shots {base_runs} -> trimmed runs {runs}")
+    cp = out / "anchors_rec.json"
+    cands = json.loads(cp.read_text()) if cp.exists() else {}
+    best, stages = None, []
+    for stage, (n_fr, use_finders) in enumerate(((REC_FRAMES, False), (2 * REC_FRAMES, True))):
+        frames = candidate_frames(cache, runs, n_fr)
+        for t in frames:
+            rec = cands.setdefault(str(t), {})
+            ev = cache.evidence(t)
+            if ev is None:
+                continue
+            if "lines" not in rec:
+                rec["lines"] = pr.lines_candidate(ev, rig, pitch, prior)
+                cp.write_text(json.dumps(cands, default=float))
+            if use_finders and "finder" not in rec:
+                rec["finder"] = pr.finder_anchor(cache, t, rig, pitch, prior)
+                cp.write_text(json.dumps(cands, default=float))
+        use = usable_candidates(cands, frames)
+        pte.log(f"recovery stage {'AB'[stage]}: {len(use)}/{len(frames)} usable candidates "
+                f"{ {t: (round(r['f1'], 2), round(r['f1_fixed'], 2), r['src']) for t, r in use.items()} }")
+        info = {"stage": "AB"[stage], "frames": len(frames), "usable": len(use)}
+        if not use:
+            stages.append(info | {"accepted_frac": 0.0})
+            continue
+        # motion on the trimmed runs with the candidates' zoom as the nominal focal length
+        fnom = pte.f_nominal(cache, {str(t): {"ok": True, "logf": r["logf"]} for t, r in use.items()})
+        pairs = []
+        for a, b in runs:
+            ps, st = pt.compute_motion(cache, a, b, fnom[a:b + 1], rig.k1, gaps=(1, 5), log=pte.log)
+            pairs += ps
+        pairs, weak = pt.reject_weak_pairs(pairs)
+        segs = pte.segments([{"start": a, "end": b, "p_main": 1.0} for a, b in runs], pairs)
+        pairs_by = {(p.i, p.j): p for p in pairs}
+        states = {t: np.array(r["refit"]["fixed"]) for t, r in use.items()}
+        strong = {t: r["f1"] >= pr.F1_STRONG and r["f1_fixed"] >= 0.6 for t, r in use.items()}
+        kept, partners = pr.confirm_anchors(states, pairs_by, sh, strong=strong)
+        anchors = {str(t): {**r, "ok": t in kept} for t, r in use.items()}
+        pte.log(f"recovery stage {'AB'[stage]}: confirmed {sorted(kept)} of {sorted(use)}; partners {partners}")
+        st_arr, infos = pte.solve_variant(cache, segs, pairs, anchors, rig, [], None, "recover")
+        f1rep = line_f1_report(cache, st_arr, sh, anchors, segs, prior)
+        info |= {"confirmed": sorted(kept), "weak_pairs": weak, "accepted_frac": f1rep["accepted_frac_of_frames"]}
+        stages.append(info)
+        pte.log(f"recovery stage {'AB'[stage]}: accepted {100 * info['accepted_frac']:.0f}%")
+        if best is None or info["accepted_frac"] > best["f1rep"]["accepted_frac_of_frames"]:
+            best = {"states": st_arr, "infos": infos, "segs": segs, "anchors": anchors, "f1rep": f1rep, "runs": runs}
+        if info["accepted_frac"] >= RECOVER_BELOW:
+            break
+    if best is not None:
+        best["stages"] = stages
+    return best or {"stages": stages, "runs": runs}
+
+
+def run(video: Path, clip: str, rig_json: Path, out_root: Path, anchor_step: int = 100, recover: bool = True) -> dict:
     t0, cpu0 = time.time(), time.process_time()
     pte.ROOT = out_root
     pte.VIDEO_PATH = video
@@ -112,15 +197,26 @@ def run(video: Path, clip: str, rig_json: Path, out_root: Path, anchor_step: int
     states, infos = pte.solve_variant(cache, segs, pairs, anchors, rig, [], None, "full")
     shared = pt.Shared.from_rig(rig)
 
-    valid = np.isfinite(states).all(axis=1)
     f1rep = line_f1_report(cache, states, shared, anchors, segs)
+    recovery = None
+    if recover and f1rep["accepted_frac_of_frames"] < RECOVER_BELOW:
+        pte.log(f"standard pass accepts {100 * f1rep['accepted_frac_of_frames']:.0f}% of the frames: recovery pass")
+        rec = recover_pass(cache, rig, shot_info, out)
+        recovery = {"standard_accepted_frac": f1rep["accepted_frac_of_frames"], "stages": rec["stages"],
+                    "trimmed_runs": [list(map(int, r)) for r in rec["runs"]], "used": False}
+        if rec.get("f1rep") and rec["f1rep"]["accepted_frac_of_frames"] > f1rep["accepted_frac_of_frames"]:
+            recovery["used"] = True
+            recovery["standard_anchors"] = f1rep["anchors"]
+            states, infos, segs, anchors = rec["states"], rec["infos"], rec["segs"], rec["anchors"]
+            f1rep = rec["f1rep"]
+    valid = np.isfinite(states).all(axis=1)
     meta = {"clip": clip, "video": str(video), "frames_decoded": int(cache.n), "frames_container": n,
             "anchor_step": pte.ANCHOR_STEP, "rig_json": str(rig_json), "rig_C": [float(x) for x in rig.C],
             "rig_k1": float(rig.k1), "code_sha": _git_sha(), "shots": shot_info, "runs": f1rep["main_camera_runs"],
             "calibrated_frames": int(valid.sum()), "calibrated_frac": float(valid.mean()) if cache.n else 0.0,
             "accepted_frac": f1rep["accepted_frac_of_frames"], "median_evidence_f1": f1rep["median_evidence_f1"],
             "anchors_ok": int(sum(bool(a.get("ok")) for a in anchors.values())), "anchors_tried": len(anchors),
-            "wall_s": round(time.time() - t0, 1), "cpu_s": round(time.process_time() - cpu0, 1)}
+            "recovery": recovery, "wall_s": round(time.time() - t0, 1), "cpu_s": round(time.process_time() - cpu0, 1)}
     _atomic(out / "solve_full.json", lambda p: p.write_text(json.dumps(infos, default=float)))
     _atomic(out / "line_f1_full.json", lambda p: p.write_text(json.dumps(f1rep)))
     _atomic(out / "meta.json", lambda p: p.write_text(json.dumps(meta, indent=1, default=float)))
@@ -148,8 +244,9 @@ def main() -> None:
     ap.add_argument("--rig-json", required=True, type=Path)
     ap.add_argument("--out-root", type=Path, default=pte.ROOT)
     ap.add_argument("--anchor-step", type=int, default=100)
+    ap.add_argument("--no-recover", action="store_true", help="skip the recovery pass for segments the standard pass leaves weak")
     a = ap.parse_args()
-    run(a.video, a.clip, a.rig_json, a.out_root, a.anchor_step)
+    run(a.video, a.clip, a.rig_json, a.out_root, a.anchor_step, recover=not a.no_recover)
 
 
 if __name__ == "__main__":
