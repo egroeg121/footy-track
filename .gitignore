@@ -40,6 +40,9 @@ footy_scan_detection/
 footy_scan_classifier/
 /yolo11n-cls.pt
 
+# Local scratch / experiment workspace
+scratch/
+
 # Gas Town (added by gt)
 .logs/
 state.json
@@ -47,5 +50,6 @@ CLAUDE.local.md
 
 # Playwright debug screenshots
 labeller_*.png
+ui_*.png
 .playwright-mcp/
 .mcp.json

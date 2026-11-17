@@ -168,14 +168,25 @@ def detect_pitch_crop(
 def compute_segment_crop(
     video_path: str | Path,
     sample_n: int = 15,
-    height_pad: float = 0.06,
+    height_pad: float = 0.03,
+    top_pct: float = 0.5,
 ) -> CropRect:
     """Compute one stable crop for a whole (single-camera) segment.
 
-    Samples ``sample_n`` frames evenly across the clip, detects the pitch in each,
-    and returns the **union** of those crops — so the rectangle is valid for every
-    frame even as the camera pans within the segment. Falls back to an identity
-    crop (full frame) if the pitch is never found.
+    Samples ``sample_n`` frames evenly across the clip and detects the pitch in
+    each. The crop is aggregated per edge:
+
+    * **Top edge (the grass line)** is the ``top_pct`` percentile of the per-frame
+      grass lines — i.e. cut to the *typical* grass line, not the highest one. A
+      plain union (min) is dominated by a single panned-up frame and barely crops;
+      the median (``top_pct=0.5``) removes the crowd in the common case. Frames
+      panned higher than this lose a sliver of upper grass (rarely a player, and
+      recoverable via the full-frame view).
+    * **Sides + bottom** take the union (widest), since the pitch spans the frame
+      there and panning left/right shouldn't clip it.
+
+    Larger ``top_pct`` crops more aggressively; smaller is safer. Falls back to an
+    identity crop (full frame) if the pitch is never found.
     """
     video_path = Path(video_path)
     cap = cv2.VideoCapture(str(video_path))
@@ -184,19 +195,54 @@ def compute_segment_crop(
         w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         idxs = np.linspace(0, total - 1, num=min(sample_n, total)).astype(int).tolist()
-        acc: CropRect | None = None
+        rects: list[CropRect] = []
         for fi in idxs:
             cap.set(cv2.CAP_PROP_POS_FRAMES, int(fi))
             ok, frame = cap.read()
             if not ok or frame is None:
                 continue
             rect = detect_pitch_crop(frame, height_pad=height_pad)
-            if rect is None:
-                continue
-            acc = rect if acc is None else acc.union(rect)
+            if rect is not None:
+                rects.append(rect)
     finally:
         cap.release()
 
-    if acc is None:
+    if not rects:
         return CropRect.identity(w, h)
-    return acc
+
+    x0 = min(r.x0 for r in rects)
+    x1 = max(r.x1 for r in rects)
+    y1 = max(r.y1 for r in rects)
+    y0 = int(np.percentile([r.y0 for r in rects], top_pct * 100))
+    return CropRect(x0=x0, y0=y0, x1=x1, y1=y1, W=w, H=h)
+
+
+def write_cropped_video(src: str | Path, dst: str | Path, crop: CropRect) -> Path:
+    """Write a copy of ``src`` cropped to ``crop`` — the labeller's working video.
+
+    Producing one cropped video up front lets the whole labeller (frame serving
+    *and* the SAM3 video predictor, which streams from a file) operate in crop
+    space with no per-frame remap: the timeline is naturally crop-normalized, and
+    full-frame coords are only needed at export. Returns ``dst``.
+    """
+    src, dst = Path(src), Path(dst)
+    cap = cv2.VideoCapture(str(src))
+    try:
+        fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
+        writer = cv2.VideoWriter(
+            str(dst),
+            cv2.VideoWriter_fourcc(*"mp4v"),
+            fps,
+            (crop.cw, crop.ch),
+        )
+        try:
+            while True:
+                ok, frame = cap.read()
+                if not ok or frame is None:
+                    break
+                writer.write(crop.apply(frame))
+        finally:
+            writer.release()
+    finally:
+        cap.release()
+    return dst

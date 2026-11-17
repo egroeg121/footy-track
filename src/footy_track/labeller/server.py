@@ -14,7 +14,9 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import json
 import os
+import tempfile
 import threading
 from pathlib import Path
 
@@ -33,6 +35,11 @@ from footy_track.labeller.video_utils import (  # noqa: E402
     BackgroundLabeller,
     LabelledObject,
     yolo_seed_objects,
+)
+from footy_track.pitch_crop import (  # noqa: E402
+    CropRect,
+    compute_segment_crop,
+    write_cropped_video,
 )
 from footy_track.schema import ObjectDetection  # noqa: E402
 
@@ -58,15 +65,23 @@ class Session:
 
     def __init__(self) -> None:
         self.bg = BackgroundLabeller()
-        self.video_path: Path | None = None
+        self.video_path: Path | None = None  # original (full-frame) video
+        self.work_path: Path | None = None  # what the labeller/SAM3 actually use
+        self.crop: CropRect | None = None  # full <-> crop transform (None = no crop)
+        self.crop_corrected: bool = False  # True once the user hand-adjusts framing
         self.fps: float = 25.0
         self.total_frames: int = 0
+        # width/height are the WORKING (crop) dims — the timeline lives in this
+        # space, so seeds/output/anomaly all normalize consistently. Full-frame
+        # dims are kept separately for the export remap + the full-frame toggle.
         self.width: int = 0
         self.height: int = 0
+        self.full_width: int = 0
+        self.full_height: int = 0
         self.timeline: list[list[ObjectDetection] | None] = []
         self._tl_lock = threading.Lock()
 
-    def load(self, video_path: str) -> dict:
+    def load(self, video_path: str, crop_pitch: bool = True) -> dict:
         self.bg.pause()
         self.bg = BackgroundLabeller()
         self.video_path = Path(video_path).expanduser()
@@ -76,18 +91,137 @@ class Session:
         try:
             self.fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
             self.total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-            self.width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-            self.height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+            self.full_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+            self.full_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         finally:
             cap.release()
+
+        # Pick the crop: a hand-corrected one saved next to the video wins; else
+        # the harsh auto-crop (aggressive on purpose — the user can expand it and
+        # the correction is persisted). Then bake a cropped working video so the
+        # whole labeller (frame serving + SAM3) runs in crop space; full-frame
+        # coords are only reconstructed at export.
+        saved = self._load_sidecar()
+        if saved is not None:
+            self.crop, self.crop_corrected = saved, True
+        elif crop_pitch:
+            self.crop, self.crop_corrected = (
+                compute_segment_crop(self.video_path),
+                False,
+            )
+        else:
+            self.crop = CropRect.identity(self.full_width, self.full_height)
+            self.crop_corrected = False
+        self._bake_working_video()
+
         with self._tl_lock:
             self.timeline = [None] * self.total_frames
+        return self._meta()
+
+    # --- crop / framing --------------------------------------------------
+
+    def _meta(self) -> dict:
+        """The session descriptor the client needs (dims + current crop)."""
         return {
             "fps": self.fps,
             "total_frames": self.total_frames,
             "width": self.width,
             "height": self.height,
+            "full_width": self.full_width,
+            "full_height": self.full_height,
+            "crop": {
+                "x0": self.crop.x0,
+                "y0": self.crop.y0,
+                "x1": self.crop.x1,
+                "y1": self.crop.y1,
+                "is_identity": self.crop.is_identity,
+            },
+            "crop_corrected": self.crop_corrected,
         }
+
+    def _bake_working_video(self) -> None:
+        """Materialise the cropped working video (no-op clip for identity crop)."""
+        if self.crop.is_identity:
+            self.work_path = self.video_path
+        else:
+            tmp = (
+                Path(tempfile.gettempdir())
+                / f"_labeller_crop_{self.video_path.stem}.mp4"
+            )
+            write_cropped_video(self.video_path, tmp, self.crop)
+            self.work_path = tmp
+        self.width, self.height = self.crop.cw, self.crop.ch
+
+    def _sidecar_path(self) -> Path:
+        return self.video_path.with_suffix(self.video_path.suffix + ".pitchcrop.json")
+
+    def _load_sidecar(self) -> CropRect | None:
+        p = self._sidecar_path()
+        if not p.exists():
+            return None
+        d = json.loads(p.read_text())
+        return CropRect(
+            d["x0"], d["y0"], d["x1"], d["y1"], self.full_width, self.full_height
+        )
+
+    def _save_sidecar(self) -> None:
+        self._sidecar_path().write_text(
+            json.dumps(
+                {
+                    "x0": self.crop.x0,
+                    "y0": self.crop.y0,
+                    "x1": self.crop.x1,
+                    "y1": self.crop.y1,
+                    "corrected": True,
+                }
+            )
+        )
+
+    def set_crop(self, new_crop: CropRect, corrected: bool) -> dict:
+        """Switch to ``new_crop``, remapping the timeline from the old crop space.
+
+        Existing boxes are crop-normalized to the *old* crop; we round-trip them
+        through full-frame coords into the new crop so labels survive a reframe.
+        A ``corrected`` crop is persisted to the sidecar as ground-truth framing.
+        """
+        old = self.crop
+        with self._tl_lock:
+            for i, boxes in enumerate(self.timeline):
+                if not boxes:
+                    continue
+                remapped = []
+                for b in boxes:
+                    fx, fy, fw, fh = old.to_full(b.x, b.y, b.w, b.h)
+                    nx, ny, nw, nh = new_crop.to_crop(fx, fy, fw, fh)
+                    remapped.append(
+                        b.model_copy(update={"x": nx, "y": ny, "w": nw, "h": nh})
+                    )
+                self.timeline[i] = remapped
+        self.crop = new_crop
+        self._bake_working_video()
+        if corrected:
+            self.crop_corrected = True
+            self._save_sidecar()
+        return self._meta()
+
+    def expand_crop(self, pct: float = 0.1) -> dict:
+        """Hand-correction: grow the framing by ``pct`` on every side (clamped).
+
+        Clipping is usually at the top (harsh grass line), so this mainly adds
+        headroom; sides/bottom are no-ops when already at the frame edge. Marked
+        as a manual correction and saved.
+        """
+        c = self.crop
+        dx, dy = int(c.cw * pct), int(c.ch * pct)
+        new = CropRect(
+            x0=max(0, c.x0 - dx),
+            y0=max(0, c.y0 - dy),
+            x1=min(self.full_width, c.x1 + dx),
+            y1=min(self.full_height, c.y1 + dy),
+            W=self.full_width,
+            H=self.full_height,
+        )
+        return self.set_crop(new, corrected=True)
 
     # --- timeline access -------------------------------------------------
 
@@ -129,10 +263,17 @@ class Session:
             )
         return objs
 
-    def frame_jpeg(self, idx: int) -> bytes | None:
-        if self.video_path is None:
+    def frame_jpeg(self, idx: int, full: bool = False) -> bytes | None:
+        """Encode frame ``idx`` as JPEG.
+
+        Default reads the cropped working video (what the canvas + SAM3 see).
+        ``full=True`` reads the original full frame — used by the UI's
+        'show full frame' toggle to give context / reveal anything the crop cut.
+        """
+        path = self.video_path if full else self.work_path
+        if path is None:
             return None
-        cap = cv2.VideoCapture(str(self.video_path))
+        cap = cv2.VideoCapture(str(path))
         try:
             cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
             ok, frame = cap.read()
@@ -198,7 +339,9 @@ async def index() -> HTMLResponse:
 
 @app.post("/session/load")
 async def load_session(body: dict) -> dict:
-    return SESSION.load(body["video_path"])
+    return SESSION.load(
+        body["video_path"], crop_pitch=bool(body.get("crop_pitch", True))
+    )
 
 
 @app.get("/frame/{idx}.jpg")
@@ -207,6 +350,28 @@ async def get_frame(idx: int) -> Response:
     if data is None:
         return Response(status_code=404)
     return Response(content=data, media_type="image/jpeg")
+
+
+@app.get("/frame_full/{idx}.jpg")
+async def get_frame_full(idx: int) -> Response:
+    """Full (uncropped) frame — for the UI 'show full frame' toggle."""
+    data = SESSION.frame_jpeg(idx, full=True)
+    if data is None:
+        return Response(status_code=404)
+    return Response(content=data, media_type="image/jpeg")
+
+
+@app.post("/crop/expand")
+async def crop_expand(body: dict) -> dict:
+    """Hand-correct the framing: grow the crop by ``pct`` and persist it.
+
+    Re-bakes the cropped working video and remaps the timeline, so it's a
+    blocking op run off the event loop. Returns the updated session meta.
+    """
+    if SESSION.video_path is None:
+        return {}
+    pct = float(body.get("pct", 0.1))
+    return await asyncio.to_thread(SESSION.expand_crop, pct)
 
 
 @app.post("/autodetect")
@@ -221,7 +386,7 @@ async def autodetect(body: dict) -> dict:
     idx = int(body.get("frame_idx", 0))
     seeds = await asyncio.to_thread(
         yolo_seed_objects,
-        SESSION.video_path,
+        SESSION.work_path,  # cropped working video -> seeds land in crop space
         body.get("model_path", "") or "",
         float(body.get("conf", 0.35)),
         SESSION.width,
@@ -378,7 +543,7 @@ async def ws(websocket: WebSocket) -> None:
                     continue
                 await asyncio.to_thread(
                     bg.submit,
-                    SESSION.video_path,
+                    SESSION.work_path,  # SAM3 streams the cropped working video
                     objects,
                     msg.get("model_uri") or None,
                     float(msg.get("conf", 0.25)),
