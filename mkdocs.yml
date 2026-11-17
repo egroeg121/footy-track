@@ -17,6 +17,7 @@ nav:
   - Inference web app: inference-web.md
   - Ball tracking evaluation: ball-tracking-eval.md
   - Feature store: design/feature_store.md
+  - Versioned datasets and progress: design/datasets_and_progress.md
   - Design:
       - Pipeline Overview: design/pipeline_overview.md
       - Player Re-ID: design/player_reid.md
