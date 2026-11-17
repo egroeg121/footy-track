@@ -86,6 +86,10 @@ from footy_track.labeller import identity_routes  # noqa: E402
 # clips at once), and append-only storage rather than whole-file rewrites.
 app.include_router(identity_routes.router)
 
+from footy_track.labeller import matches_routes  # noqa: E402
+
+app.include_router(matches_routes.router)
+
 #: Session of the default dataset. Other datasets get their own Session lazily
 #: (``_session()``): one shared Session would flush clip A's timeline into the
 #: wrong dataset's marks dir the moment two datasets are in use.
