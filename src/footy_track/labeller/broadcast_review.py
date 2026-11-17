@@ -131,7 +131,7 @@ async def frame_jpg(match: str, frame: int):
 
 @router.get("/broadcast_review/api/job/{ref:path}")
 async def job_view(ref: str):
-    """The job's frames in order with ``done``/``verdict`` (+ the model's call, which the page hides until answered)."""
+    """The job's frames in order with ``done``/``verdict`` (+ the model's call, which the page shows alongside the frame)."""
     def work():
         job = jobs.resolve(ref)
         if job["kind"] != "broadcast_review":
