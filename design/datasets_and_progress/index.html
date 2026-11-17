@@ -627,6 +627,15 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#detector-eval-tracking" class="md-nav__link">
+    <span class="md-ellipsis">
+      Detector eval (tracking)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#broadcast-eval-random-vs-edge-strata" class="md-nav__link">
     <span class="md-ellipsis">
       Broadcast eval: random vs edge strata
@@ -1235,6 +1244,15 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#detector-eval-tracking" class="md-nav__link">
+    <span class="md-ellipsis">
+      Detector eval (tracking)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#broadcast-eval-random-vs-edge-strata" class="md-nav__link">
     <span class="md-ellipsis">
       Broadcast eval: random vs edge strata
@@ -1628,15 +1646,39 @@ contamination flags and records the rows.</p>
 <tr>
 <td><code>DetectorAdapter</code></td>
 <td>tracking</td>
-<td><strong>stub</strong> (<code>NotImplementedError</code>)</td>
-<td>detector P / R / mAP50</td>
-<td>needs GPU inference over every eval frame</td>
+<td><strong>works, CPU</strong> (scores stored GPU detections)</td>
+<td>per class <code>player_/referee_</code>: <code>ap50</code>, <code>precision</code>, <code>recall</code>, <code>f1</code>, <code>f1_max</code>; ball (<code>ball_</code> = tier-1 human GT, <code>ball_t12_</code> = human + confirmed): <code>ap_iou50</code>, <code>ap_10px</code>, <code>ap_25px</code> and precision / recall / F1 per rule; <code>map50</code>, <code>coverage</code>, <code>*_n_gt</code></td>
+<td><code>DetectionStore(dir)</code>: <code>&lt;canonical clip&gt;.npz</code> per eval clip, written by <code>datasets/detector_run.py</code></td>
 </tr>
 </tbody>
 </table>
-<p>TODO (Prefect): the detector eval, and the candidate-cache step the ball-tracker replay depends on, run
-on the <code>gpu</code> work pool (desktop RTX 2070); they should call <code>record_results</code> when done. The calibration,
-broadcast and tracker-replay evals are CPU and belong on the <code>cpu</code> pool.</p>
+<h3 id="detector-eval-tracking">Detector eval (tracking)<a class="headerlink" href="#detector-eval-tracking" title="Permanent link">&para;</a></h3>
+<p><code>datasets/detector_run.py</code> runs the detector <strong>once over every frame of every eval clip</strong> (GPU) and stores
+the raw detections (conf &gt;= 0.1, all classes, <code>dets/&lt;clip&gt;.npz</code>) plus the ball candidates in the
+<code>ball_tracking_eval cache</code> format (<code>cache/&lt;clip&gt;.jsonl</code>); <code>DetectorAdapter</code> scores the stored detections
+on the CPU and <code>BallTrackerAdapter</code> replays trackers over the cache. Resumable per clip; a new dataset
+version only needs inference for clips with no detections yet.</p>
+<ul>
+<li><strong>Frame sourcing.</strong> An item is a labelled frame (<code>game_id</code> = video stem, <code>frame_index</code> into that video).
+  Frames come from the clip video, decoded sequentially from frame 0 (frame-exact; seeking is not), from the
+  video the labeller showed: labeller-registry clip dirs (the <code>*_kf10</code> re-encodes) first, then
+  <code>&lt;FOOTY_DATA&gt;/clips</code>. Videos and detections are keyed by canonical clip id (aliases are the same file).</li>
+<li><strong>Ground truth.</strong> Tier 1 (human) and tier 2 (machine box a human confirmed) boxes; <code>rejected</code> boxes are not
+  GT; tier 3 boxes and <code>coach</code> / <code>person</code> / <code>player_sub</code> boxes are ignore regions (a detection on one is
+  neither hit nor false positive). A frame is scored for a class only if it has GT of that class (ball:
+  also <code>no_ball</code> frames; never <code>not_broadcast</code>), because labelling is not exhaustive: player / referee
+  precision is a lower bound.</li>
+<li><strong>Matching.</strong> Players / referees: IoU &gt;= 0.5. Ball: IoU &gt;= 0.5 (reconciles with the leaderboard mAP50),
+  and centre distance &lt;= 10 px / 25 px (native px, the ball tracker's radii). The ball is ~11 px, so IoU 0.5
+  needs the centre within ~3 px and mostly measures box tightness; the 10 px rows say whether the ball was
+  found, which is what tracking needs. P / R are at conf 0.3 (the pipeline default); AP is over all
+  detections with 101-point interpolation (as Ultralytics, so a perfect detector scores 0.995).</li>
+<li><strong>Contamination.</strong> Flags come from <code>detection_dataset/roboflow_dataset_11</code> (<code>contamination_from_roboflow</code>)
+  when the rows are recorded on the mini; <code>bournemouth_1st_seg070</code> (in-match eval) is in v11 train.</li>
+</ul>
+<p>The Prefect side (jobs repo <code>footy_nightly_datasets.py</code>, <code>footy-nightly-gpu</code>) stages the weights / snapshot /
+videos to the desktop, runs this, pushes the cache to <code>ball_tracking_cache/&lt;sha12&gt;/</code> on the mini and hands the
+rows to the mini (<code>gpu_eval_results/pending/</code> then <code>record-rows</code>; the desktop never opens the store).</p>
 <h3 id="broadcast-eval-random-vs-edge-strata">Broadcast eval: random vs edge strata<a class="headerlink" href="#broadcast-eval-random-vs-edge-strata" title="Permanent link">&para;</a></h3>
 <p>Broadcast review frames are not a random sample. <code>broadcast_select.select</code> picks the frames nearest
 the decision boundary (<code>edge_mid</code>, <code>edge_boundary</code>; legacy value <code>edge</code>) plus a few <code>random</code> ones, and the
