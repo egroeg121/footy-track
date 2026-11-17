@@ -12,7 +12,8 @@ from footy_track.calibration import ptz
 from footy_track.calibration import ptz_recover as pr
 from footy_track.calibration import ptz_temporal as pt
 from footy_track.calibration.pitch_model import PitchModel
-from tests.calibration.test_ptz_temporal import C_TRUE, _cam, _evidence, _pairs, _sweep
+from footy_track.scripts import ptz_temporal_segment as seg
+from tests.calibration.test_ptz_temporal import C_TRUE, _evidence, _pairs, _sweep
 
 RIGS = Path(__file__).resolve().parents[2] / "src/footy_track/calibration/camera_rigs"
 PRIOR = {"tilt_a": 96.825, "tilt_b": -10.106, "tilt_sigma_deg": 1.12, "pan_deg": [40.0, 145.0], "f_px": [1800.0, 8000.0]}
@@ -89,7 +90,7 @@ def test_trim_drops_a_middle_stretch_and_keeps_both_pieces():
 
 def test_trim_ignores_a_single_bad_evidence_frame_and_short_pieces():
     cache = _fake_cache(240)
-    pm = {t: 0.9 for t in cache.ev_frames}
+    pm = dict.fromkeys(cache.ev_frames, 0.9)
     pm[100] = 0.1  # a player in front of the camera
     assert pr.trim_runs([(0, 239)], cache, pm) == [(0, 239)]
     pm2 = {t: (0.05 if t >= 5 else 0.9) for t in cache.ev_frames}  # 5 good frames then rubbish: too short to keep
@@ -99,7 +100,7 @@ def test_trim_ignores_a_single_bad_evidence_frame_and_short_pieces():
 def test_trim_clean_run_is_untouched():
     cache = _fake_cache(320)
     cache.ev_frames = list(range(0, 240, 5))
-    assert pr.trim_runs([(0, 239), (250, 300)], cache, {t: 0.9 for t in cache.ev_frames}) == [(0, 239), (250, 300)]  # a run with no evidence frame is left alone
+    assert pr.trim_runs([(0, 239), (250, 300)], cache, dict.fromkeys(cache.ev_frames, 0.9)) == [(0, 239), (250, 300)]  # a run with no evidence frame is left alone
 
 
 # ---------------------------------------------------------------- confirmation
@@ -153,21 +154,19 @@ def test_lines_candidate_json_roundtrips_and_refuses_off_band_answers():
 def test_trim_splits_at_a_hard_cut_and_drops_the_sliver_after_it():
     cache = _fake_cache(240, cut=237)  # a 3-frame close-up flash at the end, after the last evidence frame (235)
     cache.hd[237] = 0.8
-    assert pr.trim_runs([(0, 239)], cache, {t: 0.9 for t in cache.ev_frames}) == [(0, 236)]
+    assert pr.trim_runs([(0, 239)], cache, dict.fromkeys(cache.ev_frames, 0.9)) == [(0, 236)]
 
 
 def test_trim_cuts_a_soft_jump_after_the_last_evidence_frame():
     cache = _fake_cache(240)
     cache.hd[238] = 0.4  # a wipe starting in the last frames (below the hard-cut level)
-    assert pr.trim_runs([(0, 239)], cache, {t: 0.9 for t in cache.ev_frames}) == [(0, 237)]
+    assert pr.trim_runs([(0, 239)], cache, dict.fromkeys(cache.ev_frames, 0.9)) == [(0, 237)]
 
 
 # ---------------------------------------------------------------- runner helpers
 
 
 def test_candidate_frames_spread_over_the_runs_and_usable_candidates_filter():
-    from footy_track.scripts import ptz_temporal_segment as seg
-
     cache = SimpleNamespace(ev_frames=list(range(0, 300, 5)))
     fr = seg.candidate_frames(cache, [(0, 99), (150, 299)], 6)
     assert len(fr) == 6 and fr == sorted(fr) and all(t < 100 or t >= 150 for t in fr) and fr[0] == 0

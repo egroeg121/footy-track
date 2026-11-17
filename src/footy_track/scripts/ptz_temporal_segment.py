@@ -28,6 +28,7 @@ Caches (grey frames, masks, anchors, pairs) make a re-run resume. k1 stays fixed
 constrained by the lines; see reports/ptz_v3.md).
 """
 
+# ruff: noqa: PLR0915
 from __future__ import annotations
 
 import argparse
@@ -39,7 +40,7 @@ from pathlib import Path
 
 import numpy as np
 
-from footy_track.calibration import ptz, ptz_recover as pr
+from footy_track.calibration import ptz_recover as pr
 from footy_track.calibration import ptz_temporal as pt
 from footy_track.scripts import ptz_temporal as pte
 

@@ -6,7 +6,7 @@
 Run where the segment caches (``gray960.npy``, kept with ``keep_cache``) and mp4s are. A frame is drawn green when the solved
 camera is *accepted* there (``line_f1_full.json`` ``accepted_ranges``), red when it is solved but not accepted, and shown
 without lines when the frame has no solution. The three frames are the 20% / 50% / 80% points of the accepted frames
-(of the solved frames when nothing is accepted). The row label gives accepted / calibrated fractions (``--before-root``:
+(of the solved frames when nothing is accepted, of all frames when nothing is solved: then drawn without lines). The row label gives accepted / calibrated fractions (``--before-root``:
 the earlier run's as well) and the recovery summary of ``meta.json``.
 """
 
@@ -28,9 +28,10 @@ LABEL_W = 300
 
 
 def pick_frames(accepted: np.ndarray, valid: np.ndarray, n: int = 3) -> list[int]:
+    """Accepted frames, else solved frames, else (nothing solved) the whole segment: shown without lines."""
     pool = np.flatnonzero(accepted) if accepted.any() else np.flatnonzero(valid)
     if not len(pool):
-        return []
+        pool = np.arange(len(valid))
     return [int(pool[int(round(q * (len(pool) - 1)))]) for q in np.linspace(0.2, 0.8, n)]
 
 
