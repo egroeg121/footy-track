@@ -157,7 +157,7 @@ const metaUrl = (item, pad) =>
 const clipUrl = (item, pad) =>
   `/ball_check/clip/${item.clip}/${item.frame_index}/${item.box_index}.mp4` +
   `?pad=${pad}&src=${srcOf(item)}`;
-const CLIP_PREFETCH = 2;       // clips are ~0.2 MB and ~1 s to render: stay shallow
+const CLIP_PREFETCH = 3;       // each prefetch is its own server render: keep shallow
 const clipCache = new Map();   // url -> Promise<Blob|null>
 let clipTimer = null, clipObjUrl = null, clipToken = 0;
 
