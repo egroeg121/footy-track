@@ -22,7 +22,7 @@ division-model ``k1``. Work images are ``WORK_W`` wide (``S = WORK_W / 1920`` pe
 from __future__ import annotations
 
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 import cv2
@@ -1015,13 +1015,15 @@ def solve_segment(cache: ClipCache, t0: int, t1: int, pairs: list[Pair], anchors
 def joint_solve(F: int, sh: Shared, x_init: Array, evs: list[ptz.LineEvidence], line_frames: Array, pairs: list[Pair],
                 anchors: dict[int, tuple[Array, Array]], pitch: PitchModel, *, free_shared=(), shared_sigma=None,
                 points=(), sigma_line: float = 3.0, sigma_motion: float = 1.0, t0: int = 0, seg_of=None,
-                smooth: bool = True, n_iter: int = 20, log=None) -> tuple[Shared, Array, dict]:
+                smooth: bool = True, n_iter: int = 20, log=None, start: Shared | None = None
+                ) -> tuple[Shared, Array, dict]:
     """Two-stage (blurred / sharp line distance transform) LM of F frames' (pan, tilt, log f) + the free shared
-    quantities. ``pairs`` carry frame indices ``t0 + local``; ``line_frames`` are local indices into ``evs``."""
+    quantities. ``pairs`` carry frame indices ``t0 + local``; ``line_frames`` are local indices into ``evs``.
+    ``sh`` is the prior centre of the shared quantities; ``start`` (default ``sh``) is where their LM starts."""
     free = np.array([n in set(free_shared) for n in SHARED_NAMES])
     sig = np.array(shared_sigma if shared_sigma is not None else [1.0, 3.0, 1.0, np.deg2rad(0.5), 0.01], float)
     samples, _, _ = ptz._samples(pitch, 1.5)
-    x = np.concatenate([sh.vec()[free], x_init.ravel()])
+    x = np.concatenate([(start or sh).vec()[free], x_init.ravel()])
     info = {}
     shn = sh
     for stage, (blur, trunc) in enumerate(((1.8, 12.0), (0.0, 5.0))):
@@ -1056,11 +1058,12 @@ class Unit:
 
 
 def fit_shared(units: list[Unit], rig: ptz.Rig, pitch: PitchModel, *, free=("Cx", "Cy", "Cz", "roll", "k1"),
-               sigma=(5.0, 10.0, 3.0, np.deg2rad(2.0), 0.05), sigma_line: float = 3.0, n_iter: int = 20, log=None
-               ) -> tuple[Shared, list[Array], dict]:
+               sigma=(5.0, 10.0, 3.0, np.deg2rad(2.0), 0.05), sigma_line: float = 3.0, n_iter: int = 20, log=None,
+               start: Shared | None = None) -> tuple[Shared, list[Array], dict]:
     """Bundle-adjustment style fit of the rig quantities (``C``, roll, ``k1``) over the frames of many shots at once:
     every frame has its own (pan, tilt, log f); the shared quantities see all the line evidence and all the motion
-    pairs. The prior ``sigma`` is deliberately loose (the leave-out rig is only the starting value)."""
+    pairs. The prior ``sigma`` is deliberately loose (the leave-out rig is only the starting value). The prior is
+    centred on ``rig``; ``start`` (default ``rig``) is where the shared LM starts."""
     frames_all: list[tuple[int, int]] = []
     x0, evs, lf, seg_of = [], [], [], []
     local: dict[tuple[int, int], int] = {}
@@ -1077,7 +1080,6 @@ def fit_shared(units: list[Unit], rig: ptz.Rig, pitch: PitchModel, *, free=("Cx"
             if t in u.anchors:
                 anchors[len(frames_all) - 1] = (u.anchors[t], np.array([0.01, 0.01, 0.1]))
     pairs = []
-    from dataclasses import replace
 
     for u in units:
         for p in u.pairs:
@@ -1086,10 +1088,89 @@ def fit_shared(units: list[Unit], rig: ptz.Rig, pitch: PitchModel, *, free=("Cx"
     sh0 = Shared.from_rig(rig)
     shn, poses, info = joint_solve(len(frames_all), sh0, np.array(x0), evs, np.array(lf, int), pairs, anchors, pitch,
                                    free_shared=free, shared_sigma=sigma, sigma_line=sigma_line,
-                                   seg_of=np.array(seg_of), smooth=False, n_iter=n_iter, log=log)
+                                   seg_of=np.array(seg_of), smooth=False, n_iter=n_iter, log=log, start=start)
     out, k = [], 0
     for u in units:
         out.append(poses[k:k + len(u.frames)])
         k += len(u.frames)
     info.update(n_frames=len(frames_all), n_line_frames=len(lf), n_pairs=len(pairs))
     return shn, out, info
+
+
+def reseed_states(states: Array, src: Shared, dst: Shared, n_pts: int = 120) -> Array:
+    """Poses ``(pan, tilt, log f)`` found with the rig quantities ``src`` re-expressed at ``dst`` (another centre / roll /
+    k1): for every frame the pose whose image of the pitch matches the one ``src`` gives (least squares on the visible
+    pitch grid; exact only when the centre is unchanged). A start for a shared fit from a different centre."""
+    from scipy.optimize import least_squares
+
+    gx, gy = np.meshgrid(np.linspace(-50, 50, 21), np.linspace(-32, 32, 13))
+    grid = np.column_stack([gx.ravel(), gy.ravel()])
+    out = np.array(states, float).copy()
+    for k, st in enumerate(states):
+        c0 = cam_from_state(st, src)
+        uv, ok = c0.pitch_to_image(grid)
+        ok &= np.all((uv > 0.0) & (uv < 1.0), axis=1)
+        if ok.sum() < 6:
+            continue
+        P, uo = grid[ok], uv[ok]
+        if len(P) > n_pts:
+            sel = np.linspace(0, len(P) - 1, n_pts).astype(int)
+            P, uo = P[sel], uo[sel]
+
+        def resid(x, P=P, uo=uo):
+            u, okp = cam_from_state(x, dst).pitch_to_image(P)
+            r = np.where(okp[:, None], u - uo, 1.0) * ptz.CANON
+            return r.ravel()
+
+        sol = least_squares(resid, st, x_scale=np.array([0.02, 0.02, 0.05]), max_nfev=40)
+        out[k] = sol.x
+    return out
+
+
+def seed_offsets(step=(3.0, 4.0, 3.0), n=(1, 2, 1)) -> list[Array]:
+    """Offsets of a regular grid of seeds for C around the prior (default 3 x 5 x 3 = 45 seeds, +-3 / +-8 / +-3 m)."""
+    ax = [np.arange(-k, k + 1) * s for k, s in zip(n, step, strict=True)]
+    g = np.stack(np.meshgrid(*ax, indexing="ij"), axis=-1).reshape(-1, 3)
+    return [np.array(o, float) for o in sorted(g.tolist(), key=lambda o: float(np.linalg.norm(o)))]
+
+
+def fit_shared_multistart(units: list[Unit], rig: ptz.Rig, pitch: PitchModel, *, states_at: Shared | None = None,
+                          offsets: list[Array] | None = None, extra_seeds: list[Array] | None = None, top_k: int = 3,
+                          screen_iter: int = 6, screen_stride: int = 1, log=None, **kw) -> tuple[Shared, list[Array], dict]:
+    """:func:`fit_shared` from many starts of C, keeping the lowest robust cost. The prior stays centred on ``rig`` for
+    every seed (so costs compare); a seed is ``rig.C + offset`` (grid ``offsets``) or an absolute C (``extra_seeds``,
+    e.g. the per-frame lines-only centre estimates). Each seed: poses re-expressed at the seed's C
+    (:func:`reseed_states`, from ``states_at``, default the rig), a short *screening* fit (``screen_iter`` LM
+    iterations per stage, on every ``screen_stride``-th unit); the ``top_k`` cheapest seeds are then fitted to convergence. ``info["starts"]`` lists
+    every seed with its screening cost and, for the finalists, the final C and cost."""
+
+    n_iter = kw.pop("n_iter", 20)
+    src = states_at or Shared.from_rig(rig)
+    sh0 = Shared.from_rig(rig)
+    seeds = [rig.C + o for o in (offsets if offsets is not None else seed_offsets())] + [np.asarray(c, float) for c in (extra_seeds or [])]
+    starts = []
+    for sd in seeds:
+        start = replace(sh0, C=np.asarray(sd, float))
+        us = [replace(u, states=reseed_states(u.states, src, start)) for u in units[::screen_stride]]
+        shn, poses, info = fit_shared(us, rig, pitch, start=start, n_iter=screen_iter, **kw)
+        starts.append({"seed_C": [float(c) for c in sd], "screen_cost": info["stage2"]["cost"],
+                       "screen_C": [float(c) for c in shn.C]})
+        if log:
+            log(f"  seed C {np.round(sd, 1).tolist()}: screen cost {starts[-1]['screen_cost']:.0f} -> C {np.round(shn.C, 2).tolist()}")
+    order = sorted(range(len(starts)), key=lambda i: starts[i]["screen_cost"])
+    best = None
+    for i in order[:top_k]:
+        st = starts[i]
+        start = replace(sh0, C=np.asarray(st["seed_C"], float))
+        us = [replace(u, states=reseed_states(u.states, src, start)) for u in units]
+        shn, poses, info = fit_shared(us, rig, pitch, start=start, n_iter=n_iter, **kw)
+        st.update(final_C=[float(c) for c in shn.C], final_cost=info["stage2"]["cost"], final_roll=float(shn.roll),
+                  final_k1=float(shn.k1))
+        if log:
+            log(f"  finalist seed {np.round(st['seed_C'], 1).tolist()}: cost {st['final_cost']:.0f} C {np.round(shn.C, 2).tolist()} k1 {shn.k1:.4f}")
+        if best is None or st["final_cost"] < best[0]:
+            best = (st["final_cost"], shn, poses, info, i)
+    _, shn, poses, info, i = best
+    info["starts"] = starts
+    info["best_start"] = i
+    return shn, poses, info
