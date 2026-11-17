@@ -29,8 +29,9 @@ from pathlib import Path
 
 R = 10.0
 W, H = 1920.0, 1080.0
-NAMES = ("t1", "t2", "t3")
-LABEL = {"t1": "A++/B1", "t2": "SAM2.1", "t3": "SAM3"}
+NAMES = ("t1", "t2", "t3", "t4")
+LABEL = {"t1": "A++/B1", "t2": "SAM2.1", "t3": "SAM3", "t4": "VitTrack"}
+VIT_PX = 8.0       # VitTrack is scored on a v2 card only where its position is within this of a shown box
 MIN_N = 8
 
 
@@ -80,7 +81,7 @@ def same_box(a, b, tol=1e-4):
 def judge(card: dict, v: dict) -> dict:
     """Per-card outcome: {truth: (x, y) | None, verdict, per_tracker: {t: right|wrong|miss|unresolved|absent}}."""
     verdict = v["verdict"]
-    pos = {k: tuple(p) if p else None for k, p in card["positions"].items()}
+    pos = {k: (tuple(card["positions"][k]) if card["positions"].get(k) else None) for k in NAMES}
     shown = centre(card["bbox"])
     truth = None
     if verdict in ("ball", "box_off"):
@@ -129,6 +130,23 @@ def situations(card: dict) -> list[str]:
     return s
 
 
+def inject_vit(cards: list[dict], vit: dict, arm: str) -> int:
+    """v2 cards carry no VitTrack position: add ``positions['t4']`` (and t4_score) where the labeller tracker (arm ``arm``) sits within VIT_PX of a shown box of the card."""
+    n = 0
+    for c in cards:
+        if c["positions"].get("t4"):
+            continue
+        rec = (vit.get(c.get("v2_id") or str(c.get("v3_index"))) or {}).get(arm)
+        if not rec:
+            continue
+        shown = [centre(c["bbox"])] + ([centre(c["other_bbox"])] if c.get("other_bbox") else [])
+        if any(math.hypot(rec[0] - q[0], rec[1] - q[1]) <= VIT_PX for q in shown):
+            c["positions"]["t4"] = [rec[0], rec[1]]
+            c["t4_score"] = rec[2] if len(rec) > 2 else None
+            n += 1
+    return n
+
+
 def build(list_doc: dict, verdicts: dict) -> dict:
     cards = list_doc["items"]
     rows, mismatch, unsure, missing = [], 0, 0, 0
@@ -168,9 +186,10 @@ def report(list_doc: dict, st: dict) -> tuple[str, dict]:
     J["agreed"] = {}
     groups = {"all three agree": lambda c: c["stratum"] == "all3_agree", "pair t1+t2 (A++/B1 + SAM2.1), SAM3 silent": lambda c: c.get("pair") == "t1+t2",
               "pair t1+t3 (A++/B1 + SAM3), SAM2.1 silent": lambda c: c.get("pair") == "t1+t3", "pair t2+t3 (SAM2.1 + SAM3), A++/B1 silent": lambda c: c.get("pair") == "t2+t3",
+              "v3: VitTrack agrees with >= 2 others (blind)": lambda c: c["stratum"] == "vit_agree", "v3: VitTrack agrees with exactly one other": lambda c: c["stratum"] == "vit_pair",
               "all three agree, A++ trained within 2 frames": lambda c: c["stratum"] == "all3_agree" and c.get("a_train_dist") is not None and c["a_train_dist"] <= 2,
               "all three agree, A++ not trained near": lambda c: c["stratum"] == "all3_agree" and not (c.get("a_train_dist") is not None and c["a_train_dist"] <= 2)}
-    popkey = {"all three agree": "all3_agree", "pair t1+t2 (A++/B1 + SAM2.1), SAM3 silent": "pair_agree:t1+t2", "pair t1+t3 (A++/B1 + SAM3), SAM2.1 silent": "pair_agree:t1+t3",
+    popkey = {"v3: VitTrack agrees with >= 2 others (blind)": "vit_agree", "all three agree": "all3_agree", "pair t1+t2 (A++/B1 + SAM2.1), SAM3 silent": "pair_agree:t1+t2", "pair t1+t3 (A++/B1 + SAM3), SAM2.1 silent": "pair_agree:t1+t3",
               "pair t2+t3 (SAM2.1 + SAM3), A++/B1 silent": "pair_agree:t2+t3"}
     for name, f in groups.items():
         sub = [(c, j) for c, j in rows if f(c)]
@@ -209,10 +228,10 @@ def report(list_doc: dict, st: dict) -> tuple[str, dict]:
     L.append("\nHead to head (cards of the disagree stratum where both trackers have positions more than 8 px apart): A right / B right / both wrong / unresolved (not_ball with both positions).\n")
     L.append("| pair | cards | first right | second right | both wrong | unresolved |\n|---|---|---|---|---|---|")
     J["head_to_head"] = {}
-    for a_, b_ in (("t1", "t2"), ("t1", "t3"), ("t2", "t3")):
+    for a_, b_ in [(x, y) for i, x in enumerate(NAMES) for y in NAMES[i + 1:]]:
         n = ra = rb = bw = un = 0
         for c, j in dis:
-            pa, pb = c["positions"][a_], c["positions"][b_]
+            pa, pb = c["positions"].get(a_), c["positions"].get(b_)
             if pa is None or pb is None or math.hypot(pa[0] - pb[0], pa[1] - pb[1]) <= 8:
                 continue
             ta, tb = j["per_tracker"][a_], j["per_tracker"][b_]
@@ -227,6 +246,21 @@ def report(list_doc: dict, st: dict) -> tuple[str, dict]:
                 un += 1
         L.append(f"| {LABEL[a_]} vs {LABEL[b_]} | {n} | {ra} | {rb} | {bw} | {un} |")
         J["head_to_head"][f"{a_}-{b_}"] = {"n": n, "first_right": ra, "second_right": rb, "both_wrong": bw, "unresolved": un}
+
+    # ---- VitTrack
+    vit = [(c, j) for c, j in rows if j["per_tracker"].get("t4") in ("right", "wrong")]
+    L.append("\n## VitTrack (the labeller's autodetect + VitTrack)\n")
+    r4 = sum(1 for c, j in vit if j["per_tracker"]["t4"] == "right")
+    L.append(f"Cards where VitTrack has a position on a shown box and the truth is known (or it sits under a not_ball box): {fmt(r4, len(vit))} right.\n")
+    by_role = defaultdict(lambda: [0, 0])
+    for c, j in vit:
+        key = c.get("vit_role") or ("v2:" + c["stratum"])
+        by_role[key][1] += 1
+        by_role[key][0] += j["per_tracker"]["t4"] == "right"
+    L.append("| situation | VitTrack right / scored |\n|---|---|")
+    for k, (r_, n_) in sorted(by_role.items()):
+        L.append(f"| {k} | {fmt(r_, n_)} |")
+    J["vit"] = {"scored": len(vit), "right": r4, "by_role": {k: v for k, v in by_role.items()}}
 
     # ---- trust by situation
     L.append("\n## Which tracker to trust where\n")
@@ -303,6 +337,8 @@ def main():
     ap.add_argument("--list", type=Path, default=Path("/mnt/storage/footy_data/nottinghamforest_label_queue/ball_check_list_v2_disagree.json"))
     ap.add_argument("--verdicts", type=Path, default=Path("/mnt/storage/footy_data/ball_gt_marks_nottinghamforest_disagree/ball_checks"))
     ap.add_argument("--results", type=Path, help="`labelling_jobs results <job> -o job.json` (labelling-job-results/v1) instead of reading the verdict logs")
+    ap.add_argument("--vit-positions", type=Path, help="{v2_id: {arm1: [x, y, score], arm2: [...]}} (make_vit_positions.py): scores VitTrack on a v2 list where it lies within 8 px of a shown box")
+    ap.add_argument("--vit-arm", default="arm2")
     ap.add_argument("--out", type=Path)
     ap.add_argument("--json", type=Path)
     ap.add_argument("--selftest", action="store_true")
@@ -311,6 +347,8 @@ def main():
         selftest()
         return
     doc = json.loads(a.list.read_text())
+    if a.vit_positions:
+        print(f"<!-- VitTrack position injected on {inject_vit(doc['items'], json.loads(a.vit_positions.read_text()), a.vit_arm)} cards -->")
     if a.results:
         rows = json.loads(a.results.read_text())["labels"]
         ver = {(r.get("source") or "sidecar", r["clip"], int(r["frame_index"]), int(r["box_index"])): r for r in rows if r.get("verdict")}

@@ -1,0 +1,92 @@
+{
+ "frames": 6619,
+ "kinds": {
+  "agree_all_3of4": 1198,
+  "agree_all_4of4": 3966,
+  "none": 290,
+  "only_one": 210,
+  "all_differ": 101,
+  "odd_one": 673,
+  "agree_all_2of4": 171,
+  "split": 10
+ },
+ "vit_role": {
+  "vit_silent": 1314,
+  "vit_agrees_all": 4517,
+  "vit_all_differ": 47,
+  "vit_odd_one_out": 517,
+  "vit_agrees_pair": 3,
+  "vit_alone": 79,
+  "vit_in_majority_other_odd": 132,
+  "vit_split": 10
+ },
+ "coverage": {
+  "t1": 5227,
+  "t2": 6189,
+  "t3": 6122,
+  "t4": 5305
+ },
+ "odd_one_out_when_exactly_one": {
+  "t4": 517,
+  "t3": 37,
+  "t2": 39,
+  "t1": 123
+ },
+ "pairwise_agree": {
+  "t1-t2": {
+   "both": 5197,
+   "agree_8px": 5026
+  },
+  "t1-t3": {
+   "both": 5199,
+   "agree_8px": 5040
+  },
+  "t2-t3": {
+   "both": 6088,
+   "agree_8px": 5937
+  },
+  "t1-t4": {
+   "both": 4532,
+   "agree_8px": 3998
+  },
+  "t2-t4": {
+   "both": 5203,
+   "agree_8px": 4630
+  },
+  "t3-t4": {
+   "both": 5215,
+   "agree_8px": 4645
+  }
+ },
+ "vit": {
+  "arm": 2,
+  "min_score": 0.2
+ },
+ "vit_score": {
+  "frames_with_box": 6473,
+  "quantiles": {
+   "0.05": 0.066,
+   "0.25": 0.301,
+   "0.5": 0.482,
+   "0.75": 0.584,
+   "0.95": 0.714
+  },
+  "share_ge": {
+   "0.0": 1.0,
+   "0.2": 0.82,
+   "0.3": 0.751,
+   "0.5": 0.456
+  },
+  "would_stop_frames": {
+   "low_conf": 3522
+  }
+ },
+ "vit_loss_events": 61,
+ "vit_odd_drift": {
+  "vit_odd_one_out_frames": 475,
+  "vit_inside_player_box": 382,
+  "consensus_inside_player_box": 167,
+  "vit_in_lower_30pct_of_player_box": 161,
+  "consensus_in_lower_30pct_of_player_box": 130
+ }
+}

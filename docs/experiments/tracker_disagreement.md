@@ -86,3 +86,49 @@ per-tracker right / wrong / unresolved on disagreement cards and head-to-head; p
 2. `make_job_items.py` writes the pointer items (`{clip, frame_index, box_index, source: "list"}`, no hidden keys) and prints the submit command (`labelling_jobs submit --kind ball_check --dataset nottinghamforest_disagree ...`).
 3. Warm the renders once it is live: `cd /home/george/footy-track-main && PYTHONPATH=src nohup nice -n 19 python -m footy_track.scripts.warm_ball_check --base http://127.0.0.1:8011 --dataset nottinghamforest_disagree`.
 4. Results: `labelling_jobs results <title> -o job.json`, then `score_disagreement.py --list ... --results job.json`.
+
+## Fourth tracker: the labeller's own autodetect + VitTrack (added 2026-11-17)
+
+**Why.** VitTrack propagation is a large share of the ground truth (`ball_gt_marks`: 471 hand-placed ball boxes vs 737 `human_checked + vittrack`; Forest: 66 hand-placed vs 168 unchecked `vittrack`), and its accuracy on hard frames had never been measured.
+
+**What ran (code path, not a reimplementation).** `vittrack_track.py` imports a snapshot of footy-track `origin/main` (ae41909, on the mini at `/mnt/storage/exp/disagree/main_src`, rsynced by the flow) and calls the labeller's own functions:
+`yolo_seed_objects` (what `POST /autodetect` calls: `get_current_best_detector` = RT-DETR-L v11 `rtdetr_1920_v11/best.pt` at imgsz 1280, conf 0.35, NMS 0.5), `BackgroundLabeller` (what the Run button drives: worker thread, `_track_anomaly_reason`, per-class confidence hand-back)
+and `VitTrackVideoLabeller` / `VitTrackSOT` (OpenCV-zoo ViT SOT, ONNX, CPU). Only the ball is seeded (each object has its own independent tracker and the checks are per label, so the ball track is identical to a run that also carries ~18 players, at 1/18 of the cost); the detector is memoised per process (same weights).
+Clips are the keyframe-dense kf10 copies the labeller serves. Run as `sam3-label-match engine=vittrack script=vittrack_track.py` on the `gpu` pool (CPU tracker, the GPU only for the detector): arm 1 541 s, arm 2 827 s wall for 31 / 29 clips (tracker time 97 s / 177 s; the clips are staged and the model loaded per clip).
+- **Arm 1, labeller-realistic:** autodetect on frame 0, best ball box, Run; on a hand-back the headless "human" re-detects on the stop frame (best ball box only) and Runs again. **At the page's default thresholds {in_play_ball: 0.5, other: 0.5} a run hands back almost every frame**:
+  on seg001 (280 frames) 117 hand-backs, 118 runs, 171 autodetect calls; VitTrack's confidence is 0.06-0.14 right after a seed and its median over a clip is 0.42-0.48 (arm 2: 54 % of frames would hand back at 0.5, 25 % at 0.3, 18 % at 0.2).
+  So the arm that feeds the fusion uses `ball_thr 0.0` (what you must do to get a run at all); the jump / size anomaly stop stays on and never fired: **one unattended Run from frame 0 to the end of each clip** (31 runs, 40 autodetect calls).
+- **Arm 2, comparable:** per seed of the shared seed file, forward and backward (backward = the same labeller code on a reversed copy of the clip: the labeller has no backward Run), never past the neighbouring seed + 15 frames (276 tracks, 14 650 frames); hand-backs not applied, but every frame records the score and whether the labeller would have stopped.
+Fusion: `fuse4.py` (a VitTrack frame "has a ball" when its score >= 0.20, VitTrack's own "found" threshold; a lost track keeps its last box with a low score, kept as `raw`), `fusion4.py` (4-way classes), `report_stats4.py`.
+
+### Agreement breakdown with four sources (6 619 frames, 8 px)
+
+| class | arm 1 (unattended Run from frame 0) | arm 2 (re-seeded every ~30 frames) |
+|---|---|---|
+| all four agree | 21.4 % | 59.9 % |
+| three agree (one of the four silent) | 22.3 % | 18.1 % |
+| two agree (two silent) | 3.9 % | 2.6 % |
+| exactly one tracker is the odd one out of a majority | 42.7 % (VitTrack 2 732 of 2 957) | 10.2 % (VitTrack 517 of 716) |
+| split 2 + 2 / all differ | 0.5 % / 2.8 % | 0.2 % / 1.5 % |
+| only one tracker has a ball | 4.6 % (VitTrack alone 245) | 3.2 % (VitTrack alone 79) |
+| none | 1.9 % | 4.4 % |
+
+- **VitTrack coverage** (score >= 0.20): arm 1 70.9 %, arm 2 80.1 % (A++/B1 79.0 %, SAM2.1 93.5 %, SAM3 92.5 %); it always has a box, so coverage is a score threshold, not a presence signal. Loss events (position lost for >= 3 frames while another tracker still has the ball): 62 (arm 1), 61 (arm 2), against 63 / 6 / 2 for A++/B1 / SAM2.1 / SAM3.
+- **Agreement with the others when both have a ball:** arm 1 agrees with A++/B1 on 39 % (1 472 of 3 800), with SAM2.1 on 35 %, with SAM 3 on 36 %; arm 2 on 88 % (3 998 of 4 532), 89 %, 89 %. The A++ / SAM trackers agree with each other 97-98 %. An unattended VitTrack run is therefore off the consensus ball on more than half of the frames; re-seeded every ~30 frames it is off on about 11 %.
+- **Drift onto a player or boot.** On frames where VitTrack is the odd one out of a majority (seed frames excluded), its position is inside an RT-DETR player box on 67 % (arm 1, 1 778 of 2 658) / 80 % (arm 2, 382 of 475), against 36 % / 35 % for the majority position on the same frames. In the lower 30 % of the player box (boots, lower legs): 15 % / 34 % vs 31 % / 27 %:
+  it drifts onto players' bodies and legs generally rather than specifically boots (contact sheet `contact_sheet_vittrack.png`). (Player boxes are the round-3 RT-DETR ones; "inside a box" is a proxy, George's verdicts will say which.)
+- Preview of the live v2 verdicts (97 of 200 judged when run, not a result): VitTrack is scored on v2 cards only where it lies within 8 px of a shown box, so its precision there (43/52 right; 23/23 on all-agree cards, 3/7 on disagreement cards) is conditional on agreeing with a shown tracker, not an unconditional accuracy; the v3 list exists to measure it directly.
+
+### v3 top-up: `ball_check_list_v3_vittrack.json` (76 cards, 25 clips, nothing registered or submitted)
+
+| stratum | cards | selection |
+|---|---|---|
+| `vit_odd` | 31 | VitTrack is the odd one out of a majority (or splits / differs from everything), arm 2, one card per segment; priority inside a player box, several players near |
+| `vit_longrun` | 11 | arm 1: >= 60 frames into the unattended Run, off an A++/SAM consensus that agrees |
+| `vit_agree` | 20 | blind sample: VitTrack within 8 px of >= 2 other trackers (its precision when it agrees) |
+| `vit_alone` | 6 | only VitTrack has a ball |
+| `vit_loss` | 6 | the frame before VitTrack's score falls below 0.20 while another tracker still has the ball |
+| `vit_pair` | 2 | VitTrack agrees with exactly one other tracker (almost no such frames exist) |
+
+Same blinding as v2 (fixed 18 x 18 px boxes, seeded coin flip for `bbox`, hash order, hidden keys incl. `t4_score`, `t4_in_player_box`, `vit_arm`, the other arm's position; far pairs as twin single-box cards: 34 of the 76 cards). Frames within 3 of any v2 card or earlier verdict are skipped.
+It is a separate dataset (`nottinghamforest_vittrack`, own marks dir) so its verdict keys cannot meet the live v2 job's. Scoring: `score_disagreement.py` now has four trackers; `--vit-positions v2_vit_positions.json` (from `make_vit_positions.py`) scores VitTrack on v2 cards within 8 px of a shown box.

@@ -14,8 +14,8 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-COL = {"t1": (60, 200, 60), "t2": (230, 200, 40), "t3": (50, 50, 240)}     # BGR
-LAB = {"t1": "A++/B1", "t2": "SAM2.1", "t3": "SAM3"}
+COL = {"t1": (60, 200, 60), "t2": (230, 200, 40), "t3": (50, 50, 240), "t4": (255, 0, 255)}     # BGR
+LAB = {"t1": "A++/B1", "t2": "SAM2.1", "t3": "SAM3", "t4": "VitTrack"}
 VID = "/mnt/storage/footy_data/arsenal_nottinghamforest/split_video_broadcast_frames/{}.mp4"
 
 
@@ -55,10 +55,10 @@ def main():
     ap.add_argument("--out", type=Path, required=True)
     ap.add_argument("--n", type=int, default=24)
     ap.add_argument("--cols", type=int, default=6)
-    ap.add_argument("--stratum", default="disagree")
+    ap.add_argument("--stratum", default="disagree", help="comma list of strata")
     ap.add_argument("--seed", type=int, default=5)
     a = ap.parse_args()
-    items = [it for it in json.loads(a.list.read_text())["items"] if it["stratum"] == a.stratum and sum(1 for p in it["positions"].values() if p) >= 2]
+    items = [it for it in json.loads(a.list.read_text())["items"] if it["stratum"] in a.stratum.split(",") and sum(1 for p in it["positions"].values() if p) >= 2]
     random.Random(a.seed).shuffle(items)
     seen, uniq = set(), []
     for it in items:          # far pairs are two cards of one frame: show the frame once
@@ -73,7 +73,7 @@ def main():
     sheet = np.vstack(rows)
     leg = np.full((26, sheet.shape[1], 3), 20, np.uint8)
     x = 6
-    for k in ("t1", "t2", "t3"):
+    for k in ("t1", "t2", "t3", "t4"):
         cv2.circle(leg, (x + 8, 13), 8, COL[k], 2)
         cv2.putText(leg, LAB[k], (x + 22, 18), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
         x += 120

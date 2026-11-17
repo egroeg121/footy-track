@@ -12,16 +12,21 @@ from pathlib import Path
 
 REG = Path(os.environ.get("FOOTY_LABELLER_DATASETS", "/mnt/storage/footy_data/labeller_datasets.json"))
 D = "/mnt/storage/footy_data"
-NAME = "nottinghamforest_disagree"
-ENTRY = {"label": "Arsenal v Nottingham Forest: tracker disagreement (blind)", "clips_dir": f"{D}/arsenal_nottinghamforest/split_video_broadcast_frames_kf10",
-         "marks_dir": f"{D}/ball_gt_marks_nottinghamforest_disagree", "ball_check_list": f"{D}/nottinghamforest_label_queue/ball_check_list_v2_disagree.json"}
-
 ap = argparse.ArgumentParser()
 ap.add_argument("--apply", action="store_true")
+ap.add_argument("--set", default="v2", choices=["v2", "v3"], help="v2: the live disagreement batch; v3: the VitTrack top-up")
 a = ap.parse_args()
+if a.set == "v2":
+    NAME = "nottinghamforest_disagree"
+    ENTRY = {"label": "Arsenal v Nottingham Forest: tracker disagreement (blind)", "clips_dir": f"{D}/arsenal_nottinghamforest/split_video_broadcast_frames_kf10",
+             "marks_dir": f"{D}/ball_gt_marks_nottinghamforest_disagree", "ball_check_list": f"{D}/nottinghamforest_label_queue/ball_check_list_v2_disagree.json"}
+else:
+    NAME = "nottinghamforest_vittrack"
+    ENTRY = {"label": "Arsenal v Nottingham Forest: VitTrack top-up (blind)", "clips_dir": f"{D}/arsenal_nottinghamforest/split_video_broadcast_frames_kf10",
+             "marks_dir": f"{D}/ball_gt_marks_nottinghamforest_vittrack", "ball_check_list": f"{D}/nottinghamforest_label_queue/ball_check_list_v3_vittrack.json"}
 doc = json.loads(REG.read_text())
 if not Path(ENTRY["ball_check_list"]).exists():
-    raise SystemExit("the v2 list does not exist yet: " + ENTRY["ball_check_list"])
+    raise SystemExit("the list does not exist yet: " + ENTRY["ball_check_list"])
 print("existing:", NAME in doc["datasets"], "->", json.dumps({NAME: ENTRY}, indent=1))
 if not a.apply:
     print("(dry run; --apply to write", REG, ")")
