@@ -16,7 +16,16 @@ for a branch / worktree / Prefect flow that has not merged main::
 Command line (``python jobs_client.py`` or ``python -m footy_track.scripts.labelling_jobs``)::
 
     submit --title T --kind ball_place --dataset nottinghamforest --items windows.csv [--step 5] [--key K]
+    submit --title T --kind ball_check --dataset D --items cards.json --prepare [--where mini|desktop] [--allow-large]
+    prepare REF [--hold] [--where mini|desktop]     # (re)render an existing ball_check job's cards ahead of time
     status REF | results REF [-o out.json] | wait REF [--poll 60] [--timeout S] | list | done REF | cancel REF
+    gc [--dry-run]                                  # stale prepare runs, idle/finished renders, cache size cap
+
+Ball Check items are pointers ``{clip, frame_index, box_index, source?}`` into a registered review list,
+or inline cards ``{clip, frame_index, bbox{x,y,w,h normalised}, other_bbox?, label?, ...hidden keys}`` that
+need no list file or registry edit. A job holds at most 500 cards (``--allow-large`` raises it to the hard
+ceiling of 2000). ``--prepare`` also queues a Prefect run that renders every card's still and clip to disk,
+so the phone only downloads finished files; the job shows as ``preparing`` until it is done.
 
 REF is a job id or an exact (unique) job title. The server is ``$FOOTY_LABELLER_URL``
 (default ``http://mac-mini-i7:8011``). ``requester.branch`` and ``commit`` are filled in
@@ -39,6 +48,9 @@ import urllib.request
 
 DEFAULT_URL = "http://mac-mini-i7:8011"
 TERMINAL = ("done", "cancelled")
+#: Mirrors ``jobs.MAX_CARDS_DEFAULT`` / ``MAX_CARDS_HARD`` so the CLI can refuse before posting.
+DEFAULT_MAX_CARDS = 500
+HARD_MAX_CARDS = 2000
 _INT_COLUMNS = {
     "frame", "frame_start", "frame_end", "start_frame", "end_frame", "step", "frame_index", "box_index",
 }  # fmt: skip
@@ -112,9 +124,29 @@ def submit(
     key: str | None = None,
     url: str | None = None,
     timeout: float = 60,
+    prepare: bool | str = False,
+    max_cards: int | None = None,
 ) -> dict:
     """Create a job; returns ``{id, url, status, created, ...}``. Re-submitting the same ``key``
-    returns the existing job (``created`` False). ``requester=None`` auto-detects from git."""
+    returns the existing job (``created`` False). ``requester=None`` auto-detects from git.
+
+    ``prepare=True`` (or ``"mini"`` / ``"desktop"``, where to render) also queues the render run and
+    returns the job as ``preparing``. ``max_cards`` raises the per-job card cap (default 500) up to
+    the hard ceiling of 2000."""
+    items = items or []
+    if kind == "ball_check":
+        cap = max_cards or DEFAULT_MAX_CARDS
+        if len(items) > HARD_MAX_CARDS:
+            raise JobsError(
+                422,
+                f"{len(items)} cards is above the hard ceiling of {HARD_MAX_CARDS}; split the batch",
+            )
+        if len(items) > cap:
+            raise JobsError(
+                422,
+                f"{len(items)} cards is above the cap of {cap}; pass --allow-large "
+                f"(max_cards) to go up to {HARD_MAX_CARDS}, or split the batch",
+            )
     body: dict = {
         "title": title, "kind": kind, "items": items or [], "why": why, "device": device,
         "priority": priority, "requester": detect_requester() if requester is None else requester,
@@ -123,7 +155,34 @@ def submit(
         body["dataset"] = dataset
     if key:
         body["key"] = key
+    if max_cards:
+        body["max_cards"] = max_cards
+    if prepare:
+        body["prepare"] = {"where": prepare} if isinstance(prepare, str) else {}
+        body["prepare"] = body["prepare"] or True
     return _request("POST", "/api/jobs", url=url, body=body, timeout=timeout)
+
+
+def prepare(
+    ref: str, *, hold: bool = False, where: str | None = None, url: str | None = None
+) -> dict:
+    """Queue the render run for an existing ball_check job (``hold``: an open job shows as
+    ``preparing`` until it is done). Refused when a run is already queued/running, over the queued
+    cards cap, or when the disk is below its floor."""
+    body: dict = {"hold": hold}
+    if where:
+        body["where"] = where
+    return _request("POST", f"/api/jobs/{_ref(ref)}/prepare", url=url, body=body)
+
+
+def gc(*, dry_run: bool = False, url: str | None = None) -> dict:
+    """Housekeeping on the server: stale prepare runs, idle/finished renders, cache size cap."""
+    return _request(
+        "POST",
+        "/api/jobs/gc" + ("?dry_run=true" if dry_run else ""),
+        url=url,
+        timeout=300,
+    )
 
 
 def get(ref: str, *, url: str | None = None) -> dict:
@@ -195,7 +254,7 @@ def _print(obj: object) -> None:
     print(json.dumps(obj, indent=2))
 
 
-def main(argv: list[str] | None = None) -> int:
+def main(argv: list[str] | None = None) -> int:  # noqa: PLR0912, PLR0915
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--url", help="labeller base URL (default $FOOTY_LABELLER_URL or http://mac-mini-i7:8011)")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -209,7 +268,27 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("--why", default="")
     s.add_argument("--device", default="either", choices=["phone", "laptop", "either"])
     s.add_argument("--priority", type=int, default=2)
-    s.add_argument("--key", help="idempotency key: re-submitting it returns the same job")
+    s.add_argument(
+        "--key", help="idempotency key: re-submitting it returns the same job"
+    )
+    s.add_argument(
+        "--prepare",
+        action="store_true",
+        help="ball_check: also render every card ahead of time (Prefect run)",
+    )
+    s.add_argument(
+        "--where",
+        choices=["mini", "desktop"],
+        help="where --prepare renders (default: the server's choice)",
+    )
+    s.add_argument(
+        "--allow-large",
+        action="store_true",
+        help=f"allow more than {DEFAULT_MAX_CARDS} cards, up to {HARD_MAX_CARDS}",
+    )
+    s.add_argument(
+        "--max-cards", type=int, help=f"explicit card cap, at most {HARD_MAX_CARDS}"
+    )
     for name, helptext in (("status", "status + progress"), ("results", "canonical label rows"), ("wait", "block until done"),
                            ("done", "close the job"), ("cancel", "cancel the job")):  # fmt: skip
         p = sub.add_parser(name, help=helptext)
@@ -219,6 +298,25 @@ def main(argv: list[str] | None = None) -> int:
         if name == "wait":
             p.add_argument("--poll", type=float, default=30)
             p.add_argument("--timeout", type=float)
+    pp = sub.add_parser(
+        "prepare", help="render an existing ball_check job's cards ahead of time"
+    )
+    pp.add_argument("ref", help="job id or exact title")
+    pp.add_argument(
+        "--hold",
+        action="store_true",
+        help="show the job as 'preparing' (not offered) until done",
+    )
+    pp.add_argument("--where", choices=["mini", "desktop"])
+    gp = sub.add_parser(
+        "gc",
+        help="expire idle/finished renders, enforce the cache cap, fail stale prepare runs",
+    )
+    gp.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="report what would be deleted, delete nothing",
+    )
     ls = sub.add_parser("list", help="list jobs")
     for f in ("status", "title", "kind", "dataset", "branch"):
         ls.add_argument(f"--{f}")
@@ -227,12 +325,30 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if a.cmd == "submit":
             items = read_items(a.items, step=a.step) if a.items else []
-            _print(submit(a.title, a.kind, items, dataset=a.dataset, why=a.why, device=a.device,
-                          priority=a.priority, key=a.key, url=a.url))  # fmt: skip
+            res = submit(a.title, a.kind, items, dataset=a.dataset, why=a.why, device=a.device,
+                         priority=a.priority, key=a.key, url=a.url, prepare=(a.where or True) if a.prepare else False,
+                         max_cards=HARD_MAX_CARDS if a.allow_large and not a.max_cards else a.max_cards)  # fmt: skip
+            _print(res)
+            if (res.get("prepare") or {}).get("state") == "failed":
+                print(
+                    f"warning: job created but preparation could not be queued: {res['prepare'].get('error')}",
+                    file=sys.stderr,
+                )
+                return 2
+        elif a.cmd == "prepare":
+            _print(prepare(a.ref, hold=a.hold, where=a.where, url=a.url).get("prepare"))
+        elif a.cmd == "gc":
+            _print(gc(dry_run=a.dry_run, url=a.url))
         elif a.cmd == "status":
             j = get(a.ref, url=a.url)
             p = j.get("progress") or {}
             print(f"{j['id']}  {j['status']}  {p.get('done')}/{p.get('total')}  {j['title']}\n{j['url']}")
+            if j.get("prepare"):
+                pr = j["prepare"]
+                print(
+                    f"prepare: {pr.get('state')} {pr.get('prepared')}/{pr.get('total')} ({pr.get('where')})"
+                    + (f" error: {pr['error']}" if pr.get("error") else "")
+                )
         elif a.cmd == "results":
             text = json.dumps(results(a.ref, url=a.url), indent=2)
             if a.out:

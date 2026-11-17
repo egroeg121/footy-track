@@ -166,6 +166,7 @@ function pickCount(j, path) {
 function renderTask(t) {
   const a = el("a", "task p" + (t.priority || 2) + (t.done ? " done" : ""));
   a.href = t.url || "#";
+  if (t.preparing) a.addEventListener("click", (e) => e.preventDefault());   // not offered until prepared
   const top = el("div", "top");
   top.append(el("div", "title", (t.done ? "\u2713 " : "") + t.title));
   a.append(top);
@@ -176,6 +177,7 @@ function renderTask(t) {
   if (t.done) meta.append(el("span", "chip tick", "\u2713 done" + (t.done_at ? " " + t.done_at.slice(0, 10) : "")));
   else if (t.progress && t.progress.total != null)
     meta.append(el("span", "chip count", t.progress.done + "/" + t.progress.total + " done"));
+  if (t.preparing) meta.append(el("span", "chip count", "preparing " + t.preparing.prepared + "/" + t.preparing.total));
   if (t.count_url && !t.done) { countChip = el("span", "chip count", "… " + (t.count_label || "left")); meta.append(countChip); }
   if (t.job) meta.append(el("span", "chip", t.kind + " job" + (t.dataset ? " · " + t.dataset : "")));
   if (t.owner) meta.append(el("span", "chip", t.owner));

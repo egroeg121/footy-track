@@ -690,6 +690,37 @@ app.include_router(ingest_router)
 app.include_router(tasks_router)
 app.include_router(jobs_router)
 
+
+async def _jobs_gc_loop(interval: float) -> None:
+    """Hourly housekeeping (stale prepare runs, idle/finished renders, render-cache cap). Lives in the
+    server so it survives restarts with no extra scheduler; ``labelling_jobs gc`` runs the same code."""
+    import logging  # noqa: PLC0415
+
+    from footy_track.labeller import jobs as _jobs  # noqa: PLC0415
+
+    await asyncio.sleep(min(60.0, interval))
+    while True:
+        try:
+            await asyncio.to_thread(_jobs.gc)
+        except Exception:  # noqa: BLE001 - housekeeping must never take the server down
+            logging.getLogger(__name__).exception("jobs gc failed")
+        await asyncio.sleep(interval)
+
+
+@app.on_event("startup")
+async def _start_jobs_gc() -> None:
+    interval = float(os.environ.get("FOOTY_JOBS_GC_INTERVAL_S", "3600") or 0)
+    if interval > 0:
+        app.state.jobs_gc_task = asyncio.create_task(_jobs_gc_loop(interval))
+
+
+@app.on_event("shutdown")
+async def _stop_jobs_gc() -> None:
+    task = getattr(app.state, "jobs_gc_task", None)
+    if task is not None:
+        task.cancel()
+
+
 # Mount static assets (JS/CSS) if any beyond index.html.
 if _STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")

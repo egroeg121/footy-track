@@ -139,7 +139,7 @@ const $ = (id) => document.getElementById(id);
 const QS = new URLSearchParams(location.search);
 const queueUrl = () => {
   const p = new URLSearchParams({ limit: '60' });
-  for (const k of ['source', 'clip']) if (QS.get(k)) p.set(k, QS.get(k));
+  for (const k of ['source', 'clip', 'job']) if (QS.get(k)) p.set(k, QS.get(k));
   return `/ball_check/queue?${p}`;
 };
 const srcOf = (item) => item.source || 'sidecar';
@@ -325,8 +325,20 @@ window.addEventListener('resize', drawBox);
 
 // ---- queue ----------------------------------------------------------------
 
+let EMPTY_HTML = null;      // the 'nothing left' text, saved while the prep message is shown
 async function loadQueue(reset) {
   const data = await (await fetch(queueUrl())).json();
+  if (data.preparing) {   // the job's renders are still being made: show progress, do not offer cards
+    queue = [];
+    $('card').style.display = 'none';
+    $('empty').style.display = 'block';
+    if (EMPTY_HTML === null) EMPTY_HTML = $('empty').innerHTML;
+    $('empty').textContent = `Preparing this job: ${data.preparing.prepared} / ${data.preparing.total} cards rendered. It opens when ready.`;
+    $('progress').textContent = 'preparing';
+    setTimeout(() => loadQueue(true), 8000);
+    return;
+  }
+  if (EMPTY_HTML !== null) { $('empty').innerHTML = EMPTY_HTML; EMPTY_HTML = null; }
   remaining = data.remaining;
   judged = data.judged;
   if (data.tau !== undefined) {

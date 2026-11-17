@@ -1533,6 +1533,71 @@ restricted to the job's cards (progress and results are).
     `::test_frames_endpoint_expands_items_in_job_order_with_the_progress_rule`; the page itself is UNTESTED-FRONTEND
     (driven by hand in headless Chromium).
 
+### Prepared Ball Check jobs: inline cards, disk renders, bounds (LAB-1409..1416)
+
+`labelling_jobs submit --kind ball_check --items cards.json --prepare` submits a job **and** queues the
+Prefect flow `ballcheck-prepare` (`~/code/jobs/footy_ballcheck.py`), which renders every card's still and
+clip to `$FOOTY_BALLCHECK_RENDERS_DIR` (default `/mnt/storage/footy_data/ballcheck_renders`) so the phone only
+downloads finished files. `labelling_jobs prepare <job> [--hold] [--where mini|desktop]` does the same for an
+existing job (read-only for the job; the renders just land in the cache). `labelling_jobs gc [--dry-run]` is the
+housekeeping (it also runs hourly inside the server, `FOOTY_JOBS_GC_INTERVAL_S`).
+
+**Defaults** (all env-overridable; see `jobs.py` / `ball_check_cache.py`):
+
+| thing | default |
+|---|---|
+| cards per ball_check job | 500; `max_cards` / `--allow-large` raises it to a hard ceiling of **2000** |
+| frames per frame-kind job | 5000 (hard 20000) |
+| unlabelled cards across jobs that are prepared / being prepared | **1500** (a `--prepare` over it is refused with HTTP 429, nothing is created) |
+| render cache size cap | **5 GB**, LRU |
+| free-disk floor on `/mnt/storage` | **20 GB** (preparing is refused below it, HTTP 507; a render run stops at it) |
+| renders of a done / cancelled job | deleted **24 h** after it closed |
+| renders of a live job | deleted after **3 days** with no labelling activity on it |
+| jobs and cards | **never expire**; only the renders are temporary. Verdicts are never deleted |
+
+- **LAB-1409** (MUST) A `ball_check` item with a `bbox` (normalised `{x,y,w,h}`) and no `box_index` is an *inline
+  card*; the job serves its cards in item order at `/ball_check?dataset=D&source=list&job=<id>` with no review-list file
+  and no `labeller_datasets.json` edit. Pointer items (`{clip, frame_index, box_index, source?}`) behave as before.
+  - Tests: `test_ball_check_prepare.py::test_inline_cards_are_served_in_item_order_without_a_list_file_or_registry_edit`,
+    `::test_pointer_cards_still_work_unchanged`
+- **LAB-1410** (MUST) An inline card's `box_index` is `2**30 + hash(job id, item position)` (so a list file can never
+  reach it and two jobs on one dataset never share `(clip, frame, box_index)`); its verdict is written with
+  `source: "list"` to `<marks_dir>/ball_checks/<clip>.jsonl` exactly like a list-mode verdict, so existing scorers
+  and the "list verdicts are not a detector precision sample" rule keep working.
+  - Tests: `::test_inline_verdict_lands_in_the_marks_dir_like_a_list_verdict_and_counts_as_progress`,
+    `::test_two_jobs_on_one_dataset_never_collide_even_on_the_same_frame`
+- **LAB-1411** (MUST) The phone only receives `label`, `provenance`/`role`, `confidence`, `note`, `other_bbox` (the keys the
+  page prints or draws) plus geometry; every other key is hidden: kept in the job, returned in `results`
+  (`labels[].meta`, `items[].item`), never sent to the page. A blind batch supplies none of the shown keys.
+  - Tests: `::test_hidden_keys_are_never_sent_to_the_page_but_pass_through_to_results`
+- **LAB-1412** (MUST) Crops and clips are cached on disk (key = clip file identity, frame, box and other-box geometry,
+  pad, reticle, `at`, render version and the render constants), checked before rendering, written atomically
+  (temp file under `.tmp/`, outside `blobs/`), and concurrent requests for one key share one render. The prepare flow
+  fills the cache under the keys the server hands it (`GET /api/jobs/<job>/prepare_plan`), with the same render
+  functions, so a prepared card is served from disk, also after a restart.
+  - Tests: `::test_disk_cache_miss_then_hit_and_lru_touch`, `::test_disk_write_is_atomic_and_stages_outside_the_served_folder`,
+    `::test_concurrent_renders_of_one_key_are_a_single_render`, `::test_key_covers_everything_that_changes_the_bytes`,
+    `::test_server_serves_a_prepared_card_from_disk_and_survives_a_restart`
+- **LAB-1413** (MUST) Job state: submitted with `--prepare` a job is `preparing` (with `prepare.prepared/total`) until the
+  run finishes, then `open`; it is not a board link and the page shows the progress instead of cards. A failed
+  run leaves the job `open` (cards render on demand) with `prepare.state = failed` and the reason. Only one prepare
+  run per job at a time; a run that stops reporting is declared failed by gc.
+  - Tests: `::test_submit_with_prepare_is_preparing_until_the_flow_finishes`, `::test_failed_prepare_releases_the_job_so_it_still_works_on_demand`,
+    `::test_only_one_prepare_per_job_and_a_stale_one_can_be_redone`
+- **LAB-1414** (MUST) Bounds: card cap (+ hard ceiling), queued-card cap, free-disk floor, cache size cap (see table).
+  - Tests: `::test_card_cap_is_rejected_then_allowed_up_to_the_hard_ceiling`, `::test_cli_refuses_over_the_cap_before_posting`,
+    `::test_queued_card_cap_refuses_a_prepare_that_would_pass_it`, `::test_disk_floor_refuses_to_prepare`,
+    `::test_lru_eviction_order_orphans_then_finished_jobs_then_open_jobs`
+- **LAB-1415** (MUST) gc deletes the renders of done/cancelled jobs 24 h after closing and of live jobs 3 days after their last
+  labelling activity (job stays open, `prepare.state = evicted`), never touches verdicts or jobs, and creates nothing in the
+  registry, clips or marks listings.
+  - Tests: `::test_gc_deletes_renders_of_a_done_job_after_the_grace_but_keeps_its_verdicts`, `::test_idle_job_loses_renders_after_3_days_but_stays_open`,
+    `::test_housekeeping_does_not_grow_the_clip_or_registry_listings`
+- **LAB-1416** (MUST) When labelling resumes on a job whose renders were evicted (the job is opened, or one of its cards is
+  requested) a fresh `ballcheck-prepare` run is queued for its remaining unlabelled cards (judged ones are skipped); the
+  phone is served by on-demand rendering meanwhile. A failed attempt backs off for 10 minutes.
+  - Tests: `::test_labelling_resuming_on_an_evicted_job_reprepares_only_the_remaining_cards`, `::test_first_card_request_of_an_evicted_job_also_reprepares`
+
 ## 19b. Broadcast review (job kind `broadcast_review`)
 
 Human yes/no on frames the broadcast classifier (`classifier.py`, argmax of `Yes`/`No`, i.e. `p_yes > 0.5`,
