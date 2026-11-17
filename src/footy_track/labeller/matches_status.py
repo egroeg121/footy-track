@@ -188,7 +188,7 @@ def _flow_runs() -> list[dict]:
                 [SEGMENT_FLOW],
                 ["SCHEDULED", "PENDING", *_STARTED_STATES],
                 "EXPECTED_START_TIME_DESC",
-                300,
+                200,  # Prefect server max
             )
         ]
     _api_cache.update(t=time.time(), runs=runs)
