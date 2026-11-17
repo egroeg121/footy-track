@@ -1521,6 +1521,18 @@ restricted to the job's cards (progress and results are).
     `::test_frames_endpoint_expands_items_in_job_order_with_the_progress_rule`; the page itself is UNTESTED-FRONTEND
     (driven by hand in headless Chromium).
 
+## 19b. Broadcast review (job kind `broadcast_review`)
+
+Human yes/no on frames the broadcast classifier (`classifier.py`, argmax of `Yes`/`No`, i.e. `p_yes > 0.5`,
+the rule `split_broadcast_segments` cuts with) was unsure about, plus a random sample. Produced per match by the
+Prefect flow `broadcast-review` (jobs repo, `footy_broadcast_review.py`). Item:
+`{clip: <match key>, frame, ts_s, p_yes, pred, reason: edge_mid|edge_boundary|random, dist_to_transition_s}`.
+Frames are `<dataset clips_dir>/<match>/f<frame>.jpg`; verdicts (`yes`/`no`/`unsure`) are written to
+`<marks_dir>/broadcast_review/<match>.json` and counted as progress. Page: `/broadcast_review?dataset=..&job=<id>`
+(Y / N / U keys; the model's call is shown only after answering). Training: `python -m
+footy_track.scripts.export_broadcast_review --dataset broadcast_review --out <dir>` writes `train/{Yes,No}/`
+for `scripts/train_classifier.py --local-dataset` (`unsure` skipped; `--valid-matches` keeps a match whole in `valid/`).
+
 ## 15. Traceability summary
 
 | Section | Requirements | Tested | UNTESTED | UNTESTED-FRONTEND |

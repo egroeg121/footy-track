@@ -29,6 +29,9 @@ ball_check      ``{clip, frame_index, box_index, source?}`` (a card; ``source``
                 the verdict log has a live verdict for it.
 identity        ``{clip}``. Labelled when an identity pair/review record
                 mentions the clip.
+broadcast_review ``{clip: <match key>, frame, ts_s?, p_yes?, pred?, reason?}`` (one
+                classifier frame; ``reason`` = ``edge`` / ``random``). Labelled when
+                ``<marks>/broadcast_review/<match>.json`` has a verdict (yes/no/unsure).
 other           anything; no computed progress (close it by hand).
 ==============  ==============================================================
 
@@ -54,7 +57,7 @@ from footy_track.labeller import datasets
 from footy_track.labeller.constants import BALL_LABELS, NO_BALL_TAG, NOT_BROADCAST_TAG
 
 DEFAULT_JOBS_DIR = "/mnt/storage/footy_data/labelling_jobs"
-KINDS = ("ball_place", "ball_check", "calibration", "frame_type", "identity", "other")
+KINDS = ("ball_place", "ball_check", "calibration", "frame_type", "identity", "broadcast_review", "other")
 STATUSES = ("open", "in_progress", "done", "cancelled")
 LIVE = ("open", "in_progress")
 DEVICES = ("phone", "laptop", "either")
@@ -201,6 +204,8 @@ def _normalise_items(kind: str, raw: object) -> list[dict]:
                 it["step"] = _int(it.get("step") or 1, f"items[{i}].step")
                 if it["step"] < 1 or it["frame_end"] < it["frame_start"]:
                     raise JobError(422, f"items[{i}]: need frame_end >= frame_start and step >= 1")
+        elif kind == "broadcast_review":
+            it["frame"] = _int(it.get("frame"), f"items[{i}].frame")
         elif kind == "ball_check":
             for k in ("frame_index", "box_index"):
                 it[k] = _int(it.get(k), f"items[{i}].{k}")
@@ -223,6 +228,8 @@ def _item_units(kind: str, item: dict) -> list:
         return [(item["source"], item["frame_index"], item["box_index"])]
     if kind == "identity":
         return [item["clip"]]
+    if kind == "broadcast_review":
+        return [item["frame"]]
     return []
 
 
@@ -574,6 +581,19 @@ def compute(job: dict) -> dict:
                     first_missing = {
                         "clip": it["clip"], "source": unit[0], "frame": unit[1], "box_index": unit[2]
                     }  # fmt: skip
+        elif kind == "broadcast_review":
+            from footy_track.labeller import broadcast_review as br
+
+            store = br.read_store(ds, it["clip"])
+            stores[it["clip"]] = {"clip": it["clip"], "store": f"broadcast_review/{it['clip']}.json"}
+            for f in units:
+                rec = store.get(f)
+                if rec is not None:
+                    n_done += 1
+                    labels.append({"clip": it["clip"], "frame": f, **rec,
+                                   **{k: it[k] for k in ("p_yes", "pred", "reason", "ts_s") if k in it}})  # fmt: skip
+                elif first_missing is None:
+                    first_missing = {"clip": it["clip"], "frame": f}
         elif kind == "identity":
             recs = [r for r in ident if it["clip"] in _identity_clips(r)]
             if recs:
@@ -694,6 +714,9 @@ def deep_link(job: dict, c: dict | None = None) -> str:
         if len(clips) == 1:
             q["clip"] = next(iter(clips))
         page = "/ball_check"
+    elif kind == "broadcast_review":
+        q["job"] = job["id"]
+        page = "/broadcast_review"
     elif kind == "identity":
         page = "/identity"
     else:

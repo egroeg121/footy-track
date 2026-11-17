@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Broadcast review</title>
+<style>
+  :root { --bg:#0f1419; --panel:#1a2129; --ink:#e6edf3; --muted:#9bb0c0; --green:#3fb950; --red:#f85149; --amber:#d29922; --border:#2d3742; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+  main { max-width:1100px; margin:0 auto; padding:8px; }
+  header { display:flex; gap:10px; align-items:baseline; flex-wrap:wrap; font-size:13px; color:var(--muted); }
+  header a { color:var(--muted); text-decoration:none; }
+  h1 { font-size:16px; margin:0; color:var(--ink); }
+  .bar { height:4px; background:var(--border); border-radius:2px; margin:6px 0; }
+  .bar i { display:block; height:100%; background:var(--green); border-radius:2px; }
+  img { width:100%; max-height:62vh; object-fit:contain; background:#000; border-radius:6px; display:block; }
+  .q { text-align:center; margin:6px 0; color:var(--muted); font-size:13px; }
+  .btns { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  button { font:inherit; font-size:18px; padding:16px 8px; border-radius:8px; border:1px solid var(--border); background:var(--panel); color:var(--ink); cursor:pointer; }
+  button.yes { border-color:var(--green); } button.no { border-color:var(--red); }
+  button.small { font-size:13px; padding:8px; }
+  .row { display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; margin-top:8px; }
+  .info { margin:6px 0; font-size:13px; color:var(--muted); text-align:center; min-height:20px; }
+  .done { text-align:center; padding:40px 0; font-size:18px; }
+</style>
+</head>
+<body>
+<main>
+  <header><a href="/">&larr; Home</a><h1 id="title">Broadcast review</h1><span id="count"></span></header>
+  <div class="bar"><i id="fill" style="width:0"></i></div>
+  <div id="view"></div>
+</main>
+<script>
+const qs = new URLSearchParams(location.search);
+const DS = qs.get("dataset") || "", JOB = qs.get("job");
+const dsq = DS ? `dataset=${encodeURIComponent(DS)}` : "";
+const api = (p, o) => fetch(p + (p.includes("?") ? "&" : "?") + dsq, o);
+let job = null, i = 0;
+
+async function load() {
+  if (!JOB) { document.getElementById("view").textContent = "No ?job= given."; return; }
+  const r = await api(`/broadcast_review/api/job/${encodeURIComponent(JOB)}`);
+  job = await r.json();
+  if (job.error) { document.getElementById("view").textContent = job.error; return; }
+  document.getElementById("title").textContent = job.title;
+  i = Math.max(0, job.frames.findIndex(f => !f.done));
+  render();
+}
+function stats() {
+  const d = job.frames.filter(f => f.done).length;
+  document.getElementById("count").textContent = `${d}/${job.total}`;
+  document.getElementById("fill").style.width = (100 * d / Math.max(1, job.total)) + "%";
+  return d;
+}
+function fmt(s) { s = Math.round(s || 0); return `${Math.floor(s/3600)}:${String(Math.floor(s%3600/60)).padStart(2,"0")}:${String(s%60).padStart(2,"0")}`; }
+function render() {
+  const d = stats(), v = document.getElementById("view");
+  if (i >= job.frames.length || i < 0) i = job.frames.length - 1;
+  const f = job.frames[i];
+  if (!f) { v.innerHTML = '<div class="done">Empty job.</div>'; return; }
+  const url = `/broadcast_review/frame/${encodeURIComponent(f.clip)}/${f.frame}.jpg?${dsq}`;
+  const ans = f.verdict ? `you: <b>${f.verdict}</b> &middot; model: ${f.pred ?? "?"} (p_yes ${f.p_yes?.toFixed?.(2) ?? "?"}, ${f.reason ?? ""})` : "";
+  v.innerHTML = `
+    <img src="${url}" alt="frame">
+    <div class="q">Is this a main-camera broadcast view of play? &middot; #${i + 1} &middot; match time ${fmt(f.ts_s)}</div>
+    <div class="info">${ans}</div>
+    <div class="btns"><button class="yes" data-v="yes">Yes (Y)</button><button class="no" data-v="no">No (N)</button></div>
+    <div class="row"><button class="small" id="prev">&larr; Back</button><button class="small" data-v="unsure">Unsure (U)</button><button class="small" id="next">Skip &rarr;</button></div>
+    ${d >= job.total ? '<div class="done">All answered. Thanks!</div>' : ""}`;
+  v.querySelectorAll("[data-v]").forEach(b => b.onclick = () => answer(b.dataset.v));
+  document.getElementById("prev").onclick = () => { i--; render(); };
+  document.getElementById("next").onclick = () => { i++; render(); };
+}
+async function answer(verdict) {
+  const f = job.frames[i];
+  const r = await api(`/broadcast_review/api/verdict/${encodeURIComponent(f.clip)}/${f.frame}`, {
+    method: "PUT", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({verdict, p_yes: f.p_yes, pred: f.pred, reason: f.reason, ts_s: f.ts_s}),
+  });
+  if (!r.ok) { alert("save failed: " + r.status); return; }
+  f.verdict = verdict; f.done = true;
+  const nxt = job.frames.findIndex((g, k) => k > i && !g.done);
+  i = nxt >= 0 ? nxt : Math.min(i + 1, job.frames.length - 1);
+  render();
+}
+document.addEventListener("keydown", e => {
+  if (!job) return;
+  const k = e.key.toLowerCase();
+  if (k === "y") answer("yes"); else if (k === "n") answer("no"); else if (k === "u") answer("unsure");
+  else if (e.key === "ArrowLeft") { i--; render(); } else if (e.key === "ArrowRight") { i++; render(); }
+});
+load();
+</script>
+</body>
+</html>
