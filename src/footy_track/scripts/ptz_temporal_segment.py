@@ -13,6 +13,13 @@ Thin wrapper over the research driver :mod:`footy_track.scripts.ptz_temporal` (`
   acceptance of every anchor, so a consumer can tell confident frames from uncertain ones without GT;
 * ``meta.json`` and ``solve_full.json``; every file is written atomically.
 
+**Recovery pass** (``--no-recover`` skips it): when the standard pass accepts < 50% of the frames, the run is repeated on a
+trimmed segment (non-pitch tails cut) with anchors from a pose-band, multi-start lines-only search (and, in a second stage,
+the centre-circle / penalty-D finders) that other candidates must confirm along the motion chain
+(:mod:`footy_track.calibration.ptz_recover`). The recovered result replaces the standard one only if it accepts more
+frames, and then an evidence frame must also sit on the rig's pose band; ``meta.json["recovery"]`` records both passes
+and ``anchors_rec.json`` the candidates. Segments the standard pass accepts are untouched.
+
 Work directory: ``<out-root>/<clip>@<rig stem>/`` (the driver's convention: anchors and motion depend on the rig).
 Output (small): ``calib_full.npz`` (frame, pan, tilt, logf, H (N,3,3) normalised undistorted image -> pitch m, rig),
 ``states_full.npy``, ``line_f1_full.json``, ``solve_full.json``, ``meta.json``, ``anchors_lines.json``,
@@ -38,7 +45,8 @@ from footy_track.scripts import ptz_temporal as pte
 
 MIN_ANCHOR_STEP = 25
 RECOVER_BELOW = 0.5  # run the recovery pass when the standard pass accepts less than this fraction of the frames
-REC_FRAMES = 12  # lines-only candidate frames per segment in recovery stage A (stage B adds finders and doubles them)
+REC_PROBE = 4  # probe frames per camera position when choosing it
+REC_FRAMES = 12  # candidate frames (lines-only search + finders) per segment in recovery stage A; stage B doubles them
 F1_ACCEPT = 0.5  # the driver's acceptance threshold for an evidence frame (cmd_eval coverage)
 
 
@@ -116,38 +124,59 @@ def usable_candidates(cands: dict, frames: list[int]) -> dict[int, dict]:
     return out
 
 
+def _ensure_candidates(cache, rig_v, prior, pitch, cands: dict, frames: list[int], cp: Path) -> None:
+    """Lines-only (multi-start, prior band) and finder candidates of ``frames`` for one rig variant, cached in ``cands``."""
+    for t in frames:
+        rec = cands.setdefault(str(t), {})
+        ev = cache.evidence(t)
+        if ev is None:
+            continue
+        if "lines" not in rec:
+            rec["lines"] = pr.lines_candidate(ev, rig_v, pitch, prior)
+            cp.write_text(json.dumps(cands, default=float))
+        if "finder" not in rec:
+            rec["finder"] = pr.finder_anchor(cache, t, rig_v, pitch, prior)
+            cp.write_text(json.dumps(cands, default=float))
+
+
 def recover_pass(cache, rig, shot_info, out: Path) -> dict:
-    """Recovery of a segment the standard pass left uncalibrated (see :mod:`ptz_recover`). Stage A: trim non-pitch tails,
-    multi-start prior-band lines-only candidates on ``REC_FRAMES`` frames, motion confirmation, joint solve. Stage B
-    (only when stage A still accepts < ``RECOVER_BELOW``): finder candidates and twice the frames. Returns the better of
-    the stages: ``{"states", "infos", "segs", "anchors", "f1rep", "stages", "runs"}``."""
+    """Recovery of a segment the standard pass left uncalibrated (see :mod:`ptz_recover`). Trim non-pitch tails; choose the
+    camera position (``pr.rig_variants``: the stand's centre position or one of the two penalty-area-line positions) from a
+    few probe frames; then stage A: multi-start prior-band lines-only and finder candidates on ``REC_FRAMES`` frames,
+    motion confirmation, joint solve; stage B (only when stage A still accepts < ``RECOVER_BELOW``): twice the frames.
+    Returns the better stage: ``{"states", "infos", "segs", "anchors", "f1rep", "stages", "runs", "rig", "variant"}``."""
     prior = pr.pose_prior(rig)
     pitch = pte.PITCH
-    sh = pt.Shared.from_rig(rig)
     pm = {t: pt.pmain_of(cache, t) for t in cache.ev_frames}
     base_runs = [(x["start"], x["end"]) for x in shot_info if x["p_main"] >= 0.5]
     runs = pr.trim_runs(base_runs, cache, pm)
     pte.log(f"recovery: main shots {base_runs} -> trimmed runs {runs}")
     cp = out / "anchors_rec.json"
-    cands = json.loads(cp.read_text()) if cp.exists() else {}
+    allc = json.loads(cp.read_text()) if cp.exists() else {}
+    # --- which camera position: best mean candidate F1 over a few probe frames (the default wins ties)
+    variants = pr.rig_variants(rig)
+    probe = candidate_frames(cache, runs, REC_PROBE)
+    vscore = {}
+    for name, rig_v in variants:
+        if len(variants) > 1:
+            _ensure_candidates(cache, rig_v, prior, pitch, allc.setdefault(name, {}), probe, cp)
+            use = usable_candidates(allc[name], probe)
+            vscore[name] = sum(r["f1_fixed"] for r in use.values()) / max(len(probe), 1)
+    vname, rig_v = variants[0]
+    if len(variants) > 1:
+        vname = max(vscore, key=lambda k: (vscore[k], k == variants[0][0]))
+        rig_v = dict(variants)[vname]
+        pte.log(f"recovery: camera position scores {({k: round(v, 3) for k, v in vscore.items()})} -> {vname}")
+    sh = pt.Shared.from_rig(rig_v)
+    cands = allc.setdefault(vname, {})
     best, stages = None, []
-    for stage, (n_fr, use_finders) in enumerate(((REC_FRAMES, False), (2 * REC_FRAMES, True))):
+    for stage, n_fr in enumerate((REC_FRAMES, 2 * REC_FRAMES)):
         frames = candidate_frames(cache, runs, n_fr)
-        for t in frames:
-            rec = cands.setdefault(str(t), {})
-            ev = cache.evidence(t)
-            if ev is None:
-                continue
-            if "lines" not in rec:
-                rec["lines"] = pr.lines_candidate(ev, rig, pitch, prior)
-                cp.write_text(json.dumps(cands, default=float))
-            if use_finders and "finder" not in rec:
-                rec["finder"] = pr.finder_anchor(cache, t, rig, pitch, prior)
-                cp.write_text(json.dumps(cands, default=float))
+        _ensure_candidates(cache, rig_v, prior, pitch, cands, frames, cp)
         use = usable_candidates(cands, frames)
         pte.log(f"recovery stage {'AB'[stage]}: {len(use)}/{len(frames)} usable candidates "
                 f"{ {t: (round(r['f1'], 2), round(r['f1_fixed'], 2), r['src']) for t, r in use.items()} }")
-        info = {"stage": "AB"[stage], "frames": len(frames), "usable": len(use)}
+        info = {"stage": "AB"[stage], "variant": vname, "variant_scores": vscore, "frames": len(frames), "usable": len(use)}
         if not use:
             stages.append(info | {"accepted_frac": 0.0})
             continue
@@ -155,7 +184,7 @@ def recover_pass(cache, rig, shot_info, out: Path) -> dict:
         fnom = pte.f_nominal(cache, {str(t): {"ok": True, "logf": r["logf"]} for t, r in use.items()})
         pairs = []
         for a, b in runs:
-            ps, st = pt.compute_motion(cache, a, b, fnom[a:b + 1], rig.k1, gaps=(1, 5), log=pte.log)
+            ps, st = pt.compute_motion(cache, a, b, fnom[a:b + 1], rig_v.k1, gaps=(1, 5), log=pte.log)
             pairs += ps
         pairs, weak = pt.reject_weak_pairs(pairs)
         segs = pte.segments([{"start": a, "end": b, "p_main": 1.0} for a, b in runs], pairs)
@@ -165,13 +194,14 @@ def recover_pass(cache, rig, shot_info, out: Path) -> dict:
         kept, partners = pr.confirm_anchors(states, pairs_by, sh, strong=strong)
         anchors = {str(t): {**r, "ok": t in kept} for t, r in use.items()}
         pte.log(f"recovery stage {'AB'[stage]}: confirmed {sorted(kept)} of {sorted(use)}; partners {partners}")
-        st_arr, infos = pte.solve_variant(cache, segs, pairs, anchors, rig, [], None, "recover")
+        st_arr, infos = pte.solve_variant(cache, segs, pairs, anchors, rig_v, [], None, "recover")
         f1rep = line_f1_report(cache, st_arr, sh, anchors, segs, prior)
         info |= {"confirmed": sorted(kept), "weak_pairs": weak, "accepted_frac": f1rep["accepted_frac_of_frames"]}
         stages.append(info)
         pte.log(f"recovery stage {'AB'[stage]}: accepted {100 * info['accepted_frac']:.0f}%")
         if best is None or info["accepted_frac"] > best["f1rep"]["accepted_frac_of_frames"]:
-            best = {"states": st_arr, "infos": infos, "segs": segs, "anchors": anchors, "f1rep": f1rep, "runs": runs}
+            best = {"states": st_arr, "infos": infos, "segs": segs, "anchors": anchors, "f1rep": f1rep, "runs": runs,
+                    "rig": rig_v, "variant": vname}
         if info["accepted_frac"] >= RECOVER_BELOW:
             break
     if best is not None:
@@ -208,11 +238,12 @@ def run(video: Path, clip: str, rig_json: Path, out_root: Path, anchor_step: int
             recovery["used"] = True
             recovery["standard_anchors"] = f1rep["anchors"]
             states, infos, segs, anchors = rec["states"], rec["infos"], rec["segs"], rec["anchors"]
-            f1rep = rec["f1rep"]
+            f1rep, rig, shared = rec["f1rep"], rec["rig"], pt.Shared.from_rig(rec["rig"])
+            recovery["variant"] = rec["variant"]
     valid = np.isfinite(states).all(axis=1)
     meta = {"clip": clip, "video": str(video), "frames_decoded": int(cache.n), "frames_container": n,
             "anchor_step": pte.ANCHOR_STEP, "rig_json": str(rig_json), "rig_C": [float(x) for x in rig.C],
-            "rig_k1": float(rig.k1), "code_sha": _git_sha(), "shots": shot_info, "runs": f1rep["main_camera_runs"],
+            "rig_k1": float(rig.k1), "rig_variant": (recovery or {}).get("variant"), "code_sha": _git_sha(), "shots": shot_info, "runs": f1rep["main_camera_runs"],
             "calibrated_frames": int(valid.sum()), "calibrated_frac": float(valid.mean()) if cache.n else 0.0,
             "accepted_frac": f1rep["accepted_frac_of_frames"], "median_evidence_f1": f1rep["median_evidence_f1"],
             "anchors_ok": int(sum(bool(a.get("ok")) for a in anchors.values())), "anchors_tried": len(anchors),

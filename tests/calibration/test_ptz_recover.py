@@ -32,6 +32,14 @@ def test_emirates_rig_carries_the_pose_prior_and_vitality_does_not():
     assert pr.pose_prior(ptz.Rig.from_json(RIGS / "vitality.json")) is None  # no band measured: search unrestricted
 
 
+def test_rig_variants_add_the_two_penalty_line_camera_positions_only_for_the_emirates_rig():
+    em = ptz.Rig.from_json(RIGS / "emirates.json")
+    v = pr.rig_variants(em)
+    assert [n for n, _ in v] == ["centre", "x+32.7", "x-32.7"]
+    assert np.allclose(v[1][1].C - em.C, [32.7, 0, 0]) and v[1][1].k1 == em.k1 and v[2][1].roll == em.roll
+    assert [n for n, _ in pr.rig_variants(ptz.Rig.from_json(RIGS / "vitality.json"))] == ["centre"]
+
+
 def test_in_prior_accepts_the_band_and_refuses_off_band_poses():
     c = _on_band(90.0, 4000.0)
     assert pr.in_prior(PRIOR, c.pan, c.tilt, c.logf)
@@ -89,7 +97,8 @@ def test_trim_ignores_a_single_bad_evidence_frame_and_short_pieces():
 
 
 def test_trim_clean_run_is_untouched():
-    cache = _fake_cache(240)
+    cache = _fake_cache(320)
+    cache.ev_frames = list(range(0, 240, 5))
     assert pr.trim_runs([(0, 239), (250, 300)], cache, {t: 0.9 for t in cache.ev_frames}) == [(0, 239), (250, 300)]  # a run with no evidence frame is left alone
 
 
@@ -139,3 +148,32 @@ def test_lines_candidate_json_roundtrips_and_refuses_off_band_answers():
     rec = pr.lines_candidate(_evidence(cam), rig, PitchModel(), PRIOR, n_cells=6, n_refine=2, n_ms_cells=4)
     assert rec["ok"] is False and rec["cand"] and rec["prior_ok"] and rec["f1_fixed"] > 0.7
     assert json.loads(json.dumps(rec, default=float))["refit"]["fixed"][2] == rec["refit"]["fixed"][2]
+
+
+def test_trim_splits_at_a_hard_cut_and_drops_the_sliver_after_it():
+    cache = _fake_cache(240, cut=237)  # a 3-frame close-up flash at the end, after the last evidence frame (235)
+    cache.hd[237] = 0.8
+    assert pr.trim_runs([(0, 239)], cache, {t: 0.9 for t in cache.ev_frames}) == [(0, 236)]
+
+
+def test_trim_cuts_a_soft_jump_after_the_last_evidence_frame():
+    cache = _fake_cache(240)
+    cache.hd[238] = 0.4  # a wipe starting in the last frames (below the hard-cut level)
+    assert pr.trim_runs([(0, 239)], cache, {t: 0.9 for t in cache.ev_frames}) == [(0, 237)]
+
+
+# ---------------------------------------------------------------- runner helpers
+
+
+def test_candidate_frames_spread_over_the_runs_and_usable_candidates_filter():
+    from footy_track.scripts import ptz_temporal_segment as seg
+
+    cache = SimpleNamespace(ev_frames=list(range(0, 300, 5)))
+    fr = seg.candidate_frames(cache, [(0, 99), (150, 299)], 6)
+    assert len(fr) == 6 and fr == sorted(fr) and all(t < 100 or t >= 150 for t in fr) and fr[0] == 0
+    assert seg.candidate_frames(cache, [(0, 20)], 12) == [0, 5, 10, 15, 20]  # fewer evidence frames than asked for
+    good = {"prior_ok": True, "f1_fixed": 0.7, "f1": 0.7}
+    cands = {"0": {"lines": good, "finder": {**good, "f1_fixed": 0.8}}, "5": {"lines": {**good, "f1_fixed": 0.3}},
+             "10": {"lines": {**good, "prior_ok": False}}, "15": {"lines": None}}
+    use = seg.usable_candidates(cands, [0, 5, 10, 15, 20])
+    assert list(use) == [0] and use[0]["f1_fixed"] == 0.8  # the better of lines / finder; weak, off-band, absent: dropped
