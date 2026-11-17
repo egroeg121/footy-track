@@ -46,6 +46,9 @@ scripts.footy-track = "footy_track:main"
 [project.optional-dependencies]
 # Claude pre-labelling of pitch calibration (footy_track.calibration.prelabel); imported lazily.
 llm = ["anthropic>=1.0"]
+# LanceDB feature-store spike (footy_track.feature_store.lance_store). Not installed by default:
+# the native wheels need AVX2 (SIGILL on the Mac mini i7-2635QM). See docs/design/lance_feature_store.md.
+lance = ["lancedb>=0.41"]
 
 [dependency-groups]
 dev = [
