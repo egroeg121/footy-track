@@ -194,11 +194,36 @@ contamination flags and records the rows.
 | `CalibrationAdapter` | calibration | **works, CPU** | `success_at_5px`, `success_at_10px`, `mean_/median_reprojection_px`, `mean_reprojection_m`, `failed_rate`, `keypoint_agreement`, `coverage` | `ProposalRunModel(run_id, gt_dirs)`: a stored proposals run in `calibration_proposals/` (reuses `prelabel.evaluate.eval_frame`); any object with `.proposal(item)` works |
 | `BroadcastAdapter` | broadcast | **works, CPU** | Headline (random stratum): `accuracy`, `precision_yes`, `recall_yes`, `f1_yes`, `n_yes`, `n_no`, `n_random`, plus `accuracy_random`, `f1_yes_random`. Diagnostic: `accuracy_edge`, `f1_yes_edge`, `n_edge`, `accuracy_all_biased`, `f1_yes_all_biased`, `n_unknown` | `StoredPredictionModel`: the classifier's call recorded with each frame when it was queued for review (the number the review page shows). Any object with `.says_yes(item)` works |
 | `BallTrackerAdapter` | tracking | **works on CPU given a candidate cache** | `ball_precision_/recall_/wrong_per_prediction_` at 10 px and 25 px, `clips_scored`, `clips_without_cache` | `BallTrackerReplay(kind, cache_dir, ...)`: replays `online`/`bidirectional`/`viterbi` over `<clip>.jsonl` caches from `ball_tracking_eval cache` (reuses `ball_eval.detection_replay`) |
-| `DetectorAdapter` | tracking | **stub** (`NotImplementedError`) | detector P / R / mAP50 | needs GPU inference over every eval frame |
+| `DetectorAdapter` | tracking | **works, CPU** (scores stored GPU detections) | per class `player_/referee_`: `ap50`, `precision`, `recall`, `f1`, `f1_max`; ball (`ball_` = tier-1 human GT, `ball_t12_` = human + confirmed): `ap_iou50`, `ap_10px`, `ap_25px` and precision / recall / F1 per rule; `map50`, `coverage`, `*_n_gt` | `DetectionStore(dir)`: `<canonical clip>.npz` per eval clip, written by `datasets/detector_run.py` |
 
-TODO (Prefect): the detector eval, and the candidate-cache step the ball-tracker replay depends on, run
-on the `gpu` work pool (desktop RTX 2070); they should call `record_results` when done. The calibration,
-broadcast and tracker-replay evals are CPU and belong on the `cpu` pool.
+### Detector eval (tracking)
+
+`datasets/detector_run.py` runs the detector **once over every frame of every eval clip** (GPU) and stores
+the raw detections (conf >= 0.1, all classes, `dets/<clip>.npz`) plus the ball candidates in the
+`ball_tracking_eval cache` format (`cache/<clip>.jsonl`); `DetectorAdapter` scores the stored detections
+on the CPU and `BallTrackerAdapter` replays trackers over the cache. Resumable per clip; a new dataset
+version only needs inference for clips with no detections yet.
+
+* **Frame sourcing.** An item is a labelled frame (`game_id` = video stem, `frame_index` into that video).
+  Frames come from the clip video, decoded sequentially from frame 0 (frame-exact; seeking is not), from the
+  video the labeller showed: labeller-registry clip dirs (the `*_kf10` re-encodes) first, then
+  `<FOOTY_DATA>/clips`. Videos and detections are keyed by canonical clip id (aliases are the same file).
+* **Ground truth.** Tier 1 (human) and tier 2 (machine box a human confirmed) boxes; `rejected` boxes are not
+  GT; tier 3 boxes and `coach` / `person` / `player_sub` boxes are ignore regions (a detection on one is
+  neither hit nor false positive). A frame is scored for a class only if it has GT of that class (ball:
+  also `no_ball` frames; never `not_broadcast`), because labelling is not exhaustive: player / referee
+  precision is a lower bound.
+* **Matching.** Players / referees: IoU >= 0.5. Ball: IoU >= 0.5 (reconciles with the leaderboard mAP50),
+  and centre distance <= 10 px / 25 px (native px, the ball tracker's radii). The ball is ~11 px, so IoU 0.5
+  needs the centre within ~3 px and mostly measures box tightness; the 10 px rows say whether the ball was
+  found, which is what tracking needs. P / R are at conf 0.3 (the pipeline default); AP is over all
+  detections with 101-point interpolation (as Ultralytics, so a perfect detector scores 0.995).
+* **Contamination.** Flags come from `detection_dataset/roboflow_dataset_11` (`contamination_from_roboflow`)
+  when the rows are recorded on the mini; `bournemouth_1st_seg070` (in-match eval) is in v11 train.
+
+The Prefect side (jobs repo `footy_nightly_datasets.py`, `footy-nightly-gpu`) stages the weights / snapshot /
+videos to the desktop, runs this, pushes the cache to `ball_tracking_cache/<sha12>/` on the mini and hands the
+rows to the mini (`gpu_eval_results/pending/` then `record-rows`; the desktop never opens the store).
 
 ### Broadcast eval: random vs edge strata
 
