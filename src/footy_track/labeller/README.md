@@ -1180,16 +1180,27 @@ becomes GT without a human accepting it; accepted GT carries
   with HTTP 200, not an error. Unknown clip / unreadable frame -> 404, bad body / kind / distortion -> 400.
   Nothing is stored. Answers (and abstentions) are cached in a 64-entry LRU keyed by dataset, video, frame,
   distortion, kind and pitch dims; one detection runs at a time.
-  - `centre`: halfway line + centre circle give `CENTRE_CIRCLE_TOP/BOTTOM`; the pole of the line w.r.t. the
-    circle's ellipse is the vanishing point V of the pitch length axis, the touchline is the long line through
-    V crossing the halfway line beyond the circle, and its junction is `HALFWAY_TOP` (`HALFWAY_BOTTOM` for the
-    near touchline) at `(0, +-width/2)` from the request's `pitch_dims`. Circle top/bottom + that end are three
-    known points on the halfway line, whose 1-D projective map gives the vanishing point of the width axis;
-    with V that is the vanishing line, whose pole is the circle centre. Derived (`derived: true`):
-    `CENTRE_SPOT`, `CENTRE_CIRCLE_LEFT/RIGHT` and four free points on the circle at 45 degrees. The derived set is
-    re-checked by rendering halfway line, circle and touchline under the implied homography against the line
-    mask and dropped if it does not match, leaving the 2 circle points. The far touchline is found in the faint
-    far-edge strip (`candidates.far_edge_line`), used only for this step.
+  - `centre`: shape-first (`calibration/centre_fit.py`). Halfway line + centre circle give `CENTRE_CIRCLE_TOP/BOTTOM`
+    and the circle's ellipse `E`; the pole of the line w.r.t. `E` is the vanishing point `V` of the pitch length
+    axis. That leaves ONE free parameter, the vanishing point `W` of the width axis on the halfway line, and then
+    vanishing line `V x W` -> circle centre (its pole) -> `(+-9.15, 0)` (line centre-`V` x `E`) -> `H`. `W` comes from
+    (a) a touchline end (the long line through `V`, junction = `HALFWAY_TOP/BOTTOM` at `(0, +-width/2)` from the
+    request's `pitch_dims`; 3 known points on the line fix a 1-D projective map), (b) the ground's fixed camera
+    centre when the clip's ground has a rig (`camera_rigs/`, chosen from the clip-name prefix: Emirates for
+    arsenal_mancity / astonvilla / nottinghamforest, Vitality for arsenal_bournemouth; unknown grounds: none) -
+    pan / tilt / focal length from the 2 points + the circle outline, or (c) square pixels with the principal point
+    at the image centre: the circular points `E` x `V W` must lie on `diag(1/f^2, 1/f^2, 1)`, a 1-D root search that
+    is abstained on when the answer moves more than 1.2% of the width under sub-pixel ellipse jitter (a symmetric
+    frontal view cannot give `f`). Candidates are scored on the whole template against the line mask (halfway
+    line + circle = core; touchlines and box lines count as extra matched length; the far touchline strip is part
+    of the mask here) and chamfer-refined; the best one is accepted if core precision >= 0.6. Returned points are
+    all `H` applied to pitch coordinates: `CENTRE_CIRCLE_TOP/BOTTOM/LEFT/RIGHT` (`derived: false` where the mask
+    shows the circle), `CENTRE_SPOT` (derived), `HALFWAY_TOP/BOTTOM` when in frame, four free points on the circle at
+    45 degrees and, if needed, more free circle / touchline points until >= 4 are in general position, so the editor
+    fits the same `H` at once. The response also carries `H` (pitch metres -> undistorted normalised image;
+    `H_convention`) and `fit` (`accepted` source, `precision`, `f_over_w`, `ground`). The square-pixel source alone is approximate on broadcast feeds (GT set: median 1.9 m editor-fit error, 5% within
+    0.5 m): it only answers when no touchline end / ground rig does, with confidence x0.6 and a `warning` string the
+    page appends to its status line. When no candidate is accepted the answer is the 2 circle x line points only. `use=` / `shape=False` select sources for evaluation.
   - `d`: the whole penalty-area template (goal line, 18-yard box, 6-yard box, D; sizes fixed by the Laws,
     positioned with the request's length) is fitted by brute force over assignments of detected lines to
     template lines (and "D + front line + one line"), scored against the line mask, refined by least squares and
@@ -1207,7 +1218,8 @@ becomes GT without a human accepting it; accepted GT carries
   - Tests: `test_calibration.py::test_auto_points_*`, `test_datasets.py::test_auto_points_follow_the_dataset`,
     `test_calibration.py::test_editor_page_has_the_two_auto_buttons` (markers),
     `test_calibration_editor_js.py::test_auto_circle_helpers_under_node` (pair merge + status text; button flow
-    UNTESTED-FRONTEND), `tests/calibration/test_pitch_finders.py`, `tests/calibration/test_centre_circle.py`
+    UNTESTED-FRONTEND), `tests/calibration/test_pitch_finders.py`, `tests/calibration/test_centre_fit.py`,
+    `tests/calibration/test_centre_circle.py`
 - **LAB-1219** (SHOULD) Frames are read through `footy_track.calibration.video.read_frame`
   (cv2, falling back to the ffmpeg CLI when cv2 fails or returns an all-black frame,
   frame-accurate, reader cached per video); `/calibration/api/frame` and `/warp` use it.
