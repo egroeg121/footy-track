@@ -1147,11 +1147,11 @@ split.</p>
 how many frames each tracker changes relative to the first one and how many of
 its ball positions are in the stands (normalised y under 0.12).</p>
 <div class="highlight"><pre><span></span><code>python<span class="w"> </span>-m<span class="w"> </span>footy_track.scripts.ball_tracking_eval<span class="w"> </span>cache<span class="w">  </span>--videos<span class="w"> </span>&lt;clips&gt;<span class="w"> </span>--gt<span class="w"> </span>&lt;gt&gt;<span class="w"> </span>--out<span class="w"> </span>&lt;cache&gt;<span class="w"> </span>--weights<span class="w"> </span>&lt;best.pt&gt;
-python<span class="w"> </span>-m<span class="w"> </span>footy_track.scripts.ball_tracking_eval<span class="w"> </span>score<span class="w">  </span>--cache<span class="w"> </span>&lt;cache&gt;<span class="w"> </span>--gt<span class="w"> </span>&lt;gt&gt;<span class="w"> </span>--split<span class="w"> </span>split.json<span class="w"> </span><span class="se">\</span>
+python<span class="w"> </span>-m<span class="w"> </span>footy_track.scripts.ball_tracking_eval<span class="w"> </span>score<span class="w">  </span>--cache<span class="w"> </span>&lt;cache&gt;<span class="w"> </span>--gt<span class="w"> </span>&lt;gt&gt;<span class="w"> </span><span class="se">\</span>
 <span class="w">    </span>--trackers<span class="w"> </span>online,bidirectional,viterbi<span class="w"> </span>--radii<span class="w"> </span><span class="m">10</span>,25<span class="w"> </span><span class="o">[</span>--per-clip<span class="o">]</span><span class="w"> </span><span class="o">[</span>--param<span class="w"> </span>viterbi.enter_cost<span class="o">=</span><span class="m">6</span><span class="o">]</span>
 python<span class="w"> </span>-m<span class="w"> </span>footy_track.scripts.ball_tracking_eval<span class="w"> </span>review<span class="w"> </span>--runs<span class="w"> </span>&lt;dir<span class="w"> </span>of<span class="w"> </span>run<span class="w"> </span>folders&gt;
 </code></pre></div>
-<p><code>split.json</code> maps each canonical clip id to <code>"seen"</code> or <code>"held_out"</code>.</p>
+<p>Clips are grouped by the global split authority (<code>footy_track.splits</code>: <code>eval_heldout_match</code>, <code>eval_in_match</code>, <code>train</code>, see <a href="../data/#traineval-partitioning">Train/eval partitioning</a>). <code>--split split.json</code> still works as an explicit override: it maps each canonical clip id to <code>"seen"</code> or <code>"held_out"</code>.</p>
 <h2 id="ground-truth-rules">Ground truth rules<a class="headerlink" href="#ground-truth-rules" title="Permanent link">&para;</a></h2>
 <p>Marks come from the labeller sidecars (<code>ball_gt_marks/&lt;clip&gt;.jsonl</code>).</p>
 <ul>

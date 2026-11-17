@@ -374,6 +374,15 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#traineval-partitioning" class="md-nav__link">
+    <span class="md-ellipsis">
+      Train/eval partitioning
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#feature-store" class="md-nav__link">
     <span class="md-ellipsis">
       Feature store
@@ -1071,6 +1080,15 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#traineval-partitioning" class="md-nav__link">
+    <span class="md-ellipsis">
+      Train/eval partitioning
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#feature-store" class="md-nav__link">
     <span class="md-ellipsis">
       Feature store
@@ -1397,8 +1415,144 @@
 </tr>
 </tbody>
 </table>
-<p>The harness set doubles as the <strong>leakage guard</strong>: <code>export_training_dataset</code> excludes every clip that has a sidecar in <code>eval_data/clips/</code> from train and val (<code>scripts/export_training_dataset.py:78-80, 362-363</code>). It matches clip names exactly, and one clip has up to three names, so the guard can miss (<a href="../todo/">T-03</a>). The split in v11 itself is by clip, but v11 train, val and test are all mostly Man City (v11 train has 1,010 balls, 517 of them from <code>astonvilla_seg080</code>).</p>
+<p>The harness set doubles as a <strong>leakage guard</strong> on top of the <a href="#traineval-partitioning">split authority</a>: <code>export_training_dataset</code> excludes every clip that has a sidecar in <code>eval_data/clips/</code> from every split (<code>scripts/export_training_dataset.py:78-80, 362-363</code>). It matches clip names exactly, and one clip has up to three names, so the guard can miss (<a href="../todo/">T-03</a>). The split in v11 itself is by clip, but v11 train, val and test are all mostly Man City (v11 train has 1,010 balls, 517 of them from <code>astonvilla_seg080</code>).</p>
 <p>What a better set needs (diverse matches, dense contiguous frames, explicit <code>no_ball</code> frames) is in <a href="../pipeline-and-labels/#3-label-needs-and-gaps">Best pipeline and label needs, section 3</a>.</p>
+<h2 id="traineval-partitioning">Train/eval partitioning<a class="headerlink" href="#traineval-partitioning" title="Permanent link">&para;</a></h2>
+<p>One module, <code>footy_track.splits</code>, decides what is training data and what is evaluation data. Every dataset export, eval script and labelling flow asks it; none keeps its own list. The eval set <strong>grows as matches and clips are added</strong> and an item never moves once assigned.</p>
+<table>
+<thead>
+<tr>
+<th>Tier</th>
+<th><code>split_of</code> value</th>
+<th>What it is</th>
+<th>How it is assigned</th>
+<th>Recorded in</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Heldout match</td>
+<td><code>eval_heldout_match</code></td>
+<td>A whole match that is evaluation only.</td>
+<td>New matches: <code>sha1(match key) % 4 == 0</code> (about 25%). Manual edits win.</td>
+<td><code>match_splits.json</code> (<code>FOOTY_MATCH_SPLITS</code>), written by the jobs repo's <code>footy_splits.py</code></td>
+</tr>
+<tr>
+<td>In-match eval</td>
+<td><code>eval_in_match</code></td>
+<td>One clip in five of a <em>train</em> match.</td>
+<td><code>sha1(canonical clip id) % 5 == 0</code> (about 20%), at clip granularity, never per frame.</td>
+<td><code>clip_splits.json</code> next to it (<code>FOOTY_CLIP_SPLITS</code>), written by <code>python -m footy_track.splits assign --apply</code></td>
+</tr>
+<tr>
+<td>Train</td>
+<td><code>train</code></td>
+<td>Everything else.</td>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Rules.</strong></p>
+<ul>
+<li><strong>Sticky.</strong> An assignment is written once and never rewritten. The clip register stores the rule it was assigned under (<code>modulus</code>, <code>eval_remainder</code>), so changing the constant in code does not reshuffle old clips. A manual entry in either register wins over the hash; a heldout match wins over a clip entry.</li>
+<li><strong>Monotone.</strong> Adding clips or matches only adds eval items. This is what the old position-based split (<code>_pick_spread</code>, "every k-th clip of the sorted list") could not do: adding one clip moved the others.</li>
+<li><strong>Clip granularity.</strong> The key is <code>canonical_clip_id</code> (<code>clip_id.py</code> maps <code>mancity_seg010</code>, <code>arsenal_mancity_seg010</code> and <code>arsenal_mancity_20250925_seg010</code> to one id), so every alias of a clip is on the same side. Broadcast-review frames have no clip, so a window of 6000 consecutive frames (<code>&lt;match key&gt;_w&lt;NNNN&gt;</code>, 2 to 4 minutes) plays that role.</li>
+<li><strong>Fail closed.</strong> A missing or invalid register raises (<code>RegisterError</code>) instead of guessing. <code>FOOTY_MATCH_SPLITS_ALLOW_SEED=1</code> is for tests only. A match that is not in the register is treated as train pool and flagged (<code>arsenal_example</code> is one today).</li>
+<li><strong>Why a second file.</strong> <code>match_splits.json</code> is rewritten by the jobs repo and validated entry by entry, so a <code>clips</code> section inside it would break both. The sibling file has its own lock. Writes are atomic (temp file, <code>os.replace</code>) under an exclusive <code>flock</code> on <code>&lt;file&gt;.lock</code>, and re-read the file under the lock, so concurrent writers cannot lose each other's entries.</li>
+</ul>
+<p><strong>How each dataset uses it.</strong></p>
+<table>
+<thead>
+<tr>
+<th>Consumer</th>
+<th>Train</th>
+<th>Val</th>
+<th>Test</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>export_training_dataset</code> (player/ball detection, tracking)</td>
+<td><code>train</code></td>
+<td><code>eval_in_match</code></td>
+<td>left out; <code>--heldout-as-test</code> writes <code>eval_heldout_match</code> as <code>test/</code></td>
+</tr>
+<tr>
+<td><code>export_broadcast_review</code> (broadcast-view classifier)</td>
+<td><code>train/</code></td>
+<td><code>valid/</code>: <code>eval_in_match</code> windows</td>
+<td>left out; <code>--heldout-as-test</code> writes <code>test/</code>. <code>--valid-matches</code> is an explicit whole-match override.</td>
+</tr>
+<tr>
+<td><code>ball_tracking_eval score</code>, <code>claude_verify_*</code> (<code>--split</code>)</td>
+<td>grouped as <code>train</code></td>
+<td><code>eval_in_match</code></td>
+<td><code>eval_heldout_match</code>; a hand-made <code>split.json</code> still works as an override</td>
+</tr>
+<tr>
+<td>Pitch calibration (<code>prelabel_calibration eval</code>/<code>sweep</code>, <code>projection_eval</code>)</td>
+<td>reported per split (<code>split</code> on every row, <code>by_split</code> in the summary)</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>Feature-store ingest (<code>ingest_gt</code>, <code>ingest_calibration</code>, ball checks)</td>
+<td>the report prints games or clips per split. No stored column: it would go stale as the eval set grows. Use <code>splits.annotate_split(df)</code> at read time.</td>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Commands.</strong></p>
+<div class="highlight"><pre><span></span><code>python<span class="w"> </span>-m<span class="w"> </span>footy_track.splits<span class="w"> </span>show<span class="w"> </span><span class="o">[</span>NAME<span class="w"> </span>...<span class="o">]</span><span class="w">             </span><span class="c1"># registers; how a clip / file name resolves</span>
+python<span class="w"> </span>-m<span class="w"> </span>footy_track.splits<span class="w"> </span>assign<span class="w">                      </span><span class="c1"># DRY RUN: what would be added to clip_splits.json</span>
+python<span class="w"> </span>-m<span class="w"> </span>footy_track.splits<span class="w"> </span>assign<span class="w"> </span>--apply<span class="w">              </span><span class="c1"># write it (atomic, locked)</span>
+python<span class="w"> </span>-m<span class="w"> </span>footy_track.splits<span class="w"> </span>stats<span class="w">                       </span><span class="c1"># clips per split per dataset</span>
+python<span class="w"> </span>-m<span class="w"> </span>footy_track.splits<span class="w"> </span>contamination<span class="w"> </span>DIR<span class="w"> </span><span class="o">[</span>DIR<span class="w"> </span>...<span class="o">]</span><span class="w"> </span><span class="c1"># eval items inside a training dataset (read-only)</span>
+</code></pre></div>
+<p><code>--preview</code> (before the sub-command) reads with the hash rule while <code>clip_splits.json</code> does not exist yet, so the numbers can be previewed before it is applied. Never use it for an export.</p>
+<p><strong>Contamination check.</strong> <code>contamination</code> maps each image file to a match and clip and counts eval items inside the training subset (<code>--train-subsets</code>, default <code>train</code>). Roboflow renames <code>&lt;clip&gt;_&lt;frame&gt;.jpg</code> to <code>&lt;clip&gt;_&lt;frame&gt;_jpg.rf.&lt;hash&gt;.jpg</code>; the original name is everything before <code>.rf.</code>. The old match name (<code>arsenal_norwich_*</code>) and the Roboflow-era prefixes (<code>Arsenal-Aston-Villa</code>, <code>Bournemouth-vs-Arsenal-1</code>) are mapped through the register aliases and a short legacy table. Images cut from a <em>full</em> match video (<code>arsenal_mancity_20250925_000472</code>, <code>Arsenal-Aston-Villa_000022</code>) name the match but no clip, so the report can tell whether the match is held out but <strong>cannot tell whether the clip is in-match eval</strong>: those are listed as "match known, clip unknown" and are the uncertainty in the result.</p>
+<p>Measured 2026-11-17 against the real datasets, with the clip register previewed (hash rule, not yet applied):</p>
+<table>
+<thead>
+<tr>
+<th>Dataset</th>
+<th>Train images</th>
+<th><code>eval_heldout_match</code> in train</th>
+<th><code>eval_in_match</code> in train</th>
+<th>Clip unknown</th>
+<th>Unmapped</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Detector <code>roboflow_dataset_11</code> (v11)</td>
+<td>1035</td>
+<td>0</td>
+<td>212 (20.5%), all from <code>bournemouth_1st_seg070</code></td>
+<td>94 (9.1%)</td>
+<td>0</td>
+</tr>
+<tr>
+<td>Broadcast classifier <code>roboflow_dataset_9</code></td>
+<td>594</td>
+<td>77 (13.0%), all Nottingham Forest</td>
+<td>0</td>
+<td>517 (87.0%)</td>
+<td>0</td>
+</tr>
+<tr>
+<td>Broadcast classifier <code>roboflow_dataset_10</code></td>
+<td>387</td>
+<td>53 (13.7%), all Nottingham Forest</td>
+<td>0</td>
+<td>334 (86.3%)</td>
+<td>0</td>
+</tr>
+</tbody>
+</table>
+<p>The hash rule is blind to how much data a clip carries. <code>bournemouth_1st_seg070</code> is the second-largest GT clip (3,840 rows) and the hash puts it in the eval tier, which is why one clip accounts for the whole v11 figure. If an eval tier that large for one clip is not wanted, pin it with a manual <code>train</code> entry in <code>clip_splits.json</code> before applying; the register keeps manual entries.</p>
 <h2 id="feature-store">Feature store<a class="headerlink" href="#feature-store" title="Permanent link">&para;</a></h2>
 <p>DuckDB (open with <code>read_only=True</code>; see <a href="../development/#environment-notes">Environment notes</a> for the version pin). The keys, the diagram and the list of what is not in the store are in <a href="../design/feature_store/#71-keys-as-implemented-and-what-is-not-in-the-store">Feature store design, section 7.1</a>. The state of the newest copy:</p>
 <ul>
