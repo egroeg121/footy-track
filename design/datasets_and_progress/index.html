@@ -623,6 +623,21 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="9. Eval adapters">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#broadcast-eval-random-vs-edge-strata" class="md-nav__link">
+    <span class="md-ellipsis">
+      Broadcast eval: random vs edge strata
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -1216,6 +1231,21 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="9. Eval adapters">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#broadcast-eval-random-vs-edge-strata" class="md-nav__link">
+    <span class="md-ellipsis">
+      Broadcast eval: random vs edge strata
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -1387,7 +1417,8 @@ a canonical JSON <code>payload</code>, an <code>item_hash</code> and <code>first
   frames the classifier was unsure about plus a random sample, judged yes/no/unsure by a human. They
   have no clip, so a 6,000-frame window <code>&lt;match&gt;_wNNNN</code> stands in for one (<code>splits.broadcast_window_id</code>).
   <code>unsure</code> items are kept but never scored. The sampling is biased towards hard frames, so a stored
-  classifier's accuracy here is not its accuracy on a random frame; <code>accuracy_random</code> is the unbiased subset.</li>
+  classifier's accuracy over all frames is not its accuracy on a random frame; the headline is the random
+  stratum only (see "Broadcast eval: random vs edge strata" in section 9).</li>
 <li><strong>calibration.</strong> Human GT only (<code>calibration_gt/</code>) plus the human <code>frame_type/</code> flags. Machine
   proposals are stored in the store but are the thing being <em>evaluated</em>, not part of the dataset. A file is
   copied to every alias <code>game_id</code> of its clip; the dataset keeps one item per canonical clip and frame.</li>
@@ -1584,7 +1615,7 @@ contamination flags and records the rows.</p>
 <td><code>BroadcastAdapter</code></td>
 <td>broadcast</td>
 <td><strong>works, CPU</strong></td>
-<td><code>accuracy</code>, <code>precision_yes</code>, <code>recall_yes</code>, <code>f1_yes</code>, <code>accuracy_random</code>, <code>n_yes</code>, <code>n_no</code></td>
+<td>Headline (random stratum): <code>accuracy</code>, <code>precision_yes</code>, <code>recall_yes</code>, <code>f1_yes</code>, <code>n_yes</code>, <code>n_no</code>, <code>n_random</code>, plus <code>accuracy_random</code>, <code>f1_yes_random</code>. Diagnostic: <code>accuracy_edge</code>, <code>f1_yes_edge</code>, <code>n_edge</code>, <code>accuracy_all_biased</code>, <code>f1_yes_all_biased</code>, <code>n_unknown</code></td>
 <td><code>StoredPredictionModel</code>: the classifier's call recorded with each frame when it was queued for review (the number the review page shows). Any object with <code>.says_yes(item)</code> works</td>
 </tr>
 <tr>
@@ -1606,6 +1637,58 @@ contamination flags and records the rows.</p>
 <p>TODO (Prefect): the detector eval, and the candidate-cache step the ball-tracker replay depends on, run
 on the <code>gpu</code> work pool (desktop RTX 2070); they should call <code>record_results</code> when done. The calibration,
 broadcast and tracker-replay evals are CPU and belong on the <code>cpu</code> pool.</p>
+<h3 id="broadcast-eval-random-vs-edge-strata">Broadcast eval: random vs edge strata<a class="headerlink" href="#broadcast-eval-random-vs-edge-strata" title="Permanent link">&para;</a></h3>
+<p>Broadcast review frames are not a random sample. <code>broadcast_select.select</code> picks the frames nearest
+the decision boundary (<code>edge_mid</code>, <code>edge_boundary</code>; legacy value <code>edge</code>) plus a few <code>random</code> ones, and the
+item payload carries that <code>reason</code>. In <code>broadcast</code> v1 (72 in-match eval items from one match) 49 items
+(68%) are edge frames with stored p_yes about 0.48-0.52, and only 23 are random. On edge frames any
+preprocessing difference flips the call, so accuracy there is noise:</p>
+<table>
+<thead>
+<tr>
+<th>frames</th>
+<th>stored calls</th>
+<th>JPEG re-score</th>
+<th>video-seek re-score</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>edge (49)</td>
+<td>0.33</td>
+<td>0.76</td>
+<td>0.59</td>
+</tr>
+<tr>
+<td>random (23)</td>
+<td>0.87</td>
+<td>0.87</td>
+<td>0.87</td>
+</tr>
+<tr>
+<td>all 72 (edge-weighted)</td>
+<td>0.50</td>
+<td>0.79</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<p>There is no join, threshold or weights bug; the 0.50 vs 0.79 gap is the edge weighting. So:</p>
+<ul>
+<li><code>BroadcastAdapter</code> headline metrics (<code>accuracy</code>, <code>f1_yes</code>, <code>precision_yes</code>, <code>recall_yes</code>, <code>n_yes</code>, <code>n_no</code>)
+  are computed on the <strong>random stratum only</strong>, with <code>n_random</code>. <code>accuracy_random</code> / <code>f1_yes_random</code> repeat them
+  under the explicit stratum name.</li>
+<li><code>accuracy_edge</code>, <code>f1_yes_edge</code>, <code>n_edge</code> and the all-frames <code>accuracy_all_biased</code>, <code>f1_yes_all_biased</code>
+  are diagnostic only.</li>
+<li><strong>Legacy items with no <code>reason</code></strong> (or any value other than <code>random</code> / <code>edge*</code>) are never assumed random:
+  nothing records that they were sampled at random. They count in <code>n_unknown</code> and <code>*_all_biased</code> only, and are
+  excluded from the headline and the edge stratum. (Only a <code>reason</code> of <code>random</code> in the review file says so.)</li>
+<li><code>/progress</code> shows the headline with its n, greys the diagnostic metrics (tooltip says why), and warns
+  "small eval sample" when the headline n is below 50. A result recorded before this split (no <code>n_random</code>)
+  is flagged "all frames, edge-weighted".</li>
+<li>Reviews of held-out matches should use the eval-oriented selection of <code>broadcast_select</code> (mostly random,
+  few edge), since held-out labels are never used for training.</li>
+</ul>
 <h2 id="10-contamination-flags">10. Contamination flags<a class="headerlink" href="#10-contamination-flags" title="Permanent link">&para;</a></h2>
 <p>A number is only an honest estimate if the model did not train on the items it is scored on.
 <code>contamination_flags(TrainingData, dataset_version)</code> returns a flag per result split:</p>
