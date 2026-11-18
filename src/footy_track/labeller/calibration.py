@@ -25,6 +25,7 @@ import asyncio
 import collections
 import copy
 import json
+import logging
 import os
 import tempfile
 import threading
@@ -53,13 +54,15 @@ from footy_track.calibration.frame_type import (
     update_frame_types,
 )
 from footy_track.calibration.prelabel.proposals import read_proposals, update_proposals
-from footy_track.calibration.video import read_frame
+from footy_track.calibration.video import read_frame, read_frame_exact
 from footy_track.clip_id import canonical_clip_id
-from footy_track.labeller import datasets, hooks
+from footy_track.labeller import datasets, hooks, matches_status
+from footy_track.labeller.match_segments import SEGMENTS_DIR, find_segment_video
 from footy_track.labeller.review import _clips_dir, _gt_marks_dir
 from footy_track.labeller.review import _find_video as _find_video_exact
 
 router = APIRouter()
+LOGGER = logging.getLogger(__name__)
 
 #: Bird's-eye raster scale and margin; the page draws its diagram with the
 #: same extents so the warp lines up with the pitch drawing.
@@ -99,9 +102,61 @@ def _video_meta(video: Path) -> dict | None:
         cap.release()
 
 
+#: How a saved frame index maps to an image, recorded per frame in the GT sidecar (``frame_index_convention``).
+#: ``cv2_seek``: ``cv2`` ``CAP_PROP_POS_FRAMES`` seek (every label made before the field existed; not frame-accurate
+#: on long-GOP / variable-frame-rate segments, e.g. Bournemouth seg087 is up to ~170 frames off). ``decoded``: the N-th
+#: frame of a sequential decode (``read_frame_exact``), the numbering of the PTZ match files and ``/calibration/match``.
+CONV_SEEK = "cv2_seek"
+CONV_DECODED = "decoded"
+_WARNED_SEEK: set[str] = set()
+
+
+def _legacy_gt(clip: str) -> bool:
+    """Whether ``clip``'s GT sidecar (active dataset) holds a frame NOT marked ``decoded``: a frame without the
+    ``frame_index_convention`` field was saved against the cv2 seek, so the whole clip stays on the seek."""
+    try:
+        frames = _read_gt(clip).get("frames") or {}
+    except (OSError, ValueError):
+        return False
+    return any(not isinstance(r, dict) or r.get("frame_index_convention") != CONV_DECODED for r in frames.values())
+
+
+def _convention_of_video(video: Path) -> str:
+    """Frame-index convention the editor uses for ``video``: ``decoded`` only for a full-match segment (found by
+    the fallback of :func:`_find_video`, i.e. in no dataset clip dir) whose clip has no seek-indexed GT."""
+    if video.parent.name != SEGMENTS_DIR:
+        return CONV_SEEK
+    clip = canonical_clip_id(video.stem)
+    if _legacy_gt(clip):
+        if clip not in _WARNED_SEEK:
+            _WARNED_SEEK.add(clip)
+            LOGGER.warning(
+                "calibration: %s has GT saved without frame_index_convention=decoded; reading its segment video "
+                "with the cv2 seek (not the decoded index of /calibration/match)", clip)
+        return CONV_SEEK
+    return CONV_DECODED
+
+
+def frame_convention(clip: str) -> str | None:
+    """``decoded`` / ``cv2_seek`` for the video the editor would open for ``clip``; ``None`` when it has none."""
+    video = _find_video(clip)
+    return None if video is None else _convention_of_video(video)
+
+
 def _read_frame(video: Path, idx: int) -> np.ndarray | None:
-    # cv2 with an ffmpeg fallback for clips OpenCV decodes as black.
+    if _convention_of_video(video) == CONV_DECODED:
+        return read_frame_exact(video, idx)
+    # cv2 seek, with an ffmpeg fallback for clips OpenCV decodes as black.
     return read_frame(video, idx)
+
+
+def _video_ref(video: Path) -> str:
+    """The resolved video path relative to ``footy_data`` (absolute when it lives elsewhere)."""
+    try:
+        real = video.resolve()
+        return str(real.relative_to(matches_status.data_root().resolve()))
+    except (OSError, ValueError):
+        return str(video)
 
 
 # ---------------------------------------------------------------------------
@@ -637,10 +692,24 @@ async def pitch_model(length: float = DEFAULT_LENGTH, width: float = DEFAULT_WID
     return d
 
 
+def _safe_clip(clip: str) -> bool:
+    return bool(clip) and not any(c in clip for c in "/\\*?[]\0") and not clip.startswith(".")
+
+
 def _find_video(clip: str):
-    """Video for ``clip``: exact stem first, else any file whose canonical clip id
-    matches (proposal sidecars store canonical ids, e.g. ``arsenal_astonvilla_seg110``
-    for ``astonvilla_seg110.mp4``)."""
+    """Video for ``clip``, first hit wins:
+
+    1. the active dataset's clips dir: exact stem first, else any file whose canonical clip id matches (proposal
+       sidecars store canonical ids, e.g. ``arsenal_astonvilla_seg110`` for ``astonvilla_seg110.mp4``);
+    2. its ``extra_clips_dirs``;
+    3. only for a clip that is also a full-match segment: the clips dirs and extra dirs of every OTHER dataset in
+       the registry, so a clip that lives in some dataset keeps the cv2-seek frame convention its labels were made
+       with whichever dataset is active (dataset isolation is otherwise unchanged: a clip only another dataset has is
+       not found);
+    4. only then the full-match broadcast segment (``labeller.match_segments``), read by decoded index.
+    """
+    if not _safe_clip(clip):
+        return None
     video = _find_video_exact(clip)
     if video is not None:
         return video
@@ -651,6 +720,17 @@ def _find_video(clip: str):
     for d in datasets.current().extra_clips_dirs:
         if video is None and d.is_dir():
             video = find_video(d, clip)
+    if video is None:
+        segment = find_segment_video(clip)
+        if segment is not None:
+            cur = datasets.current_name()
+            for ds in datasets.all_datasets():
+                if ds.name == cur:
+                    continue
+                for d in (ds.clips_dir, *ds.extra_clips_dirs):
+                    if video is None and d.is_dir():
+                        video = find_video(d, clip)
+        video = video or segment
     return video
 
 
@@ -987,8 +1067,11 @@ async def gt_get(clip: str, idx: int):
     return rec
 
 
-def _gt_record(idx: int, res: dict, body: dict, origin: dict | None = None) -> dict:
-    """The GT frame record for a fit result (shared by GT save and proposal accept)."""
+def _gt_record(idx: int, res: dict, body: dict, origin: dict | None = None, clip: str | None = None) -> dict:
+    """The GT frame record for a fit result (shared by GT save and proposal accept).
+
+    With ``clip``, also records ``frame_index_convention`` (``decoded`` | ``cv2_seek``) and ``video`` (the resolved
+    video path relative to ``footy_data``) so a reader knows which image the index meant."""
     rec = {
         "frame_index": idx,
         "correspondences": res["correspondences"],
@@ -1006,6 +1089,10 @@ def _gt_record(idx: int, res: dict, body: dict, origin: dict | None = None) -> d
         rec["distortion"] = res["distortion"]
     if origin:
         rec["origin"] = origin
+    video = _find_video(clip) if clip else None
+    if video is not None:
+        rec["frame_index_convention"] = _convention_of_video(video)
+        rec["video"] = _video_ref(video)
     return rec
 
 
@@ -1025,7 +1112,7 @@ async def gt_save(clip: str, idx: int, body: dict):
         res = _fit(body)
     except _BadRequest as exc:
         return _err(400, str(exc))
-    rec = _gt_record(idx, res, body)
+    rec = _gt_record(idx, res, body, clip=clip)
 
     def _store() -> None:
         update_gt(clip, lambda doc: doc["frames"].update({str(idx): rec}))

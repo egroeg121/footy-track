@@ -12,7 +12,7 @@ the pitch lines are drawn client-side as SVG from the overlay JSON (a few KB per
 stepping through frames never re-renders anything on the server. Nothing is written.
 
 Frames are addressed by ``(segment, local frame)``: the index into the segment's mp4 under
-``<data>/<match>/split_video_broadcast_frames/`` (the same index the calibration editor uses for the clip).
+``<data>/<match>/split_video_broadcast_frames/`` (the same decoded-frame index the calibration editor uses for the clip).
 """
 
 from __future__ import annotations
@@ -32,7 +32,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, Response
 from footy_track.calibration import geometry as geo
 from footy_track.calibration import match_calibration as mcal
 from footy_track.calibration.pitch_model import PitchModel
-from footy_track.calibration.video import read_frame
+from footy_track.calibration.video import read_frame_exact
 from footy_track.clip_id import canonical_clip_id
 from footy_track.labeller import matches_status
 
@@ -66,7 +66,9 @@ def _err(status: int, msg: str) -> JSONResponse:
 
 
 def _read_frame(video: Path, idx: int) -> np.ndarray | None:
-    return read_frame(video, idx)
+    # ``local`` numbers frames as a sequential decode does; a CAP_PROP_POS_FRAMES seek is tens to ~170 frames off
+    # on the long-GOP / variable-frame-rate segments (Bournemouth seg087), so seek by pts instead.
+    return read_frame_exact(video, idx)
 
 
 def _video_path(match: str, file: str) -> Path:
@@ -74,13 +76,15 @@ def _video_path(match: str, file: str) -> Path:
 
 
 _EDITOR_TTL_S = 30.0
-_EDITOR_CACHE: dict[tuple[str, str], tuple[float, bool]] = {}
+_EDITOR_CACHE: dict[tuple[str, str], tuple[float, str | None]] = {}
 
 
-def _editor_has_clip(clip: str) -> bool:
-    """Whether the calibration editor of the active dataset can open ``clip`` (its video is in its clip dirs).
+def _editor_mode(clip: str) -> str | None:
+    """Frame convention the calibration editor would use for ``clip``: ``decoded`` (same index as this page),
+    ``cv2_seek`` (it opens, but numbers frames by the cv2 seek: a different image on long-GOP / VFR segments) or
+    ``None`` (no video).
 
-    Cached for ``_EDITOR_TTL_S`` per (dataset, clip): the lookup scans the clip directories."""
+    Cached for ``_EDITOR_TTL_S`` per (dataset, clip): the lookup scans the clip directories and reads the GT sidecar."""
     from footy_track.labeller import (  # noqa: PLC0415 (avoid an import cycle at module load)
         calibration,
         datasets,
@@ -92,11 +96,18 @@ def _editor_has_clip(clip: str) -> bool:
     if hit and now - hit[0] < _EDITOR_TTL_S:
         return hit[1]
     try:
-        ok = calibration._find_video(clip) is not None
+        mode = calibration.frame_convention(clip)
     except Exception:  # noqa: BLE001 - a missing dir must not break the page
-        ok = False
-    _EDITOR_CACHE[key] = (now, ok)
-    return ok
+        mode = None
+    _EDITOR_CACHE[key] = (now, mode)
+    return mode
+
+
+def _editor_has_clip(clip: str) -> bool:
+    """Whether the editor link for ``clip`` lands on the same image as this page: it can open the clip AND numbers
+    its frames by decoded index. A clip it can only open with the cv2 seek (dataset clip dirs, or a segment whose
+    GT predates the convention marker) is not linked."""
+    return _editor_mode(clip) == "decoded"
 
 
 def _load(match: str, version: str) -> mcal.MatchCalibration | None:
@@ -288,6 +299,7 @@ def summary(match: str, version: str = mcal.DEFAULT_VERSION):
             "file": info.get("file"),
             "clip": clip,
             "editor_ok": editor_cache[clip],
+            "editor_mode": _editor_mode(clip),
             "start_frame": info.get("start_frame"),
             "row0": sl.start,
             "n": sl.stop - sl.start,
@@ -320,6 +332,7 @@ def frame_info(match: str, segment: int, local: int, version: str = mcal.DEFAULT
     clip = canonical_clip_id(Path(_segment_meta(mc).get(segment, {}).get("file") or f"{match}_seg{segment:03d}").stem)
     rec["clip"] = clip
     rec["editor_ok"] = _editor_has_clip(clip)
+    rec["editor_mode"] = _editor_mode(clip)
     rec["editor_url"] = f"/calibration?clip={clip}&frame={local}"
     rec["row"] = row
     return rec

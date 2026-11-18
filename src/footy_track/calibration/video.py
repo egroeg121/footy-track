@@ -9,6 +9,8 @@ ffmpeg, seeking frame-accurately, and remember per video which path works.
 
 from __future__ import annotations
 
+import collections
+import json
 import shutil
 import subprocess
 import threading
@@ -108,6 +110,103 @@ def read_frame(video: Path | str, idx: int) -> np.ndarray | None:
     return frame if frame is not None else alt
 
 
+#: ``(resolved path, mtime_ns, size)`` -> (start_time, sorted pts per decoded frame, width, height) or None
+_PTS_CACHE: dict[tuple, tuple[float, np.ndarray, int, int] | None] = {}
+
+
+def _pts_table(video: Path) -> tuple[float, np.ndarray, int, int] | None:
+    """Presentation time of every decoded frame of ``video`` (one ffprobe packet scan, no decoding), cached."""
+    exe = shutil.which("ffprobe")
+    if exe is None:
+        return None
+    try:
+        st = video.stat()
+    except OSError:
+        return None
+    key = (_key(video), st.st_mtime_ns, st.st_size)
+    with _lock:
+        if key in _PTS_CACHE:
+            return _PTS_CACHE[key]
+    table = None
+    try:
+        out = subprocess.run(
+            [exe, "-v", "error", "-select_streams", "v:0", "-show_entries",
+             "packet=pts_time:stream=width,height:format=start_time", "-of", "json", str(video)],
+            capture_output=True, text=True, timeout=120, check=True).stdout
+        doc = json.loads(out)
+        pts = np.sort(np.array([float(p["pts_time"]) for p in doc.get("packets", []) if "pts_time" in p]))
+        stream = (doc.get("streams") or [{}])[0]
+        start = float((doc.get("format") or {}).get("start_time") or 0.0)
+        if len(pts) and stream.get("width") and stream.get("height"):
+            table = (start, pts, int(stream["width"]), int(stream["height"]))
+    except (OSError, subprocess.SubprocessError, ValueError, KeyError):
+        table = None
+    with _lock:
+        _PTS_CACHE[key] = table
+    return table
+
+
+#: Last few exact frames: one editor view asks for the same frame several times (image, warp, auto points) and an
+#: ffmpeg seek + decode costs seconds on a long-GOP segment.
+_EXACT_CACHE_MAX = 6
+_EXACT_CACHE: collections.OrderedDict[tuple, np.ndarray] = collections.OrderedDict()
+
+
+def read_frame_exact(video: Path | str, idx: int) -> np.ndarray | None:
+    """Cached :func:`_read_frame_exact` (the returned array is a private copy)."""
+    video = Path(video)
+    try:
+        st = video.stat()
+    except OSError:
+        return None
+    key = (_key(video), st.st_mtime_ns, st.st_size, int(idx))
+    with _lock:
+        hit = _EXACT_CACHE.get(key)
+        if hit is not None:
+            _EXACT_CACHE.move_to_end(key)
+            return hit.copy()
+    frame = _read_frame_exact(video, idx)
+    if frame is not None:
+        with _lock:
+            _EXACT_CACHE[key] = frame
+            while len(_EXACT_CACHE) > _EXACT_CACHE_MAX:
+                _EXACT_CACHE.popitem(last=False)
+        return frame.copy()
+    return None
+
+
+def _read_frame_exact(video: Path | str, idx: int) -> np.ndarray | None:
+    """BGR frame number ``idx`` *as a sequential decode numbers it*, even when the file cannot be seeked by index.
+
+    ``CAP_PROP_POS_FRAMES`` seeks are not frame-accurate on long-GOP / variable-frame-rate broadcast segments
+    (Bournemouth ``seg087``: tens to ~170 frames off), while the PTZ calibration run numbers frames by a sequential
+    decode (``Frame.local_frame``). Here the k-th decoded frame is the one with the k-th smallest pts: ffmpeg is
+    asked for the first frame at or after the midpoint between pts[k-1] and pts[k] (pixels identical to the cv2
+    decode). Falls back to :func:`read_frame`
+    when ffprobe/ffmpeg are unavailable. ``None`` when ``idx`` is outside the file."""
+    video = Path(video)
+    if idx < 0:
+        return None
+    table = _pts_table(video)
+    exe = shutil.which("ffmpeg")
+    if table is None or exe is None:
+        return read_frame(video, idx)
+    start, pts, w, h = table
+    if idx >= len(pts):
+        return None
+    t = 0.0 if idx == 0 else float((pts[idx - 1] + pts[idx]) / 2.0) - start
+    cmd = [exe, "-v", "error", "-nostdin", "-ss", f"{max(t, 0.0):.6f}", "-i", str(video),
+           # cv2 converts YUV with the BT.601 matrix whatever the stream says; match it so pixels are identical
+           "-vf", "scale=in_color_matrix=bt601:in_range=tv", "-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "bgr24", "-"]
+    try:
+        raw = subprocess.run(cmd, capture_output=True, timeout=120, check=False).stdout
+    except (OSError, subprocess.SubprocessError):
+        return read_frame(video, idx)
+    if len(raw) != w * h * 3:
+        return read_frame(video, idx)
+    return np.frombuffer(raw, np.uint8).reshape(h, w, 3).copy()
+
+
 def reader_for(video: Path | str) -> str | None:
     """Which reader last worked for ``video`` (``"cv2"``/``"ffmpeg"``/None)."""
     with _lock:
@@ -117,3 +216,5 @@ def reader_for(video: Path | str) -> str | None:
 def clear_cache() -> None:
     with _lock:
         _PATH_CACHE.clear()
+        _PTS_CACHE.clear()
+        _EXACT_CACHE.clear()
