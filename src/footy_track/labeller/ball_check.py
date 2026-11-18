@@ -89,7 +89,7 @@ _MAX_PAD_FACTOR = 40.0
 
 # LRU crop cache: key = (clip_stem, frame_idx, box_idx, pad), value = JPEG bytes
 _BC_CROP_CACHE: collections.OrderedDict[tuple, bytes] = collections.OrderedDict()
-_BC_CROP_CACHE_MAX = 200
+_BC_CROP_CACHE_MAX = 2000
 
 # Context clip (H.264 MP4, GIF fallback) --------------------------------------
 #: Seconds of footage either side of the card's frame.
@@ -111,7 +111,7 @@ _GIF_FPS = 10.0
 _BC_CLIP_CACHE: collections.OrderedDict[tuple, tuple[bytes, str, int, int]] = (
     collections.OrderedDict()
 )
-_BC_CLIP_CACHE_MAX = 40
+_BC_CLIP_CACHE_MAX = 600
 
 #: clip stem -> (width, height); frame size never changes within a clip.
 _CLIP_SIZES: dict[str, tuple[int, int]] = {}
@@ -767,7 +767,7 @@ class _Mp4Writer:
                 "-i", "-",
                 "-vf", "scale=out_color_matrix=bt709:out_range=tv",
                 "-c:v", "libx264", "-profile:v", "main", "-level", "4.0",
-                "-preset", "medium", "-crf", str(_CLIP_CRF),
+                "-preset", "veryfast", "-crf", str(_CLIP_CRF),
                 "-pix_fmt", "yuv420p",
                 "-colorspace", "bt709", "-color_primaries", "bt709",
                 "-color_trc", "bt709",
