@@ -84,7 +84,18 @@ def _ffmpeg_frame(video: Path, idx: int, fps: float | None = None) -> np.ndarray
 
 
 def read_frame(video: Path | str, idx: int) -> np.ndarray | None:
-    """BGR frame ``idx`` of ``video``, or ``None`` if it cannot be read.
+    """BGR frame ``idx`` (decoded index: the idx-th frame of a sequential decode) of ``video``, or ``None``.
+
+    Alias of :func:`footy_track.video_io.read_frame_decoded`: the cv2 seek on a uniform-pts file, the exact
+    pts-ordered read on a file with a pts hole (where the cv2 seek is tens of frames off)."""
+    from footy_track.video_io import read_frame_decoded  # noqa: PLC0415
+
+    return read_frame_decoded(video, idx)
+
+
+def read_frame_seek(video: Path | str, idx: int) -> np.ndarray | None:
+    """BGR frame ``idx`` by the cv2 ``CAP_PROP_POS_FRAMES`` seek, or ``None`` if it cannot be read. NOT frame-accurate
+    on files with a pts hole: use :func:`read_frame` unless you need the legacy seek image.
 
     Uses cv2 unless it fails or returns an all-black frame, then ffmpeg. The
     working reader is cached per video; a video known to need ffmpeg skips cv2.
@@ -115,10 +126,10 @@ _PTS_CACHE: dict[tuple, tuple[float, np.ndarray, int, int] | None] = {}
 
 
 def _pts_table(video: Path) -> tuple[float, np.ndarray, int, int] | None:
-    """Presentation time of every decoded frame of ``video`` (one ffprobe packet scan, no decoding), cached."""
-    exe = shutil.which("ffprobe")
-    if exe is None:
-        return None
+    """Presentation time of every decoded frame of ``video`` (start time, sorted pts, width, height), cached.
+
+    From the mp4 ``moov`` atom (``video_io.pts_table``: reads a few hundred KB); falls back to one ffprobe packet scan
+    (reads the whole file) for anything that is not a parseable mp4."""
     try:
         st = video.stat()
     except OSError:
@@ -127,6 +138,32 @@ def _pts_table(video: Path) -> tuple[float, np.ndarray, int, int] | None:
     with _lock:
         if key in _PTS_CACHE:
             return _PTS_CACHE[key]
+    table = _moov_table(video)
+    if table is None:
+        table = _ffprobe_table(video)
+    with _lock:
+        _PTS_CACHE[key] = table
+    return table
+
+
+def _moov_table(video: Path) -> tuple[float, np.ndarray, int, int] | None:
+    from footy_track.video_io import pts_table  # noqa: PLC0415
+
+    pts = pts_table(video)
+    if pts is None or not len(pts):
+        return None
+    cap = cv2.VideoCapture(str(video))
+    try:
+        w, h = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)), int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    finally:
+        cap.release()
+    return (0.0, pts, w, h) if w and h else None
+
+
+def _ffprobe_table(video: Path) -> tuple[float, np.ndarray, int, int] | None:
+    exe = shutil.which("ffprobe")
+    if exe is None:
+        return None
     table = None
     try:
         out = subprocess.run(
@@ -141,8 +178,6 @@ def _pts_table(video: Path) -> tuple[float, np.ndarray, int, int] | None:
             table = (start, pts, int(stream["width"]), int(stream["height"]))
     except (OSError, subprocess.SubprocessError, ValueError, KeyError):
         table = None
-    with _lock:
-        _PTS_CACHE[key] = table
     return table
 
 
@@ -190,7 +225,7 @@ def _read_frame_exact(video: Path | str, idx: int) -> np.ndarray | None:
     table = _pts_table(video)
     exe = shutil.which("ffmpeg")
     if table is None or exe is None:
-        return read_frame(video, idx)
+        return read_frame_seek(video, idx)
     start, pts, w, h = table
     if idx >= len(pts):
         return None
@@ -201,9 +236,9 @@ def _read_frame_exact(video: Path | str, idx: int) -> np.ndarray | None:
     try:
         raw = subprocess.run(cmd, capture_output=True, timeout=120, check=False).stdout
     except (OSError, subprocess.SubprocessError):
-        return read_frame(video, idx)
+        return read_frame_seek(video, idx)
     if len(raw) != w * h * 3:
-        return read_frame(video, idx)
+        return read_frame_seek(video, idx)
     return np.frombuffer(raw, np.uint8).reshape(h, w, 3).copy()
 
 
@@ -218,3 +253,6 @@ def clear_cache() -> None:
         _PATH_CACHE.clear()
         _PTS_CACHE.clear()
         _EXACT_CACHE.clear()
+    from footy_track import video_io  # noqa: PLC0415
+
+    video_io.clear_cache()
