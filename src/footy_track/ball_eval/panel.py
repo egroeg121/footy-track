@@ -35,13 +35,16 @@ import contextlib
 import fcntl
 import hashlib
 import json
+import logging
 import os
 import random
 import subprocess
 import tempfile
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from fractions import Fraction
 from pathlib import Path
 
 from footy_track import match_splits, splits
@@ -62,6 +65,21 @@ QA_SUFFIX = (
 PANEL_DIRNAME = "ball_eval_panel"
 SEGMENTS_GLOB = "split_video_broadcast_frames*/segments.json"
 JOB_KEY_FMT = "ball-eval-panel/{panel_version}/{match}"
+
+# Keyframe-dense render of the panel's clips (``render_clips``). Same encoder settings as
+# ``footy_track.scripts.reencode_keyframes`` (kf10: GOP 10, crf 16, ultrafast, yuv420p, faststart, no audio).
+RENDER_SCHEMA = "ball-eval-clips-render/v1"
+RENDER_MANIFEST = ".render_manifest.json"  # inside the clips dir; not a video suffix, so the labeller never lists it
+RENDER_TMP_DIRNAME = (
+    ".render_tmp"  # sibling of clips/ (same filesystem: the swap is an atomic rename)
+)
+KF_GOP = 10
+KF_CRF = 16
+KF_PRESET = "ultrafast"
+KF_THREADS = 4
+RENDER_TIMEOUT_S = 1800
+
+log = logging.getLogger(__name__)
 
 
 class PanelError(RuntimeError):
@@ -672,6 +690,14 @@ def job_body(doc: dict) -> dict:
 def _link(src: Path, dst: Path) -> bool:
     if dst.is_symlink() and os.readlink(dst) == str(src):
         return False
+    if dst.is_file() and not dst.is_symlink():
+        return False  # a keyframe-dense render of the clip (``render_clips``): keep it
+    if (
+        dst.is_symlink()
+        and "/" not in os.readlink(dst)
+        and (dst.parent / os.readlink(dst)).is_file()
+    ):
+        return False  # alias of a rendered sibling
     if dst.exists() or dst.is_symlink():
         raise PanelError(f"{dst} exists and is not a link to {src}")
     dst.symlink_to(src)
@@ -725,3 +751,259 @@ def register_dataset(version: str = PANEL_VERSION, root: Path | None = None) -> 
             return True
         finally:
             fcntl.flock(lf, fcntl.LOCK_UN)
+
+
+# --------------------------------------------------------------------------------------------
+# Keyframe-dense render of the clips
+# --------------------------------------------------------------------------------------------
+# The segment mp4s the panel samples from have a ~250-frame GOP, so every seek in the labeller decodes up to 250
+# frames. ``render_clips`` swaps the clips dir's symlinks for re-encodes with a keyframe every ``KF_GOP`` frames.
+# Frames map 1:1 (``-fps_mode passthrough``, no cutting, no audio) and each output is verified to have the same
+# frame count / size / fps as its source before it replaces anything, so frame indices in the panel file, job
+# items and sidecar marks stay valid. A failed render keeps the symlink (slow but correct); it never raises.
+def probe_stream(path: Path) -> dict:
+    """``{frames, width, height, fps}`` of the first video stream, frames COUNTED (decoded, ``-count_frames``)."""
+    out = subprocess.run(  # noqa: S603
+        [  # noqa: S607
+            "ffprobe", "-v", "error", "-count_frames", "-select_streams", "v:0",
+            "-show_entries", "stream=nb_read_frames,width,height,avg_frame_rate",
+            "-of", "json", str(path),
+        ],
+        capture_output=True, text=True, check=True, timeout=RENDER_TIMEOUT_S,
+    ).stdout  # fmt: skip
+    st = json.loads(out)["streams"][0]
+    rate = (
+        Fraction(st["avg_frame_rate"])
+        if st.get("avg_frame_rate") not in (None, "0/0")
+        else Fraction(0)
+    )
+    return {
+        "frames": int(st["nb_read_frames"]),
+        "width": int(st["width"]),
+        "height": int(st["height"]),
+        "fps": f"{rate.numerator}/{rate.denominator}",
+    }
+
+
+def _ffmpeg_kf_cmd(
+    src: Path, tmp: Path, gop: int, crf: int, preset: str, threads: int
+) -> list[str]:
+    return [
+        "nice", "-n", "10", "ffmpeg", "-v", "error", "-nostdin", "-y", "-i", str(src),
+        "-map", "0:v:0", "-fps_mode", "passthrough",
+        "-c:v", "libx264", "-preset", preset, "-crf", str(crf),
+        "-g", str(gop), "-keyint_min", str(gop), "-sc_threshold", "0",
+        "-pix_fmt", "yuv420p", "-an", "-threads", str(threads),
+        "-movflags", "+faststart", str(tmp),
+    ]  # fmt: skip
+
+
+def render_clip(
+    src: Path,
+    dst: Path,
+    tmp_dir: Path,
+    *,
+    gop: int = KF_GOP,
+    crf: int = KF_CRF,
+    preset: str = KF_PRESET,
+    threads: int = KF_THREADS,
+    src_info: dict | None = None,
+) -> dict:
+    """Re-encode ``src`` with a keyframe every ``gop`` frames into ``dst`` (atomic rename over a symlink or file).
+
+    The output is written to ``tmp_dir`` and verified against the source (frame count, size, fps) first. Returns the
+    manifest entry (``frames``, ``width``, ``height``, ``fps``, ``out_size``). Raises ``PanelError`` on any failure,
+    leaving ``dst`` untouched.
+    """
+    tmp_dir.mkdir(parents=True, exist_ok=True)
+    tmp = tmp_dir / f"{dst.name}.{os.getpid()}.tmp.mp4"
+    try:
+        try:
+            info = src_info or probe_stream(src)
+            res = subprocess.run(  # noqa: S603
+                _ffmpeg_kf_cmd(src, tmp, gop, crf, preset, threads),
+                capture_output=True, text=True, check=False, timeout=RENDER_TIMEOUT_S,
+            )  # fmt: skip
+            if res.returncode != 0:
+                raise PanelError(f"ffmpeg failed: {res.stderr.strip()[-300:]}")
+            out = probe_stream(tmp)
+        except (
+            OSError,
+            subprocess.SubprocessError,
+            ValueError,
+            KeyError,
+            IndexError,
+        ) as e:
+            raise PanelError(f"{src.name}: {e!r}"[:400]) from e
+        if out != info:
+            raise PanelError(
+                f"{src.name}: re-encode differs from the source (source {info}, output {out}); kept source"
+            )
+        os.chmod(tmp, 0o664)
+        out["out_size"] = tmp.stat().st_size
+        os.replace(
+            tmp, dst
+        )  # atomic: a reader holds either the old file or the new one
+        return out
+    finally:
+        with contextlib.suppress(OSError):
+            tmp.unlink()
+
+
+def _read_render_manifest(path: Path) -> dict:
+    try:
+        doc = json.loads(path.read_text())
+        if isinstance(doc, dict) and doc.get("schema") == RENDER_SCHEMA:
+            return doc
+    except (OSError, ValueError):
+        pass
+    return {"schema": RENDER_SCHEMA, "clips": {}}
+
+
+def _render_groups(doc: dict) -> dict[str, dict]:
+    """``{source clip: {"files": [clip file names wanted], ...}}``: the base clip when a window uses it, then its QA aliases."""
+    window_clips = {w["clip"] for w in doc["windows"]}
+    groups: dict[str, list[str]] = {}
+    for base in sorted(window_clips | {q["of"]["clip"] for q in doc["qa"]}):
+        names = [base] if base in window_clips else []
+        names += sorted({q["clip"] for q in doc["qa"] if q["of"]["clip"] == base})
+        groups[base] = names
+    return groups
+
+
+def _symlink_atomic(target_name: str, dst: Path) -> None:
+    """Make ``dst`` a symlink to the sibling ``target_name`` (relative), replacing whatever is there atomically."""
+    tmp = dst.with_name(f".{dst.name}.{os.getpid()}.lnk")
+    with contextlib.suppress(OSError):
+        tmp.unlink()
+    tmp.symlink_to(target_name)
+    try:
+        os.replace(tmp, dst)
+    finally:
+        with contextlib.suppress(OSError):
+            tmp.unlink()
+
+
+def _link_aliases(cdir: Path, primary: str, others: list[str]) -> list[str]:
+    """Point each alias at the rendered ``primary`` (relative symlink, atomic). Returns the aliases changed."""
+    done = []
+    for o in others:
+        odst = cdir / f"{o}.mp4"
+        if odst.is_symlink() and os.readlink(odst) == f"{primary}.mp4":
+            continue
+        try:
+            _symlink_atomic(f"{primary}.mp4", odst)
+            done.append(o)
+        except OSError as e:
+            log.warning("render_clips: alias %s not relinked (%s)", o, e)
+    return done
+
+
+def render_clips(
+    doc: dict,
+    root: Path | None = None,
+    *,
+    gop: int = KF_GOP,
+    crf: int = KF_CRF,
+    preset: str = KF_PRESET,
+    threads: int = KF_THREADS,
+    force: bool = False,
+    render: Callable[..., dict] | None = None,
+) -> dict:
+    """Replace the symlinks of the panel's clips in its clips dir by keyframe-dense re-encodes (same names).
+
+    For each source clip of the panel (windows and QA ``of`` clips) one file is encoded (``<clip>.mp4`` when a window
+    uses it, else its first ``__b`` alias) and every other name of that clip (the ``__b`` aliases) becomes a relative
+    symlink to it. Idempotent: a real file that is already rendered (manifest entry matching the source's size and
+    mtime, or else equal frame count / size / fps to the source) is skipped. A clip that fails to render keeps its
+    symlink and is logged as a warning: this function never raises for a bad clip. One render at a time per panel
+    version (flock). Writes ``<clips>/.render_manifest.json`` (settings, source size, frames).
+
+    Returns ``{"rendered", "skipped", "failed", "aliased", "bytes"}`` (lists of clip names, bytes written).
+    """
+    render = render or render_clip
+    src_dir = Path(doc["segments_json"]).parent
+    cdir = clips_dir(doc["panel_version"], root)
+    cdir.mkdir(parents=True, exist_ok=True)
+    summary: dict = {
+        "rendered": [],
+        "skipped": [],
+        "failed": [],
+        "aliased": [],
+        "bytes": 0,
+    }
+    settings = {"codec": "libx264", "gop": gop, "keyint_min": gop, "crf": crf, "preset": preset, "pix_fmt": "yuv420p",
+                "sc_threshold": 0, "audio": False, "faststart": True, "fps_mode": "passthrough"}  # fmt: skip
+    lock_path = panel_dir(doc["panel_version"], root) / ".render.lock"
+    with open(lock_path, "a") as lf:
+        fcntl.flock(lf, fcntl.LOCK_EX)
+        try:
+            mpath = cdir / RENDER_MANIFEST
+            manifest = _read_render_manifest(mpath)
+            manifest["settings"] = settings
+            for base, names in _render_groups(doc).items():
+                if not names:
+                    continue
+                primary, others = names[0], names[1:]
+                src, dst = src_dir / f"{base}.mp4", cdir / f"{primary}.mp4"
+                try:
+                    st = src.stat()
+                    entry = manifest["clips"].get(primary + ".mp4") or {}
+                    done = (
+                        not force
+                        and dst.is_file()
+                        and not dst.is_symlink()
+                        and entry.get("source_size") == st.st_size
+                        and entry.get("source_mtime_ns") == st.st_mtime_ns
+                        and entry.get("out_size") == dst.stat().st_size
+                    )
+                    info = None
+                    if (
+                        not done
+                        and not force
+                        and dst.is_file()
+                        and not dst.is_symlink()
+                    ):
+                        info = probe_stream(src)
+                        done = probe_stream(dst) == info
+                        if done:
+                            entry = {**info, "out_size": dst.stat().st_size}
+                    if done:
+                        summary["skipped"].append(primary)
+                    else:
+                        t = time.time()
+                        entry = render(src, dst, cdir.parent / RENDER_TMP_DIRNAME, gop=gop, crf=crf, preset=preset,
+                                       threads=threads, src_info=info)  # fmt: skip
+                        entry["seconds"] = round(time.time() - t, 1)
+                        summary["rendered"].append(primary)
+                        summary["bytes"] += entry["out_size"]
+                    manifest["clips"][primary + ".mp4"] = {
+                        **entry,
+                        "source": str(src),
+                        "source_size": st.st_size,
+                        "source_mtime_ns": st.st_mtime_ns,
+                        "gop": gop,
+                        "rendered_at": entry.get("rendered_at") or now_iso(),
+                        "aliases": [f"{o}.mp4" for o in others],
+                    }
+                except (
+                    PanelError,
+                    OSError,
+                    subprocess.SubprocessError,
+                    ValueError,
+                    KeyError,
+                ) as e:
+                    log.warning(
+                        "render_clips: %s not re-encoded, keeping the symlink (%s)",
+                        primary,
+                        e,
+                    )
+                    summary["failed"].append(primary)
+                    continue  # aliases keep pointing at the source too
+                summary["aliased"] += _link_aliases(cdir, primary, others)
+            _atomic_write(mpath, manifest, exclusive=False)
+            with contextlib.suppress(OSError):
+                (cdir.parent / RENDER_TMP_DIRNAME).rmdir()  # only succeeds when empty
+        finally:
+            fcntl.flock(lf, fcntl.LOCK_UN)
+    return summary
