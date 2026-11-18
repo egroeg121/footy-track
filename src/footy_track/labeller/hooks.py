@@ -38,6 +38,7 @@ flow talks back through the same reorder/append API).
 from __future__ import annotations
 
 import contextlib
+import importlib
 import json
 import logging
 import os
@@ -153,6 +154,7 @@ def _ensure_started() -> None:
     global _worker, _EXEC  # noqa: PLW0603
     if _worker is not None and _worker.is_alive():
         return
+    _load_builtins()  # a restarted server has live hooked jobs whose actions must be registered before the first run
     with _THREAD_LOCK:
         if _worker is not None and _worker.is_alive():
             return
@@ -378,8 +380,9 @@ def register_action(name: str, fn: Callable[[HookContext], dict | None], *, kind
 
 def _load_builtins() -> None:
     """Import the modules that register actions (kind-specific ones live next to their kind)."""
-    with contextlib.suppress(ImportError):
-        from footy_track.labeller import broadcast_review  # noqa: F401, PLC0415
+    for mod in ("footy_track.labeller.broadcast_review", "footy_track.ball_mining.refit"):  # each registers its actions
+        with contextlib.suppress(ImportError):
+            importlib.import_module(mod)
 
 
 def _shuffle_unanswered(ctx: HookContext) -> dict:
