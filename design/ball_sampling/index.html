@@ -1,0 +1,1438 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Tracking players, actions, and events in football matches.">
+      
+      
+      
+        <link rel="canonical" href="https://egroeg121.github.io/footy-track/design/ball_sampling/">
+      
+      
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.6.20">
+    
+    
+      
+        <title>Ball sample mining: evaluation panel and training miner - Footy Scan</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.e53b48f4.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+    
+  </head>
+  
+  
+    <body dir="ltr">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#ball-sample-mining-evaluation-panel-and-training-miner" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="Footy Scan" class="md-header__button md-logo" aria-label="Footy Scan" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Footy Scan
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Ball sample mining: evaluation panel and training miner
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="Footy Scan" class="md-nav__button md-logo" aria-label="Footy Scan" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Footy Scan
+  </label>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Overview
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Architecture
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../pipeline-and-labels/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Pipeline and labels
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../data/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Data
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    Training
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            Training
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../training/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Training
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../training/notable_runs/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Notable Training Runs
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../inference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Inference
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../inference-web/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Inference web app
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../ball-tracking-eval/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Ball tracking evaluation
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../feature_store/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Feature store
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../datasets_and_progress/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Versioned datasets and progress
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_11" >
+        
+          
+          <label class="md-nav__link" for="__nav_11" id="__nav_11_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    Design
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_11_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_11">
+            <span class="md-nav__icon md-icon"></span>
+            Design
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../pipeline_overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Pipeline Overview
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../player_reid/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Player Re-ID
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tracking-pipeline/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Tracking Pipeline Design
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../claude_autolabel_loop/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Claude-assisted Ball Labelling
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../system_design/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    System Design
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../system_overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    System Overview
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../pipeline_architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Pipeline Architecture
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../timings/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Time Formats
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../data_formats/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Data Formats
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_12" >
+        
+          
+          <label class="md-nav__link" for="__nav_12" id="__nav_12_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    Development
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_12_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_12">
+            <span class="md-nav__icon md-icon"></span>
+            Development
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Getting Started
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../agent_guidelines/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Agent Guidelines
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../contributing-docs/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    How to contribute to the docs
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../todo/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    TODO
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#0-summary" class="md-nav__link">
+    <span class="md-ellipsis">
+      0. Summary
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#1-why-evidence-that-shaped-this" class="md-nav__link">
+    <span class="md-ellipsis">
+      1. Why (evidence that shaped this)
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-evaluation-panel" class="md-nav__link">
+    <span class="md-ellipsis">
+      2. Evaluation panel
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="2. Evaluation panel">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#21-population-and-unit" class="md-nav__link">
+    <span class="md-ellipsis">
+      2.1 Population and unit
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#22-card-blind-placement-ball-check-blind-mode-the-ball_place-job-kind" class="md-nav__link">
+    <span class="md-ellipsis">
+      2.2 Card: blind placement (Ball Check "blind mode" = the ball_place job kind)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#23-design-stratified-two-stage-sample-with-logged" class="md-nav__link">
+    <span class="md-ellipsis">
+      2.3 Design: stratified two-stage sample with logged π
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#24-estimators" class="md-nav__link">
+    <span class="md-ellipsis">
+      2.4 Estimators
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#25-size-and-budget" class="md-nav__link">
+    <span class="md-ellipsis">
+      2.5 Size and budget
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#26-hygiene" class="md-nav__link">
+    <span class="md-ellipsis">
+      2.6 Hygiene
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-training-miner" class="md-nav__link">
+    <span class="md-ellipsis">
+      3. Training miner
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="3. Training miner">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#31-pipeline-per-train-match-machine-only-before-any-human" class="md-nav__link">
+    <span class="md-ellipsis">
+      3.1 Pipeline per train match (machine-only before any human)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#32-buckets-and-per-round-quotas" class="md-nav__link">
+    <span class="md-ellipsis">
+      3.2 Buckets and per-round quotas
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#33-auto-accept-threshold-learn-then-test" class="md-nav__link">
+    <span class="md-ellipsis">
+      3.3 Auto-accept threshold (Learn-then-Test)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#34-turning-verdicts-into-training-data" class="md-nav__link">
+    <span class="md-ellipsis">
+      3.4 Turning verdicts into training data
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-leakage-rules-enforced-in-code-not-by-convention" class="md-nav__link">
+    <span class="md-ellipsis">
+      4. Leakage rules (enforced in code, not by convention)
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-what-has-to-be-built" class="md-nav__link">
+    <span class="md-ellipsis">
+      5. What has to be built
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-scheduling-the-two-loops-prefect" class="md-nav__link">
+    <span class="md-ellipsis">
+      6. Scheduling: the two loops (Prefect)
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-decisions-needed" class="md-nav__link">
+    <span class="md-ellipsis">
+      7. Decisions needed
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+
+<h1 id="ball-sample-mining-evaluation-panel-and-training-miner">Ball sample mining: evaluation panel and training miner<a class="headerlink" href="#ball-sample-mining-evaluation-panel-and-training-miner" title="Permanent link">&para;</a></h1>
+<p>Status: proposal, 2026-11-18. It builds on <code>feature_store.md</code>, <code>calibration.md</code>, the autolabel design (§12, on <code>feat/autolabel-retrack</code>) and the labelling-jobs/hooks system (labeller README §19c).</p>
+<h2 id="0-summary">0. Summary<a class="headerlink" href="#0-summary" title="Permanent link">&para;</a></h2>
+<p>There are two regimes. They use different populations, sampling rules and cards, and a different question to Ball Check.</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th><strong>Evaluation panel</strong></th>
+<th><strong>Training miner</strong></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Question</td>
+<td>"How good is model M on unseen matches, ± what?"</td>
+<td>"Which frames most improve the next model per human second?"</td>
+</tr>
+<tr>
+<td>Population</td>
+<td>Main-camera frames of <strong>heldout matches</strong> only</td>
+<td>Main-camera frames of <strong>train matches</strong> only (in-match eval clips excluded)</td>
+</tr>
+<tr>
+<td>Selection</td>
+<td>Fixed probability sample with logged inclusion probabilities π. It does not depend on the model being scored.</td>
+<td>Adaptive, model-driven quotas (uncertain, missed, hard-negative, random, audit)</td>
+</tr>
+<tr>
+<td>Card</td>
+<td><strong>Blind</strong>: no model box. "Tap the ball" or "no ball visible".</td>
+<td><strong>Verify</strong>: the proposed box is shown, with ball / not_ball / box_off / corrected / "ball elsewhere" (tap).</td>
+</tr>
+<tr>
+<td>Labels are</td>
+<td>Model-independent, so any future model can be scored on them</td>
+<td>About one model's proposals, used for training and for calibrating auto-accept</td>
+</tr>
+<tr>
+<td>Output</td>
+<td>HT-weighted hit@10/25, precision, false-ball rate, with CIs, per match and pooled</td>
+<td>Tier-1/2 labels, negatives, and audit data for the auto-accept threshold</td>
+</tr>
+</tbody>
+</table>
+<p>Rule zero: <strong>a heldout match never feeds training.</strong> That includes pseudo-labels, even though self-training on a match's own video is our biggest measured win (held-out hit@10 went from 0.49 to 0.70). Using it on heldout footage would be training on the test set.</p>
+<h2 id="1-why-evidence-that-shaped-this">1. Why (evidence that shaped this)<a class="headerlink" href="#1-why-evidence-that-shaped-this" title="Permanent link">&para;</a></h2>
+<p><strong>From our own data:</strong>
+- Today's ball eval is a convenience sample: 101 frames from 4 Forest clips, labelled while reviewing detector output. Recall is optimistic (<code>docs/ball-tracking-eval.md</code>). The only designed sample is the Forest placement job (24 windows, about 10–20% done).
+- Generalisation across matches is the binding problem. The detector scores 0.92 in-distribution, 0.67 on arsenal_example and 0.49 on held-out clips. Per-match numbers matter more than a pooled one.
+- 37% of human ball frames have no detector candidate within 25 px. A regime that only verifies proposals can never measure or fix recall, so both regimes need "ball is elsewhere" and "no ball".
+- Detector confidence is badly calibrated: Ball Check precision is 0.04 at conf 0.1–0.2, 0.42 at 0.5–0.6 and 0.96 at 0.7–0.8.
+- Claude verify is calibrated very differently by band: 33/33 correct at ≥ 0.95, 28/43 at 0.8–0.95, 8/23 at 0.5–0.8.
+- <strong>The deployed autolabel queue auto-accepts at 0.8</strong> (<code>~/code/jobs/footy_autolabel_queue.py:79</code>). That admits a band measured at 65% precision. The design target was 0.95.
+- Human throughput is about 100–260 cards per labelling day, at a median of about 2 s per verify card (mean 4.6 s). The pool is about 1.8M broadcast frames in the 12 segmented matches, with 34 more matches coming. Labels are scarce; frames are not.</p>
+<p><strong>From the literature</strong> (snippet-level reads; the papers are linked in the research notes):
+- <em>Unbiased eval with a chosen sample</em>: Horvitz–Thompson/LURE (active testing, Kossen 2021) and active statistical inference (Zrnic &amp; Candès 2024; over 80% label savings in their settings). Both stay unbiased if π is logged and bounded away from 0. PPI++ adds a model-prediction control variate to a uniform sample. Small π inflates variance, so mix in a uniform floor.
+- <em>Active learning for detection</em>: gains over random are small and unstable, and random is a strong baseline (2212.10836, 2403.14800). Diversity and redundancy removal reliably help (+3.4 mAP, 2307.08414). In video, select clips or windows, not single frames. Use temporal-coherence errors (flicker, detector/tracker disagreement) as the acquisition signal. At low budgets, typical/diverse beats uncertain (TypiClust).
+- <em>Verification</em>: verifying a box is about 3× cheaper than drawing one (Open Images: 9 s vs 25.5 s). Humans over-accept proposals, and more so when rejecting requires entering a correction.
+- <em>Pseudo-labels</em>: a single fixed confidence threshold skews the set toward easy, frequent cases. Use adaptive thresholds, and route hard cases to humans.
+- <em>Auto-accept</em>: Learn-then-Test turns verified outcomes into a threshold with P(precision ≥ target) ≥ 1−δ. It needs calibration data that is <strong>exchangeable</strong> with what gets auto-accepted, which means random audits within the band, not the human-review queue.</p>
+<h2 id="2-evaluation-panel">2. Evaluation panel<a class="headerlink" href="#2-evaluation-panel" title="Permanent link">&para;</a></h2>
+<h3 id="21-population-and-unit">2.1 Population and unit<a class="headerlink" href="#21-population-and-unit" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>Population</strong> U: every frame at stride 5 (10 fps at 50 fps), inside main-camera segments (<code>segments.json</code>) of heldout matches. That is 9 of 51 today, selected by sha1 % 4, and the rule is sticky.</li>
+<li>The population is fixed by the segmentation run, <strong>not</strong> by the current broadcast classifier's p_yes, so it does not move when the classifier is retrained. Frames that are not main-camera are out of scope for the ball metric.</li>
+<li><strong>Sampling unit:</strong> a <em>window</em> of 5 frames, 0.2 s apart (about 1 s). Neighbouring frames make placement faster and give a little tracking signal. The cost is intra-window correlation, which the cluster bootstrap in §2.4 accounts for.</li>
+</ul>
+<h3 id="22-card-blind-placement-ball-check-blind-mode-the-ball_place-job-kind">2.2 Card: blind placement (Ball Check "blind mode" = the <code>ball_place</code> job kind)<a class="headerlink" href="#22-card-blind-placement-ball-check-blind-mode-the-ball_place-job-kind" title="Permanent link">&para;</a></h3>
+<ul>
+<li>No model box is shown. The labeller taps the ball centre, or marks <strong>no ball visible</strong> or <strong>unsure</strong>. The 3 s context clip stays.</li>
+<li>Rationale: blind labels are independent of the model, so the panel is <strong>reusable for every future model and tracker</strong>. They also have no automation bias and give exact pixel error, which hit@10 px needs and accept/reject cannot provide.</li>
+<li>Cost: we have not measured it. Assume about 4–6 s per frame against about 2 s to verify. That is an acceptable price for a set built once and reused.</li>
+<li>QA layer, about 8% of cards:</li>
+<li>5% <strong>repeats</strong> of earlier panel frames, in a different session. The spread between repeats gives the label-noise floor; if it is about 5 px, hit@10 is meaningful.</li>
+<li>3% <strong>gold</strong> frames from existing tier-1 GT.</li>
+<li>Both are excluded from the estimates.</li>
+</ul>
+<h3 id="23-design-stratified-two-stage-sample-with-logged">2.3 Design: stratified two-stage sample with logged π<a class="headerlink" href="#23-design-stratified-two-stage-sample-with-logged" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>Strata = heldout match × difficulty band.</strong> Allocation is <strong>equal per match</strong>, because per-match CIs are the deliverable.</li>
+<li>Difficulty bands come from a <strong>reference model frozen at panel creation</strong>: the current detector plus tracker on the window, using the existing easy / gappy / contested / low_evidence buckets. Hard bands are oversampled toward Neyman allocation, n_h ∝ N_h·√(p_h(1−p_h)), with p_h from the Forest pilot.</li>
+<li><strong>Bound the weights:</strong> every band gets at least 30% of its proportional share, so max/min weight stays ≤ about 10. Frames are re-weighted by 1/π, so oversampling never biases the estimate. Bands only buy variance reduction, so a stale reference model costs efficiency, not correctness.</li>
+<li><strong>v1 can be simpler:</strong> uniform windows within each match, with match as the only stratum. This needs no detector run on heldout matches. Add difficulty bands in v2, once v1 gives per-band pilot rates.</li>
+<li>Every card stores <code>sampling = {regime:"eval", panel:"ball-eval-v1", match, stratum, window_id, pi_window, pi_frame, seed}</code>, plus the sampler code sha.</li>
+</ul>
+<h3 id="24-estimators">2.4 Estimators<a class="headerlink" href="#24-estimators" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>Per-frame outcomes</strong> for model M (top-1 ball after tracker, or detector top-1 for detector eval):</li>
+<li><code>hit</code> (prediction within r px of the human centre)</li>
+<li><code>off</code> (prediction &gt; r px away)</li>
+<li><code>miss</code> (ball present, no prediction)</li>
+<li><code>false_ball</code> (no ball, prediction)</li>
+<li><code>true_empty</code></li>
+<li><strong>Metrics:</strong></li>
+<li>recall@r = hits / ball-present frames</li>
+<li>precision@r = hits / predicted frames</li>
+<li>false-ball rate = false_ball / no-ball frames</li>
+<li>All are reported at r = 10 and 25 px.</li>
+<li>Each metric is a ratio of Horvitz–Thompson totals. Its CI comes from a <strong>stratified cluster bootstrap</strong>, resampling windows within strata, 2,000 draws.</li>
+<li><strong>Reporting:</strong> per match, plus pooled as both <strong>match-averaged</strong> (headline: "a typical new match") and frame-weighted.</li>
+<li><strong>Later (v3):</strong> a PPI++ control variate. Use the auto-labeller's verdicts on every population frame as f, so θ̂ = mean_U(f) + HT-mean(Y − f). This cuts variance as far as f tracks Y, and it stays unbiased if f is poor.</li>
+</ul>
+<h3 id="25-size-and-budget">2.5 Size and budget<a class="headerlink" href="#25-size-and-budget" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Recall around 0.7 with a design effect of about 1.5 needs about 120 frames per match for ±10 pp per match. Pooled over 9 matches that gives about ±3–4 pp.</li>
+<li><strong>Panel v1 = 9 × 24 windows × 5 frames ≈ 1,080 frames.</strong> At about 5 s each that is about 1.5 h, or 4–6 sessions. Start with 4 matches (about 480 frames) to get a usable number within a week.</li>
+<li>The Forest "ball placement r1" job (600 frames, stratified, 10–20% done) becomes the Forest stratum of v1, re-expressed with its π.</li>
+</ul>
+<h3 id="26-hygiene">2.6 Hygiene<a class="headerlink" href="#26-hygiene" title="Permanent link">&para;</a></h3>
+<ul>
+<li>The panel is <strong>versioned and frozen</strong>. A new heldout match adds a new stratum and a new panel version; scores are always quoted with the panel version (cohort reporting).</li>
+<li><strong>Lockbox:</strong> keep 2 heldout matches out of day-to-day model selection. Score them only on promotion, to catch overfitting to the panel from repeated reuse.</li>
+<li>In-match eval clips (1 in 5 of train-match clips) remain a <em>secondary</em> in-distribution number, using the same card and estimator.</li>
+<li>Fix known contamination first: <code>bournemouth_1st_seg070</code> is in Roboflow v11 training and hashes to in-match eval.</li>
+</ul>
+<h2 id="3-training-miner">3. Training miner<a class="headerlink" href="#3-training-miner" title="Permanent link">&para;</a></h2>
+<h3 id="31-pipeline-per-train-match-machine-only-before-any-human">3.1 Pipeline per train match (machine-only before any human)<a class="headerlink" href="#31-pipeline-per-train-match-machine-only-before-any-human" title="Permanent link">&para;</a></h3>
+<ol>
+<li>Run the detector (conf ≥ 0.1) plus the bidirectional tracker at stride 5 over main-camera segments. This is a GPU job via Prefect. Today it covers only Man City and Forest, so the 12 newly segmented matches need it.</li>
+<li>Build <strong>track segments</strong>: runs of frames the tracker follows. The candidate unit is the track segment, or a 2 s window of it, not a frame. This is how video redundancy is removed.</li>
+<li>Compute signals per segment:</li>
+<li>detector conf (mean, min)</li>
+<li>detector vs tracker disagreement</li>
+<li>forward vs backward tracker disagreement</li>
+<li>flicker (detections appearing and disappearing)</li>
+<li>trajectory plausibility (acceleration and jump limits in image space, homography-normalised where PTZ exists)</li>
+<li>static-object flag (near hoardings, i.e. spare balls)</li>
+<li>gap frames (tracker interpolates with no detection)</li>
+<li>appearance embedding (72-d ball descriptor) for diversity</li>
+<li>Run Claude verify on candidates, as the autolabel loop does now. Its confidence c becomes one more signal.</li>
+</ol>
+<h3 id="32-buckets-and-per-round-quotas">3.2 Buckets and per-round quotas<a class="headerlink" href="#32-buckets-and-per-round-quotas" title="Permanent link">&para;</a></h3>
+<p>The quotas below are for a 300-card round, which is about one labelling day.</p>
+<table>
+<thead>
+<tr>
+<th>Bucket</th>
+<th>What</th>
+<th>Card</th>
+<th>Share</th>
+<th>Selection within bucket</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>U: uncertain</strong></td>
+<td>Signals disagree, c in 0.5–0.95, or det conf 0.3–0.7</td>
+<td>verify</td>
+<td>35%</td>
+<td>Rank by uncertainty, then <strong>one card per cluster</strong> (k-means on embedding × match × 30 s time bucket) and at most 1 card per 2 s window</td>
+</tr>
+<tr>
+<td><strong>M: missed</strong></td>
+<td>Tracker gaps, plausible trajectory with no detection, ball-in-air candidates</td>
+<td><strong>verify-or-place</strong> (tap if the ball is elsewhere, or "no ball")</td>
+<td>20%</td>
+<td>Longest and most plausible gaps first; diversity as in U</td>
+</tr>
+<tr>
+<td><strong>N: hard negatives</strong></td>
+<td>High-conf detections off any plausible track, static near the hoardings, or on heads and feet</td>
+<td>verify (expected not_ball)</td>
+<td>15%</td>
+<td>Highest conf first, capped per location cluster so it isn't 30 cards of the same spare ball</td>
+</tr>
+<tr>
+<td><strong>R: random</strong></td>
+<td>Uniform over the train-match population</td>
+<td>verify-or-place</td>
+<td>15%</td>
+<td>Uniform. This is the cold-start and robustness floor, and also an unbiased audit of the whole pipeline on train data</td>
+</tr>
+<tr>
+<td><strong>A: auto-accept audit</strong></td>
+<td>Uniform random within the auto-accepted set, per score band</td>
+<td>verify, <strong>blind to c</strong></td>
+<td>10%</td>
+<td>Uniform within band. This is what calibrates the threshold (§3.3)</td>
+</tr>
+<tr>
+<td><strong>G: gold</strong></td>
+<td>Known-wrong boxes: GT shifted 15–30 px, or known spare balls</td>
+<td>verify</td>
+<td>5%</td>
+<td>Measures over-acceptance. Excluded from training</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li><strong>Match balancing:</strong> cap each match at about 15% of a round. Prioritise matches with the fewest labels and the highest broadcast-OOD score. Generalisation across matches is the bottleneck, so breadth beats depth.</li>
+<li><strong>Labeller check:</strong> if the planted-wrong (gold) cards are accepted more than 10% of the time, the round's verify labels are flagged. The fix is then UI (e.g. making "box_off" one tap), not the labeller.</li>
+<li><strong>Adaptive within a round:</strong> a hook fires every 50 verdicts (§19c; the <code>ballcheck-rescore</code> flow named in the README doesn't exist yet). It refits the cheap pieces: the per-bucket hit rates, and the Platt fit of c → P(correct) as was done for broadcast. It then reorders the unanswered U and M cards. No retrain is needed mid-round.</li>
+</ul>
+<h3 id="33-auto-accept-threshold-learn-then-test">3.3 Auto-accept threshold (Learn-then-Test)<a class="headerlink" href="#33-auto-accept-threshold-learn-then-test" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Score s = calibrated P(correct | c, tracker-consistent, det conf, plausibility).</li>
+<li>For each candidate threshold t on a grid, the A-bucket audits with s ≥ t give a binomial p-value for H₀: precision &lt; 0.98. Fixed-sequence testing from high t downward finds the lowest t whose H₀ is rejected at δ = 0.1.</li>
+<li>Only <strong>A-bucket</strong> (uniform within band) cards are valid for this. U-bucket verdicts are not exchangeable.</li>
+<li>About 150 audits per band are needed before a band can open. Until then, <strong>auto-accept stays at c ≥ 0.95.</strong> I recommend setting the queue's <code>auto_conf</code> back from 0.8 to 0.95 now.</li>
+<li>Track audit precision <strong>per match</strong>. The existing circuit breaker (&lt; 0.97) should trip per match, not just globally, because broadcaster shift is the likely failure.</li>
+</ul>
+<h3 id="34-turning-verdicts-into-training-data">3.4 Turning verdicts into training data<a class="headerlink" href="#34-turning-verdicts-into-training-data" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>Positives:</strong></li>
+<li>tier 1 (placed or corrected)</li>
+<li>tier 2 (<code>ball</code> on a shown box)</li>
+<li>tier 3 (auto-accepted at the LTT threshold), loss-weighted 0.5 and capped at 3× the human positives per match</li>
+<li><strong>Negatives:</strong> a frame with a rejected FP enters as a background image <em>only if</em> the frame's ball status is known: an accepted ball elsewhere in it, or a "no ball" verdict. Otherwise an unlabelled true ball could be taught as background. <code>export_training_dataset.py</code> currently drops not_ball boxes and needs this case added.</li>
+<li><strong>Composition check per export:</strong> % from each bucket, each match and each difficulty tag. Auto-accepted labels skew easy (ball on grass), so hard strata must come from U, M and N.</li>
+<li><strong>Retrain cadence:</strong> a round ends at about 300 human cards plus the auto-accepts. Retrain when cumulative new labels reach about 1,000 or weekly, whichever comes first. Then re-score the pool and re-mine. Report every model on the eval panel (§2) at its fixed version.</li>
+</ul>
+<h2 id="4-leakage-rules-enforced-in-code-not-by-convention">4. Leakage rules (enforced in code, not by convention)<a class="headerlink" href="#4-leakage-rules-enforced-in-code-not-by-convention" title="Permanent link">&para;</a></h2>
+<ol>
+<li><code>split_of(match)</code> gates every sampler. The eval sampler accepts only heldout matches and the training miner only train matches.</li>
+<li>The job API rejects a <code>ball_check</code> or <code>ball_place</code> job whose items mix splits or whose <code>sampling.regime</code> disagrees with the split.</li>
+<li>In-match eval clips, plus ±10 s around them, are excluded from mining. Consecutive <code>_segNNN</code> clips are not contiguous; use footage-time overlap once T-33/T-49 land.</li>
+<li>Heldout footage is never pseudo-labelled. A "self-train on the deployment match" mode, if wanted, gets its own lockbox eval.</li>
+</ol>
+<h2 id="5-what-has-to-be-built">5. What has to be built<a class="headerlink" href="#5-what-has-to-be-built" title="Permanent link">&para;</a></h2>
+<p><strong>P0 (small, now):</strong>
+- Set <code>auto_conf</code> back to 0.95.
+- Add a <code>sampling</code> metadata block to job items and persist it with each verdict.
+- Make the README list the 5 Ball Check verdicts.</p>
+<p><strong>P1: eval panel v1.</strong>
+- A <code>ball-eval-panel</code> sampler (jobs repo) that emits <code>ball_place</code> jobs on 4 heldout matches, uniform windows, with π logged.
+- An HT + cluster-bootstrap estimator in <code>ball_eval</code>, with CIs on the progress page.
+- Fold the Forest r1 job in.
+- Dependency: heldout matches segmented (pipeline running now). No detector run is needed for v1.</p>
+<p><strong>P2: training miner.</strong>
+- Merge tap-to-place, "ball elsewhere" and "no ball" into Ball Check on main. They are built on <code>feat/autolabel-retrack</code> (f92fdc8).
+- A detector+tracker GPU flow for the new train matches.
+- A bucket sampler with quotas and diversity.
+- Gold injection.
+- The A-bucket audit and LTT threshold.
+- Export negatives.</p>
+<p><strong>P3:</strong>
+- The <code>ballcheck-rescore</code> hook flow (in-round reordering).
+- Eval difficulty bands (panel v2).
+- PPI++ surrogate.
+- OOD-driven match priority.</p>
+<h2 id="6-scheduling-the-two-loops-prefect">6. Scheduling: the two loops (Prefect)<a class="headerlink" href="#6-scheduling-the-two-loops-prefect" title="Permanent link">&para;</a></h2>
+<p><strong>Loop 1, on ingestion (per match).</strong> It runs after <code>match-pipeline</code> (jobs <code>docs/design/match_pipeline.md</code>) has segmented a match, and branches by <code>split_of(match)</code>:
+- <strong>heldout:</strong> <code>ball-eval-panel(match)</code> (cpu, merlin) samples windows uniformly within main-camera segments, logs π, and submits a blind <code>ball_place</code> job. It needs no model output.
+- <strong>train:</strong>
+  - <code>ball-candidates(match, detector_sha)</code> (gpu; detectors at stride 5 plus SAM2 gap-fill; skip key is the detector sha)
+  - <code>ball-motion</code> (desktop cpu)
+  - <code>ball-pool-score</code> (merlin cpu): pool, then solver, then the scorer gives P(real); writes <code>ball_pool/&lt;match&gt;/pool.&lt;scorer&gt;.parquet</code>
+  - Tier-3 auto-labels are the nodes with P ≥ the LTT threshold.</p>
+<p>These are added after the pooled-labeller experiment (<code>exp/ball-candidate-pool</code>) settles which sources stay.
+- <strong>Trigger:</strong> an hourly, deduped sweep (<code>ball-eval-panel-sweep</code>, <code>ball-pool-sweep</code>) finds matches that are segmented but not yet done. It does not edit <code>match-pipeline</code>, so it works whichever orchestrator produced the segments.</p>
+<p><strong>Loop 2, the recurring round.</strong></p>
+<table>
+<thead>
+<tr>
+<th>Step</th>
+<th>Trigger</th>
+<th>Runs</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Sample</td>
+<td>Tick (every 15 min): create a round only if open training cards &lt; 100 and today's cards &lt; 600</td>
+<td><code>ball-round</code>: miner quotas (§3.2) over the train pool, then a <code>ball_check</code> job, then <code>ballcheck-prepare</code></td>
+</tr>
+<tr>
+<td>Refit</td>
+<td>Labeller hook, every 50 verdicts</td>
+<td>Scorer calibration + LTT threshold refit; reorder unanswered U/M cards</td>
+</tr>
+<tr>
+<td>Close</td>
+<td>Hook <code>on_done</code></td>
+<td>Ingest verdicts, recompute the auto-accept set, nightly dataset export</td>
+</tr>
+<tr>
+<td>Retrain</td>
+<td>Weekly or ≥ 1,000 new labels</td>
+<td><code>ball-train</code> (gpu)</td>
+</tr>
+<tr>
+<td>Evaluate</td>
+<td>After train</td>
+<td>Score the candidate on the fixed eval panel (no human); promote via the single promotion mechanism if it is better</td>
+</tr>
+<tr>
+<td>Re-infer</td>
+<td>On promotion</td>
+<td>Backfill <code>ball-candidates</code> + pool for train matches at low gpu priority, behind ingestion</td>
+</tr>
+</tbody>
+</table>
+<h2 id="7-decisions-needed">7. Decisions needed<a class="headerlink" href="#7-decisions-needed" title="Permanent link">&para;</a></h2>
+<ol>
+<li><strong>Eval cards: blind placement</strong> (reusable, unbiased, slower), versus showing the model box (faster, but tied to one model). Recommendation: blind.</li>
+<li><strong>Headline metric: match-averaged</strong> or frame-weighted? Recommendation: match-averaged, with both shown.</li>
+<li><strong>Lockbox</strong>: which 2 of the 9 heldout matches?</li>
+<li><strong>Auto-accept target precision</strong>: 0.98 at δ = 0.1, and the 0.8 → 0.95 rollback now.</li>
+</ol>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      <script id="__config" type="application/json">{"base": "../..", "features": [], "search": "../../assets/javascripts/workers/search.973d3a69.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.f55a23d4.min.js"></script>
+      
+    
+  </body>
+</html>
