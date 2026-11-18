@@ -3,6 +3,7 @@
     python -m footy_track.scripts.ball_eval_panel build  --match M [--n-windows 24] [--dry-run] [--force]
     python -m footy_track.scripts.ball_eval_panel build  --all-heldout           # every segmented heldout match
     python -m footy_track.scripts.ball_eval_panel job    --match M [--dry-run]   # blind ball_place job, key ball-eval-panel/<ver>/<M>
+    python -m footy_track.scripts.ball_eval_panel render [--match M | --all-heldout] [--force]  # keyframe-dense clips (kf10)
     python -m footy_track.scripts.ball_eval_panel score  --pred preds.jsonl --model NAME [--out report.json]
     python -m footy_track.scripts.ball_eval_panel status [--labeller-url URL]
 
@@ -19,7 +20,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import sys
+import time
 from pathlib import Path
 
 from footy_track.ball_eval import panel as P
@@ -83,6 +86,71 @@ def cmd_build(args: argparse.Namespace) -> int:
     return rc
 
 
+def _render_best_effort(doc: dict, root: Path | None, **kw) -> dict:
+    """``P.render_clips`` that can never fail the caller: on any error the clips stay symlinks (slow seeks, correct)."""
+    try:
+        r = P.render_clips(doc, root, **kw)
+    except Exception as e:  # noqa: BLE001 - rendering is an optimisation, never fail the job for it
+        logging.getLogger(__name__).warning(
+            "render_clips failed for %s, keeping symlinks: %r", doc.get("match"), e
+        )
+        return {"error": repr(e)[:300]}
+    return {k: (v if k == "bytes" else len(v)) for k, v in r.items()} | {
+        "failed_clips": r["failed"]
+    }
+
+
+def cmd_render(args: argparse.Namespace) -> int:
+    """Replace the symlinks in the panel's clips dir by keyframe-dense re-encodes (idempotent; a failed clip keeps its symlink)."""
+    rc = 0
+    root = Path(args.out_dir) if args.out_dir else args.root
+    # default: every panel file of the version (the panels, not the heldout matches that might get one)
+    matches = (
+        list(args.match)
+        if args.match
+        else list(P.list_panels(args.panel_version, root))
+    )
+    for match in matches:
+        try:
+            path = P.panel_path(match, args.panel_version, root)
+            if not path.is_file():
+                raise P.PanelError(f"no panel for {match} ({path}); run `build` first")
+            doc = P.read_panel(path)
+            P.require_heldout(match)
+            P.link_clips(
+                doc, args.root
+            )  # every name resolvable first: a failed render then still leaves a working symlink
+            t = time.time()
+            r = _render_best_effort(
+                doc,
+                args.root,
+                force=args.force,
+                gop=args.gop,
+                crf=args.crf,
+                threads=args.threads,
+            )
+            print(
+                json.dumps(
+                    {
+                        "match": match,
+                        "status": "error" if "error" in r else "ok",
+                        **r,
+                        "seconds": round(time.time() - t, 1),
+                    },
+                    sort_keys=True,
+                ),
+                flush=True,
+            )
+            rc = rc or int("error" in r or bool(r.get("failed")))
+        except (P.PanelError, OSError, ValueError) as e:
+            print(
+                json.dumps({"match": match, "status": "error", "error": str(e)}),
+                flush=True,
+            )
+            rc = 1
+    return rc
+
+
 def cmd_job(args: argparse.Namespace) -> int:
     from footy_track.labeller import jobs_client  # noqa: PLC0415
 
@@ -116,6 +184,7 @@ def cmd_job(args: argparse.Namespace) -> int:
                 )
                 continue
             made = P.link_clips(doc, args.root)
+            rendered = None if args.no_render else _render_best_effort(doc, args.root)
             registered = P.register_dataset(args.panel_version, args.root)
             job = jobs_client.submit(
                 body["title"],
@@ -139,6 +208,7 @@ def cmd_job(args: argparse.Namespace) -> int:
                         "dataset": body["dataset"],
                         "n_cards": doc["n_frames"] + len(doc["qa"]),
                         "clip_links_made": made,
+                        "render": rendered,
                         "dataset_registered": registered,
                     },
                     sort_keys=True,
@@ -302,7 +372,7 @@ def cmd_status(args: argparse.Namespace) -> int:
     return 0
 
 
-def main(argv: list[str] | None = None) -> int:
+def main(argv: list[str] | None = None) -> int:  # noqa: PLR0915
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
@@ -354,7 +424,33 @@ def main(argv: list[str] | None = None) -> int:
     common(j)
     j.add_argument("--labeller-url", default=None, help="default $FOOTY_LABELLER_URL")
     j.add_argument("--dry-run", action="store_true")
+    j.add_argument(
+        "--no-render",
+        action="store_true",
+        help="leave the clips as symlinks (skip the keyframe-dense render)",
+    )
     j.set_defaults(fn=cmd_job)
+
+    r = sub.add_parser(
+        "render",
+        help="re-encode the panel's clips with a keyframe every 10 frames (same frames, same names)",
+    )
+    r.add_argument(
+        "--match",
+        action="append",
+        help="heldout match key (repeatable; default: every panel of the version)",
+    )
+    r.add_argument(
+        "--out-dir",
+        help="read the panel files under this root instead of --root (scratch)",
+    )
+    r.add_argument(
+        "--force", action="store_true", help="re-render clips that are already rendered"
+    )
+    r.add_argument("--gop", type=int, default=P.KF_GOP)
+    r.add_argument("--crf", type=int, default=P.KF_CRF)
+    r.add_argument("--threads", type=int, default=P.KF_THREADS)
+    r.set_defaults(fn=cmd_render)
 
     s = sub.add_parser(
         "score", help="HT recall/precision/false-ball with bootstrap CIs"
