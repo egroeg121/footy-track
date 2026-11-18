@@ -64,3 +64,18 @@ def test_ultralytics_classifier_inference(
         assert result.uri == image_path
         assert isinstance(result.classification.label, EnumBroadcastClassification)
         assert 0.0 <= result.classification.confidence <= 1.0
+
+
+def test_default_classifier_path_env_override(monkeypatch, tmp_path: Path):
+    """FOOTY_CLASSIFIER_WEIGHTS overrides the repo-relative default weights path."""
+    from footy_track.classifier import CLASSIFIER_WEIGHTS_ENV, default_classifier_path
+
+    monkeypatch.delenv(CLASSIFIER_WEIGHTS_ENV, raising=False)
+    default = default_classifier_path()
+    assert default.as_posix().endswith("model_saves/classifier/20251226-yolo11n-cls/0.987.pt")
+
+    monkeypatch.setenv(CLASSIFIER_WEIGHTS_ENV, str(tmp_path / "last.pt"))
+    assert default_classifier_path() == tmp_path / "last.pt"
+
+    monkeypatch.setenv(CLASSIFIER_WEIGHTS_ENV, "  ")
+    assert default_classifier_path() == default
