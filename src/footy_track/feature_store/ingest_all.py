@@ -18,7 +18,8 @@ directories is read; the existing per-source ingesters do the parsing:
 
 ``<marks>`` is every ``marks_dir`` of ``labeller_datasets.json`` (the live labeller's registry:
 the calib set, the held-out Nottingham Forest sets, the broadcast-review set), so backup copies
-next to them (``ball_gt_marks.bak-*``, ``ball_gt_marks_MERGED``) are never read.
+next to them (``ball_gt_marks.bak-*``, ``ball_gt_marks_MERGED``) are never read. A registry entry with
+``"ingest": false`` (the ball evaluation panel's blind placements) is skipped.
 
 Idempotent: every ingester replaces its own rows per clip / file, so a re-run with unchanged
 sources leaves the store byte-for-byte equal in content; the run reports a content fingerprint
@@ -139,7 +140,8 @@ def discover_sources(
     except (OSError, ValueError):
         pass
     for spec in datasets.values():
-        if not marks_dirs and spec.get("marks_dir"):
+        # ``"ingest": false`` (the ball evaluation panel): evaluation labels with QA alias clips, not GT
+        if not marks_dirs and spec.get("marks_dir") and spec.get("ingest", True) is not False:
             marks.append(Path(spec["marks_dir"]))
         if spec.get("clips_dir"):
             video.append(Path(spec["clips_dir"]))

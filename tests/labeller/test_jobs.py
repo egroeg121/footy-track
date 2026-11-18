@@ -583,3 +583,24 @@ def test_board_cache_expires_after_ttl(web, two, monkeypatch):
     monkeypatch.setattr(jobs, "BOARD_CACHE_TTL_S", 0.0)
     jobs.board_tasks()
     assert len(calls) == 2
+
+
+def test_item_sampling_is_kept_and_copied_onto_label_rows(web, two):
+    """``sampling`` (the sampler's inclusion probabilities, QA flag) survives submit, shows in ``items`` and rides
+    on every label row of its item, so a placement joins back to its pi without re-reading the job."""
+    sampling = {"regime": "eval", "panel": "ball-eval-v1", "match": "m", "stratum": "m", "window_id": "m:w00001",
+                "pi_window": 0.25, "pi_frame": 0.25, "seed": 7, "qa": None}  # fmt: skip
+    _sidecar(two, "nottinghamforest", CLIP, [_row(10, ["in_play_ball", "labeller"]), _row(11, ["no_ball"])])
+    other = {"clip": CLIP, "frame": 15, "sampling": {**sampling, "pi_frame": None, "qa": "repeat"}}
+    j = _submit(web, items=[{"clip": CLIP, "frame_start": 10, "frame_end": 14, "sampling": sampling}, other]).json()
+    assert web.get(f"/api/jobs/{j['id']}").json()["items"][0]["sampling"] == sampling
+    res = web.get(f"/api/jobs/{j['id']}/results").json()
+    assert {r["frame_index"]: r["sampling"] for r in res["labels"]} == {10: sampling, 11: sampling}
+    assert res["items"][0]["item"]["sampling"] == sampling
+    _sidecar(two, "nottinghamforest", CLIP, [_row(15, ["in_play_ball", "labeller"])])
+    rows = web.get(f"/api/jobs/{j['id']}/results").json()["labels"]
+    assert rows[0]["sampling"]["qa"] == "repeat"
+    # a job without sampling has no such key; a non-object sampling is a 422
+    j2 = _submit(web, title="plain").json()
+    assert all("sampling" not in r for r in web.get(f"/api/jobs/{j2['id']}/results").json()["labels"])
+    assert _submit(web, title="bad", items=[{"clip": CLIP, "frame": 3, "sampling": "x"}]).status_code == 422
