@@ -334,6 +334,54 @@ async def page() -> HTMLResponse:
     return HTMLResponse((_WEB / "broadcast_review.html").read_text(), headers={"Cache-Control": "no-store, max-age=0"})
 
 
+def _ood_dir() -> Path:
+    """``<clips_dir>/_ood``: the jobs repo's OOD analysis writes ``<date>/{report.md,report.json,*.png}`` there."""
+    return datasets.current().clips_dir / "_ood"
+
+
+def _ood_latest() -> Path | None:
+    d = _ood_dir()
+    days = sorted(p for p in d.glob("*") if p.is_dir() and (p / "report.json").is_file()) if d.is_dir() else []
+    return days[-1] if days else None
+
+
+@router.get("/broadcast_review/ood", response_class=HTMLResponse)
+async def ood_page() -> HTMLResponse:
+    """Latest out-of-distribution report of the broadcast classifier over the train matches (table + plots)."""
+    day = _ood_latest()
+    if day is None:
+        return HTMLResponse("<p style='font:15px sans-serif;padding:16px'>No OOD report yet.</p>")
+    rep = json.loads((day / "report.json").read_text())
+    esc = lambda x: str(x).replace("&", "&amp;").replace("<", "&lt;")  # noqa: E731
+    rows = "".join(
+        f"<tr class='{'flag' if m.get('flagged') else 'watch' if m.get('watch') else ''}'><td>{i}</td><td>{esc(m['slug'])}</td>"
+        f"<td>{m.get('score', 0):.1f}</td><td>{esc(m.get('worst_axis', ''))}</td><td>{m['knn_med']:.3f}</td><td>{m['knn_p95']:.3f}</td>"
+        f"<td>{m['frac_mid'] * 100:.1f}</td><td>{m['frac_broadcast']:.2f}</td><td>{m['seg_per_h']:.1f}</td>"
+        f"<td>{'FLAG' if m.get('flagged') else 'watch' if m.get('watch') else ''}</td></tr>"
+        for i, m in enumerate(rep["matches"], 1))
+    imgs = "".join(f"<img src='/broadcast_review/ood/{day.name}/{n}' alt='{n}'>" for n in sorted(p.name for p in day.glob("*.png")))
+    html = (
+        "<!doctype html><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'><title>Broadcast OOD</title>"
+        "<style>body{margin:0;padding:12px;font:14px/1.4 sans-serif;background:#0f1419;color:#e6edf3}a{color:#9bb0c0}"
+        "table{border-collapse:collapse;width:100%;font-size:12px}td,th{padding:3px 6px;border-bottom:1px solid #2d3742;text-align:left}"
+        "tr.flag td{color:#f0883e}tr.watch td{color:#d29922}img{max-width:100%;background:#fff;border-radius:6px;margin:8px 0}</style>"
+        f"<p><a href='/broadcast_review'>&larr; Broadcast review</a></p><h1>Broadcast classifier: out-of-distribution matches ({esc(rep['date'])})</h1>"
+        f"<p>Weights {esc(rep['weights_sha8'])}; {rep['n_matches']} train matches; flag = robust z &gt; {rep.get('z_flag')}.</p>"
+        "<div style='overflow-x:auto'><table><tr><th>#<th>match<th>score<th>worst axis<th>kNN med<th>kNN p95<th>% p 0.3-0.7<th>frac bcast<th>seg/h<th>status"
+        f"{rows}</table></div>{imgs}")
+    return HTMLResponse(html, headers={"Cache-Control": "no-store, max-age=0"})
+
+
+@router.get("/broadcast_review/ood/{day}/{name}")
+async def ood_file(day: str, name: str):
+    if not (re.fullmatch(r"[0-9-]{8,10}", day) and re.fullmatch(r"[A-Za-z0-9_.-]+\.(png|md|json)", name)):
+        raise HTTPException(404)
+    p = _ood_dir() / day / name
+    if not p.is_file():
+        raise HTTPException(404)
+    return FileResponse(p, headers={"Cache-Control": "max-age=300"})
+
+
 @router.get("/broadcast_review/frame/{match}/{frame}.jpg")
 async def frame_jpg(match: str, frame: int):
     try:
