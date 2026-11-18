@@ -34,5 +34,5 @@ def test_roboflow_images_follow_the_authority(monkeypatch, tmp_path):
     res = bb.add_roboflow_train(rf, out)
     assert res["counts"] == {"heldout": 1, "match_only": 1, "unmapped": 1}
     kept = sorted(p.name for p in (out / "train").rglob("*.jpg"))
-    assert kept == ["rf_trainmatch_000002_jpg.rf.bb.jpg"]
+    assert kept == ["trainmatch_000002_jpg.rf.bb.jpg"]
     assert not (out / "valid").exists()

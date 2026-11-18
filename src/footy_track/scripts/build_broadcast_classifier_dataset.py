@@ -77,7 +77,7 @@ def add_roboflow_train(rf_dir: Path, out: Path) -> dict:
             if cat in ("heldout", "eval_clip", "unmapped"):
                 excluded_clips[ref.clip_id or ref.match_key or ref.stem] += 1
                 continue
-            dst = out / "train" / cls / f"rf_{src.name}"
+            dst = out / "train" / cls / src.name  # keep the Roboflow name: splits.parse_image_name reads it back
             dst.parent.mkdir(parents=True, exist_ok=True)
             if not dst.exists():
                 shutil.copy2(src, dst)
@@ -94,8 +94,8 @@ def tally(out: Path) -> dict:
         per_source: Counter = Counter()
         per_match: dict[str, Counter] = defaultdict(Counter)
         for p in files:
-            if p.name.startswith("rf_"):
-                ref = authority.parse_image_name(p.name[3:])
+            if ".rf." in p.name:  # Roboflow export name (<clip>_<frame>_jpg.rf.<hash>.jpg)
+                ref = authority.parse_image_name(p.name)
                 src, match = "roboflow", ref.match_key or ref.stem
             else:
                 stem = p.name.rsplit("_f", 1)[0]
