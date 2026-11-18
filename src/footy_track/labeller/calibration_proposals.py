@@ -120,14 +120,16 @@ async def get_proposal(clip: str, run_id: str, idx: int):
     if got is None:
         return cal._err(404, "no such proposal")
     run, rec = got
-    out = dict(cal.with_default_lens(rec, clip, refit=True))   # no lens stored: the ground's default (render only)
+    out = dict(rec)
     out.update(clip=clip, run_id=run_id, source=run.get("source"))
-    if out.get("H") is not None and not (out.get("distortion_source") and "overlay" in out):
-        pitch = PitchModel(*out["pitch_dims"])
+    if rec.get("H") is not None:
+        pitch = PitchModel(*rec["pitch_dims"])
         out["overlay"] = {
             n: [r.tolist() for r in runs]
-            for n, runs in geo.project_pitch_model(np.array(out["H"]), pitch, distortion=out.get("distortion")).items()
+            for n, runs in geo.project_pitch_model(np.array(rec["H"]), pitch, distortion=rec.get("distortion")).items()
         }
+    # the ground's suggested lens: only for a preview toggle, never applied to the stored H / overlay
+    out["default_distortion"] = cal.default_distortion(clip, rec.get("image_size"))
     return _finite(out)
 
 
@@ -214,11 +216,10 @@ async def accept_proposal(clip: str, run_id: str, idx: int, body: dict | None = 
         "correspondences": pts, "pitch_dims": body.get("pitch_dims") or rec["pitch_dims"],
         "method": body.get("method", "dlt"), "image_size": body.get("image_size") or rec["image_size"],
     }
-    # points are observed coords; the lens model goes with the H: the operator's (editor), else the proposal's,
-    # else the ground's default (what the review page showed)
-    shown = cal.with_default_lens(rec, clip, refit=True)   # the record as the review page drew it
-    lens_used = body["distortion"] if "distortion" in body else shown.get("distortion")
-    if lens_used or "distortion" in body:
+    # points are observed coords; the lens model goes with the H: the operator's (editor), else the proposal's
+    # own (none unless it has one: nothing is defaulted)
+    lens_used = body["distortion"] if "distortion" in body else rec.get("distortion")
+    if lens_used:
         fit_body["distortion"] = lens_used
     padded: list[str] = []
     if "correspondences" not in body and rec.get("H") is not None:
@@ -227,7 +228,7 @@ async def accept_proposal(clip: str, run_id: str, idx: int, body: dict | None = 
         # through the stored H. Operator-edited points are never padded (the editor relies on
         # the degenerate-configuration check).
         try:
-            fit_body["correspondences"], padded = _pad_to_reproduce(shown, pts, fit_body["pitch_dims"])
+            fit_body["correspondences"], padded = _pad_to_reproduce(rec, pts, fit_body["pitch_dims"])
         except (KeyError, TypeError, ValueError, np.linalg.LinAlgError):
             pass
     try:
@@ -240,7 +241,7 @@ async def accept_proposal(clip: str, run_id: str, idx: int, body: dict | None = 
     origin = {"source": run.get("source") or "claude", "run_id": run_id, "proposal_status": status}
     if padded:
         origin["padded_synthetic"] = padded
-    gt_rec = cal._gt_record(idx, res, fit_body, origin, clip=clip)
+    gt_rec = cal._gt_record(idx, res, fit_body, origin)
 
     def _store() -> None:
         cal.update_gt(clip, lambda doc: doc["frames"].update({str(idx): gt_rec}))

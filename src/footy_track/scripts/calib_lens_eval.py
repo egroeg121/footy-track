@@ -4,8 +4,8 @@ For each GT frame, start from the GT points fitted *without* distortion (a plain
 editor produced before) and report the long-boundary-line residual near the frame edges and the line F1 for
 
 * ``none``  - the plain homography,
-* ``rig``   - the same points refit with the ground's default ``k1`` (``lens.default_distortion``),
-* ``snap``  - ``lens.snap_to_lines`` started from ``none``,
+* ``rig``   - the same points refit with the ground's suggested ``k1`` (``lens.default_distortion``; NOT applied by default in the editor),
+* ``snap``  - ``lens.snap_to_lines`` as the editor runs it with the lens off (from ``none`` and from the suggested k1, best accepted answer),
 
 and render a before/after sheet (frame edge crop + top-down warp near the touchline). Read-only on the GT
 and the clips; run one process at a time (``nice -n 19``, ``OMP_NUM_THREADS=1``).
@@ -89,7 +89,8 @@ def _evaluate(clip: str, idx: int) -> dict | None:
     metrics("none", H0, None)
     if rig:
         metrics("rig", _fit(img, xy, rig), rig)
-    r = lens.snap_to_lines(ev, H0, None, pitch, img, xy)
+    # the editor with the lens off: from the plain fit and from the ground's suggested k1, better accepted answer wins
+    r = lens.snap_best(ev, H0, None, pitch, img, xy, suggested=(_fit(img, xy, rig), rig) if rig else None)
     metrics("snap", r.H, r.distortion)
     out["snap"].update(accepted=r.accepted, reason=r.reason, k1=r.k1_after, shift=r.max_click_shift_px,
                        points=r.points)

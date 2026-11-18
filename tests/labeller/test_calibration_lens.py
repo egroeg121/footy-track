@@ -55,51 +55,65 @@ def test_saved_lens_round_trips_through_gt(client, env):
     assert np.nanmax(errs["px"]) < 0.05
 
 
-def test_lens_turned_off_is_remembered_and_old_records_get_the_default(client, env):
-    # operator switched the lens off on a ground that has a default: saved with an explicit marker
-    off = client.put(f"/calibration/api/gt/{EMIRATES}/4", json=_body(None, distortion=None)).json()["record"]
-    assert "distortion" not in off and off["lens"] == "off"
-    got = client.get(f"/calibration/api/gt/{EMIRATES}/4").json()
-    assert "distortion" not in got and "distortion_source" not in got
-    # a record from before the lens existed (no key at all) is rendered with the ground's default; file untouched
-    old = client.put(f"/calibration/api/gt/{EMIRATES}/5", json=_body(None)).json()["record"]
-    assert "distortion" not in old and "lens" not in old
-    got = client.get(f"/calibration/api/gt/{EMIRATES}/5").json()
-    assert got["distortion"]["k1"] == pytest.approx(load_rig("emirates").k1) and got["distortion_source"] == "rig_default"
-    assert "distortion" not in cal._read_gt(EMIRATES)["frames"]["5"]
-    # unknown ground: nothing guessed, nothing marked
-    u = client.put(f"/calibration/api/gt/{UNKNOWN}/1", json=_body(None, distortion=None)).json()["record"]
-    assert "distortion" not in u and "lens" not in u
-    assert "distortion" not in client.get(f"/calibration/api/gt/{UNKNOWN}/1").json()
+def test_records_without_a_lens_load_exactly_as_stored(client, env):
+    """The ground's k1 is only a suggestion: nothing is defaulted on load, on any ground."""
+    for clip in (EMIRATES, UNKNOWN):
+        saved = client.put(f"/calibration/api/gt/{clip}/5", json=_body(None)).json()["record"]
+        assert "distortion" not in saved and "lens" not in saved
+        got = client.get(f"/calibration/api/gt/{clip}/5").json()
+        assert got == saved and "distortion" not in got and "distortion_source" not in got
+    # an explicit lens-off save (the editor sends distortion: null) stores nothing extra either
+    off = client.put(f"/calibration/api/gt/{EMIRATES}/6", json=_body(None, distortion=None)).json()["record"]
+    assert "distortion" not in off and "lens" not in off
 
 
 def _proposal(clip, idx, H_plain, corr):
     def _w(doc):
         doc["runs"]["r1"] = {"source": "claude", "created": "t", "params": {}, "frames": {str(idx): {
-            "status": "proposed", "score": 0.5, "H": H_plain.tolist(), "H_convention": "normalised_image_to_pitch_m",
+            "status": "proposed", "score": 0.5, "H": H_plain, "H_convention": "normalised_image_to_pitch_m",
             "pitch_dims": [105, 68], "image_size": [W, H], "correspondences": corr,
             "inliers": [True] * len(corr)}}}
     return _w
 
 
-def test_proposal_without_lens_is_rendered_and_accepted_with_the_default(client, env):
-    plain = _body(None)                                    # stored: fitted without a lens
-    fit = client.post("/calibration/api/fit", json=plain).json()
-    update_proposals(env, EMIRATES, _proposal(EMIRATES, 6, np.array(fit["H"]), fit["correspondences"]))
+def test_proposal_without_lens_renders_and_accepts_with_the_stored_h(client, env):
+    """No lens stored -> the card shows the stored H, straight lines, and Accept saves that same H, byte for byte.
+    A line-refined H that the points alone would not give is kept as is (padded to reproduce it)."""
+    fit = client.post("/calibration/api/fit", json=_body(None)).json()
+    refined = (np.array(fit["H"]) * 1.0).tolist()
+    refined[0][2] += 1e-4                                   # an H the points do not re-derive (line-refined)
+    update_proposals(env, EMIRATES, _proposal(EMIRATES, 6, refined, fit["correspondences"]))
     rec = client.get(f"/calibration/api/proposals/{EMIRATES}/r1/6").json()
-    k1 = load_rig("emirates").k1
-    assert rec["distortion"]["k1"] == pytest.approx(k1) and rec["distortion_source"] == "rig_default"
-    # H and overlay were re-derived from the points under that lens (what a fresh fit in the editor gives)
-    refit = client.post("/calibration/api/fit", json={**plain, "correspondences": rec["correspondences"],
-                                                      "distortion": rec["distortion"]}).json()
-    assert np.allclose(rec["H"], refit["H"]) and rec["overlay"] == refit["overlay"]
-    assert rec["overlay"]["TOUCHLINE_TOP"] != fit["overlay"]["TOUCHLINE_TOP"]
-    # the stored proposal is unchanged
+    assert rec["H"] == refined and "distortion" not in rec and "distortion_source" not in rec
+    want = {n: [r.tolist() for r in runs] for n, runs in geo.project_pitch_model(np.array(refined), PitchModel()).items()}
+    assert rec["overlay"] == want                            # drawn straight, from the stored H
+    assert rec["default_distortion"]["k1"] == pytest.approx(load_rig("emirates").k1)   # offered, not applied
     stored = read_proposals(env, EMIRATES)["runs"]["r1"]["frames"]["6"]
-    assert "distortion" not in stored and stored["H"] == fit["H"]
-    # accepting as proposed saves exactly what the card showed
+    assert "distortion" not in stored and stored["H"] == refined
     acc = client.post(f"/calibration/api/proposals/{EMIRATES}/r1/6/accept", json={}).json()
-    assert acc["ok"] and acc["record"]["distortion"]["k1"] == pytest.approx(k1)
+    assert acc["ok"] and "distortion" not in acc["record"] and "lens" not in acc["record"]
+    # as on main: the points are padded so the refit reproduces the shown H within REFIT_TOL_M (a perturbation this
+    # small is within it, so no padding is even needed); the lens plays no part
+    assert np.allclose(acc["record"]["H"], refined, atol=5e-4)
+
+
+def test_accept_as_proposed_matches_main_when_the_points_rederive_h(client, env):
+    fit = client.post("/calibration/api/fit", json=_body(None)).json()
+    update_proposals(env, EMIRATES, _proposal(EMIRATES, 7, fit["H"], fit["correspondences"]))
+    acc = client.post(f"/calibration/api/proposals/{EMIRATES}/r1/7/accept", json={}).json()
+    assert acc["record"]["H"] == fit["H"] and "distortion" not in acc["record"]
+
+
+def test_proposal_with_a_stored_lens_keeps_it(client, env):
+    d = geo.make_distortion(0.02, W / H)
+    fit = client.post("/calibration/api/fit", json=_body(d, distortion=d)).json()
+    update_proposals(env, EMIRATES, lambda doc: doc["runs"].update({"r1": {"source": "claude", "created": "t", "params": {}, "frames": {"8": {
+        "status": "proposed", "score": 0.5, "H": fit["H"], "pitch_dims": [105, 68], "image_size": [W, H],
+        "distortion": d, "correspondences": fit["correspondences"], "inliers": [True] * len(fit["correspondences"])}}}}))
+    rec = client.get(f"/calibration/api/proposals/{EMIRATES}/r1/8").json()
+    assert rec["distortion"] == d and rec["H"] == fit["H"]
+    acc = client.post(f"/calibration/api/proposals/{EMIRATES}/r1/8/accept", json={}).json()
+    assert acc["record"]["distortion"] == d and acc["record"]["H"] == fit["H"]
 
 
 def test_warp_and_clicks_go_through_the_same_lens(env):
@@ -138,6 +152,7 @@ def test_snap_route_bends_the_lines_and_refuses_bad_input(client, env, monkeypat
     assert r.status_code == 200, r.text
     d = r.json()
     assert d["accepted"], d["reason"]
+    assert d["tried_suggested_k1"] is True and d["k1_before"] == 0   # lens off: also searched from the ground's k1
     assert d["k1_after"] == pytest.approx(k1_true, abs=0.006) and d["f1_after"] > d["f1_before"]
     assert d["distortion"]["k1"] == pytest.approx(d["k1_after"])
     assert d["max_click_shift_px"] <= 6.0 and d["edge_after"]["median_px"] < d["edge_before"]["median_px"]
@@ -148,6 +163,11 @@ def test_snap_route_bends_the_lines_and_refuses_bad_input(client, env, monkeypat
     # already on the lines: refused, the input comes back
     again = client.post("/calibration/api/snap", json={**body, "correspondences": d["correspondences"], "distortion": d["distortion"]}).json()
     assert not again["accepted"] and again["reason"] and again["correspondences"] == d["correspondences"]
+    # k1-only keeps H fixed and starts from the lens in the request (none here); an unknown ground has no suggestion
+    ko = client.post("/calibration/api/snap", json={**plain, "mode": "k1"}).json()
+    assert ko["tried_suggested_k1"] is False
+    un = client.post("/calibration/api/snap", json={**plain, "clip": UNKNOWN}).json()
+    assert un["tried_suggested_k1"] is False and un["accepted"]
     # bad requests
     assert client.post("/calibration/api/snap", json={**body, "mode": "x"}).status_code == 400
     assert client.post("/calibration/api/snap", json={**body, "correspondences": body["correspondences"][:3]}).status_code == 400

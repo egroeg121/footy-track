@@ -176,6 +176,7 @@ def snap_to_lines(  # noqa: PLR0911, PLR0915
     mode: str = "full",
     aspect: float = geo.DEFAULT_ASPECT,
     max_click_shift_px: float = MAX_CLICK_SHIFT_PX,
+    ref: tuple[np.ndarray, dict | None] | None = None,
 ) -> SnapResult:
     """Refine ``H`` (and ``k1``) of the current fit against the line evidence.
 
@@ -183,6 +184,9 @@ def snap_to_lines(  # noqa: PLR0911, PLR0915
     ``clicks_obs`` / ``clicks_pitch``: the user's point pairs (observed normalised image, pitch metres); they act
     as soft constraints and the result is refused if any of them would move more than ``max_click_shift_px``
     (px of the working frame). ``mode``: ``"full"`` refines H and k1, ``"k1"`` only k1 with H fixed.
+    ``ref`` = ``(H, dist)`` of the fit the user actually has when the search starts from a different one (e.g. the
+    ground's suggested k1 while the lens is off): the F1 gain is judged against it and it is what comes back on a
+    refusal.
     """
     H0 = np.asarray(H, dtype=np.float64)
     Hinv0 = np.linalg.inv(H0)
@@ -191,10 +195,12 @@ def snap_to_lines(  # noqa: PLR0911, PLR0915
     asp = float((dist or {}).get("aspect") or aspect)
     w, h = ev.size
     wh = np.array([w, h], dtype=np.float64)
-    before = line_f1(ev, H0, dist, pitch)
+    Href, dref = (H0, dist) if ref is None else (np.asarray(ref[0], dtype=np.float64), ref[1])
+    k1_ref = _k1_of(dref)
+    before = line_f1(ev, Href, dref, pitch)
 
     def fail(reason: str, **info) -> SnapResult:
-        return SnapResult(True, False, reason, H0, dist, before["f1"], before["f1"], k1_0, k1_0, info=info)
+        return SnapResult(True, False, reason, Href, dref, before["f1"], before["f1"], k1_ref, k1_ref, info=info)
 
     if len(ev.obs) < 200:
         return fail("too few line pixels found in this frame")
@@ -266,23 +272,49 @@ def snap_to_lines(  # noqa: PLR0911, PLR0915
         moved = float(shift.max())
         new_pts = (cxy + 0.5) / wh
     res = SnapResult(
-        True, False, "", H1, dist1, before["f1"], after["f1"], k1_0, k1, moved, new_pts,
+        True, False, "", H1, dist1, before["f1"], after["f1"], k1_ref, k1, moved, new_pts,
         {"nfev": int(sol.nfev), "k1_step": float(x[n_h]), "cost": float(sol.cost)},
     )
     if after["f1"] < before["f1"] + MIN_F1_GAIN:
         res.reason = f"line F1 did not improve ({before['f1']:.3f} -> {after['f1']:.3f}); kept the current fit"
-        res.H, res.distortion, res.points, res.k1_after, res.f1_after = H0, dist, None, k1_0, before["f1"]
+        res.H, res.distortion, res.points, res.k1_after, res.f1_after = Href, dref, None, k1_ref, before["f1"]
         res.info["f1_candidate"] = after["f1"]
         return res
     if moved is not None and moved > max_click_shift_px:
         res.reason = (
             f"snap would move a clicked point by {moved:.1f} px (> {max_click_shift_px:g}); kept the current fit"
         )
-        res.H, res.distortion, res.points, res.k1_after, res.f1_after = H0, dist, None, k1_0, before["f1"]
+        res.H, res.distortion, res.points, res.k1_after, res.f1_after = Href, dref, None, k1_ref, before["f1"]
         res.info["f1_candidate"] = after["f1"]
         return res
     res.accepted = True
     return res
+
+
+def snap_best(
+    ev: Evidence,
+    H: np.ndarray,
+    dist: dict | None,
+    pitch: PitchModel,
+    clicks_obs: np.ndarray | None = None,
+    clicks_pitch: np.ndarray | None = None,
+    mode: str = "full",
+    aspect: float = geo.DEFAULT_ASPECT,
+    suggested: tuple[np.ndarray, dict] | None = None,
+) -> SnapResult:
+    """:func:`snap_to_lines` from the current fit and, when given, also from ``suggested = (H, dist)`` (the
+    ground's suggested k1 with H refit under it): the better accepted answer wins (ties: the current fit's).
+    Both are judged against the current fit, which is what comes back when neither is accepted.
+    """
+    kw = {"clicks_obs": clicks_obs, "clicks_pitch": clicks_pitch, "mode": mode, "aspect": aspect}
+    ref = (np.asarray(H, dtype=np.float64), dist)
+    first = snap_to_lines(ev, H, dist, pitch, **kw)
+    if suggested is None:
+        return first
+    second = snap_to_lines(ev, suggested[0], suggested[1], pitch, ref=ref, **kw)
+    if second.accepted and (not first.accepted or second.f1_after > first.f1_after + 1e-3):
+        return second
+    return first
 
 
 def edge_residual(ev: Evidence, H: np.ndarray, dist: dict | None, pitch: PitchModel, outer: float = 0.3) -> dict:

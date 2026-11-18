@@ -1224,24 +1224,25 @@ becomes GT without a human accepting it; accepted GT carries
   frame-accurate, reader cached per video); `/calibration/api/frame` and `/warp` use it.
   - Tests: `tests/calibration/test_video.py`
 
-### Lens: default distortion and "Snap to lines" (LAB-1225..1226)
+### Lens: suggested distortion and "Snap to lines" (LAB-1225..1226)
 
 - **LAB-1225** (SHOULD) Broadcast lenses are barrel distorted, so long lines curve near the frame edges and a
-  plain homography cannot follow them. A frame with no loaded lens uses the **ground's default**: the division
-  `k1` of its camera rig (`calibration/camera_rigs/*.json`, clip -> rig by `centre_fit.rig_for_clip`; Emirates
-  0.0147, Vitality 0.035; unknown grounds get none), reported as `default_distortion` by
-  `GET /calibration/api/clips/{clip}/meta`. The editor shows the lens in the header (on/off, k1, `-`/`+`, source),
-  and `,` / `.` nudge k1 by 0.002 (Shift: 0.01), refitting live; the lens is part of the undo snapshot. The
-  finders (`/auto_points`), `/fit`, `/warp` and the saved GT all use the same lens, so what is drawn is what is
-  saved. Saving records it (`distortion`); a lens switched off on a ground that has a default is saved as
-  `"lens": "off"`. A stored record with neither (older GT, proposals) is *rendered* with the default
-  (`distortion_source: "rig_default"`; for proposals `H`, `overlay` and `mean_err_m` are re-derived from the points
-  under that lens, and accepting saves what the card showed); stored files are never rewritten by a read.
+  plain homography cannot follow them. The editor's lens is **off by default** and nothing applies one behind the
+  operator's back: records with no lens (GT, proposals) load, render and are accepted exactly as stored (stored `H`,
+  straight lines, no refit). The ground's division `k1` (`calibration/camera_rigs/*.json`, clip -> rig by
+  `centre_fit.rig_for_clip`; Emirates 0.0147, Vitality 0.035; unknown grounds none) is only a *suggestion*, reported as
+  `default_distortion` by `GET /calibration/api/clips/{clip}/meta` and on proposals: it is the value the lens box
+  jumps to when ticked on, Snap's starting k1 while the lens is off, and the review page's preview toggle. The editor
+  header has the lens box (on/off, k1, `-`/`+`, source); `,` / `.` nudge k1 by 0.002 (Shift: 0.01) with a live
+  refit, and the lens is part of the undo snapshot. When a lens is active (stored with a record, turned on, or set by
+  Snap) the finders (`/auto_points`), `/fit`, `/warp` and Save all use it, so what is drawn is what is saved; Save
+  records it as `distortion`. On the review page a per-card "Lens" button (key `l`) re-renders the bird's-eye warp
+  through the suggested k1 as a preview only: the stored H, overlay and Accept are untouched.
   - Tests: `tests/labeller/test_calibration_lens.py`, `tests/calibration/test_lens.py::test_default_distortion_*`,
     `test_calibration_editor_js.py::test_lens_helpers_under_node` (buttons/keys UNTESTED-FRONTEND)
 - **LAB-1226** (SHOULD) `POST /calibration/api/snap` (editor button "Snap to lines", key `s`, optional "k1 only")
   takes the `/fit` body plus `{clip, frame_index, mode: "full"|"k1"}` and refines `H` and `k1` of the current fit
-  against the frame's line mask (`calibration/lens.py`: robust soft-L1 least squares over the 8 homography
+  against the frame's line mask (`calibration/lens.py`; with the lens off it also searches from the ground's suggested k1 and keeps the better accepted answer, both judged (and falling back) against the operator's current fit; k1-only mode keeps H and the request's lens: robust soft-L1 least squares over the 8 homography
   parameters + k1 from the current solution with bounded steps, the clicked points as soft constraints; evidence =
   `centre_circle.line_mask_for` + the far-edge strip, scored with `pitch_finders.Field/Template/evaluate`). It is
   accepted only if the line F1 improves and no clicked point moves more than ~4 px (of 1280 px); then the clicked

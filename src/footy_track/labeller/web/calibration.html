@@ -110,13 +110,13 @@
   <label>Pitch <input id="pitchL" type="number" step="0.5" value="105" title="length (m)"> &times;
     <input id="pitchW" type="number" step="0.5" value="68" title="width (m)"> m</label>
   <label>Fit <select id="method"><option value="dlt">DLT</option><option value="ransac">RANSAC</option></select></label>
-  <span id="lensBox" title="Lens (barrel) distortion, division model. Long lines such as the touchlines curve near the frame edges; with the lens on the projected lines curve with them. Defaults to the ground's rig value. Keys: , and . nudge k1 (Shift = bigger steps)">
+  <span id="lensBox" title="Lens (barrel) distortion, division model. Long lines such as the touchlines curve near the frame edges; with the lens on the projected lines curve with them. Off by default; ticking it on jumps to the ground's rig value. Keys: , and . nudge k1 (Shift = bigger steps)">
     <label><input type="checkbox" id="lensOn"> lens k1</label>
     <button id="lensMinus" title="k1 down (,)">&minus;</button>
     <input id="lensK1" type="number" step="0.001" value="0">
     <button id="lensPlus" title="k1 up (.)">+</button>
     <span id="lensSrc"></span></span>
-  <button id="snapBtn" class="autoBtn" title="Snap to lines: refine the homography and k1 against the painted lines in this frame so the projected (curved) lines sit on them, including the touchline edges. Applied only if the line F1 improves and your points move by only a few px; Undo reverts. Key: s">Snap to lines</button>
+  <button id="snapBtn" class="autoBtn" title="Snap to lines: refine the homography and k1 against the painted lines in this frame so the projected (curved) lines sit on them, including the touchline edges. With the lens off it starts from the ground's rig k1. Applied only if the line F1 improves and your points move by only a few px; Undo reverts. Key: s">Snap to lines</button>
   <label title="Only refine k1 (keep the homography)"><input type="checkbox" id="snapK1"> k1 only</label><span id="snapInfo"></span>
   <button id="saveBtn" class="primary">Save GT</button>
   <button id="loadBtn">Load GT</button>
@@ -189,9 +189,9 @@ const state = {
   pitchPts: [],                // [{id|null, x, y}] metres
   fit: null, warpImg: null, warpKey: null, dirty: false, gtFrames: [],
   hoverKp: null, fitSeq: 0, fitError: null,
-  distortion: null,            // lens in use ({k1,...}): the ground's default, the loaded record's, or the operator's; null = plain homography
-  defaultLens: null,           // the ground's default lens for this clip (null for unknown grounds)
-  lensSrc: "",                 // where state.distortion came from: ground default / saved / manual / snapped
+  distortion: null,            // lens in use ({k1,...}): the loaded record's, or one the operator turned on / Snap set; null (the default) = plain homography
+  defaultLens: null,           // the ground's SUGGESTED lens for this clip (null for unknown grounds): never applied by itself
+  lensSrc: "",                 // where state.distortion came from: saved / proposal / manual / snapped
   lastK1: 0,                   // k1 before the lens was switched off (to switch it back on)
   clips: [],                   // the queue: deduped by canonical, filtered by ?queue=, ordered by canonical
   queueFilter: "",
@@ -522,11 +522,10 @@ function snapStatusText(r) {
 // ---- end lens helpers
 
 const frameAspect = () => (state.frameImg && state.frameImg.naturalHeight ? state.frameImg.naturalWidth / state.frameImg.naturalHeight : 16 / 9);
-const defaultLensCopy = () => (state.defaultLens ? JSON.parse(JSON.stringify(state.defaultLens)) : null);
 function syncLens() {
   const on = !!state.distortion, k = lensK1Of(state.distortion);
   $("lensOn").checked = on; $("lensK1").value = on ? k.toFixed(4) : "0";
-  $("lensSrc").textContent = on ? state.lensSrc : (state.defaultLens ? "off" : "no default for this ground");
+  $("lensSrc").textContent = on ? state.lensSrc : (state.defaultLens ? `off (ground: k1 ${state.defaultLens.k1.toFixed(4)})` : "off");
 }
 function setLens(d, src, noUndo) {
   if (!noUndo) snapshot();
@@ -798,7 +797,7 @@ async function loadProposal(run, idx) {
     const pts = proposalPoints(rec, state.pitch.keypoints);
     state.imgPts = pts.map(p => p.img);
     state.pitchPts = pts.map(p => p.pt);
-    state.distortion = rec.distortion || null; state.lensSrc = rec.distortion_source ? "ground default" : "proposal"; syncLens();
+    state.distortion = rec.distortion || null; state.lensSrc = rec.distortion ? "proposal" : "off"; syncLens();
     state.dirty = false; resetUndo();
     setProposal({ run_id: run, status: rec.status, banner: rec.H == null
       ? `failed proposal ${run} (${rec.failure || "no fit"}): ${pts.length} label(s) loaded as a head start; add points, then Save accepts it as edited`
@@ -866,7 +865,7 @@ async function gotoFrame(idx, force, noGt) {
   setProposal(null);
   state.frame = idx; $("frameSlider").value = $("frameNum").value = idx;
   state.imgPts = []; state.pitchPts = []; state.fit = null; state.warpImg = null; state.fitError = null; state.dirty = false;
-  state.distortion = defaultLensCopy(); state.lensSrc = "ground default"; syncLens(); $("snapInfo").textContent = ""; resetUndo();
+  state.distortion = null; state.lensSrc = "off"; syncLens(); $("snapInfo").textContent = ""; resetUndo();
   status("loading frame…");
   const img = new Image();
   await new Promise((res, rej) => { img.onload = res; img.onerror = () => rej(new Error("frame failed to load"));
@@ -881,7 +880,7 @@ async function loadGt(quiet) {
     const rec = await (await api(`/gt/${encodeURIComponent(state.clip)}/${state.frame}`)).json();
     $("pitchL").value = rec.pitch_dims[0]; $("pitchW").value = rec.pitch_dims[1];
     await loadPitch();
-    state.distortion = rec.distortion || null; state.lensSrc = rec.distortion_source ? "ground default" : "saved"; syncLens();
+    state.distortion = rec.distortion || null; state.lensSrc = rec.distortion ? "saved" : "off"; syncLens();
     state.imgPts = rec.correspondences.map(c => ({ u: c.image[0], v: c.image[1] }));
     state.pitchPts = rec.correspondences.map(c => ({ id: c.pitch_id, x: c.pitch_xy[0], y: c.pitch_xy[1] }));
     state.dirty = false; resetUndo(); if (!quiet) status("GT loaded");

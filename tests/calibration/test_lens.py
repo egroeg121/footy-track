@@ -121,3 +121,33 @@ def test_snap_needs_line_evidence(scene):
     H0 = _plain_fit(scene["img"], scene["xy"])
     r = lens.snap_to_lines(ev, H0, None, scene["pitch"], scene["img"], scene["xy"])
     assert not r.accepted and "few line pixels" in r.reason
+
+
+def test_snap_from_a_suggested_k1_is_judged_against_the_current_fit(scene):
+    ev, pitch = scene["ev"], scene["pitch"]
+    img, xy = scene["img"], scene["xy"]
+    H_cur = _plain_fit(img, xy)                                      # the user's fit: no lens
+    sugg = lens.default_distortion("arsenal_mancity_seg010", W / H)  # the ground's k1, not applied by itself
+    H_s = _plain_fit(geo.undistort_points(img, sugg), xy)
+    r = lens.snap_to_lines(ev, H_s, sugg, pitch, img, xy, ref=(H_cur, None))
+    assert r.accepted and r.k1_before == 0.0 and r.k1_after == pytest.approx(K1_TRUE, abs=0.006)
+    assert r.f1_before == pytest.approx(lens.line_f1(ev, H_cur, None, pitch)["f1"])
+    # refused (lines far off the points): the *current* plain fit comes back, not the suggested start
+    ev2 = lens.Evidence.from_mask(_render_mask(scene["Ht"], scene["dist"], shift_px=(9.0, 6.0)))
+    r2 = lens.snap_to_lines(ev2, H_s, sugg, pitch, img, xy, ref=(H_cur, None), max_click_shift_px=0.2)
+    assert not r2.accepted and r2.distortion is None and np.array_equal(r2.H, H_cur) and r2.k1_after == 0.0
+
+
+def test_snap_best_takes_the_better_accepted_start(scene):
+    ev, pitch = scene["ev"], scene["pitch"]
+    img, xy = scene["img"], scene["xy"]
+    H_cur = _plain_fit(img, xy)
+    sugg = lens.default_distortion("arsenal_mancity_seg010", W / H)
+    H_s = _plain_fit(geo.undistort_points(img, sugg), xy)
+    r = lens.snap_best(ev, H_cur, None, pitch, img, xy, suggested=(H_s, sugg))
+    assert r.accepted and r.k1_before == 0.0 and r.k1_after == pytest.approx(K1_TRUE, abs=0.006)
+    assert r.f1_after >= lens.snap_to_lines(ev, H_cur, None, pitch, img, xy).f1_after - 1e-6
+    # nothing to gain anywhere: the current fit comes back
+    H_true = _plain_fit(geo.undistort_points(img, scene["dist"]), xy)
+    r2 = lens.snap_best(ev, H_true, scene["dist"], pitch, img, xy, suggested=(H_s, sugg))
+    assert not r2.accepted and np.array_equal(r2.H, H_true)

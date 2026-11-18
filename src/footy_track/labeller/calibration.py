@@ -564,35 +564,11 @@ def _aspect(image_size) -> float:
 
 
 def default_distortion(clip: str, image_size=None) -> dict | None:
-    """The ground's default lens for ``clip`` (division ``k1`` of its camera rig), ``None`` for an unknown ground."""
+    """The ground's *suggested* lens for ``clip`` (division ``k1`` of its camera rig), ``None`` for an unknown ground.
+
+    Only a suggestion: nothing applies it by itself. The editor jumps to it when the operator ticks the lens on,
+    and Snap starts its search from it while the lens is off."""
     return lens.default_distortion(clip, _aspect(image_size))
-
-
-def with_default_lens(rec: dict, clip: str, *, refit: bool = False) -> dict:
-    """``rec`` as it should be *rendered*: a record with no lens (and not saved with the lens turned off) gets the
-    ground's default one. The stored record is never touched.
-
-    ``refit`` also re-derives ``H`` / ``mean_err_m`` / ``overlay`` from the record's points under that lens (the
-    review page draws the stored H, which was fitted without one); records whose points cannot be refit are
-    returned unchanged. ``distortion_source: "rig_default"`` marks an injected lens."""
-    if rec.get("distortion") or rec.get("lens") == "off":
-        return rec
-    dd = default_distortion(clip, rec.get("image_size"))
-    if dd is None:
-        return rec
-    out = dict(rec, distortion=dd, distortion_source="rig_default")
-    if not refit or rec.get("H") is None or rec.get("status") == "failed":
-        return out
-    corr = rec.get("correspondences") or []
-    inl = rec.get("inliers") or [True] * len(corr)
-    pts = [c for c, ok in zip(corr, inl, strict=False) if ok]
-    try:
-        res = _fit({"correspondences": pts, "pitch_dims": rec.get("pitch_dims"), "method": "dlt",
-                    "image_size": rec.get("image_size"), "distortion": dd})
-    except (_BadRequest, KeyError, TypeError, ValueError):
-        return rec
-    out.update(H=res["H"], mean_err_m=res["mean_err_m"], overlay=res["overlay"])
-    return out
 
 
 def _fit(body: dict) -> dict:
@@ -895,7 +871,7 @@ SNAP_MODES = ("full", "k1")
 
 
 def _snap(video: Path, idx: int, key: tuple, H: np.ndarray, dist: dict | None, pitch: PitchModel,
-          img: np.ndarray, ptc: np.ndarray, mode: str, aspect: float) -> dict | None:
+          img: np.ndarray, ptc: np.ndarray, mode: str, aspect: float, suggested=None) -> dict | None:
     with _SNAP_LOCK:
         ev = _SNAP_CACHE.get(key)
         if ev is None:
@@ -908,7 +884,7 @@ def _snap(video: Path, idx: int, key: tuple, H: np.ndarray, dist: dict | None, p
                 _SNAP_CACHE.popitem(last=False)
         else:
             _SNAP_CACHE.move_to_end(key)
-        r = lens.snap_to_lines(ev, H, dist, pitch, img, ptc, mode=mode, aspect=aspect)
+        r = lens.snap_best(ev, H, dist, pitch, img, ptc, mode=mode, aspect=aspect, suggested=suggested)
         edge0 = lens.edge_residual(ev, H, dist, pitch)
         edge1 = lens.edge_residual(ev, r.H, r.distortion, pitch) if r.accepted else edge0
         scale = (ev.frame_width or ev.size[0]) / ev.size[0]
@@ -953,8 +929,18 @@ async def snap(body: dict):
     img = np.array([c["image"] for c in corr], dtype=np.float64)
     ptc = np.array([c["pitch_xy"] for c in corr], dtype=np.float64)
     key = (datasets.current_name(), str(video), idx)
+    H_cur = np.array(res["H"])
+    suggested = None
+    sug = default_distortion(clip, body.get("image_size")) if dist is None and mode == "full" else None
+    if sug is not None:
+        # lens off: also search from the ground's suggested k1 (H refit under it); both are judged against the fit the
+        # operator has now, which is what comes back if neither is accepted
+        try:
+            suggested = (np.array(_fit({**body, "distortion": sug})["H"]), sug)
+        except _BadRequest:
+            suggested = None
     out = await asyncio.to_thread(
-        _snap, video, idx, key, np.array(res["H"]), dist, pitch, img, ptc, mode, _aspect(body.get("image_size"))
+        _snap, video, idx, key, H_cur, dist, pitch, img, ptc, mode, _aspect(body.get("image_size")), suggested
     )
     if out is None:
         return _err(404, f"cannot read frame {idx}")
@@ -969,7 +955,7 @@ async def snap(body: dict):
         "k1_before": r.k1_before, "k1_after": r.k1_after,
         "max_click_shift_px": None if shift is None else shift * out["px_scale"],   # px of the full frame
         "edge_before": _json_safe(out["edge_before"]), "edge_after": _json_safe(out["edge_after"]),
-        "distortion": r.distortion, "correspondences": new_corr,
+        "distortion": r.distortion, "correspondences": new_corr, "tried_suggested_k1": suggested is not None,
     }
 
 
@@ -998,10 +984,10 @@ async def gt_get(clip: str, idx: int):
     rec = doc["frames"].get(str(idx))
     if rec is None:
         return _err(404, "no calibration GT for this frame")
-    return with_default_lens(rec, clip)
+    return rec
 
 
-def _gt_record(idx: int, res: dict, body: dict, origin: dict | None = None, clip: str | None = None) -> dict:
+def _gt_record(idx: int, res: dict, body: dict, origin: dict | None = None) -> dict:
     """The GT frame record for a fit result (shared by GT save and proposal accept)."""
     rec = {
         "frame_index": idx,
@@ -1018,8 +1004,6 @@ def _gt_record(idx: int, res: dict, body: dict, origin: dict | None = None, clip
     }
     if res.get("distortion"):  # absent == plain homography (k1 = 0)
         rec["distortion"] = res["distortion"]
-    elif clip and "distortion" in body and default_distortion(clip, body.get("image_size")):
-        rec["lens"] = "off"  # the operator turned the ground's default lens off: do not re-apply it on load
     if origin:
         rec["origin"] = origin
     return rec
@@ -1041,7 +1025,7 @@ async def gt_save(clip: str, idx: int, body: dict):
         res = _fit(body)
     except _BadRequest as exc:
         return _err(400, str(exc))
-    rec = _gt_record(idx, res, body, clip=clip)
+    rec = _gt_record(idx, res, body)
 
     def _store() -> None:
         update_gt(clip, lambda doc: doc["frames"].update({str(idx): rec}))
