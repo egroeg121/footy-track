@@ -33,7 +33,8 @@ declare -A SVC_PORT=([calib]=8011)
 declare -A SVC_ENV
 # No FOOTY_*_DIR here: per-dataset dirs come from the registry. (Setting FOOTY_CLIPS_DIR /
 # FOOTY_GT_MARKS_DIR / ... would override the DEFAULT dataset's fields and hide registry edits.)
-SVC_ENV[calib]=""
+# Broadcast-view classifier the labeller pre-classifies with (classifier.default_classifier_path).
+SVC_ENV[calib]="FOOTY_CLASSIFIER_WEIGHTS=/mnt/storage/models/broadcast_cls_20261118_v2dcef14/last.pt"
 # -----------------------------------------------------------------------------
 
 # service -> datasets whose Ball Check crop/clip caches are warmed after a restart (they
