@@ -37,6 +37,7 @@ from fastapi import APIRouter
 from fastapi.responses import JSONResponse, Response
 
 from footy_track.calibration import geometry as geo
+from footy_track.calibration import lens
 from footy_track.calibration.pitch_model import (
     DEFAULT_LENGTH,
     DEFAULT_WIDTH,
@@ -551,6 +552,25 @@ def _distortion_from(body: dict) -> dict | None:
         raise _BadRequest(f"bad distortion: {exc}") from exc
 
 
+def _json_safe(d: dict) -> dict:
+    return {k: (None if isinstance(v, float) and not np.isfinite(v) else v) for k, v in d.items()}
+
+
+def _aspect(image_size) -> float:
+    try:
+        return float(image_size[0]) / float(image_size[1])
+    except (TypeError, ValueError, IndexError, ZeroDivisionError):
+        return geo.DEFAULT_ASPECT
+
+
+def default_distortion(clip: str, image_size=None) -> dict | None:
+    """The ground's *suggested* lens for ``clip`` (division ``k1`` of its camera rig), ``None`` for an unknown ground.
+
+    Only a suggestion: nothing applies it by itself. The editor jumps to it when the operator ticks the lens on,
+    and Snap starts its search from it while the lens is off."""
+    return lens.default_distortion(clip, _aspect(image_size))
+
+
 def _fit(body: dict) -> dict:
     """Shared by /fit and /gt save. Raises _BadRequest on bad input.
 
@@ -667,7 +687,8 @@ async def clip_meta(clip: str):
     if meta is None:
         return _err(404, f"cannot open video for {clip}")
     return {**meta, "name": clip, "gt_frames": _gt_frames(clip),
-            "not_broadcast": _not_broadcast(clip), "too_few_points": _too_few_points(clip)}
+            "not_broadcast": _not_broadcast(clip), "too_few_points": _too_few_points(clip),
+            "default_distortion": default_distortion(clip, (meta["width"], meta["height"]))}
 
 
 @router.get("/calibration/api/frame/{clip}/{idx}.jpg")
@@ -835,6 +856,107 @@ async def auto_points(body: dict):
     if "reason" in res:
         return {"ok": False, "reason": res["reason"]}
     return {"ok": True, **{k: v for k, v in res.items() if k != "reason"}}
+
+
+# ---------------------------------------------------------------------------
+# Snap to lines: refine H + k1 of the current fit against the frame's painted lines
+# ---------------------------------------------------------------------------
+
+#: ``(dataset, video path, frame)`` -> ``lens.Evidence`` (distance field of the frame's line mask; ~3 s to build)
+_SNAP_CACHE_MAX = 4
+_SNAP_CACHE: collections.OrderedDict[tuple, lens.Evidence] = collections.OrderedDict()
+#: One snap at a time (CPU work on the machine the operator is labelling on)
+_SNAP_LOCK = threading.Lock()
+SNAP_MODES = ("full", "k1")
+
+
+def _snap(video: Path, idx: int, key: tuple, H: np.ndarray, dist: dict | None, pitch: PitchModel,
+          img: np.ndarray, ptc: np.ndarray, mode: str, aspect: float, suggested=None) -> dict | None:
+    with _SNAP_LOCK:
+        ev = _SNAP_CACHE.get(key)
+        if ev is None:
+            frame = _read_frame(video, idx)
+            if frame is None:
+                return None
+            ev = lens.Evidence.from_frame(frame)
+            _SNAP_CACHE[key] = ev
+            while len(_SNAP_CACHE) > _SNAP_CACHE_MAX:
+                _SNAP_CACHE.popitem(last=False)
+        else:
+            _SNAP_CACHE.move_to_end(key)
+        r = lens.snap_best(ev, H, dist, pitch, img, ptc, mode=mode, aspect=aspect, suggested=suggested)
+        edge0 = lens.edge_residual(ev, H, dist, pitch)
+        edge1 = lens.edge_residual(ev, r.H, r.distortion, pitch) if r.accepted else edge0
+        scale = (ev.frame_width or ev.size[0]) / ev.size[0]
+        return {"r": r, "edge_before": edge0, "edge_after": edge1, "px_scale": scale}
+
+
+@router.post("/calibration/api/snap")
+async def snap(body: dict):
+    """Snap the current fit to the painted lines ("bend" the projected lines onto the pitch markings).
+
+    Body: the ``/fit`` body (``correspondences``, ``distortion?``, ``pitch_dims?``, ``image_size?``) plus
+    ``clip``, ``frame_index`` and ``mode`` (``"full"``: refine H and k1, default; ``"k1"``: only k1, H fixed).
+    Starts from the fit those points give (with that distortion), then runs a robust least squares over the
+    homography (8 parameters) and ``k1`` against the frame's line mask, the clicked points acting as soft
+    constraints. Accepted only if the line F1 improves and no clicked point has to move more than a few px.
+
+    Answers ``{ok: true, accepted, reason, f1_before, f1_after, k1_before, k1_after, max_click_shift_px,
+    edge_before, edge_after, distortion, correspondences}``: when ``accepted`` the ``correspondences`` carry
+    the clicked points moved onto the snapped model (so H refit from them under ``distortion`` reproduces it);
+    otherwise they are the input ones and ``distortion`` is the input's, with the ``reason``. Stores nothing.
+    """
+    try:
+        clip, idx = str(body["clip"]), int(body["frame_index"])
+        if idx < 0:
+            raise _BadRequest("frame_index must be >= 0")
+        mode = body.get("mode", "full")
+        if mode not in SNAP_MODES:
+            raise _BadRequest(f"mode must be one of {list(SNAP_MODES)}")
+        res = _fit(body)
+        pitch = _pitch_from(body)
+        dist = _distortion_from(body)
+        if len(res["correspondences"]) < 4:
+            raise _BadRequest("need at least 4 point pairs to snap")
+    except (KeyError, TypeError, ValueError) as exc:
+        return _err(400, f"bad request: {exc}")
+    except _BadRequest as exc:
+        return _err(400, str(exc))
+    video = _find_video(clip)
+    if video is None:
+        return _err(404, f"clip not found: {clip}")
+    corr = res["correspondences"]
+    img = np.array([c["image"] for c in corr], dtype=np.float64)
+    ptc = np.array([c["pitch_xy"] for c in corr], dtype=np.float64)
+    key = (datasets.current_name(), str(video), idx)
+    H_cur = np.array(res["H"])
+    suggested = None
+    sug = default_distortion(clip, body.get("image_size")) if dist is None and mode == "full" else None
+    if sug is not None:
+        # lens off: also search from the ground's suggested k1 (H refit under it); both are judged against the fit the
+        # operator has now, which is what comes back if neither is accepted
+        try:
+            suggested = (np.array(_fit({**body, "distortion": sug})["H"]), sug)
+        except _BadRequest:
+            suggested = None
+    out = await asyncio.to_thread(
+        _snap, video, idx, key, H_cur, dist, pitch, img, ptc, mode, _aspect(body.get("image_size")), suggested
+    )
+    if out is None:
+        return _err(404, f"cannot read frame {idx}")
+    r = out["r"]
+    new_corr = corr
+    if r.accepted and r.points is not None:
+        new_corr = [dict(c, image=[float(p[0]), float(p[1])]) for c, p in zip(corr, r.points, strict=True)]
+    shift = r.max_click_shift_px
+    return {
+        "ok": True, "accepted": r.accepted, "reason": r.reason, "mode": mode,
+        "f1_before": r.f1_before, "f1_after": r.f1_after,
+        "k1_before": r.k1_before, "k1_after": r.k1_after,
+        "max_click_shift_px": None if shift is None else shift * out["px_scale"],   # px of the full frame
+        "edge_before": _json_safe(out["edge_before"]), "edge_after": _json_safe(out["edge_after"]),
+        "distortion": r.distortion, "correspondences": new_corr, "tried_suggested_k1": suggested is not None,
+    }
 
 
 @router.get("/calibration/api/gt/{clip}")

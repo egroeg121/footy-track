@@ -149,6 +149,7 @@
     <div class="row">
       <button class="small" id="btnOverlay">Overlay</button>
       <button class="small on" id="btnWarp">Warp</button>
+      <button class="small" id="btnLens" title="Preview only: re-render the bird's-eye warp through the ground's lens (suggested k1) to see whether a bent edge is just lens distortion. The stored H is unchanged and Accept still saves it. Key: l">Lens</button>
       <a class="small" id="editLink" href="/calibration">Open in editor</a>
     </div>
     <div id="status">Swipe right = accept, left = reject. Not broadcast (n) = replay, close-up, crowd, graphic. Too few points (t) = pitch view but fewer than 4 identifiable points (kept for the PTZ solver). Opens in the bird&rsquo;s-eye warp; hold the image for the camera view.</div>
@@ -166,6 +167,10 @@ let showOverlay = true, warpMode = true, peek = false, shotIsWarp = false, loadi
 const CACHE = new Map();   // key -> proposal record
 
 const keyOf = (i) => `${i.clip}|${i.run_id}|${i.frame_index}`;
+// Lens preview (PREVIEW ONLY): re-render the warp through the ground's suggested k1 to see whether a bent edge is just
+// the lens. The stored H, the overlay and Accept are untouched; the warp cache is keyed per mode.
+let lensPreview = false;
+const keyW = (i) => keyOf(i) + (lensPreview ? "|lens" : "");
 const shortClip = (c) => c.replace(/_20\d{6}/, "");
 function setStatus(t) { $("status").textContent = t || ""; }
 // Visible, persistent error (phone-legible). Stays until dismissed or the next action succeeds.
@@ -272,13 +277,13 @@ async function fetchWarp(it) {   // one warp raster -> object URL (sequential vi
   const rec = await getRec(it);
   if (!rec.H) throw new Error("no H");
   const r = await fetch(`${API}/warp`, { method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ clip: it.clip, frame_index: it.frame_index, H: rec.H, pitch_dims: rec.pitch_dims, distortion: rec.distortion || null }) });
+    body: JSON.stringify({ clip: it.clip, frame_index: it.frame_index, H: rec.H, pitch_dims: rec.pitch_dims, distortion: (lensPreview && rec.default_distortion) || rec.distortion || null }) });
   if (!r.ok) { let m = r.statusText; try { m = (await r.json()).error || m; } catch (e) {} throw new Error(m); }
   const blob = await r.blob();
   await ensurePitch(rec);
   return URL.createObjectURL(blob);
 }
-const WARPS = makeWarpStore(fetchWarp, (u) => URL.revokeObjectURL(u), keyOf);   // key -> blob URL
+const WARPS = makeWarpStore(fetchWarp, (u) => URL.revokeObjectURL(u), keyW);   // key -> blob URL
 async function ensurePitch(rec) {   // pitch-space geometry + the warp's px/m and margin
   const [L, Wd] = rec.pitch_dims || [105, 68], k = `${L}x${Wd}`;
   if (pitchModel && pitchKey === k) return pitchModel;
@@ -349,7 +354,7 @@ async function show() {
   $("hint").classList.toggle("show", !nbDone && !!it.view && it.view.main_camera_wide === false);  // Claude's hint only; never auto-marks
   $("note").textContent = ""; $("conf").textContent = "";
   $("editLink").href = `/calibration?clip=${encodeURIComponent(it.clip)}&frame=${it.frame_index}&proposal=${encodeURIComponent(it.run_id)}`;
-  shotIsWarp = false; warpMode = true; peek = false; loadingKey = null;  // every item opens in warp view
+  shotIsWarp = false; warpMode = true; peek = false; loadingKey = null; lensPreview = false;  // every item opens in warp view
   $("shot").src = frameUrl(it);
   syncView();   // swaps straight to the warp when it is already prefetched
   let rec = CACHE.get(k);
@@ -371,7 +376,7 @@ async function show() {
     if (rec.H) requestView();   // warp is the default view; items with no H stay in camera view
     else { warpMode = false; syncView(); }
     const nexts = items.slice(idx + 1, idx + 3);
-    WARPS.retain(new Set(items.slice(Math.max(0, idx - 1), idx + 3).map(keyOf)));  // drop stale, revoke their URLs
+    WARPS.retain(new Set(items.slice(Math.max(0, idx - 1), idx + 3).map(keyW)));  // drop stale, revoke their URLs
     for (const nx of nexts) {
       new Image().src = frameUrl(nx);                       // warm the next frames
       WARPS.request(nx, false).catch(() => {});             // and their warps, one at a time, behind the current one
@@ -388,13 +393,17 @@ function syncToggles() {
   const loading = want && !shotIsWarp && cur && loadingKey === keyOf(cur);
   $("btnWarp").classList.toggle("loading", !!loading);
   $("btnWarp").textContent = loading ? "Warp\u2026" : "Warp";
+  const rc = cur && CACHE.get(keyOf(cur));
+  $("btnLens").classList.toggle("on", lensPreview);
+  $("btnLens").disabled = !(rc && rc.default_distortion);
+  $("btnLens").textContent = lensPreview && rc && rc.default_distortion ? `Lens k1 ${rc.default_distortion.k1.toFixed(3)} (preview)` : "Lens";
   if (cur && CACHE.get(keyOf(cur))) drawOverlay(CACHE.get(keyOf(cur)));
 }
 // Put on screen what the state asks for, if it is ready; otherwise stay on the camera view.
 function syncView() {
   const it = cur, rec = it && CACHE.get(keyOf(it));
-  const ready = !!(rec && rec.H && wantWarp(warpMode, peek) && WARPS.has(keyOf(it)) && pitchOk(rec));
-  if (it && ready !== shotIsWarp) { shotIsWarp = ready; $("shot").src = ready ? WARPS.get(keyOf(it)) : frameUrl(it); }
+  const ready = !!(rec && rec.H && wantWarp(warpMode, peek) && WARPS.has(keyW(it)) && pitchOk(rec));
+  if (it && ready !== shotIsWarp) { shotIsWarp = ready; $("shot").src = ready ? WARPS.get(keyW(it)) : frameUrl(it); }
   syncToggles();
 }
 // The state (warpMode/peek) changed or a warp arrived: make the screen follow it.
@@ -402,7 +411,7 @@ async function requestView() {
   const it = cur, rec = it && CACHE.get(keyOf(it)), k = it && keyOf(it);
   if (!it || !wantWarp(warpMode, peek)) { loadingKey = null; syncView(); return; }
   if (!rec || !rec.H) { showError("This proposal has no H to warp."); warpMode = false; peek = false; syncView(); return; }
-  if (WARPS.has(k) && pitchOk(rec)) { loadingKey = null; syncView(); return; }
+  if (WARPS.has(keyW(it)) && pitchOk(rec)) { loadingKey = null; syncView(); return; }
   loadingKey = k; syncView();   // camera view + lines, Warp button pulsing
   try { await WARPS.request(it, true); await ensurePitch(rec); }
   catch (e) {
@@ -416,8 +425,16 @@ async function requestView() {
   syncView();   // switches to the warp only if the user has not toggled away meanwhile
 }
 const toggleWarp = () => { warpMode = !warpMode; requestView(); };
+function toggleLens() {   // preview only: needs a warp view and a ground with a suggested lens
+  const rec = cur && CACHE.get(keyOf(cur));
+  if (!rec || !rec.default_distortion) { return; }
+  lensPreview = !lensPreview; shotIsWarp = false; warpMode = true;
+  WARPS.retain(new Set(items.slice(Math.max(0, idx - 1), idx + 3).map(keyW)));
+  requestView();
+}
 $("btnOverlay").onclick = () => { showOverlay = !showOverlay; syncToggles(); };
 $("btnWarp").onclick = toggleWarp;
+$("btnLens").onclick = toggleLens;
 $("filterBtn").onclick = () => $("filters").classList.toggle("open");
 for (const id of ["runSel", "statusSel", "sortSel"]) $(id).onchange = loadQueue;
 
@@ -514,7 +531,7 @@ document.addEventListener("keydown", (e) => {
   if (e.key === "a") act("accept"); else if (e.key === "r") act("reject"); else if (e.key === "n") act("not_broadcast"); else if (e.key === "t") act("too_few_points");
   else if (e.key === "j") skip(); else if (e.key === "k") back();
   else if (e.key === "e" && cur) location.href = $("editLink").href;
-  else if (e.key === "o") { showOverlay = !showOverlay; syncToggles(); } else if (e.key === "w") toggleWarp();
+  else if (e.key === "o") { showOverlay = !showOverlay; syncToggles(); } else if (e.key === "w") toggleWarp(); else if (e.key === "l") toggleLens();
 });
 
 (async () => {

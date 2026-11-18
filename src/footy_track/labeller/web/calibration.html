@@ -31,6 +31,10 @@
   #fewBanner .tag { padding:3px 10px; border-radius:12px; cursor:pointer; border:1px solid var(--border);
                     color:var(--muted); background:transparent; font-weight:400; }
   #fewBanner .tag.on { border-color:var(--accent); color:var(--accent); background:#10263d; font-weight:600; }
+  #lensBox { display:inline-flex; align-items:center; gap:4px; padding:2px 6px; border:1px solid var(--border); border-radius:6px; }
+  #lensBox input[type=number] { width:78px; } #lensBox button { padding:1px 8px; }
+  #lensSrc, #snapInfo { color:var(--muted); font-size:12px; }
+  #snapInfo.ok { color:var(--green); } #snapInfo.warn { color:var(--amber); }
   #undoBtn, .autoBtn { min-height:36px; padding:6px 16px; }   /* big enough to tap on a phone */
   .autoBtn:disabled { opacity:.5; cursor:default; }
   #undoBtn:disabled { opacity:.4; cursor:default; }
@@ -106,6 +110,14 @@
   <label>Pitch <input id="pitchL" type="number" step="0.5" value="105" title="length (m)"> &times;
     <input id="pitchW" type="number" step="0.5" value="68" title="width (m)"> m</label>
   <label>Fit <select id="method"><option value="dlt">DLT</option><option value="ransac">RANSAC</option></select></label>
+  <span id="lensBox" title="Lens (barrel) distortion, division model. Long lines such as the touchlines curve near the frame edges; with the lens on the projected lines curve with them. Off by default; ticking it on jumps to the ground's rig value. Keys: , and . nudge k1 (Shift = bigger steps)">
+    <label><input type="checkbox" id="lensOn"> lens k1</label>
+    <button id="lensMinus" title="k1 down (,)">&minus;</button>
+    <input id="lensK1" type="number" step="0.001" value="0">
+    <button id="lensPlus" title="k1 up (.)">+</button>
+    <span id="lensSrc"></span></span>
+  <button id="snapBtn" class="autoBtn" title="Snap to lines: refine the homography and k1 against the painted lines in this frame so the projected (curved) lines sit on them, including the touchline edges. With the lens off it starts from the ground's rig k1. Applied only if the line F1 improves and your points move by only a few px; Undo reverts. Key: s">Snap to lines</button>
+  <label title="Only refine k1 (keep the homography)"><input type="checkbox" id="snapK1"> k1 only</label><span id="snapInfo"></span>
   <button id="saveBtn" class="primary">Save GT</button>
   <button id="loadBtn">Load GT</button>
   <button id="delGtBtn" class="danger">Delete GT</button>
@@ -177,7 +189,10 @@ const state = {
   pitchPts: [],                // [{id|null, x, y}] metres
   fit: null, warpImg: null, warpKey: null, dirty: false, gtFrames: [],
   hoverKp: null, fitSeq: 0, fitError: null,
-  distortion: null,            // lens model of the loaded GT/proposal ({k1,...}); null = plain homography
+  distortion: null,            // lens in use ({k1,...}): the loaded record's, or one the operator turned on / Snap set; null (the default) = plain homography
+  defaultLens: null,           // the ground's SUGGESTED lens for this clip (null for unknown grounds): never applied by itself
+  lensSrc: "",                 // where state.distortion came from: saved / proposal / manual / snapped
+  lastK1: 0,                   // k1 before the lens was switched off (to switch it back on)
   clips: [],                   // the queue: deduped by canonical, filtered by ?queue=, ordered by canonical
   queueFilter: "",
   proposal: null,              // {run_id} while editing a machine proposal: Save accepts it as edited
@@ -190,7 +205,7 @@ const UNDO_MAX = 100;
 let undoStack = [];
 function syncUndo() { $("undoBtn").disabled = !undoStack.length; }
 function snapshot() {
-  undoStack.push(JSON.stringify({ imgPts: state.imgPts, pitchPts: state.pitchPts }));
+  undoStack.push(JSON.stringify({ imgPts: state.imgPts, pitchPts: state.pitchPts, distortion: state.distortion }));
   if (undoStack.length > UNDO_MAX) undoStack.shift();
   syncUndo();
 }
@@ -199,6 +214,7 @@ function undo() {
   if (!undoStack.length) return;
   const s = JSON.parse(undoStack.pop());
   state.imgPts = s.imgPts; state.pitchPts = s.pitchPts; state.dirty = true;
+  if ("distortion" in s) { state.distortion = s.distortion; state.lensSrc = "manual"; syncLens(); }
   syncUndo(); refit();
 }
 
@@ -487,6 +503,70 @@ function autoStatusText(kind, confidence, added, skipped, total, derived) {
 }
 // ---- end auto circle/D helpers
 
+// ---- lens helpers (pure; run under node by tests/labeller/test_calibration_editor_js.py)
+function makeLens(k1, aspect) {
+  return !isFinite(k1) || Math.abs(k1) < 1e-9 ? null : { model: "division", k1: k1, centre: [0.5, 0.5], aspect: aspect || 16 / 9 };
+}
+const lensK1Of = d => (d && isFinite(d.k1) ? d.k1 : 0);
+// k1 after a nudge: `dir` +-1, `big` for Shift; rounded so repeated nudges do not drift (0.002 + 0.002 ...)
+function nudgeK1(k1, dir, big) { return Math.round((k1 + dir * (big ? 0.01 : 0.002)) * 1e5) / 1e5; }
+function snapStatusText(r) {
+  const f = x => (x == null ? "?" : x.toFixed(3));
+  if (!r.accepted) return r.reason || "snap: nothing changed";
+  let m = `snapped: line F1 ${f(r.f1_before)} \u2192 ${f(r.f1_after)}, k1 ${r.k1_before.toFixed(4)} \u2192 ${r.k1_after.toFixed(4)}`;
+  if (r.edge_before && r.edge_after && r.edge_before.median_px != null && r.edge_after.median_px != null)
+    m += `, edge residual ${r.edge_before.median_px.toFixed(1)} \u2192 ${r.edge_after.median_px.toFixed(1)} px`;
+  if (r.max_click_shift_px != null) m += `; points moved \u2264 ${r.max_click_shift_px.toFixed(1)} px`;
+  return m + " (Undo reverts)";
+}
+// ---- end lens helpers
+
+const frameAspect = () => (state.frameImg && state.frameImg.naturalHeight ? state.frameImg.naturalWidth / state.frameImg.naturalHeight : 16 / 9);
+function syncLens() {
+  const on = !!state.distortion, k = lensK1Of(state.distortion);
+  $("lensOn").checked = on; $("lensK1").value = on ? k.toFixed(4) : "0";
+  $("lensSrc").textContent = on ? state.lensSrc : (state.defaultLens ? `off (ground: k1 ${state.defaultLens.k1.toFixed(4)})` : "off");
+}
+function setLens(d, src, noUndo) {
+  if (!noUndo) snapshot();
+  if (state.distortion) state.lastK1 = lensK1Of(state.distortion);
+  state.distortion = d; state.lensSrc = src; state.dirty = true;
+  syncLens(); refit();
+}
+$("lensOn").onchange = () => {
+  if (!$("lensOn").checked) { setLens(null, "manual"); return; }
+  const k = state.lastK1 || lensK1Of(state.defaultLens) || 0.015;
+  setLens(makeLens(k, frameAspect()), "manual");
+};
+$("lensK1").onchange = () => setLens(makeLens(parseFloat($("lensK1").value), frameAspect()), "manual");
+const nudgeLens = (dir, big) => setLens(makeLens(nudgeK1(lensK1Of(state.distortion), dir, big), frameAspect()), "manual");
+$("lensMinus").onclick = e => nudgeLens(-1, e.shiftKey);
+$("lensPlus").onclick = e => nudgeLens(1, e.shiftKey);
+
+let snapBusy = false;
+async function snapToLines() {
+  if (snapBusy || !state.clip || !state.frameImg) return;
+  if (nPairs() < 4 || !state.fit) { status("snap needs a fit: place at least 4 point pairs first", true); return; }
+  if (state.imgPts.length !== state.pitchPts.length) { status("finish or delete the unpaired point first", true); return; }
+  const clip = state.clip, frame = state.frame, k1Only = $("snapK1").checked;
+  snapBusy = true; $("snapBtn").disabled = true; $("snapInfo").className = ""; $("snapInfo").textContent = "";
+  status("snapping to the painted lines\u2026");
+  try {
+    const r = await (await api("/snap", jsonOpts("POST", { ...fitBody(), clip, frame_index: frame, mode: k1Only ? "k1" : "full" }))).json();
+    if (clip !== state.clip || frame !== state.frame) return;   // moved on while it ran
+    const text = snapStatusText(r);
+    $("snapInfo").className = r.accepted ? "ok" : "warn"; $("snapInfo").textContent = text;
+    status(text, !r.accepted);
+    if (!r.accepted) return;
+    snapshot();
+    state.imgPts = r.correspondences.map(c => ({ u: c.image[0], v: c.image[1] }));
+    state.distortion = r.distortion; state.lensSrc = "snapped"; state.dirty = true;
+    syncLens(); refit();
+  } catch (e) { status("snap failed: " + e.message, true); }
+  finally { snapBusy = false; $("snapBtn").disabled = false; }
+}
+$("snapBtn").onclick = snapToLines;
+
 let autoBusy = false;
 const AUTO_LABEL = { centre: "centre", d: "D" };
 async function autoPoints(kind) {
@@ -662,7 +742,7 @@ async function selectClip() {
   const wantClip = state.clip;
   const meta = await (await api(`/clips/${encodeURIComponent(wantClip)}/meta`)).json();
   if (state.clip !== wantClip) return;   // user already moved on to another clip while this one loaded
-  state.meta = meta;
+  state.meta = meta; state.defaultLens = meta.default_distortion || null;
   state.gtFrames = state.meta.gt_frames; state.notBroadcast = state.meta.not_broadcast || []; state.tooFew = state.meta.too_few_points || {};
   $("frameSlider").max = $("frameNum").max = Math.max(0, state.meta.frames - 1);
   $("frameTotal").textContent = `/ ${state.meta.frames - 1}`;
@@ -717,7 +797,7 @@ async function loadProposal(run, idx) {
     const pts = proposalPoints(rec, state.pitch.keypoints);
     state.imgPts = pts.map(p => p.img);
     state.pitchPts = pts.map(p => p.pt);
-    state.distortion = rec.distortion || null;
+    state.distortion = rec.distortion || null; state.lensSrc = rec.distortion ? "proposal" : "off"; syncLens();
     state.dirty = false; resetUndo();
     setProposal({ run_id: run, status: rec.status, banner: rec.H == null
       ? `failed proposal ${run} (${rec.failure || "no fit"}): ${pts.length} label(s) loaded as a head start; add points, then Save accepts it as edited`
@@ -785,7 +865,7 @@ async function gotoFrame(idx, force, noGt) {
   setProposal(null);
   state.frame = idx; $("frameSlider").value = $("frameNum").value = idx;
   state.imgPts = []; state.pitchPts = []; state.fit = null; state.warpImg = null; state.fitError = null; state.dirty = false;
-  state.distortion = null; resetUndo();
+  state.distortion = null; state.lensSrc = "off"; syncLens(); $("snapInfo").textContent = ""; resetUndo();
   status("loading frame…");
   const img = new Image();
   await new Promise((res, rej) => { img.onload = res; img.onerror = () => rej(new Error("frame failed to load"));
@@ -800,7 +880,7 @@ async function loadGt(quiet) {
     const rec = await (await api(`/gt/${encodeURIComponent(state.clip)}/${state.frame}`)).json();
     $("pitchL").value = rec.pitch_dims[0]; $("pitchW").value = rec.pitch_dims[1];
     await loadPitch();
-    state.distortion = rec.distortion || null;
+    state.distortion = rec.distortion || null; state.lensSrc = rec.distortion ? "saved" : "off"; syncLens();
     state.imgPts = rec.correspondences.map(c => ({ u: c.image[0], v: c.image[1] }));
     state.pitchPts = rec.correspondences.map(c => ({ id: c.pitch_id, x: c.pitch_xy[0], y: c.pitch_xy[1] }));
     state.dirty = false; resetUndo(); if (!quiet) status("GT loaded");
@@ -941,6 +1021,9 @@ document.addEventListener("keydown", e => {
   else if (e.key === "t") toggleTooFew();
   else if (e.key === "c" && !e.ctrlKey && !e.metaKey && !e.altKey) autoPoints("centre");
   else if (e.key === "d" && !e.ctrlKey && !e.metaKey && !e.altKey) autoPoints("d");
+  else if (e.key === "s" && !e.ctrlKey && !e.metaKey && !e.altKey) snapToLines();
+  else if ((e.key === "," || e.key === "<") && !e.ctrlKey && !e.metaKey && !e.altKey) nudgeLens(-1, e.shiftKey);
+  else if ((e.key === "." || e.key === ">") && !e.ctrlKey && !e.metaKey && !e.altKey) nudgeLens(1, e.shiftKey);
   else if (e.ctrlKey || e.metaKey || e.altKey) return;
   else if (e.key === "x") rejectProposal();   // no-op unless a proposal is loaded
   else if (e.key === "[") goRel(-1);
