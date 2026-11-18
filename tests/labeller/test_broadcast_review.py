@@ -116,3 +116,17 @@ def test_export_heldout_match_frames_are_left_out(two, web, tmp_path, monkeypatc
     assert c["Yes"] == 0 and c["heldout_skipped"] == 1
     c = exp.export(ds, tmp_path / "o2", heldout_as_test=True)
     assert c["Yes"] == 1 and (tmp_path / "o2" / "test" / "Yes").is_dir()
+
+
+def test_ood_report_page_and_files(two, web):
+    d = two["nottinghamforest"] / "clips" / "_ood" / "2026-11-18"
+    assert "No OOD report" in web.get("/broadcast_review/ood?dataset=nottinghamforest").text
+    d.mkdir(parents=True)
+    (d / "report.json").write_text(json.dumps({"date": "2026-11-18", "weights_sha8": "3fc5d116", "n_matches": 1, "z_flag": 2.5, "matches": [
+        {"slug": "a-vs-b", "score": 4.2, "worst_axis": "knn_p95", "knn_med": 0.1, "knn_p95": 0.3, "frac_mid": 0.02,
+         "frac_broadcast": 0.5, "seg_per_h": 30, "flagged": True}]}))
+    (d / "ood_zscores.png").write_bytes(b"\x89PNG")
+    r = web.get("/broadcast_review/ood?dataset=nottinghamforest")
+    assert r.status_code == 200 and "a-vs-b" in r.text and "FLAG" in r.text and "ood_zscores.png" in r.text
+    assert web.get("/broadcast_review/ood/2026-11-18/ood_zscores.png?dataset=nottinghamforest").status_code == 200
+    assert web.get("/broadcast_review/ood/2026-11-18/..%2Fsecret.png?dataset=nottinghamforest").status_code == 404
