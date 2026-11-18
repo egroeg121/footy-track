@@ -37,7 +37,9 @@ broadcast_review ``{clip: <match key>, frame, ts_s?, p_yes?, pred?, reason?}`` (
 other           anything; no computed progress (close it by hand).
 ==============  ==============================================================
 
-Extra keys on an item (``stratum``, ``reason``, ...) are kept and echoed back.
+Extra keys on an item (``stratum``, ``reason``, ...) are kept and echoed back. ``sampling`` (an object: the design
+that produced the item, e.g. ``{regime, panel, match, stratum, window_id, pi_window, pi_frame, seed, qa}``) is also
+copied onto every label row of a frame-kind job in ``results``, so labels join back to their inclusion probabilities.
 
 Inline Ball Check cards
 -----------------------
@@ -295,6 +297,8 @@ def _normalise_items(kind: str, raw: object, max_cards: object = None) -> list[d
     for i, src in enumerate(raw):
         it = dict(src)
         it["clip"] = _clip(it, i)
+        if it.get("sampling") is not None and not isinstance(it["sampling"], dict):
+            raise JobError(422, f"items[{i}].sampling must be an object (docs/design/ball_sampling.md 2.3)")
         if kind in _FRAME_KINDS:
             if "frame" in it:
                 it["frame"] = _int(it["frame"], f"items[{i}].frame")
@@ -764,7 +768,10 @@ def compute(job: dict) -> dict:  # noqa: PLR0912
                 rows = frames.get(f)
                 if rows:
                     n_done += 1
-                    labels.extend({"clip": it["clip"], **r} for r in rows)
+                    # ``sampling`` (inclusion probabilities, QA flag, ...) rides with every label so a result
+                    # row joins back to its design without re-reading the job.
+                    extra = {"sampling": it["sampling"]} if isinstance(it.get("sampling"), dict) else {}
+                    labels.extend({"clip": it["clip"], **r, **extra} for r in rows)
                 elif first_missing is None:
                     first_missing = {"clip": it["clip"], "frame": f}
         elif kind == "ball_check":

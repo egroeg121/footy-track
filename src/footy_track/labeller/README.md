@@ -1810,6 +1810,59 @@ Tests: `test_review_bugfixes.py` (names below are within it).
     `labeller_deploy.sh` wiring is UNTESTED)
 
 
+## 19e. Ball evaluation panel: blind `ball_place` jobs on heldout matches (LAB-1435..1438)
+
+Design: `docs/design/ball_sampling.md` section 2. Code: `ball_eval/panel.py` (sampler, job body), `ball_eval/panel_score.py`
+(estimator), CLI `python -m footy_track.scripts.ball_eval_panel build|job|score|status`. Tests: `tests/ball_eval/`.
+
+The panel is a fixed, versioned (`ball-eval-v1`) probability sample of **heldout** matches used to score any ball model with
+confidence intervals. Per match (the only stratum in v1):
+
+- **Population.** `<FD>/<match>/split_video_broadcast_frames*/segments.json` is tiled, per segment, into disjoint windows of
+  5 frames `gap` source frames apart on the stride-5 grid (`gap` = 5 at 25 fps, 10 at 50/60 fps, i.e. about 0.2 s). A window never
+  crosses a segment end; the last frame of a clip is never used. Frames are local to the segment clip `<match>_segNNN`.
+- **Sample.** 24 windows (default) uniformly without replacement, `seed = sha1(panel_version + match)`. `pi_window = n / N` and every
+  frame of a chosen window has `pi_frame = pi_window`. Only matches that `splits.split_of` says are `eval_heldout_match` are accepted.
+- **Panel file** `<FD>/ball_eval_panel/<version>/<match>.json` (windows, frames, pi, seed, code sha, N, size): written atomically and
+  append-only per match. Building again is a no-op; a build that would change it is refused unless `--force` (old file kept as
+  `.prev-<stamp>`).
+- **QA cards** (about 8 %, excluded from every estimate): 5 % repeats of panel frames and 3 % gold frames taken from existing tier-1
+  (`labeller`) GT of the match. They sit on alias clips `<clip>__b` (symlinks to the same video), so each gets its own sidecar and a
+  repeat is an independent second placement. They go last in the job, shuffled.
+- **Job.** `job` registers the labeller dataset `ball_eval_v1` (own `marks_dir` `ball_gt_marks_ball_eval_v1`, `"ingest": false` so
+  `feature_store.ingest_all` skips it), links the clips and submits a `ball_place` job with key `ball-eval-panel/<version>/<match>`
+  (re-submitting returns the same job). The job is **blind**: job mode shows no detector box and has autodetect off, the dataset's
+  sidecars start empty, and items carry only `clip`, frame range, `stratum` and `sampling` (no model box, score or reason). Each item
+  has `sampling = {regime:"eval", panel, match, stratum, window_id, pi_window, pi_frame, seed, code_sha, qa: null|"repeat"|"gold", of?}`;
+  `results` echoes it in `items[].item` and on every label row, so a placement joins back to its inclusion probability. Gold
+  positions never leave the panel file.
+- **Estimator.** `score` takes the human sidecars (tier-1 positions, `no_ball`, `not_broadcast`) and a model's predictions
+  (jsonl `{clip, frame, x, y, score}`, one top-1 ball per frame or none; adapters for `machine_labels` and the detection cache). Coordinates are
+  **pixels of the clip frame**; human marks are normalised and scaled by the panel's recorded width x height. Outcomes per frame at
+  r = 10 and 25 px: hit / off / miss / false_ball / true_empty; metrics recall, precision and false-ball rate as Horvitz-Thompson ratios
+  (weight 1/pi_frame), per match and pooled (match-averaged headline, frame-weighted), with a stratified cluster bootstrap (windows
+  resampled within each match, 2000 draws, `--seed`), plus repeat consistency and gold agreement reported separately.
+
+- **LAB-1435** (MUST) The sampler accepts only heldout matches, draws windows uniformly without replacement from a seed that is
+  `sha1(panel_version + match)`, records exact `pi_window = n/N` (= `pi_frame`), and no window crosses a segment or overlaps another.
+  - Tests: `test_panel.py::test_refuses_train_unregistered_and_missing_register`, `::test_build_is_deterministic_and_seeded_per_match`,
+    `::test_inclusion_probabilities_are_exact`, `::test_draw_windows_includes_every_window_with_probability_n_over_N`,
+    `::test_no_window_crosses_a_segment_and_windows_are_disjoint`
+- **LAB-1436** (MUST) A panel file is append-only per match: the same build is idempotent, a different one is refused without `--force`, and
+  writes are atomic.
+  - Tests: `::test_write_is_atomic_idempotent_and_refuses_changes`, `::test_changed_segmentation_is_refused_not_silently_resampled`,
+    `::test_cli_build_twice_is_idempotent`
+- **LAB-1437** (MUST) The panel job is blind, idempotently keyed, carries `sampling` on its items and label rows, and its labels stay out
+  of the feature store; QA cards use alias clips with their own sidecars.
+  - Tests: `::test_job_is_blind_idempotent_keyed_and_carries_sampling`, `::test_repeats_are_5_percent_of_panel_frames_on_alias_clips_at_the_end`,
+    `::test_gold_comes_from_tier1_labeller_marks_of_this_match_only`, `::test_ingest_all_skips_registry_entries_marked_ingest_false`,
+    `test_jobs.py::test_item_sampling_is_kept_and_copied_onto_label_rows`
+- **LAB-1438** (MUST) The estimator is Horvitz-Thompson (unbiased with unequal pi), its cluster-bootstrap CIs cover about nominally, and QA
+  cards never enter an estimate.
+  - Tests: `test_panel_score.py::test_ht_estimator_is_unbiased_with_unequal_inclusion_probabilities`,
+    `::test_score_pooled_frame_weighted_is_unbiased_end_to_end`, `::test_cluster_bootstrap_ci_has_roughly_nominal_coverage`,
+    `::test_qa_cards_never_enter_the_estimate_and_are_reported_separately`, `::test_score_matches_a_hand_computation_and_reports_the_radius_effect`
+
 ## 15. Traceability summary
 
 | Section | Requirements | Tested | UNTESTED | UNTESTED-FRONTEND |
@@ -1831,7 +1884,8 @@ Tests: `test_review_bugfixes.py` (names below are within it).
 | 19. Labelling jobs (LAB-14xx) | 8 | 7 | 0 | 1 |
 | 19c. Labelling hooks (LAB-1417..1426) | 10 | 8 | 0 | 2 |
 | 19d. Review fixes (LAB-1427..1434) | 8 | 7 | 1 | 0 |
-| **Total** | **156** | **116** | **9** | **31** |
+| 19e. Ball evaluation panel (LAB-1435..1438) | 4 | 4 | 0 | 0 |
+| **Total** | **160** | **120** | **9** | **31** |
 
 Open items: 4 (OPEN-1..4) + 1 fixed on main (undo provenance, `95b60cc`).
 Test suite: 138 tests in `tests/labeller/` (all green), plus the
