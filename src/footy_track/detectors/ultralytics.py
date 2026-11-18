@@ -122,7 +122,6 @@ class UltralyticsObjectDetector(ObjectDetector):
         self,
         model_uri: str = "yolo11n.pt",
         verbose: bool = False,
-        compile: bool = False,
         min_confidence: float = 0.3,
         iou_threshold: float = 0.90,
         use_model_names: bool = False,
@@ -139,7 +138,6 @@ class UltralyticsObjectDetector(ObjectDetector):
         self.imgsz = imgsz
         self.predict_kwargs = {
             "verbose": verbose,
-            "compile": compile,
             "conf": min_confidence,
             "iou": iou_threshold,
             "imgsz": imgsz,
@@ -168,9 +166,9 @@ class UltralyticsObjectDetector(ObjectDetector):
         image_path: Path,
     ) -> FrameDetections:
         """Run detection and return FrameDetections."""
-        result: UltralyticsResults = self.model.predict(image_path, device=self.device)[
-            0
-        ]
+        result: UltralyticsResults = self.model.predict(
+            image_path, device=self.device, **self.predict_kwargs
+        )[0]
 
         # Image size
         h, w = result.orig_shape[:2]

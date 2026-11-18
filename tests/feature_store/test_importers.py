@@ -214,3 +214,77 @@ def test_roboflow_and_sam3_coexist_and_overlap_report(tmp_path) -> None:
         "SELECT source FROM detection WHERE frame_index = 6 ORDER BY source"
     )
     assert list(frame6["source"]) == ["hand_label", "sam3"]
+
+
+# --------------------------------------------------------------------------- #
+# frame/game clobbering: timing-ignorant importers must not overwrite         #
+# video-derived rows                                                          #
+# --------------------------------------------------------------------------- #
+
+
+def _seed_video_derived_rows(store, game="arsenal_demo", frame_index=5, fps=25.0):
+    """Rows as ingest_gt writes them: real video fps and timestamps."""
+    from footy_track.feature_store import FrameRow, GameRow
+
+    store.upsert_games([GameRow(game_id=game, fps=fps)])
+    store.upsert_frames(
+        [
+            FrameRow(
+                game_id=game,
+                frame_index=frame_index,
+                frame_uri="from_video",
+                width=1920,
+                height=1080,
+                continuous_time_s=frame_index / fps,
+            )
+        ]
+    )
+
+
+def test_import_roboflow_preserves_video_derived_frames(tmp_path):
+    root = _make_roboflow(tmp_path)  # frames (5, 6), fps defaults to 1.0
+    _write_image_dims(root, "arsenal_demo", (5, 6))
+    with FeatureStore.open(":memory:") as store:
+        _seed_video_derived_rows(store, frame_index=5, fps=25.0)
+        import_roboflow(store, root)
+
+        game = store.query("SELECT fps FROM game WHERE game_id = 'arsenal_demo'")
+        assert game["fps"][0] == 25.0  # NOT clobbered to 1.0
+
+        f5 = store.query(
+            "SELECT continuous_time_s, frame_uri FROM frame "
+            "WHERE game_id = 'arsenal_demo' AND frame_index = 5"
+        )
+        assert f5["continuous_time_s"][0] == pytest.approx(0.2)  # 5/25, not 5/1
+        assert f5["frame_uri"][0] == "from_video"
+
+        # A frame roboflow alone knows about is still inserted normally.
+        f6 = store.query(
+            "SELECT continuous_time_s FROM frame "
+            "WHERE game_id = 'arsenal_demo' AND frame_index = 6"
+        )
+        assert f6["continuous_time_s"][0] == pytest.approx(6.0)
+
+        # Detections themselves still land.
+        n = store.query(
+            "SELECT count(*) AS n FROM detection WHERE run_id = 'roboflow_v3'"
+        )
+        assert int(n["n"][0]) == 2
+
+
+def test_ingest_gt_style_upsert_still_wins_after_roboflow(tmp_path):
+    """Reverse order: video-derived writers upsert, so they overwrite the
+    roboflow guess whenever they run — priority holds regardless of order."""
+    root = _make_roboflow(tmp_path)
+    _write_image_dims(root, "arsenal_demo", (5, 6))
+    with FeatureStore.open(":memory:") as store:
+        import_roboflow(store, root)
+        _seed_video_derived_rows(store, frame_index=5, fps=25.0)
+
+        game = store.query("SELECT fps FROM game WHERE game_id = 'arsenal_demo'")
+        assert game["fps"][0] == 25.0
+        f5 = store.query(
+            "SELECT continuous_time_s FROM frame "
+            "WHERE game_id = 'arsenal_demo' AND frame_index = 5"
+        )
+        assert f5["continuous_time_s"][0] == pytest.approx(0.2)

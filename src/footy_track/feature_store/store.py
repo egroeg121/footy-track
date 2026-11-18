@@ -21,6 +21,10 @@ footy-stats invariant). Detections are keyed on
 ``(game_id, source, run_id, frame_index, detection_id)`` (``detection_id`` is
 the per-frame object index) so independent sources (hand_label / yolo / sam3 /
 trackers) coexist without overwriting each other.
+
+``insert_missing_*`` is the complement for game/frame rows written by
+timing-ignorant importers (Roboflow, labeller JSON): ``ON CONFLICT DO
+NOTHING``, so a guessed fps/timestamp never overwrites video-derived rows.
 """
 
 from __future__ import annotations
@@ -218,6 +222,38 @@ class FeatureStore:
         ]
         self._conn.executemany(sql, params)
         return len(params)
+
+    def _insert_missing(self, table: str, rows: Iterable[object]) -> int:
+        """Insert rows, leaving any existing row for the same PK untouched.
+
+        For writers that do not know the real video timing (e.g. Roboflow
+        imports, which default to fps=1.0 extraction time): an existing row was
+        written by someone who knew at least as much, so keep it. The
+        video-derived writers (ingest_gt) keep using upserts and therefore win
+        regardless of import order.
+        """
+        cols = _COLUMNS[table]
+        rows = list(rows)
+        if not rows:
+            return 0
+        placeholders = ", ".join("?" for _ in cols)
+        col_list = ", ".join(cols)
+        pk = _PK[table]
+        sql = (
+            f"INSERT INTO {table} ({col_list}) VALUES ({placeholders}) "
+            f"ON CONFLICT ({', '.join(pk)}) DO NOTHING"
+        )
+        params = [
+            [_row_to_value(table, c, getattr(row, c)) for c in cols] for row in rows
+        ]
+        self._conn.executemany(sql, params)
+        return len(params)
+
+    def insert_missing_games(self, rows: Sequence[GameRow]) -> int:
+        return self._insert_missing("game", rows)
+
+    def insert_missing_frames(self, rows: Sequence[FrameRow]) -> int:
+        return self._insert_missing("frame", rows)
 
     def upsert_games(self, rows: Sequence[GameRow]) -> int:
         return self._upsert("game", rows)

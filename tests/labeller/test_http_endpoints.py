@@ -432,3 +432,49 @@ def test_propagate_out_of_range_box_idx(client, fresh_session):
     assert client.post("/propagate", json={"frame_idx": 0, "box_idx": 5}).json() == {
         "propagated_to": 0
     }
+
+
+# ---------------------------------------------------------------------------
+# /clips/add (OPEN-2)
+# ---------------------------------------------------------------------------
+
+
+def test_clips_add_bare_name_already_in_dir(client, clips_dir):
+    (clips_dir / "existing.mp4").touch()
+    r = client.post("/clips/add", json={"name": "existing.mp4"})
+    assert r.status_code == 200
+    assert r.json() == {"ok": True, "name": "existing.mp4"}
+
+
+def test_clips_add_absolute_path_symlinks_into_clips_dir(client, clips_dir, tmp_path):
+    src = tmp_path / "elsewhere" / "external.mp4"
+    src.parent.mkdir()
+    src.touch()
+    r = client.post("/clips/add", json={"name": str(src)})
+    assert r.status_code == 200
+    assert r.json() == {"ok": True, "name": "external.mp4"}
+    dest = clips_dir / "external.mp4"
+    assert dest.is_symlink()
+    assert dest.resolve() == src.resolve()
+    # idempotent: adding again is fine
+    assert client.post("/clips/add", json={"name": str(src)}).status_code == 200
+
+
+def test_clips_add_missing_file_is_404(client, clips_dir, tmp_path):
+    assert (
+        client.post("/clips/add", json={"name": "not-there.mp4"}).status_code == 404
+    )
+    assert (
+        client.post(
+            "/clips/add", json={"name": str(tmp_path / "gone.mp4")}
+        ).status_code
+        == 404
+    )
+
+
+def test_clips_add_rejects_bad_names(client, clips_dir):
+    assert client.post("/clips/add", json={"name": ""}).status_code == 400
+    assert client.post("/clips/add", json={"name": "notes.txt"}).status_code == 400
+    assert (
+        client.post("/clips/add", json={"name": "../sneaky.mp4"}).status_code == 400
+    )
