@@ -122,13 +122,23 @@ def test_centre_finder_uses_the_requested_width():
     assert shift > 1.0  # a 4 m wider pitch moves the synthesised points (mildly: the circle pins most of the geometry)
 
 
-def test_centre_finder_without_touchline_returns_only_the_two_circle_points():
+def test_centre_finder_without_touchline_fits_the_shape_from_square_pixels():
+    """A full circle and no touchline: the shape alone (square pixels, principal point at the centre) gives the
+    circle's left / right / spot and a fit; the symmetric (unobservable) case is in ``test_centre_fit``."""
     pm = PitchModel()
     img, Hp = centre_frame(pm, touch=False)
     det = pf.find_points("centre", img, None, pm)
     assert det.result is not None
-    assert [p.pitch_id for p in det.result.points] == ["CENTRE_CIRCLE_TOP", "CENTRE_CIRCLE_BOTTOM"]
-    assert not any(p.derived for p in det.result.points)
+    r = det.result
+    ids = {p.pitch_id for p in r.points}
+    assert {"CENTRE_CIRCLE_TOP", "CENTRE_CIRCLE_BOTTOM", "CENTRE_CIRCLE_LEFT", "CENTRE_CIRCLE_RIGHT", "CENTRE_SPOT"} <= ids
+    assert r.info["shape"]["accepted"] == "intrinsic"
+    errs = _errs(r, Hp)
+    near = np.array([p.pitch_id is None or p.pitch_id.startswith("CENTRE_") for p in r.points])
+    assert errs[near].max() < 4.0 and errs.max() < 12.0  # the halfway-line end 25 m beyond the circle is an extrapolation
+    by = {p.pitch_id: p for p in r.points}
+    assert not by["CENTRE_CIRCLE_TOP"].derived and not by["CENTRE_CIRCLE_BOTTOM"].derived
+    assert by["CENTRE_SPOT"].derived and r.confidence > 0
 
 
 def test_centre_finder_with_lens():

@@ -106,10 +106,15 @@
       <div class="label">Calibration review</div>
       <div class="desc">Phone-friendly accept/reject of machine pitch calibrations</div>
     </a>
-    <a class="card" href="/ingest">
-      <div class="icon">📥</div>
-      <div class="label">Ingest</div>
-      <div class="desc">Upload a match video and split into broadcast clips</div>
+    <a class="card" href="/matches">
+      <div class="icon">&#128203;</div>
+      <div class="label">Matches</div>
+      <div class="desc">Pipeline status per match: download, segments, detection, calibration</div>
+    </a>
+    <a class="card" href="/progress">
+      <div class="icon">&#128200;</div>
+      <div class="label">Progress</div>
+      <div class="desc">Dataset growth, model results per dataset version, train/eval split health</div>
     </a>
   </div>
 
@@ -161,6 +166,7 @@ function pickCount(j, path) {
 function renderTask(t) {
   const a = el("a", "task p" + (t.priority || 2) + (t.done ? " done" : ""));
   a.href = t.url || "#";
+  if (t.preparing) a.addEventListener("click", (e) => e.preventDefault());   // not offered until prepared
   const top = el("div", "top");
   top.append(el("div", "title", (t.done ? "\u2713 " : "") + t.title));
   a.append(top);
@@ -171,6 +177,7 @@ function renderTask(t) {
   if (t.done) meta.append(el("span", "chip tick", "\u2713 done" + (t.done_at ? " " + t.done_at.slice(0, 10) : "")));
   else if (t.progress && t.progress.total != null)
     meta.append(el("span", "chip count", t.progress.done + "/" + t.progress.total + " done"));
+  if (t.preparing) meta.append(el("span", "chip count", "preparing " + t.preparing.prepared + "/" + t.preparing.total));
   if (t.count_url && !t.done) { countChip = el("span", "chip count", "… " + (t.count_label || "left")); meta.append(countChip); }
   if (t.job) meta.append(el("span", "chip", t.kind + " job" + (t.dataset ? " · " + t.dataset : "")));
   if (t.owner) meta.append(el("span", "chip", t.owner));
@@ -187,8 +194,15 @@ function renderTask(t) {
 
 async function loadTasks() {
   const box = document.getElementById("tasks");
+  box.replaceChildren(el("div", "empty", "Loading tasks\u2026"));
   try {
-    const j = await getJSON("/api/tasks");
+    let j;
+    try { j = await getJSON("/api/tasks", 20000); }
+    catch (e1) {  // slow just after a restart on a loaded host: one automatic retry
+      box.replaceChildren(el("div", "empty", "Still loading tasks\u2026 retrying"));
+      try { j = await getJSON("/api/tasks", 20000); }
+      catch (e2) { throw new Error(e2.name === "AbortError" ? "server too slow (timed out after 20 s)" : e2.message); }
+    }
     box.replaceChildren();
     if (j.error) box.append(el("div", "err", "Tasks file problem: " + j.error));
     const active = j.tasks.filter((t) => !t.done), done = j.tasks.filter((t) => t.done);
@@ -201,7 +215,11 @@ async function loadTasks() {
       box.append(d);
     }
   } catch (e) {
-    box.replaceChildren(el("div", "err", "Could not load tasks: " + e.message));
+    const err = el("div", "err", "Could not load tasks: " + e.message + " ");
+    const retry = el("a", null, "Retry");
+    retry.href = "#"; retry.addEventListener("click", (ev) => { ev.preventDefault(); loadTasks(); });
+    err.append(retry);
+    box.replaceChildren(err);
   }
 }
 

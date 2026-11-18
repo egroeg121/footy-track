@@ -28,6 +28,7 @@ from footy_track.calibration.prelabel.proposals import (
 )
 from footy_track.clip_id import canonical_clip_id
 from footy_track.labeller import calibration as cal
+from footy_track.labeller import hooks
 from footy_track.labeller.review import _gt_marks_dir
 
 router = APIRouter()
@@ -127,6 +128,8 @@ async def get_proposal(clip: str, run_id: str, idx: int):
             n: [r.tolist() for r in runs]
             for n, runs in geo.project_pitch_model(np.array(rec["H"]), pitch, distortion=rec.get("distortion")).items()
         }
+    # the ground's suggested lens: only for a preview toggle, never applied to the stored H / overlay
+    out["default_distortion"] = cal.default_distortion(clip, rec.get("image_size"))
     return _finite(out)
 
 
@@ -213,8 +216,11 @@ async def accept_proposal(clip: str, run_id: str, idx: int, body: dict | None = 
         "correspondences": pts, "pitch_dims": body.get("pitch_dims") or rec["pitch_dims"],
         "method": body.get("method", "dlt"), "image_size": body.get("image_size") or rec["image_size"],
     }
-    if rec.get("distortion"):  # points are observed coords; the lens model goes with the proposal's H
-        fit_body["distortion"] = rec["distortion"]
+    # points are observed coords; the lens model goes with the H: the operator's (editor), else the proposal's
+    # own (none unless it has one: nothing is defaulted)
+    lens_used = body["distortion"] if "distortion" in body else rec.get("distortion")
+    if lens_used:
+        fit_body["distortion"] = lens_used
     padded: list[str] = []
     if "correspondences" not in body and rec.get("H") is not None:
         # Accept-as-proposed must reproduce the H the reviewer saw. If the stored points cannot
@@ -238,11 +244,10 @@ async def accept_proposal(clip: str, run_id: str, idx: int, body: dict | None = 
     gt_rec = cal._gt_record(idx, res, fit_body, origin)
 
     def _store() -> None:
-        doc = cal._read_gt(clip)
-        doc["frames"][str(idx)] = gt_rec
-        cal._write_gt(clip, doc)
+        cal.update_gt(clip, lambda doc: doc["frames"].update({str(idx): gt_rec}))
         if idx in cal.too_few_points_frames(_gt_marks_dir(), clip):
             cal.clear_too_few_points(clip, idx)   # accepted after all: it had enough points
+        hooks.emit("calibration_gt", clip=cal.canonical_clip_id(clip), unit=idx, verdict="gt")
 
         def _flip(d):
             f = d["runs"][run_id]["frames"][str(idx)]

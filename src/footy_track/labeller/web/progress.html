@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Progress</title>
+<style>
+  :root { --bg:#0f1419; --panel:#1a2129; --ink:#e6edf3; --muted:#9bb0c0; --accent:#1e90ff;
+          --green:#3fb950; --amber:#d29922; --red:#f85149; --purple:#bc8cff; --teal:#39c5cf; --border:#2d3742; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:14px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+  main { padding:12px 12px 48px; max-width:1200px; margin:0 auto; }
+  header { display:flex; flex-wrap:wrap; gap:12px; align-items:baseline; margin-bottom:10px; }
+  header a { color:var(--muted); text-decoration:none; font-size:13px; }
+  h1 { font-size:20px; margin:0; }
+  h2 { font-size:17px; margin:0 0 8px; display:flex; flex-wrap:wrap; gap:10px; align-items:baseline; }
+  h3 { font-size:12px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin:16px 0 6px; font-weight:600; }
+  h4 { font-size:13px; margin:12px 0 4px; }
+  .muted { color:var(--muted); font-size:12px; }
+  section.ds { background:var(--panel); border:1px solid var(--border); border-radius:8px; padding:12px 14px; margin:14px 0; }
+  .banner { border-radius:6px; padding:8px 10px; margin:6px 0; font-size:13px; border:1px solid; }
+  .banner.action { border-color:var(--red); background:rgba(248,81,73,.12); }
+  .banner.warn { border-color:var(--amber); background:rgba(210,153,34,.12); }
+  .banner.info { border-color:var(--border); background:rgba(255,255,255,.03); }
+  .empty { border:1px dashed var(--border); border-radius:6px; padding:10px 12px; margin:6px 0; color:var(--muted); }
+  code { background:#0b0f13; border:1px solid var(--border); border-radius:4px; padding:2px 6px; font:12px ui-monospace,Menlo,monospace; color:var(--ink); word-break:break-all; }
+  button.copy { background:none; border:1px solid var(--border); color:var(--muted); border-radius:4px; font-size:11px; cursor:pointer; margin-left:6px; }
+  .wrap { overflow-x:auto; }
+  table { border-collapse:collapse; width:100%; font-size:12.5px; }
+  th, td { text-align:right; padding:5px 8px; border-bottom:1px solid var(--border); white-space:nowrap; }
+  th:first-child, td:first-child { text-align:left; }
+  th { font-size:11px; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); font-weight:600; }
+  td.l, th.l { text-align:left; }
+  .pos { color:var(--green); } .neg { color:var(--red); } .chg { color:var(--amber); }
+  .row { display:flex; flex-wrap:wrap; gap:16px; align-items:flex-start; }
+  .row > * { flex:1 1 360px; min-width:0; }
+  .row.growth > :first-child { flex:1 1 300px; }
+  .row.growth > :last-child { flex:2 1 560px; }
+  td.kinds { white-space:normal; min-width:120px; }
+  svg { max-width:100%; height:auto; display:block; }
+  svg text { fill:var(--muted); font-size:10px; font-family:inherit; }
+  .legend { display:flex; flex-wrap:wrap; gap:4px 12px; font-size:11px; color:var(--muted); margin-top:4px; }
+  .sw { display:inline-block; width:10px; height:10px; border-radius:2px; margin-right:4px; vertical-align:-1px; }
+  .badge { display:inline-block; border-radius:10px; padding:0 7px; font-size:11px; font-weight:600; border:1px solid; }
+  .badge.bad { color:var(--red); border-color:var(--red); background:rgba(248,81,73,.12); }
+  .badge.unk { color:var(--amber); border-color:var(--amber); background:rgba(210,153,34,.12); }
+  .badge.ok { color:var(--green); border-color:var(--green); }
+  td.c-bad { background:rgba(248,81,73,.18); color:var(--red); font-weight:600; }
+  td.c-unk { background:rgba(210,153,34,.14); color:var(--amber); font-style:italic; }
+  td.c-train { color:var(--muted); }
+  td.none { color:var(--border); }
+  tr.diag td { color:#6b7a88; font-style:italic; }
+  tr.diag td:first-child::after { content:" (diagnostic)"; font-size:10px; }
+  .headline { display:flex; flex-wrap:wrap; gap:8px 16px; margin:6px 0; }
+  .headline > div { border:1px solid var(--border); border-radius:6px; padding:4px 10px; }
+  .headline .big { font-size:20px; font-weight:700; }
+  .badge.small { color:var(--amber); border-color:var(--amber); background:rgba(210,153,34,.12); }
+  .model { border-top:1px solid var(--border); margin-top:12px; padding-top:4px; }
+  select { background:var(--bg); color:var(--ink); border:1px solid var(--border); border-radius:4px; padding:2px 4px; }
+  .tier-full { color:var(--ink); } .tier-cohort { color:var(--teal); }
+  .health { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:10px; }
+  .health > div { background:var(--panel); border:1px solid var(--border); border-radius:8px; padding:8px 12px; }
+  .health .big { font-size:18px; font-weight:700; }
+
+  /* ---- chart view */
+  :root { --c-train:#3987e5; --c-inmatch:#d95926; --c-heldout:#199e70; --p1:#9085e9; --p2:#d55181; --p3:#0ca30c; --grid:#2d3742; }
+  section.stage { margin:22px 0 28px; }
+  section.stage > h2 { font-size:18px; margin:0 0 10px; }
+  .charts { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr)); gap:14px; }
+  .card { background:var(--panel); border:1px solid var(--border); border-radius:8px; padding:10px 12px 8px; min-width:0; position:relative; }
+  .card h3 { margin:0 0 4px; }
+  .card svg text { fill:var(--muted); font-size:10px; }
+  .card svg .vtxt { fill:var(--ink); font-size:10.5px; font-weight:600; }
+  .nodata { fill:var(--muted); font-size:12px; }
+  .legend i.ln { display:inline-block; width:14px; height:0; border-top:2px solid; margin-right:5px; vertical-align:3px; }
+  .legend .off { opacity:.5; }
+  .tip { position:fixed; z-index:10; pointer-events:none; background:#0b0f13; border:1px solid var(--border); border-radius:6px;
+         padding:6px 9px; font-size:12px; line-height:1.45; max-width:260px; box-shadow:0 4px 14px rgba(0,0,0,.5); display:none; }
+  .tip b { font-weight:600; } .tip .m { color:var(--muted); }
+  .foot { font-size:12px; color:var(--muted); margin:6px 2px 0; }
+  details.more { margin:28px 0 0; border-top:1px solid var(--border); padding-top:10px; }
+  details.more > summary { cursor:pointer; font-size:14px; font-weight:600; color:var(--muted); padding:4px 0; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <a href="/">&larr; Home</a>
+    <h1>Progress</h1>
+    <span class="muted" id="stamp">loading...</span>
+    <a href="#" id="refresh">refresh</a>
+  </header>
+  <div id="stages"><p class="muted">Loading...</p></div>
+  <p class="foot" id="foot"></p>
+  <details class="more" id="more">
+    <summary>Details</summary>
+    <div id="top"></div>
+    <div id="datasets"></div>
+    <p class="muted" id="paths"></p>
+  </details>
+  <div class="tip" id="tip"></div>
+</main>
+<script>
+const SPLITS = ["train", "eval_in_match", "eval_heldout_match"];
+const SPLIT_COLOR = {train:"#58a6ff", eval_in_match:"#3fb950", eval_heldout_match:"#bc8cff", eval_all:"#39c5cf"};
+const SPLIT_LABEL = {train:"train", eval_in_match:"eval in-match", eval_heldout_match:"eval held-out match", eval_all:"eval (all)"};
+let DATA = null;
+const metricChoice = {};   // "<dataset>|<model key>" -> metric
+
+function esc(s) { return String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+function cmd(c) { return `<code>${esc(c)}</code><button class="copy" data-cmd="${esc(c)}">copy</button>`; }
+function fmtVal(v) {
+  if (v == null) return "n/a";
+  const a = Math.abs(v);
+  return a !== 0 && a < 1 ? v.toFixed(3) : (Number.isInteger(v) ? String(v) : v.toFixed(2));
+}
+function when(iso) { return iso ? esc(String(iso).replace("T", " ").replace("Z", "").slice(0, 16)) : ""; }
+
+// ---------------------------------------------------------------- split health
+function healthTop(d) {
+  const r = d.registers, m = r.matches, c = r.clips;
+  const box = (title, body) => `<div><div class="muted">${title}</div>${body}</div>`;
+  const matches = m.state === "ok"
+    ? box("Matches", `<span class="big">${m.heldout}</span> held-out &nbsp; <span class="big">${m.train}</span> train` +
+        `<div class="muted">${esc(m.heldout_names.join(", "))}</div>`)
+    : box("Matches", `<div class="empty">match_splits.json ${esc(m.state)} (${esc(r.match_splits_path)})</div>`);
+  const clips = c.state === "ok"
+    ? box("Clips", `<span class="big">${c.eval}</span> eval &nbsp; <span class="big">${c.train}</span> train` +
+        `<div class="muted">in-match eval clips of train matches</div>`)
+    : box("Clips", `<div class="empty">clip_splits.json ${esc(c.state)}. Create it: ${cmd(d.commands.assign)}</div>`);
+  const per = Object.entries(d.datasets).map(([ds, x]) => {
+    const h = x.health;
+    if (h.version == null) return `<div class="muted">${esc(ds)}: no versions</div>`;
+    const bad = h.eval_heldout_match === 0;
+    return `<div>${esc(ds)} v${h.version}: ${h.eval_in_match} in-match / ` +
+      `<span class="${bad ? "neg" : ""}">${h.eval_heldout_match} held-out</span> eval` +
+      (bad ? ` <span class="badge bad">0 held-out</span>` : "") + `</div>`;
+  }).join("");
+  return `<div class="health">${matches}${clips}${box("Eval items (latest versions)", per)}</div>`;
+}
+
+// ---------------------------------------------------------------- dataset growth
+function signed(n, cls) { return n ? `<span class="${cls}">${cls === "pos" ? "+" : cls === "neg" ? "-" : "~"}${n}</span>` : `<span class="muted">0</span>`; }
+function growthTable(versions) {
+  const kinds = [...new Set(versions.flatMap(v => Object.keys(v.by_kind)))].sort();
+  const head = `<tr><th>ver</th><th class="l">created</th><th>items</th><th>train</th><th>in-match</th><th>held-out</th>` +
+    `<th class="l">label kinds</th><th title="vs parent version">added</th><th>removed</th><th>changed</th></tr>`;
+  const rows = versions.slice().reverse().map(v => {
+    const k = kinds.map(x => v.by_kind[x] ? `${esc(x)} ${v.by_kind[x]}` : "").filter(Boolean).join(", ");
+    const ho = v.by_split.eval_heldout_match;
+    return `<tr><td>v${v.version}${v.preview ? ' <span class="badge unk" title="built from a preview split">preview</span>' : ""}</td>` +
+      `<td class="l">${when(v.created_at)}${v.note ? `<div class="muted">${esc(v.note)}</div>` : ""}</td>` +
+      `<td>${v.n_items}</td><td>${v.by_split.train}</td><td>${v.by_split.eval_in_match}</td>` +
+      `<td class="${ho === 0 ? "neg" : ""}">${ho}</td><td class="l muted kinds">${k}</td>` +
+      (v.parent_version == null ? `<td colspan="3" class="muted">first version</td>` :
+        `<td>${signed(v.diff.added, "pos")}</td><td>${signed(v.diff.removed, "neg")}</td><td>${signed(v.diff.changed, "chg")}</td>`) + `</tr>`;
+  }).join("");
+  return `<div class="wrap"><table><thead>${head}</thead><tbody>${rows}</tbody></table></div>`;
+}
+
+// ---------------------------------------------------------------- model performance
+const pointState = (series, p) => series.split === "train" ? "train" : p.contaminated === true ? "bad" : p.contaminated == null ? "unk" : "ok";
+
+function metricChart(series, versions) {
+  const vs = versions;
+  const W = 420, H = 150, L = 40, B = 22, T = 8, R = 10;
+  const vals = series.flatMap(s => s.points.map(p => p.value)).filter(v => v != null);
+  if (!vals.length || !vs.length) return "";
+  const lo = Math.min(0, ...vals), hi = Math.max(...vals);
+  const unit = lo >= 0 && hi <= 1;
+  const top = unit ? 1 : (hi * 1.1 || 1);
+  const step = vs.length > 1 ? (W - L - R) / (vs.length - 1) : 0;
+  const x = v => L + (vs.length > 1 ? step * vs.indexOf(v) : (W - L - R) / 2);
+  const y = val => T + (H - T - B) * (1 - (val - lo) / (top - lo || 1));
+  let g = "";
+  for (const t of [0, .5, 1]) {
+    const val = lo + (top - lo) * t;
+    g += `<line x1="${L}" x2="${W - R}" y1="${y(val)}" y2="${y(val)}" stroke="#2d3742"/><text x="${L - 4}" y="${y(val) + 3}" text-anchor="end">${fmtVal(val)}</text>`;
+  }
+  vs.forEach(v => { g += `<text x="${x(v)}" y="${H - 6}" text-anchor="middle">v${v}</text>`; });
+  for (const s of series) {
+    const col = SPLIT_COLOR[s.split] || "#9bb0c0";
+    const pts = s.points.filter(p => p.value != null && vs.includes(p.dataset_version)).sort((a, b) => a.dataset_version - b.dataset_version);
+    const dash = s.kind === "cohort" ? ' stroke-dasharray="4 3"' : "";
+    if (pts.length > 1) g += `<polyline fill="none" stroke="${col}" stroke-width="1.5"${dash} points="${pts.map(p => x(p.dataset_version) + "," + y(p.value)).join(" ")}"/>`;
+    for (const p of pts) {
+      const st = pointState(s, p), cx = x(p.dataset_version), cy = y(p.value);
+      const tip = `<title>${esc(s.tier)} v${p.dataset_version}: ${fmtVal(p.value)}${st === "bad" ? " CONTAMINATED: " + (p.note || "") : st === "unk" ? " contamination unknown" : ""}</title>`;
+      if (st === "bad") g += `<g>${tip}<circle cx="${cx}" cy="${cy}" r="5" fill="#0f1419" stroke="#f85149" stroke-width="2"/><path d="M${cx - 3} ${cy - 3}L${cx + 3} ${cy + 3}M${cx + 3} ${cy - 3}L${cx - 3} ${cy + 3}" stroke="#f85149" stroke-width="1.5"/></g>`;
+      else if (st === "unk") g += `<g>${tip}<circle cx="${cx}" cy="${cy}" r="5" fill="#0f1419" stroke="#d29922" stroke-width="1.5" stroke-dasharray="2 2"/><text x="${cx}" y="${cy + 3}" text-anchor="middle" style="fill:#d29922">?</text></g>`;
+      else g += `<circle cx="${cx}" cy="${cy}" r="3.5" fill="${col}">${tip}</circle>`;
+    }
+  }
+  const seen = new Set();
+  const legend = series.map(s => {
+    if (seen.has(s.tier)) return "";
+    seen.add(s.tier);
+    return `<span><i class="sw" style="background:${SPLIT_COLOR[s.split] || "#9bb0c0"}${s.kind === "cohort" ? ";opacity:.55" : ""}"></i>${esc(s.tier)}${s.kind === "cohort" ? " (dashed)" : ""}</span>`;
+  }).join("") +
+    `<span><svg width="12" height="12" viewBox="-6 -6 12 12" style="display:inline"><circle r="4.5" fill="#0f1419" stroke="#f85149" stroke-width="2"/></svg> contaminated</span>` +
+    `<span><svg width="12" height="12" viewBox="-6 -6 12 12" style="display:inline"><circle r="4.5" fill="#0f1419" stroke="#d29922" stroke-dasharray="2 2"/></svg> unknown</span>`;
+  return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="metric over dataset versions">${g}</svg><div class="legend">${legend}</div>`;
+}
+
+function valueCell(series, p) {
+  if (!p) return `<td class="none">&middot;</td>`;
+  const st = pointState(series, p);
+  const tip = `n=${p.n_items ?? "?"} run ${p.run_at || ""}${p.note ? " | " + p.note : ""}`;
+  if (st === "bad") return `<td class="c-bad" title="${esc("CONTAMINATED: " + tip)}">&#9888; ${fmtVal(p.value)}</td>`;
+  if (st === "unk") return `<td class="c-unk" title="${esc("contamination unknown: " + tip)}">? ${fmtVal(p.value)}</td>`;
+  if (st === "train") return `<td class="c-train" title="${esc(tip)}">${fmtVal(p.value)}</td>`;
+  return `<td title="${esc(tip)}">${fmtVal(p.value)}</td>`;
+}
+const metaOf = (model, metric) => (model.metric_meta || {})[metric] || {};
+const isDiag = (model, metric) => metaOf(model, metric).role === "diagnostic";
+function headlineStrip(model) {
+  if (!model.headline || !model.headline.length) return "";
+  const cells = model.headline.map(h => {
+    const n = h.n == null ? "n unknown" : `n=${h.n} random frames`;
+    const warn = h.warning ? `<div><span class="badge small" title="${esc(h.warning)}">${h.n != null ? "small eval sample" : "all frames, edge-weighted"}</span></div>` : "";
+    const f1 = h.f1_yes == null ? "" : ` &middot; F1 ${fmtVal(h.f1_yes)}`;
+    return `<div title="${esc(_HEADLINE_TIP)}"><span class="muted">${esc(h.tier)} &middot; v${h.dataset_version}</span><div><span class="big">${fmtVal(h.accuracy)}</span> accuracy${f1}</div>` +
+      `<div class="muted">headline (random stratum) &middot; ${n}</div>${warn}</div>`;
+  }).join("");
+  return `<div class="headline">${cells}</div>` +
+    `<div class="muted">Edge-frame and all-frames metrics below are greyed: diagnostic only (hover for why).</div>`;
+}
+const _HEADLINE_TIP = "Headline = accuracy on the random stratum only, the unbiased sample. Edge frames (stored p_yes about 0.48-0.52) are noise.";
+function tierTable(model, kind, versions) {
+  const rows = [];
+  for (const [metric, series] of Object.entries(model.metrics)) {
+    for (const s of series.filter(x => x.kind === kind).sort((a, b) => a.split.localeCompare(b.split) || (a.cohort_version ?? 0) - (b.cohort_version ?? 0))) {
+      const byV = Object.fromEntries(s.points.map(p => [p.dataset_version, p]));
+      const diag = isDiag(model, metric);
+      rows.push(`<tr${diag ? ` class="diag" title="${esc(metaOf(model, metric).note)}"` : ""}><td>${esc(metric)}</td><td class="l ${kind === "cohort" ? "tier-cohort" : "tier-full"}">${esc(s.tier)}</td>` +
+        versions.map(v => valueCell(s, byV[v])).join("") + `</tr>`);
+    }
+  }
+  if (!rows.length) return "";
+  const title = kind === "full" ? "Full current eval (everything in the split at that version)" :
+    "Fixed cohort (only items present at the cohort version, comparable across versions)";
+  return `<h4>${title}</h4><div class="wrap"><table><thead><tr><th>metric</th><th class="l">tier</th>` +
+    versions.map(v => `<th>v${v}</th>`).join("") + `</tr></thead><tbody>${rows.join("")}</tbody></table></div>`;
+}
+function modelBlock(ds, m, versions) {
+  const key = ds + "|" + m.model_name + "|" + m.model_version;
+  const metrics = Object.keys(m.metrics);
+  const sel = metricChoice[key] && metrics.includes(metricChoice[key]) ? metricChoice[key] : (metrics.find(x => !isDiag(m, x)) ?? metrics[0]);
+  const flags = (m.n_contaminated ? `<span class="badge bad">${m.n_contaminated} contaminated</span> ` : "") +
+    (m.n_unknown ? `<span class="badge unk">${m.n_unknown} contamination unknown</span>` : "");
+  const opts = metrics.map(x => `<option value="${esc(x)}"${x === sel ? " selected" : ""}>${esc(x)}${isDiag(m, x) ? " (diagnostic)" : ""}</option>`).join("");
+  const selNote = isDiag(m, sel) ? `<div class="banner info">${esc(metaOf(m, sel).note)}</div>` : "";
+  const modelV = String(m.model_version).length > 14 ? String(m.model_version).slice(0, 12) + "…" : m.model_version;
+  return `<div class="model"><h4>${esc(m.model_name)} <span class="muted" title="${esc(m.model_version)}">@ ${esc(modelV)} &middot; ${esc(m.task)}</span> ${flags}</h4>` +
+    headlineStrip(m) +
+    `<div class="row"><div><label class="muted">metric <select data-key="${esc(key)}">${opts}</select></label>${selNote}${metricChart(m.metrics[sel], versions)}</div>` +
+    `<div>${tierTable(m, "full", versions)}${tierTable(m, "cohort", versions)}</div></div></div>`;
+}
+function perfSection(ds, x, d) {
+  const versions = [...new Set([...x.growth.versions.map(v => v.version), ...x.models.flatMap(m => Object.values(m.metrics).flatMap(ss => ss.flatMap(s => s.points.map(p => p.dataset_version))))])].sort((a, b) => a - b);
+  if (x.models.length) return x.models.map(m => modelBlock(ds, m, versions)).join("");
+  const st = d.store;
+  if (st.state === "missing") return `<div class="empty">No feature store at <code>${esc(d.paths.store)}</code>, so there are no results. Create it: ${cmd(d.commands.ingest)}</div>`;
+  if (st.state === "busy" || st.state === "error") return `<div class="banner warn">Cannot read results: ${esc(st.error)}</div>`;
+  return `<div class="empty">No results yet for ${esc(ds)}. Record some with the eval adapters (<code>footy_track.datasets.eval_adapters.evaluate_and_record</code>) or by hand: ` +
+    cmd(`python -m footy_track.datasets results record --task ${ds} --dataset ${ds} --dataset-version <N> --split eval_all --model <name> --model-version <v> --metric accuracy --value <x> --n-items <n>`) + `</div>`;
+}
+
+// ---------------------------------------------------------------- the two charts per stage
+const STAGES = {tracking:"Tracking", broadcast:"Broadcast view", calibration:"Pitch calibration"};
+const SIZE_COLOR = {train:"var(--c-train)", eval_in_match:"var(--c-inmatch)", eval_heldout_match:"var(--c-heldout)"};
+const PERF_COLOR = ["var(--p1)", "var(--p2)", "var(--p3)"];
+const SVGNS = "http://www.w3.org/2000/svg";
+
+function niceMax(n) {
+  if (n <= 0) return 1;
+  const p = Math.pow(10, Math.floor(Math.log10(n))), f = n / p;
+  return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * p;
+}
+function shortV(v) { v = String(v ?? ""); return v.length > 14 ? v.slice(0, 12) + "…" : v; }
+const fmtN = n => n == null ? "?" : Number(n).toLocaleString("en");
+
+// series: [{key,label,color,points:[{version,value,...}]}]; versions: [{version,date}]
+// opts: {max, ticks, fmt, tip(version,date,pointsByKey), contaminated(p), kind}
+function lineChart(series, versions, opts) {
+  const W = 400, H = 190, L = 40, R = 40, T = 12, B = 26;
+  const pw = W - L - R, ph = H - T - B, pad = versions.length > 1 ? 18 : 0;
+  const idx = Object.fromEntries(versions.map((v, i) => [v.version, i]));
+  const x = v => versions.length === 1 ? L + pw / 2 : L + pad + idx[v] * (pw - 2 * pad) / (versions.length - 1);
+  const y = val => T + ph * (1 - val / opts.max);
+  let g = "";
+  for (const t of opts.ticks) {
+    g += `<line x1="${L}" x2="${W - R}" y1="${y(t)}" y2="${y(t)}" stroke="var(--grid)" stroke-width="${t === 0 ? 1.2 : .6}"/>` +
+         `<text x="${L - 5}" y="${y(t) + 3}" text-anchor="end">${opts.fmt(t)}</text>`;
+  }
+  const every = Math.ceil(versions.length / 8);
+  versions.forEach((v, i) => { if (i % every === 0 || i === versions.length - 1) g += `<text x="${x(v.version)}" y="${H - 8}" text-anchor="middle">v${v.version}</text>`; });
+  const any = series.some(s => s.points.length);
+  if (!any) g += `<text class="nodata" x="${L + pw / 2}" y="${T + ph / 2}" text-anchor="middle">${esc(opts.empty || "no results yet")}</text>`;
+  let hollow = false, dashed = false;
+  const ends = [];
+  for (const s of series) {
+    const pts = s.points.filter(p => p.value != null && idx[p.version] != null).sort((a, b) => a.version - b.version);
+    for (let i = 1; i < pts.length; i++) {
+      const a = pts[i - 1], b = pts[i], changed = opts.modelChanged && a.model_version !== b.model_version;
+      if (changed) dashed = true;
+      g += `<line x1="${x(a.version)}" y1="${y(a.value)}" x2="${x(b.version)}" y2="${y(b.value)}" stroke="${s.color}" stroke-width="2" stroke-linecap="round"${changed ? ' stroke-dasharray="4 4"' : ""}/>`;
+    }
+    for (const p of pts) {
+      const cx = x(p.version), cy = y(p.value);
+      if (opts.contaminated && opts.contaminated(p)) { hollow = true; g += `<circle cx="${cx}" cy="${cy}" r="4.5" fill="var(--panel)" stroke="${s.color}" stroke-width="2"/>`; }
+      else g += `<circle cx="${cx}" cy="${cy}" r="4.5" fill="${s.color}" stroke="var(--panel)" stroke-width="2"/>`;
+    }
+    const last = pts[pts.length - 1];
+    if (last && opts.label) ends.push({x: x(last.version), y: y(last.value) + 3.5, v: last.value, color: s.color});
+  }
+  // direct value label to the right of each line's last point, nudged apart when they would collide
+  ends.sort((a, b) => a.y - b.y);
+  ends.forEach((e, i) => { if (i && e.y - ends[i - 1].y < 12) e.y = ends[i - 1].y + 12; });
+  for (const e of ends) g += `<text class="vtxt" x="${e.x + 9}" y="${e.y}">${opts.fmt(e.v)}</text>`;
+  // one invisible hit column per version: hover (or tap) shows every line at that version
+  versions.forEach((v, i) => {
+    const w = versions.length === 1 ? pw : (pw - 2 * pad) / (versions.length - 1);
+    g += `<rect class="hit" data-v="${v.version}" x="${x(v.version) - w / 2}" y="${T}" width="${w}" height="${ph + B}" fill="transparent"/>`;
+  });
+  g += `<line class="guide" x1="0" x2="0" y1="${T}" y2="${T + ph}" stroke="var(--muted)" stroke-dasharray="2 3" visibility="hidden"/>`;
+  const legend = series.map(s => `<span class="${s.points.length ? "" : "off"}"><i class="ln" style="border-color:${s.color}"></i>${esc(s.label)}</span>`).join("");
+  const el = document.createElement("div");
+  el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(opts.aria)}">${g}</svg><div class="legend">${legend}</div>`;
+  const svg = el.querySelector("svg"), guide = svg.querySelector(".guide");
+  const show = (ev, v) => {
+    const ver = versions.find(q => q.version === v);
+    const byKey = Object.fromEntries(series.map(s => [s.key, s.points.find(p => p.version === v)]));
+    const tip = document.getElementById("tip");
+    tip.innerHTML = opts.tip(ver, series, byKey);
+    tip.style.display = "block";
+    const r = tip.getBoundingClientRect(), px = ev.clientX, py = ev.clientY;
+    tip.style.left = Math.max(4, Math.min(innerWidth - r.width - 4, px + 14)) + "px";
+    tip.style.top = Math.max(4, Math.min(innerHeight - r.height - 4, py + 14)) + "px";
+    guide.setAttribute("x1", x(v)); guide.setAttribute("x2", x(v)); guide.setAttribute("visibility", "visible");
+  };
+  const hide = () => { document.getElementById("tip").style.display = "none"; guide.setAttribute("visibility", "hidden"); };
+  svg.querySelectorAll(".hit").forEach(r => {
+    const v = +r.dataset.v;
+    r.addEventListener("mousemove", ev => show(ev, v));
+    r.addEventListener("click", ev => show(ev, v));
+    r.addEventListener("mouseleave", hide);
+  });
+  el.flags = {hollow, dashed};
+  return el;
+}
+
+function sizeChart(c) {
+  const series = c.size.map(s => ({key: s.split, label: s.label, color: SIZE_COLOR[s.split], points: s.points}));
+  const top = niceMax(Math.max(1, ...series.flatMap(s => s.points.map(p => p.value))));
+  return lineChart(series, c.versions, {
+    max: top, ticks: [0, top / 2, top], fmt: v => fmtN(Math.round(v)), label: true,
+    aria: "items per dataset version, by split",
+    tip: (ver, ss, by) => `<b>v${ver.version}</b> <span class="m">${esc(ver.date || "")}</span>` +
+      ss.map(s => by[s.key] ? `<div><span style="color:${s.color}">&#9679;</span> ${esc(s.label)}: <b>${fmtN(by[s.key].value)}</b></div>` : "").join(""),
+  });
+}
+function perfChart(c) {
+  const series = c.performance.map((s, i) => ({...s, color: PERF_COLOR[i % PERF_COLOR.length]}));
+  return lineChart(series, c.versions, {
+    max: 1, ticks: [0, .5, 1], fmt: v => v === 0 ? "0" : v === 1 ? "1" : v.toFixed(2).replace(/0$/, ""), label: true,
+    modelChanged: true, contaminated: p => p.contaminated === true,
+    aria: "headline metric per model over dataset versions",
+    tip: (ver, ss, by) => `<b>v${ver.version}</b> <span class="m">${esc(ver.date || "")}</span>` +
+      ss.map(s => { const p = by[s.key]; return p ? `<div><span style="color:${s.color}">&#9679;</span> ${esc(s.label)}: <b>${fmtVal(p.value)}</b>` +
+        `<div class="m">n=${fmtN(p.n_items)} &middot; ${esc(p.model_name)} @ ${esc(shortV(p.model_version))}${p.contaminated === true ? " &middot; contaminated" : ""}</div></div>` : ""; }).join(""),
+  });
+}
+function stageSection(ds, x, d) {
+  const sec = document.createElement("section");
+  sec.className = "stage"; sec.id = "stage-" + ds;
+  sec.innerHTML = `<h2>${esc(STAGES[ds] || ds)}</h2><div class="charts"></div>`;
+  const row = sec.querySelector(".charts"), flags = {hollow: false, dashed: false};
+  const c = x.charts;
+  for (const [title, build] of [["Dataset size", sizeChart], ["Performance", perfChart]]) {
+    const card = document.createElement("div"); card.className = "card";
+    card.innerHTML = `<h3>${title}</h3>`;
+    if (!c.versions.length) card.insertAdjacentHTML("beforeend", `<div class="empty">No dataset versions yet.</div>`);
+    else {
+      const ch = build(c); card.appendChild(ch);
+      flags.hollow ||= ch.flags.hollow; flags.dashed ||= ch.flags.dashed;
+    }
+    row.appendChild(card);
+  }
+  sec.flags = flags;
+  return sec;
+}
+function renderStages(d) {
+  const root = document.getElementById("stages");
+  root.replaceChildren();
+  const f = {hollow: false, dashed: false};
+  for (const [ds, x] of Object.entries(d.datasets)) {
+    const sec = stageSection(ds, x, d);
+    f.hollow ||= sec.flags.hollow; f.dashed ||= sec.flags.dashed;
+    root.appendChild(sec);
+  }
+  const notes = [];
+  if (f.hollow) notes.push("Hollow marker: the model was trained on some of this eval data, so the score is inflated (contaminated).");
+  if (f.dashed) notes.push("Dashed segment: the model changed between versions.");
+  document.getElementById("foot").textContent = notes.join(" ");
+}
+
+// ---------------------------------------------------------------- page
+function datasetSection(ds, x, d) {
+  const g = x.growth, h = x.health;
+  const warn = h.warnings.map(w => `<div class="banner ${w.level === "action" ? "action" : "warn"}">${w.level === "action" ? "<b>Action needed:</b> " : ""}${esc(w.message)}</div>`).join("");
+  let growth;
+  if (g.versions.length) growth = `<div class="row growth"><div>${growthTable(g.versions)}</div></div>`;
+  else {
+    const first = d.store.state === "missing" ? `The feature store does not exist yet. Create it: ${cmd(d.commands.ingest)}<br>then snapshot: ` : "";
+    growth = `<div class="empty">No versions yet. ${first}${cmd(d.commands.bump)}</div>`;
+  }
+  const errs = g.errors.map(e => `<div class="banner warn">Unreadable manifest ${esc(e)}</div>`).join("");
+  return `<section class="ds" id="ds-${esc(ds)}"><h2>${esc(ds)} <span class="muted">${g.latest != null ? "latest v" + g.latest : "no versions"}</span></h2>` +
+    warn + `<h3>Dataset versions</h3>${errs}${growth}<h3>Model performance</h3>${perfSection(ds, x, d)}</section>`;
+}
+function render() {
+  const d = DATA;
+  renderStages(d);
+  document.getElementById("top").innerHTML = healthTop(d);
+  document.getElementById("datasets").innerHTML = Object.entries(d.datasets).map(([ds, x]) => datasetSection(ds, x, d)).join("");
+  document.getElementById("paths").textContent = `datasets root: ${d.paths.datasets_root} · store: ${d.paths.store} (${d.store.exists ? "found" : "not found"})`;
+  if (new URLSearchParams(location.search).get("details") === "1") document.getElementById("more").open = true;
+  document.getElementById("stamp").textContent = "updated " + new Date().toLocaleTimeString() + " (server cache ~60s)";
+}
+async function load(refresh) {
+  try {
+    const r = await fetch("/api/progress" + (refresh ? "?refresh=true" : ""));
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    DATA = await r.json();
+    render();
+  } catch (e) {
+    document.getElementById("stamp").textContent = "load failed: " + e;
+  }
+}
+document.addEventListener("change", e => {
+  if (e.target.matches("select[data-key]")) { metricChoice[e.target.dataset.key] = e.target.value; render(); }
+});
+document.addEventListener("click", e => {
+  if (e.target.matches("button.copy")) navigator.clipboard?.writeText(e.target.dataset.cmd);
+  if (e.target.id === "refresh") { e.preventDefault(); load(true); }
+});
+load(false); setInterval(() => load(false), 60000);
+</script>
+</body>
+</html>

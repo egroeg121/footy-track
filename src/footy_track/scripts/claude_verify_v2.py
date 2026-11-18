@@ -72,6 +72,7 @@ from footy_track.autolabel.verify_v2 import (
     summarise,
     tracker_anchor,
 )
+from footy_track.splits import load_split_arg
 
 VIDEO_SUFFIXES = {".mp4", ".mov", ".avi", ".mkv"}
 REDETECT_CONF = 0.05
@@ -110,7 +111,7 @@ def _params_hash(args: argparse.Namespace) -> str:
         "top_others": args.top_others,
         "max_redetect": args.max_redetect,
         "weights": args.weights.parent.name,
-        "split": json.loads(args.split.read_text()),
+        "split": load_split_arg(args.split, [p.stem for p in args.cache.glob("*.jsonl")]),
     }
     return hashlib.sha256(json.dumps(keys, sort_keys=True).encode()).hexdigest()[:16]
 
@@ -156,7 +157,7 @@ def cmd_prepare(args: argparse.Namespace) -> int:  # noqa: PLR0912, PLR0915
         select_device,
     )
 
-    split = json.loads(args.split.read_text())
+    split = load_split_arg(args.split, [p.stem for p in args.cache.glob("*.jsonl")])
     if args.only != "both":
         split = {c: (s if s == args.only else "") for c, s in split.items()}
     if args.clips:
@@ -662,7 +663,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--cache", type=Path, required=True)
     p.add_argument("--gt", type=Path, required=True)
     p.add_argument("--videos", type=Path, nargs="+", required=True)
-    p.add_argument("--split", type=Path, required=True)
+    p.add_argument("--split", type=Path, default=None, help="legacy {clip: seen|held_out} JSON; default: split authority")
     p.add_argument("--weights", type=Path, required=True)
     p.add_argument("--run", type=Path, required=True)
     p.add_argument("--seed", type=int, default=7)

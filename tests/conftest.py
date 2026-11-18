@@ -27,14 +27,27 @@ _LABELLER_ENV = (
 
 
 @pytest.fixture(autouse=True)
+def _match_splits_seed(monkeypatch):
+    """Tests use the built-in split seed when no register file exists (prod fails closed)."""
+    monkeypatch.setenv("FOOTY_MATCH_SPLITS_ALLOW_SEED", "1")
+
+
+@pytest.fixture(autouse=True)
 def _isolated_labeller_datasets(tmp_path, monkeypatch):
     """No test may read the real dataset registry or the shell's FOOTY_* dirs.
 
     The registry path points at a missing tmp file (-> the single legacy
     ``calib`` dataset, built from the env vars the test itself sets).
     """
-    monkeypatch.setenv("FOOTY_LABELLER_DATASETS", str(tmp_path / "no-such-registry.json"))
+    monkeypatch.setenv(
+        "FOOTY_LABELLER_DATASETS", str(tmp_path / "no-such-registry.json")
+    )
     monkeypatch.setenv("FOOTY_LABELLING_JOBS_DIR", str(tmp_path / "labelling_jobs"))
+    monkeypatch.setenv(
+        "FOOTY_BALLCHECK_RENDERS_DIR", str(tmp_path / "ballcheck_renders")
+    )
+    monkeypatch.setenv("FOOTY_BALLCHECK_MIN_FREE_GB", "0")
+    monkeypatch.setenv("FOOTY_JOBS_GC_INTERVAL_S", "0")
     for var in _LABELLER_ENV:
         monkeypatch.delenv(var, raising=False)
 

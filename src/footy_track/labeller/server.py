@@ -37,7 +37,7 @@ from fastapi.responses import HTMLResponse, Response  # noqa: E402
 from fastapi.staticfiles import StaticFiles  # noqa: E402
 
 from footy_track.ball_eval.metrics import bbox_iou  # noqa: E402
-from footy_track.labeller import datasets  # noqa: E402
+from footy_track.labeller import datasets, hooks  # noqa: E402
 from footy_track.labeller.ball_check import router as ball_check_router  # noqa: E402
 from footy_track.labeller.calibration import router as calibration_router  # noqa: E402
 from footy_track.labeller.calibration_proposals import router as calibration_proposals_router  # noqa: E402
@@ -85,6 +85,16 @@ from footy_track.labeller import identity_routes  # noqa: E402
 # box labeller: different unit (tracklets, not boxes), different scope (two
 # clips at once), and append-only storage rather than whole-file rewrites.
 app.include_router(identity_routes.router)
+
+from footy_track.labeller import matches_routes  # noqa: E402
+
+app.include_router(matches_routes.router)
+from footy_track.labeller import progress_routes  # noqa: E402
+
+app.include_router(progress_routes.router)
+from footy_track.labeller import broadcast_review as _broadcast_review  # noqa: E402
+
+app.include_router(_broadcast_review.router)
 
 #: Session of the default dataset. Other datasets get their own Session lazily
 #: (``_session()``): one shared Session would flush clip A's timeline into the
@@ -186,11 +196,6 @@ async def calibration_review_page() -> HTMLResponse:
     )
 
 
-@app.get("/ingest", response_class=HTMLResponse)
-async def ingest_page() -> HTMLResponse:
-    return HTMLResponse((_STATIC_DIR / "ingest.html").read_text())
-
-
 def _clip_completion(stem: str, video_path: Path) -> dict:
     """Return {marked, complete, label_count} for a clip.
 
@@ -251,6 +256,13 @@ async def list_clips() -> dict:
 @app.get("/clips/status")
 async def clips_status() -> dict:
     """Return completion status for all clips — may be slow (reads video metadata)."""
+    # One cv2.VideoCapture + one sidecar parse per clip: seconds of blocking work. Off the event
+    # loop (to_thread keeps the request's dataset ContextVar), or every other page stalls while a
+    # laptop opens /labeller (B1 of the labelling architecture review).
+    return await asyncio.to_thread(_clips_status_sync)
+
+
+def _clips_status_sync() -> dict:
     if not datasets.current().clips_dir.exists():
         return {"clips": []}
     video_suffixes = {".mp4", ".mov", ".avi", ".mkv"}
@@ -387,6 +399,12 @@ async def next_detection(from_idx: int) -> dict:
     return {"idx": None}
 
 
+def _emit_mark(session: Session, idx: int, verdict: str) -> None:
+    """Labelling hooks: one event per ball_place mark (see ``hooks.py``). Never raises."""
+    if session.video_path is not None:
+        hooks.emit("ball_place", clip=session.video_path.stem, unit=idx, verdict=verdict)
+
+
 @app.post("/edit")
 async def edit_frame(body: dict) -> dict:
     """Overwrite a frame with the user's boxes (labeller provenance = ground truth)."""
@@ -398,6 +416,7 @@ async def edit_frame(body: dict) -> dict:
         session.no_ball_frames.discard(idx)
         session.not_broadcast_frames.discard(idx)
     session.schedule_flush()
+    _emit_mark(session, idx, "ball" if any(b.label in BALL_LABELS for b in boxes) else "edit")
     return {"idx": idx, "boxes": boxes_payload(session.get_frame(idx))}
 
 
@@ -414,6 +433,7 @@ async def mark_no_ball(body: dict) -> dict:
                 b for b in session.timeline[idx] if b.label not in BALL_LABELS
             ]
     session.schedule_flush()
+    _emit_mark(session, idx, "no_ball")
     return {"idx": idx, "no_ball": True}
 
 
@@ -423,6 +443,7 @@ async def mark_not_broadcast(body: dict) -> dict:
     idx = int(body["idx"])
     session.not_broadcast_frames.add(idx)
     session.schedule_flush()
+    _emit_mark(session, idx, "not_broadcast")
     return {"idx": idx, "not_broadcast": True}
 
 
@@ -432,6 +453,7 @@ async def clear_no_ball(body: dict) -> dict:
     idx = int(body["idx"])
     session.no_ball_frames.discard(idx)
     session.schedule_flush()
+    _emit_mark(session, idx, "no_ball_cleared")
     return {"idx": idx, "no_ball": False}
 
 
@@ -441,6 +463,7 @@ async def clear_not_broadcast(body: dict) -> dict:
     idx = int(body["idx"])
     session.not_broadcast_frames.discard(idx)
     session.schedule_flush()
+    _emit_mark(session, idx, "not_broadcast_cleared")
     return {"idx": idx, "not_broadcast": False}
 
 
@@ -682,6 +705,37 @@ app.include_router(calibration_proposals_router)
 app.include_router(ingest_router)
 app.include_router(tasks_router)
 app.include_router(jobs_router)
+
+
+async def _jobs_gc_loop(interval: float) -> None:
+    """Hourly housekeeping (stale prepare runs, idle/finished renders, render-cache cap). Lives in the
+    server so it survives restarts with no extra scheduler; ``labelling_jobs gc`` runs the same code."""
+    import logging  # noqa: PLC0415
+
+    from footy_track.labeller import jobs as _jobs  # noqa: PLC0415
+
+    await asyncio.sleep(min(60.0, interval))
+    while True:
+        try:
+            await asyncio.to_thread(_jobs.gc)
+        except Exception:  # noqa: BLE001 - housekeeping must never take the server down
+            logging.getLogger(__name__).exception("jobs gc failed")
+        await asyncio.sleep(interval)
+
+
+@app.on_event("startup")
+async def _start_jobs_gc() -> None:
+    interval = float(os.environ.get("FOOTY_JOBS_GC_INTERVAL_S", "3600") or 0)
+    if interval > 0:
+        app.state.jobs_gc_task = asyncio.create_task(_jobs_gc_loop(interval))
+
+
+@app.on_event("shutdown")
+async def _stop_jobs_gc() -> None:
+    task = getattr(app.state, "jobs_gc_task", None)
+    if task is not None:
+        task.cancel()
+
 
 # Mount static assets (JS/CSS) if any beyond index.html.
 if _STATIC_DIR.exists():

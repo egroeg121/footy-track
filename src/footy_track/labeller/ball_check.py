@@ -37,15 +37,22 @@ from fastapi import APIRouter, Request
 from fastapi.responses import Response
 
 from footy_track.clip_id import canonical_clip_id
+from footy_track.labeller import ball_check_cache as bcc
 from footy_track.labeller import candidates as cand
-from footy_track.labeller import datasets
+from footy_track.labeller import datasets, hooks, jobs
 from footy_track.labeller.constants import (
     BALL_LABELS,
     NO_BALL_TAG,
     NOT_BROADCAST_TAG,
     PROV_LABELLER,
 )
-from footy_track.labeller.review import _find_video, _gt_marks_dir, _read_all_boxes
+from footy_track.labeller.names import safe_clip_name
+from footy_track.labeller.review import (
+    _clips_dir,
+    _find_video,
+    _gt_marks_dir,
+    _read_all_boxes,
+)
 
 LOGGER = logging.getLogger(__name__)
 
@@ -121,6 +128,67 @@ _BC_CLIP_CACHE_MAX = 600
 _CLIP_SIZES: dict[tuple[str, str], tuple[int, int]] = {}
 
 
+#: Bump when a change to the drawing/encoding code alters the bytes of a render without touching
+#: any constant above (the constants themselves are part of the disk-cache key automatically).
+RENDER_VERSION = "1"
+_JPEG_QUALITY = 88
+
+
+def render_fingerprint() -> str:
+    """Identifies the render code: version plus every constant that shapes the output."""
+    return bcc.make_key(
+        {
+            "v": RENDER_VERSION,
+            "crop": [
+                _WINDOW_FRAC,
+                _MIN_CONTEXT_PX,
+                _DISPLAY_W,
+                _PAD_FACTOR,
+                _JPEG_QUALITY,
+            ],
+            "clip": [_CLIP_HALF_S, _CLIP_MAX_FPS, _CLIP_W, _CLIP_CRF, _CLIP_HOLD_MS],
+        }
+    )[:12]
+
+
+def _box_key(b) -> list | None:
+    return None if b is None else [round(float(v), 6) for v in b]
+
+
+def _video_id(video_path: Path) -> list:
+    """Clip file identity for cache keys: where it is and which bytes it holds."""
+    try:
+        st = video_path.stat()
+        return [str(video_path), st.st_size, st.st_mtime_ns]
+    except OSError:
+        return [str(video_path), -1, -1]
+
+
+def crop_disk_key(video_path, frame_idx, at_frame, bbox, ob, pad, reticle) -> str:
+    """Disk-cache key of a still: all inputs that change its bytes (``ob`` only when drawn)."""
+    return bcc.make_key(
+        {
+            "k": "crop", "fp": render_fingerprint(), "video": _video_id(Path(video_path)),
+            "frame": frame_idx, "at": at_frame, "bbox": _box_key(bbox), "ob": _box_key(ob),
+            "pad": round(float(pad), 2), "reticle": bool(reticle),
+        }
+    )  # fmt: skip
+
+
+def clip_encoding() -> str:
+    return "mp4" if _have_ffmpeg() else "gif"
+
+
+def clip_disk_key(video_path, frame_idx, bbox, ob, pad, enc: str | None = None) -> str:
+    return bcc.make_key(
+        {
+            "k": "clip", "fp": render_fingerprint(), "video": _video_id(Path(video_path)),
+            "frame": frame_idx, "bbox": _box_key(bbox), "ob": _box_key(ob),
+            "pad": round(float(pad), 2), "enc": enc or clip_encoding(),
+        }
+    )  # fmt: skip
+
+
 # ---------------------------------------------------------------------------
 # Verdict log
 # ---------------------------------------------------------------------------
@@ -184,6 +252,10 @@ def _append_verdict(rec: dict) -> None:
     path = _verdict_path(rec["clip"])
     with path.open("a") as fh:
         fh.write(json.dumps(rec) + "\n")
+    hooks.emit(  # labelling hooks: one event per persisted verdict / undo tombstone
+        "ball_check", clip=rec["clip"], verdict=rec.get("verdict"),
+        unit=(rec.get("source") or "sidecar", int(rec["frame_index"]), int(rec["box_index"])),
+    )  # fmt: skip
 
 
 # ---------------------------------------------------------------------------
@@ -225,6 +297,11 @@ def _list_items() -> list[dict]:
 
 
 def _list_item(clip: str, frame_index: int, box_index: int) -> dict | None:
+    if (
+        box_index >= jobs.INLINE_BOX_BASE
+    ):  # an inline card of a job: its geometry is in the job
+        hit = jobs.inline_card(datasets.current_name(), clip, frame_index, box_index)
+        return hit[1] if hit else None
     items = _list_items()
     if 0 <= box_index < len(items):
         it = items[box_index]
@@ -326,6 +403,57 @@ def _build_candidate_queue(
     return cand.stratified_order(pool, tau=tau, sigma=sigma, focus=focus)
 
 
+def _job_queue(job_id: str, judged: dict, clip: str | None, limit: int) -> dict | None:
+    """The ``?job=`` view of the queue, or None to fall through to the normal source (pointer
+    cards, or an unknown/unsuitable job id)."""
+    j = jobs.read_job(job_id)
+    if (
+        j is None
+        or j.get("kind") != "ball_check"
+        or j.get("dataset") != datasets.current_name()
+    ):
+        return None
+    p = j.get("prepare") or {}
+    if j["status"] == "preparing":
+        return {
+            "source": "list", "job": job_id, "items": [], "remaining": len(j["items"]), "judged": 0,
+            "preparing": {"prepared": p.get("prepared", 0), "total": p.get("total", len(j["items"]))},
+        }  # fmt: skip
+    jobs.maybe_reprepare(job_id)
+    cards = [
+        it
+        for it in j["items"]
+        if jobs.is_inline(it) and (clip is None or it["clip"] == clip)
+    ]
+    if not cards:
+        return None
+    todo = [
+        it
+        for it in cards
+        if ("list", it["clip"], it["frame_index"], it["box_index"]) not in judged
+    ]
+    return {
+        "source": "list",
+        "job": job_id,
+        "rev": int(j.get("rev") or 0),  # the page re-asks when this changes (a hook reordered the job)
+        "remaining": len(todo),
+        "judged": len(cards) - len(todo),
+        "items": [
+            {
+                **jobs.page_card(it),
+                "source": "list",
+                "label": it.get("label") or "in_play_ball",
+                "provenance": it.get("provenance") or it.get("role") or "list",
+                "confidence": it.get("confidence"),
+                "image_url": (
+                    f"/ball_check/crop/{it['clip']}/{it['frame_index']}/{it['box_index']}.jpg?src=list"
+                ),
+            }
+            for it in todo[:limit]
+        ],
+    }
+
+
 @router.get("/ball_check/queue")
 async def ball_check_queue(
     limit: int = 50,
@@ -335,8 +463,14 @@ async def ball_check_queue(
     tau: float = -1.0,
     sigma: float = cand.DEFAULT_SIGMA,
     focus: float = cand.DEFAULT_FOCUS,
+    job: str | None = None,
 ) -> dict:
     """Unjudged ball boxes to review.
+
+    ``job=<id>`` (the deep link of a labelling job) serves that job's own inline cards in item
+    order; a job that is still ``preparing`` is not offered, the reply carries its prep progress
+    instead. For a pointer-card job ``job`` only gates it the same way. Opening a job whose
+    renders were evicted queues a fresh prepare run.
 
     ``source=candidates`` draws from the detector's own output, which carries
     real confidences, and orders them by confidence-stratified sampling.
@@ -347,6 +481,11 @@ async def ball_check_queue(
     """
     judged = await asyncio.to_thread(_read_verdicts)
     limit = max(1, min(int(limit), 500))
+
+    if job:
+        jr = await asyncio.to_thread(_job_queue, job, judged, clip, limit)
+        if jr is not None:
+            return jr
 
     if source == "auto":
         have_cands = await asyncio.to_thread(
@@ -598,8 +737,78 @@ def _encode_window(frame, x1: int, y1: int, x2: int, y2: int) -> bytes | None:
         crop = cv2.resize(
             crop, None, fx=scale, fy=scale, interpolation=cv2.INTER_NEAREST
         )
-    ok, buf = cv2.imencode(".jpg", crop, [cv2.IMWRITE_JPEG_QUALITY, 88])
+    ok, buf = cv2.imencode(".jpg", crop, [cv2.IMWRITE_JPEG_QUALITY, _JPEG_QUALITY])
     return buf.tobytes() if ok else None
+
+
+def render_crop_bytes(
+    video_path, frame_idx: int, at_frame: int, bbox, ob, pad: float, reticle: bool
+) -> bytes | None:
+    """Render one card's still: the fixed-scale window, optional reticle, optional magenta
+    ``ob`` box. Pure (no request state): the server and the prepare flow both call this, so a
+    prepared still is byte-for-byte what the server would have made."""
+    bx, by, bw, bh = bbox
+    cap = cv2.VideoCapture(str(video_path))
+    try:
+        cap.set(cv2.CAP_PROP_POS_FRAMES, at_frame)
+        ok, frame = cap.read()
+    finally:
+        cap.release()
+    if not ok:
+        return None
+    h_px, w_px = frame.shape[:2]
+    x1, y1, x2, y2 = _crop_window(bx, by, bw, bh, w_px, h_px, pad)
+    if ob is not None and at_frame == frame_idx:
+        ox1, oy1 = int(ob[0] * w_px), int(ob[1] * h_px)
+        ox2, oy2 = int((ob[0] + ob[2]) * w_px), int((ob[1] + ob[3]) * h_px)
+        # Inflated a little and 2 px thick: at 1:1 a 1 px box around a
+        # 10 px object vanishes once the crop is upscaled and compressed.
+        cv2.rectangle(frame, (ox1 - 4, oy1 - 4), (ox2 + 4, oy2 + 4), (255, 0, 255), 2)
+    if not reticle:
+        return _encode_window(frame, x1, y1, x2, y2)
+    # Reticle first, on the full frame: without it the card is ambiguous
+    # whenever the crop holds more than one round bright thing.
+    #
+    # It draws the box *exactly* — an inflated marker would make every box
+    # look looser than it is, and judging box tightness is half the point.
+    # Visibility comes from corner brackets sitting outside the box rather
+    # than from padding the box itself.
+    _draw_box(frame, bx, by, bw, bh, w_px, h_px, (0, 255, 255), 1)
+    return _encode_window(frame, x1, y1, x2, y2)
+
+
+def _crop_cached(
+    video_path, src, frame_idx, box_idx, at_frame, bbox, ob, pad, reticle, clip_stem
+) -> bytes | None:
+    """Disk cache first, else render once (concurrent identical requests share it) and store."""
+    _note_demand(src, clip_stem, frame_idx, box_idx)
+
+    def render():
+        data = render_crop_bytes(
+            video_path, frame_idx, at_frame, bbox, ob, pad, reticle
+        )
+        return None if data is None else (data, {})
+
+    key = crop_disk_key(video_path, frame_idx, at_frame, bbox, ob, pad, reticle)
+    rc = bcc.cache()
+    if rc is None:
+        res = bcc.COALESCER.run("mem:" + key, render)
+    else:
+        res, _how = rc.get_or_render(key, "jpg", render)
+    return None if res is None else res[0]
+
+
+def _note_demand(src: str, clip_stem: str, frame_idx: int, box_idx: int) -> None:
+    """A card was asked for that is not in memory: if it belongs to a job whose renders were
+    evicted, queue a fresh prepare run (the card itself is rendered on demand meanwhile)."""
+    if src != "list" or box_idx < jobs.INLINE_BOX_BASE:
+        return
+    try:
+        hit = jobs.inline_card(datasets.current_name(), clip_stem, frame_idx, box_idx)
+        if hit:
+            jobs.maybe_reprepare(hit[0])
+    except Exception:  # noqa: BLE001 - never break serving a card over bookkeeping
+        LOGGER.exception("ball_check: re-prepare check failed")
 
 
 @router.get("/ball_check/crop/{clip_stem}/{frame_idx}/{box_idx}.jpg")
@@ -643,58 +852,26 @@ async def ball_check_crop(
     bbox_raw = await asyncio.to_thread(_read_box, src, clip_stem, frame_idx, box_idx)
     if bbox_raw is None:
         return Response(status_code=404)
-    bx, by, bw, bh = bbox_raw
+    # The other box of a pair (GT mark vs Claude's box) is drawn on the card's own frame only.
+    ob = (
+        await asyncio.to_thread(_other_box, src, clip_stem, frame_idx, box_idx)
+        if at_frame == frame_idx
+        else None
+    )
 
-    def _render() -> bytes | None:
-        cap = cv2.VideoCapture(str(video_path))
-        try:
-            cap.set(cv2.CAP_PROP_POS_FRAMES, at_frame)
-            ok, frame = cap.read()
-        finally:
-            cap.release()
-        if not ok:
-            return None
-        h_px, w_px = frame.shape[:2]
-        x1, y1, x2, y2 = _crop_window(bx, by, bw, bh, w_px, h_px, pad)
-        if src == "list" and at_frame == frame_idx:
-            # The other box of the pair (GT mark vs Claude's box), magenta,
-            # so one card shows both.
-            it = _list_item(clip_stem, frame_idx, box_idx)
-            ob = _list_box(it, "other_bbox") if it else None
-            if ob is not None:
-                ox1, oy1 = int(ob[0] * w_px), int(ob[1] * h_px)
-                ox2, oy2 = int((ob[0] + ob[2]) * w_px), int((ob[1] + ob[3]) * h_px)
-                # Inflated a little and 2 px thick: at 1:1 a 1 px box around a
-                # 10 px object vanishes once the crop is upscaled and compressed.
-                cv2.rectangle(
-                    frame, (ox1 - 4, oy1 - 4), (ox2 + 4, oy2 + 4), (255, 0, 255), 2
-                )
-        if not reticle:
-            return _encode_window(frame, x1, y1, x2, y2)
-        # Reticle first, on the full frame: without it the card is ambiguous
-        # whenever the crop holds more than one round bright thing.
-        #
-        # It draws the box *exactly* — an inflated marker would make every box
-        # look looser than it is, and judging box tightness is half the point.
-        # Visibility comes from corner brackets sitting outside the box rather
-        # than from padding the box itself.
-        rx1, ry1 = int(bx * w_px), int(by * h_px)
-        rx2, ry2 = int((bx + bw) * w_px), int((by + bh) * h_px)
-        cv2.rectangle(frame, (rx1, ry1), (rx2, ry2), (0, 255, 255), 1)
-        gap = max(3, int(max(rx2 - rx1, ry2 - ry1) * 0.35))
-        arm = max(4, int(max(rx2 - rx1, ry2 - ry1) * 0.5))
-        for cx_, cy_, sx, sy in (
-            (rx1, ry1, -1, -1),
-            (rx2, ry1, 1, -1),
-            (rx1, ry2, -1, 1),
-            (rx2, ry2, 1, 1),
-        ):
-            ox, oy = cx_ + sx * gap, cy_ + sy * gap
-            cv2.line(frame, (ox, oy), (ox + sx * arm, oy), (0, 255, 255), 2)
-            cv2.line(frame, (ox, oy), (ox, oy + sy * arm), (0, 255, 255), 2)
-        return _encode_window(frame, x1, y1, x2, y2)
-
-    data = await asyncio.to_thread(_render)
+    data = await asyncio.to_thread(
+        _crop_cached,
+        video_path,
+        src,
+        frame_idx,
+        box_idx,
+        at_frame,
+        bbox_raw,
+        ob,
+        pad,
+        bool(reticle),
+        clip_stem,
+    )
     if data is None:
         return Response(status_code=404)
     _BC_CROP_CACHE[cache_key] = data
@@ -858,14 +1035,20 @@ def _other_box(src: str, clip_stem: str, frame_idx: int, box_idx: int):
     return _list_box(it, "other_bbox") if it else None
 
 
-def _render_mp4(cap, clip_stem, src, frame_idx, box_idx, bbox, pad):
-    """Frames -> ffmpeg. Returns (bytes, 'video/mp4', n_frames, ms) or None."""
+_UNSET = object()
+
+
+def _render_mp4(cap, clip_stem, src, frame_idx, box_idx, bbox, pad, ob=_UNSET):  # noqa: PLR0912
+    """Frames -> ffmpeg. Returns (bytes, 'video/mp4', n_frames, ms) or None.
+
+    ``ob`` is the other (magenta) box; left unset it is looked up from the review list."""
     fps = float(cap.get(cv2.CAP_PROP_FPS) or 0.0)
     total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
     first, last, step = _clip_frame_indices(frame_idx, fps, total)
     out_fps = (fps if fps and fps > 1 else 25.0) / step
     cap.set(cv2.CAP_PROP_POS_FRAMES, first)
-    ob = _other_box(src, clip_stem, frame_idx, box_idx)
+    if ob is _UNSET:
+        ob = _other_box(src, clip_stem, frame_idx, box_idx)
     writer: _Mp4Writer | None = None
     win = None
     out_wh = (0, 0)
@@ -917,7 +1100,7 @@ def _render_mp4(cap, clip_stem, src, frame_idx, box_idx, bbox, pad):
     return data, "video/mp4", n_out, int(round(n_out * 1000 / out_fps))
 
 
-def _render_gif(cap, clip_stem, src, frame_idx, box_idx, bbox, pad):
+def _render_gif(cap, clip_stem, src, frame_idx, box_idx, bbox, pad, ob=_UNSET):
     """ffmpeg-less fallback: small play-once GIF (native crop, ~10 fps)."""
     bx, by, bw, bh = bbox
     fps = float(cap.get(cv2.CAP_PROP_FPS) or 0.0)
@@ -925,7 +1108,8 @@ def _render_gif(cap, clip_stem, src, frame_idx, box_idx, bbox, pad):
     first, last, _ = _clip_frame_indices(frame_idx, fps, total)
     step = max(1, int(round((fps if fps and fps > 1 else 25.0) / _GIF_FPS)))
     cap.set(cv2.CAP_PROP_POS_FRAMES, first)
-    ob = _other_box(src, clip_stem, frame_idx, box_idx)
+    if ob is _UNSET:
+        ob = _other_box(src, clip_stem, frame_idx, box_idx)
     base_ms = int(round(1000 / _GIF_FPS))
     frames: list = []
     durations: list[int] = []
@@ -972,6 +1156,7 @@ def _render_clip(
     box_idx: int,
     bbox: tuple[float, float, float, float],
     pad: float,
+    ob=_UNSET,
 ) -> tuple[bytes, str, int, int] | None:
     """Decode once (seek, then sequential reads) and encode.
 
@@ -982,9 +1167,42 @@ def _render_clip(
     render = _render_mp4 if _have_ffmpeg() else _render_gif
     cap = cv2.VideoCapture(str(video_path))
     try:
-        return render(cap, clip_stem, src, frame_idx, box_idx, bbox, pad)
+        return render(cap, clip_stem, src, frame_idx, box_idx, bbox, pad, ob)
     finally:
         cap.release()
+
+
+def _clip_cached(video_path, src, clip_stem, frame_idx, box_idx, bbox, ob, pad):
+    """Disk cache first, else render once (concurrent identical requests share it) and store.
+    Returns ``(bytes, media_type, n_frames, duration_ms)`` like :func:`_render_clip`."""
+    _note_demand(src, clip_stem, frame_idx, box_idx)
+    enc = clip_encoding()
+
+    def render():
+        out = _render_clip(
+            video_path, src, clip_stem, frame_idx, box_idx, bbox, pad, ob
+        )
+        if out is None:
+            return None
+        data, media_type, n_frames, dur = out
+        return data, {"type": media_type, "n": n_frames, "ms": dur}
+
+    key = clip_disk_key(video_path, frame_idx, bbox, ob, pad, enc)
+    rc = bcc.cache()
+    if rc is None:
+        res = bcc.COALESCER.run("mem:" + key, render)
+    else:
+        res, _how = rc.get_or_render(key, enc, render)
+    if res is None:
+        return None
+    data, meta = res
+    default_type = "video/mp4" if enc == "mp4" else "image/gif"
+    return (
+        data,
+        meta.get("type", default_type),
+        int(meta.get("n", 0)),
+        int(meta.get("ms", 0)),
+    )
 
 
 @router.get("/ball_check/clip/{clip_stem}/{frame_idx}/{box_idx}.mp4")
@@ -1019,8 +1237,9 @@ async def ball_check_clip(
     bbox_raw = await asyncio.to_thread(_read_box, src, clip_stem, frame_idx, box_idx)
     if bbox_raw is None:
         return Response(status_code=404)
+    ob = await asyncio.to_thread(_other_box, src, clip_stem, frame_idx, box_idx)
     out = await asyncio.to_thread(
-        _render_clip, video_path, src, clip_stem, frame_idx, box_idx, bbox_raw, pad
+        _clip_cached, video_path, src, clip_stem, frame_idx, box_idx, bbox_raw, ob, pad
     )
     if out is None:
         return Response(status_code=404)
@@ -1212,6 +1431,7 @@ async def ball_check_save_box(body: dict) -> dict:
         return {"ok": False, "error": "clip, frame_index, box_index and bbox required"}
     if bw <= 0 or bh <= 0:
         return {"ok": False, "error": "box has no area"}
+    safe_clip_name(clip)  # 422: the name becomes <marks>/<clip>.jsonl
 
     label = body.get("label") or "in_play_ball"
     if label not in BALL_LABELS:
@@ -1296,6 +1516,69 @@ def _gt_sidecar_stem(marks_dir: Path, clip: str) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Prepare plan (what the ballcheck-prepare flow renders)
+# ---------------------------------------------------------------------------
+
+#: The zoom the phone loads first (``PADS[0]`` in ball_check.html). The other zooms (14, 30) are
+#: only fetched when the Zoom button is pressed, so they are left to on-demand rendering.
+PHONE_PAD = 6.0
+
+
+def prepare_plan(
+    job: dict, pads: tuple[float, ...] = (PHONE_PAD,), *, skip_judged: bool = True
+) -> dict:
+    """Everything a worker needs to render a job's cards, with the exact cache keys.
+
+    For every card still to judge: its geometry, the clip file (name and size, so a worker can
+    check it has the same bytes) and the variants the phone requests (``crop`` with
+    ``reticle=false`` and ``clip``, per pad), each with its disk-cache ``key`` and whether it is
+    already ``cached``. Keys come from the server so the cache is always filled under the names
+    the server will look up. Cards that cannot be resolved (no video, no box) are listed apart.
+    """
+    rc = bcc.cache()
+    cards: list[dict] = []
+    unresolved: list[dict] = []
+    with datasets.using(job["dataset"]):
+        items = jobs.todo_items(job) if skip_judged else list(enumerate(job["items"]))
+        enc = clip_encoding()
+        clips_dir = str(_clips_dir())
+        for pos, it in items:
+            src, clip, f, box = (
+                it["source"],
+                it["clip"],
+                it["frame_index"],
+                it["box_index"],
+            )
+            video = _find_video(clip)
+            bbox = _read_box(src, clip, f, box)
+            if video is None or bbox is None:
+                unresolved.append({"position": pos, "clip": clip, "frame_index": f,
+                                   "reason": "video not found" if video is None else "box not found"})  # fmt: skip
+                continue
+            ob = _other_box(src, clip, f, box)
+            variants = []
+            for pad in pads:
+                ck = crop_disk_key(video, f, f, bbox, ob, pad, False)
+                lk = clip_disk_key(video, f, bbox, ob, pad, enc)
+                variants.append({"kind": "crop", "pad": pad, "reticle": False, "ext": "jpg", "key": ck,
+                                 "cached": bool(rc and rc.has(ck, "jpg"))})  # fmt: skip
+                variants.append({"kind": "clip", "pad": pad, "ext": enc, "key": lk,
+                                 "cached": bool(rc and rc.has(lk, enc))})  # fmt: skip
+            cards.append({
+                "position": pos, "clip": clip, "frame_index": f, "box_index": box, "source": src,
+                "bbox": list(bbox), "other_bbox": list(ob) if ob else None,
+                "video": {"name": video.name, "size": _video_id(video)[1]},
+                "variants": variants,
+            })  # fmt: skip
+    return {
+        "job": job["id"], "dataset": job["dataset"], "fingerprint": render_fingerprint(),
+        "clips_dir": clips_dir, "renders_dir": str(rc.base) if rc else None, "cards": cards, "unresolved": unresolved,
+        "n_variants": sum(len(c["variants"]) for c in cards),
+        "n_cached": sum(1 for c in cards for v in c["variants"] if v["cached"]),
+    }  # fmt: skip
+
+
+# ---------------------------------------------------------------------------
 # Verdict write / undo
 # ---------------------------------------------------------------------------
 
@@ -1312,6 +1595,7 @@ async def ball_check_verdict(body: dict) -> dict:
         box_index = int(body["box_index"])
     except (KeyError, TypeError, ValueError):
         return {"ok": False, "error": "clip, frame_index and box_index are required"}
+    safe_clip_name(clip)  # 422: the name becomes ball_checks/<clip>.jsonl
 
     rec = {
         "clip": clip,
@@ -1343,6 +1627,7 @@ async def ball_check_undo(body: dict) -> dict:
         box_index = int(body["box_index"])
     except (KeyError, TypeError, ValueError):
         return {"ok": False, "error": "clip, frame_index and box_index are required"}
+    safe_clip_name(clip)
     if not _verdict_path(clip).exists():
         return {"ok": False, "error": "no verdicts for clip"}
     await asyncio.to_thread(

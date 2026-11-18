@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import asyncio
 import collections
+import copy
 import json
 import os
 import tempfile
@@ -36,6 +37,7 @@ from fastapi import APIRouter
 from fastapi.responses import JSONResponse, Response
 
 from footy_track.calibration import geometry as geo
+from footy_track.calibration import lens
 from footy_track.calibration.pitch_model import (
     DEFAULT_LENGTH,
     DEFAULT_WIDTH,
@@ -53,7 +55,7 @@ from footy_track.calibration.frame_type import (
 from footy_track.calibration.prelabel.proposals import read_proposals, update_proposals
 from footy_track.calibration.video import read_frame
 from footy_track.clip_id import canonical_clip_id
-from footy_track.labeller import datasets
+from footy_track.labeller import datasets, hooks
 from footy_track.labeller.review import _clips_dir, _gt_marks_dir
 from footy_track.labeller.review import _find_video as _find_video_exact
 
@@ -140,6 +142,29 @@ def _write_gt(clip: str, doc: dict) -> None:
         raise
 
 
+#: Serialises every calibration-GT read-modify-write in this process (save, delete, accept a
+#: proposal, flag/unflag not-broadcast): two of them racing on one clip would each read the same
+#: document and the second write would silently drop the first's frame. Same pattern as
+#: ``frame_type.update_frame_types`` / ``proposals.update_proposals``.
+_GT_LOCK = threading.Lock()
+
+
+def update_gt(clip: str, fn):
+    """Read-modify-write ``clip``'s GT document under :data:`_GT_LOCK`; returns ``fn(doc)``.
+
+    ``fn`` mutates the document in place; nothing is written when it left the document unchanged.
+    Never call another locked store (frame types, proposals) from inside ``fn``: do that after
+    this returns.
+    """
+    with _GT_LOCK:
+        doc = _read_gt(clip)
+        before = copy.deepcopy(doc)
+        out = fn(doc)
+        if doc != before:
+            _write_gt(clip, doc)
+        return out
+
+
 def _gt_frames(clip: str) -> list[int]:
     try:
         return sorted(int(k) for k in _read_gt(clip)["frames"])
@@ -185,9 +210,7 @@ def mark_not_broadcast(clip: str, idx: int, *, overwrite: bool = False, run_id: 
     update_frame_types(_gt_marks_dir(), clip, _flag)
     removed_gt = False
     if existing is not None:
-        doc = _read_gt(clip)
-        removed_gt = doc["frames"].pop(str(idx), None) is not None
-        _write_gt(clip, doc)
+        removed_gt = update_gt(clip, lambda doc: doc["frames"].pop(str(idx), None) is not None)
 
     def _props(doc: dict) -> None:
         for rid, run in doc["runs"].items():
@@ -201,6 +224,7 @@ def mark_not_broadcast(clip: str, idx: int, *, overwrite: bool = False, run_id: 
 
     if read_proposals(_gt_marks_dir(), clip)["runs"]:
         update_proposals(_gt_marks_dir(), clip, _props)
+    hooks.emit("frame_type", clip=canonical_clip_id(clip), unit=idx, verdict=NOT_BROADCAST)
     return {"ok": True, "frame_index": idx, "removed_gt": removed_gt, "gt_frames": _gt_frames(clip)}
 
 
@@ -223,10 +247,7 @@ def clear_not_broadcast(clip: str, idx: int) -> bool:
 
     update_frame_types(_gt_marks_dir(), clip, _unflag)
     if displaced:
-        doc = _read_gt(clip)
-        if str(idx) not in doc["frames"]:
-            doc["frames"][str(idx)] = displaced[0]
-            _write_gt(clip, doc)
+        update_gt(clip, lambda doc: doc["frames"].setdefault(str(idx), displaced[0]))
 
     def _props(doc: dict) -> None:
         for run in doc["runs"].values():
@@ -237,6 +258,8 @@ def clear_not_broadcast(clip: str, idx: int) -> bool:
 
     if read_proposals(_gt_marks_dir(), clip)["runs"]:
         update_proposals(_gt_marks_dir(), clip, _props)
+    if gone[0]:
+        hooks.emit("frame_type", clip=canonical_clip_id(clip), unit=idx, verdict=f"{NOT_BROADCAST}_cleared")
     return gone[0]
 
 
@@ -345,6 +368,7 @@ def mark_too_few_points(clip: str, idx: int, *, tags: list[str] | None = None, r
 
     if read_proposals(_gt_marks_dir(), clip)["runs"]:
         update_proposals(_gt_marks_dir(), clip, _props)
+    hooks.emit("frame_type", clip=canonical_clip_id(clip), unit=idx, verdict=TOO_FEW_POINTS)
     return {"ok": True, "frame_index": idx, "tags": tags, "too_few_points": _too_few_points(clip)}
 
 
@@ -373,6 +397,8 @@ def clear_too_few_points(clip: str, idx: int) -> bool:
 
     if read_proposals(_gt_marks_dir(), clip)["runs"]:
         update_proposals(_gt_marks_dir(), clip, _props)
+    if gone[0]:
+        hooks.emit("frame_type", clip=canonical_clip_id(clip), unit=idx, verdict=f"{TOO_FEW_POINTS}_cleared")
     return gone[0]
 
 
@@ -526,6 +552,25 @@ def _distortion_from(body: dict) -> dict | None:
         raise _BadRequest(f"bad distortion: {exc}") from exc
 
 
+def _json_safe(d: dict) -> dict:
+    return {k: (None if isinstance(v, float) and not np.isfinite(v) else v) for k, v in d.items()}
+
+
+def _aspect(image_size) -> float:
+    try:
+        return float(image_size[0]) / float(image_size[1])
+    except (TypeError, ValueError, IndexError, ZeroDivisionError):
+        return geo.DEFAULT_ASPECT
+
+
+def default_distortion(clip: str, image_size=None) -> dict | None:
+    """The ground's *suggested* lens for ``clip`` (division ``k1`` of its camera rig), ``None`` for an unknown ground.
+
+    Only a suggestion: nothing applies it by itself. The editor jumps to it when the operator ticks the lens on,
+    and Snap starts its search from it while the lens is off."""
+    return lens.default_distortion(clip, _aspect(image_size))
+
+
 def _fit(body: dict) -> dict:
     """Shared by /fit and /gt save. Raises _BadRequest on bad input.
 
@@ -642,7 +687,8 @@ async def clip_meta(clip: str):
     if meta is None:
         return _err(404, f"cannot open video for {clip}")
     return {**meta, "name": clip, "gt_frames": _gt_frames(clip),
-            "not_broadcast": _not_broadcast(clip), "too_few_points": _too_few_points(clip)}
+            "not_broadcast": _not_broadcast(clip), "too_few_points": _too_few_points(clip),
+            "default_distortion": default_distortion(clip, (meta["width"], meta["height"]))}
 
 
 @router.get("/calibration/api/frame/{clip}/{idx}.jpg")
@@ -720,7 +766,9 @@ _AUTO_LOCK = threading.Lock()
 AUTO_KINDS = ("centre", "d")
 
 
-def _auto_points(video: Path, idx: int, dist: dict | None, pitch: PitchModel, kind: str, key: tuple) -> dict | None:
+def _auto_points(
+    video: Path, idx: int, dist: dict | None, pitch: PitchModel, kind: str, key: tuple, clip: str = ""
+) -> dict | None:
     """Finder verdict for one frame (cached); ``None`` when the frame cannot be read."""
     with _AUTO_LOCK:
         hit = _AUTO_CACHE.get(key)
@@ -730,14 +778,36 @@ def _auto_points(video: Path, idx: int, dist: dict | None, pitch: PitchModel, ki
         frame = _read_frame(video, idx)
         if frame is None:
             return None
-        from footy_track.calibration.pitch_finders import find_points
+        from footy_track.calibration.centre_fit import (  # noqa: PLC0415
+            rig_for_clip,
+            to_norm_H,
+        )
+        from footy_track.calibration.pitch_finders import find_points  # noqa: PLC0415
 
-        det = find_points(kind, frame, dist, pitch)
+        kw = {"rig": rig_for_clip(clip)} if kind == "centre" else {}
+        det = find_points(kind, frame, dist, pitch, **kw)
         if det.result is None:
             out = {"reason": det.reason or f"no {kind} structure found"}
         else:
             r = det.result
             out = {"kind": kind, "confidence": float(r.confidence), "correspondences": r.correspondences()}
+            shape = r.info.get("shape") or {}
+            fitted = det.debug.get("H_px") is not None and (kind == "d" or shape.get("accepted"))
+            if fitted:
+                # the fitted pitch -> undistorted normalised image homography (apply ``distortion`` to draw it)
+                out["H"] = to_norm_H(det.debug["H_px"], det.size).tolist()
+                out["H_convention"] = "pitch_m_to_undistorted_normalised_image"
+            if kind == "centre":
+                if shape.get("accepted") == "intrinsic":
+                    out["warning"] = (
+                        "approximate: shape fitted from the square-pixel assumption alone (no touchline end, no known "
+                        "camera for this ground); left/right and the 45-degree points may be ~10 px off - check them"
+                    )
+                out["fit"] = {
+                    k: (v if not hasattr(v, "item") else v.item())
+                    for k, v in shape.items()
+                    if k in ("accepted", "precision", "f_over_w", "ground", "ends")
+                }
         _AUTO_CACHE[key] = out
         while len(_AUTO_CACHE) > _AUTO_CACHE_MAX:
             _AUTO_CACHE.popitem(last=False)
@@ -756,8 +826,10 @@ async def auto_points(body: dict):
     sits at ``(0, +-width/2)`` and the penalty-area corners are placed from the length.
 
     Answers ``{ok: true, kind, confidence, correspondences: [{image, pitch_id, pitch_xy, confidence,
-    derived}]}`` (``pitch_id`` is ``null`` for the free derived circle points, ``derived`` marks points
-    synthesised from the fitted geometry rather than seen), or ``{ok: false, reason}`` with HTTP 200 when the
+    derived}], H?, H_convention?, fit?}`` (``pitch_id`` is ``null`` for the free derived circle points,
+    ``derived`` marks points synthesised from the fitted geometry rather than seen; ``H`` is the fitted
+    pitch-metres -> undistorted normalised image homography every returned point was computed from, present
+    when a shape / template fit was accepted; ``fit`` says which source fixed it), or ``{ok: false, reason}`` with HTTP 200 when the
     finder abstains (not an error). Nothing is stored; the page adds the pairs to its working set. Respects
     the request's dataset.
     """
@@ -778,12 +850,113 @@ async def auto_points(body: dict):
     if video is None:
         return _err(404, f"clip not found: {clip}")
     key = (datasets.current_name(), str(video), idx, json.dumps(dist, sort_keys=True), kind, (pitch.length, pitch.width))
-    res = await asyncio.to_thread(_auto_points, video, idx, dist, pitch, kind, key)
+    res = await asyncio.to_thread(_auto_points, video, idx, dist, pitch, kind, key, clip)
     if res is None:
         return _err(404, f"cannot read frame {idx}")
     if "reason" in res:
         return {"ok": False, "reason": res["reason"]}
-    return {"ok": True, "kind": res["kind"], "confidence": res["confidence"], "correspondences": res["correspondences"]}
+    return {"ok": True, **{k: v for k, v in res.items() if k != "reason"}}
+
+
+# ---------------------------------------------------------------------------
+# Snap to lines: refine H + k1 of the current fit against the frame's painted lines
+# ---------------------------------------------------------------------------
+
+#: ``(dataset, video path, frame)`` -> ``lens.Evidence`` (distance field of the frame's line mask; ~3 s to build)
+_SNAP_CACHE_MAX = 4
+_SNAP_CACHE: collections.OrderedDict[tuple, lens.Evidence] = collections.OrderedDict()
+#: One snap at a time (CPU work on the machine the operator is labelling on)
+_SNAP_LOCK = threading.Lock()
+SNAP_MODES = ("full", "k1")
+
+
+def _snap(video: Path, idx: int, key: tuple, H: np.ndarray, dist: dict | None, pitch: PitchModel,
+          img: np.ndarray, ptc: np.ndarray, mode: str, aspect: float, suggested=None) -> dict | None:
+    with _SNAP_LOCK:
+        ev = _SNAP_CACHE.get(key)
+        if ev is None:
+            frame = _read_frame(video, idx)
+            if frame is None:
+                return None
+            ev = lens.Evidence.from_frame(frame)
+            _SNAP_CACHE[key] = ev
+            while len(_SNAP_CACHE) > _SNAP_CACHE_MAX:
+                _SNAP_CACHE.popitem(last=False)
+        else:
+            _SNAP_CACHE.move_to_end(key)
+        r = lens.snap_best(ev, H, dist, pitch, img, ptc, mode=mode, aspect=aspect, suggested=suggested)
+        edge0 = lens.edge_residual(ev, H, dist, pitch)
+        edge1 = lens.edge_residual(ev, r.H, r.distortion, pitch) if r.accepted else edge0
+        scale = (ev.frame_width or ev.size[0]) / ev.size[0]
+        return {"r": r, "edge_before": edge0, "edge_after": edge1, "px_scale": scale}
+
+
+@router.post("/calibration/api/snap")
+async def snap(body: dict):
+    """Snap the current fit to the painted lines ("bend" the projected lines onto the pitch markings).
+
+    Body: the ``/fit`` body (``correspondences``, ``distortion?``, ``pitch_dims?``, ``image_size?``) plus
+    ``clip``, ``frame_index`` and ``mode`` (``"full"``: refine H and k1, default; ``"k1"``: only k1, H fixed).
+    Starts from the fit those points give (with that distortion), then runs a robust least squares over the
+    homography (8 parameters) and ``k1`` against the frame's line mask, the clicked points acting as soft
+    constraints. Accepted only if the line F1 improves and no clicked point has to move more than a few px.
+
+    Answers ``{ok: true, accepted, reason, f1_before, f1_after, k1_before, k1_after, max_click_shift_px,
+    edge_before, edge_after, distortion, correspondences}``: when ``accepted`` the ``correspondences`` carry
+    the clicked points moved onto the snapped model (so H refit from them under ``distortion`` reproduces it);
+    otherwise they are the input ones and ``distortion`` is the input's, with the ``reason``. Stores nothing.
+    """
+    try:
+        clip, idx = str(body["clip"]), int(body["frame_index"])
+        if idx < 0:
+            raise _BadRequest("frame_index must be >= 0")
+        mode = body.get("mode", "full")
+        if mode not in SNAP_MODES:
+            raise _BadRequest(f"mode must be one of {list(SNAP_MODES)}")
+        res = _fit(body)
+        pitch = _pitch_from(body)
+        dist = _distortion_from(body)
+        if len(res["correspondences"]) < 4:
+            raise _BadRequest("need at least 4 point pairs to snap")
+    except (KeyError, TypeError, ValueError) as exc:
+        return _err(400, f"bad request: {exc}")
+    except _BadRequest as exc:
+        return _err(400, str(exc))
+    video = _find_video(clip)
+    if video is None:
+        return _err(404, f"clip not found: {clip}")
+    corr = res["correspondences"]
+    img = np.array([c["image"] for c in corr], dtype=np.float64)
+    ptc = np.array([c["pitch_xy"] for c in corr], dtype=np.float64)
+    key = (datasets.current_name(), str(video), idx)
+    H_cur = np.array(res["H"])
+    suggested = None
+    sug = default_distortion(clip, body.get("image_size")) if dist is None and mode == "full" else None
+    if sug is not None:
+        # lens off: also search from the ground's suggested k1 (H refit under it); both are judged against the fit the
+        # operator has now, which is what comes back if neither is accepted
+        try:
+            suggested = (np.array(_fit({**body, "distortion": sug})["H"]), sug)
+        except _BadRequest:
+            suggested = None
+    out = await asyncio.to_thread(
+        _snap, video, idx, key, H_cur, dist, pitch, img, ptc, mode, _aspect(body.get("image_size")), suggested
+    )
+    if out is None:
+        return _err(404, f"cannot read frame {idx}")
+    r = out["r"]
+    new_corr = corr
+    if r.accepted and r.points is not None:
+        new_corr = [dict(c, image=[float(p[0]), float(p[1])]) for c, p in zip(corr, r.points, strict=True)]
+    shift = r.max_click_shift_px
+    return {
+        "ok": True, "accepted": r.accepted, "reason": r.reason, "mode": mode,
+        "f1_before": r.f1_before, "f1_after": r.f1_after,
+        "k1_before": r.k1_before, "k1_after": r.k1_after,
+        "max_click_shift_px": None if shift is None else shift * out["px_scale"],   # px of the full frame
+        "edge_before": _json_safe(out["edge_before"]), "edge_after": _json_safe(out["edge_after"]),
+        "distortion": r.distortion, "correspondences": new_corr, "tried_suggested_k1": suggested is not None,
+    }
 
 
 @router.get("/calibration/api/gt/{clip}")
@@ -855,11 +1028,10 @@ async def gt_save(clip: str, idx: int, body: dict):
     rec = _gt_record(idx, res, body)
 
     def _store() -> None:
-        doc = _read_gt(clip)
-        doc["frames"][str(idx)] = rec
-        _write_gt(clip, doc)
+        update_gt(clip, lambda doc: doc["frames"].update({str(idx): rec}))
         if idx in too_few_points_frames(_gt_marks_dir(), clip):
             clear_too_few_points(clip, idx)   # labelled after all: it had enough points
+        hooks.emit("calibration_gt", clip=canonical_clip_id(clip), unit=idx, verdict="gt")
 
     await asyncio.to_thread(_store)
     return {"ok": True, "frame_index": idx, "gt_frames": _gt_frames(clip), "record": rec}
@@ -868,10 +1040,9 @@ async def gt_save(clip: str, idx: int, body: dict):
 @router.delete("/calibration/api/gt/{clip}/{idx}")
 async def gt_delete(clip: str, idx: int):
     def _drop() -> bool:
-        doc = _read_gt(clip)
-        if doc["frames"].pop(str(idx), None) is None:
+        if not update_gt(clip, lambda doc: doc["frames"].pop(str(idx), None) is not None):
             return False
-        _write_gt(clip, doc)
+        hooks.emit("calibration_gt", clip=canonical_clip_id(clip), unit=idx, verdict="gt_deleted")
         return True
 
     if not await asyncio.to_thread(_drop):

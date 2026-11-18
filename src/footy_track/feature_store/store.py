@@ -32,6 +32,7 @@ from typing import TYPE_CHECKING
 
 import duckdb
 
+from footy_track.feature_store.extra_schema import EXTRA_DDL
 from footy_track.feature_store.schema import (
     DDL,
     TABLES,
@@ -209,6 +210,10 @@ _PK: dict[str, tuple[str, ...]] = {
 }
 
 
+#: Rows per multi-row INSERT in ``FeatureStore._upsert``.
+_UPSERT_CHUNK = 200
+
+
 def _row_to_value(table: str, column: str, value: object) -> object:
     """Convert a pydantic field value to a DuckDB-bindable value."""
     if value is None:
@@ -249,6 +254,8 @@ class FeatureStore:
             self._conn.execute(stmt)
         for stmt in VIEWS:
             self._conn.execute(stmt)
+        for stmt in EXTRA_DDL:
+            self._conn.execute(stmt)
 
     def close(self) -> None:
         self._conn.close()
@@ -278,12 +285,26 @@ class FeatureStore:
         else:
             conflict = f"ON CONFLICT ({', '.join(pk)}) DO NOTHING"
 
-        sql = f"INSERT INTO {table} ({col_list}) VALUES ({placeholders}) {conflict}"
-
         params = [
             [_row_to_value(table, c, getattr(row, c)) for c in cols] for row in rows
         ]
-        self._conn.executemany(sql, params)
+        # One statement per chunk of rows: executemany pays a full statement round trip per row
+        # (~10 ms on the mini's CPU, minutes for a full GT ingest). Within a chunk the last row
+        # for a key wins, which is what the sequential upserts did, and a multi-row
+        # ON CONFLICT DO UPDATE would otherwise refuse to touch the same row twice.
+        pk_idx = [cols.index(c) for c in pk]
+        for start in range(0, len(params), _UPSERT_CHUNK):
+            chunk = list(
+                {
+                    tuple(map(repr, (p[i] for i in pk_idx))): p
+                    for p in params[start : start + _UPSERT_CHUNK]
+                }.values()
+            )
+            values = ", ".join(f"({placeholders})" for _ in chunk)
+            self._conn.execute(
+                f"INSERT INTO {table} ({col_list}) VALUES {values} {conflict}",
+                [v for p in chunk for v in p],
+            )
         return len(params)
 
     def upsert_games(self, rows: Sequence[GameRow]) -> int:

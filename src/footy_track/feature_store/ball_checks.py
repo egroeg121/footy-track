@@ -42,6 +42,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from footy_track.feature_store.store import FeatureStore
+from footy_track.splits import split_label
 
 LOGGER = logging.getLogger(__name__)
 
@@ -62,6 +63,8 @@ class BallCheckReport:
     rejected: int = 0  # not_ball matched to a detection
     hand_label_conflicts: int = 0
     unmatched_keys: list[tuple] = field(default_factory=list)
+    #: clips imported per partition (footy_track.splits); not stored: derived at read time
+    by_split: dict[str, int] = field(default_factory=lambda: defaultdict(int))
 
 
 def _iou(
@@ -262,5 +265,6 @@ def import_ball_checks(
         if not verdicts and dry_run:
             continue
         report.clips += 1
+        report.by_split[split_label(path.stem)] += 1
         _import_clip(store, path.stem, verdicts, report, dry_run)
     return report

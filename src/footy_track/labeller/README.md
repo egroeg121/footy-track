@@ -37,7 +37,6 @@ uv run uvicorn footy_track.labeller.server:app --reload
 | `/ball_check` | Mobile ball verification (swipe yes/no) |
 | `/calibration` | Manual pitch calibration (frame <-> pitch point pairs, §16) |
 | `/calibration/review` | Mobile accept/reject of machine pitch-calibration proposals (§16, LAB-1210..1219) |
-| `/ingest` | Clip ingestion (page currently broken — OPEN-1) |
 
 Test suite: `tests/labeller/` (run `uv run pytest tests/labeller/`). Test
 references below are `file::test_name` within `tests/labeller/`.
@@ -914,9 +913,9 @@ are already there, nothing needs re-running). Corpus on the Mac mini:
 Tracked against this spec; burn these down by fixing the behavior AND
 updating/adding the corresponding LAB requirement + tests.
 
-- **OPEN-1** `GET /ingest` serves `web/ingest.html`, which does not exist —
-  the route 500s. The `/ingest/upload` and `/ingest/run` APIs (LAB-501/502)
-  work. Fix: add the page or remove the route + hub link.
+- ~~**OPEN-1**~~ FIXED (LAB-1433): `GET /ingest` served a `web/ingest.html` that never existed
+  (500). The page route and its hub card are removed (`GET /ingest` is now a 404); the
+  `/ingest/upload` and `/ingest/run` APIs (LAB-501/502) are unchanged.
 - **OPEN-2** The labeller frontend's "+ Add clip" button POSTs `/clips/add`,
   which has no server route (404). Dead frontend feature — implement or
   remove.
@@ -1180,16 +1179,27 @@ becomes GT without a human accepting it; accepted GT carries
   with HTTP 200, not an error. Unknown clip / unreadable frame -> 404, bad body / kind / distortion -> 400.
   Nothing is stored. Answers (and abstentions) are cached in a 64-entry LRU keyed by dataset, video, frame,
   distortion, kind and pitch dims; one detection runs at a time.
-  - `centre`: halfway line + centre circle give `CENTRE_CIRCLE_TOP/BOTTOM`; the pole of the line w.r.t. the
-    circle's ellipse is the vanishing point V of the pitch length axis, the touchline is the long line through
-    V crossing the halfway line beyond the circle, and its junction is `HALFWAY_TOP` (`HALFWAY_BOTTOM` for the
-    near touchline) at `(0, +-width/2)` from the request's `pitch_dims`. Circle top/bottom + that end are three
-    known points on the halfway line, whose 1-D projective map gives the vanishing point of the width axis;
-    with V that is the vanishing line, whose pole is the circle centre. Derived (`derived: true`):
-    `CENTRE_SPOT`, `CENTRE_CIRCLE_LEFT/RIGHT` and four free points on the circle at 45 degrees. The derived set is
-    re-checked by rendering halfway line, circle and touchline under the implied homography against the line
-    mask and dropped if it does not match, leaving the 2 circle points. The far touchline is found in the faint
-    far-edge strip (`candidates.far_edge_line`), used only for this step.
+  - `centre`: shape-first (`calibration/centre_fit.py`). Halfway line + centre circle give `CENTRE_CIRCLE_TOP/BOTTOM`
+    and the circle's ellipse `E`; the pole of the line w.r.t. `E` is the vanishing point `V` of the pitch length
+    axis. That leaves ONE free parameter, the vanishing point `W` of the width axis on the halfway line, and then
+    vanishing line `V x W` -> circle centre (its pole) -> `(+-9.15, 0)` (line centre-`V` x `E`) -> `H`. `W` comes from
+    (a) a touchline end (the long line through `V`, junction = `HALFWAY_TOP/BOTTOM` at `(0, +-width/2)` from the
+    request's `pitch_dims`; 3 known points on the line fix a 1-D projective map), (b) the ground's fixed camera
+    centre when the clip's ground has a rig (`camera_rigs/`, chosen from the clip-name prefix: Emirates for
+    arsenal_mancity / astonvilla / nottinghamforest, Vitality for arsenal_bournemouth; unknown grounds: none) -
+    pan / tilt / focal length from the 2 points + the circle outline, or (c) square pixels with the principal point
+    at the image centre: the circular points `E` x `V W` must lie on `diag(1/f^2, 1/f^2, 1)`, a 1-D root search that
+    is abstained on when the answer moves more than 1.2% of the width under sub-pixel ellipse jitter (a symmetric
+    frontal view cannot give `f`). Candidates are scored on the whole template against the line mask (halfway
+    line + circle = core; touchlines and box lines count as extra matched length; the far touchline strip is part
+    of the mask here) and chamfer-refined; the best one is accepted if core precision >= 0.6. Returned points are
+    all `H` applied to pitch coordinates: `CENTRE_CIRCLE_TOP/BOTTOM/LEFT/RIGHT` (`derived: false` where the mask
+    shows the circle), `CENTRE_SPOT` (derived), `HALFWAY_TOP/BOTTOM` when in frame, four free points on the circle at
+    45 degrees and, if needed, more free circle / touchline points until >= 4 are in general position, so the editor
+    fits the same `H` at once. The response also carries `H` (pitch metres -> undistorted normalised image;
+    `H_convention`) and `fit` (`accepted` source, `precision`, `f_over_w`, `ground`). The square-pixel source alone is approximate on broadcast feeds (GT set: median 1.9 m editor-fit error, 5% within
+    0.5 m): it only answers when no touchline end / ground rig does, with confidence x0.6 and a `warning` string the
+    page appends to its status line. When no candidate is accepted the answer is the 2 circle x line points only. `use=` / `shape=False` select sources for evaluation.
   - `d`: the whole penalty-area template (goal line, 18-yard box, 6-yard box, D; sizes fixed by the Laws,
     positioned with the request's length) is fitted by brute force over assignments of detected lines to
     template lines (and "D + front line + one line"), scored against the line mask, refined by least squares and
@@ -1207,11 +1217,40 @@ becomes GT without a human accepting it; accepted GT carries
   - Tests: `test_calibration.py::test_auto_points_*`, `test_datasets.py::test_auto_points_follow_the_dataset`,
     `test_calibration.py::test_editor_page_has_the_two_auto_buttons` (markers),
     `test_calibration_editor_js.py::test_auto_circle_helpers_under_node` (pair merge + status text; button flow
-    UNTESTED-FRONTEND), `tests/calibration/test_pitch_finders.py`, `tests/calibration/test_centre_circle.py`
+    UNTESTED-FRONTEND), `tests/calibration/test_pitch_finders.py`, `tests/calibration/test_centre_fit.py`,
+    `tests/calibration/test_centre_circle.py`
 - **LAB-1219** (SHOULD) Frames are read through `footy_track.calibration.video.read_frame`
   (cv2, falling back to the ffmpeg CLI when cv2 fails or returns an all-black frame,
   frame-accurate, reader cached per video); `/calibration/api/frame` and `/warp` use it.
   - Tests: `tests/calibration/test_video.py`
+
+### Lens: suggested distortion and "Snap to lines" (LAB-1225..1226)
+
+- **LAB-1225** (SHOULD) Broadcast lenses are barrel distorted, so long lines curve near the frame edges and a
+  plain homography cannot follow them. The editor's lens is **off by default** and nothing applies one behind the
+  operator's back: records with no lens (GT, proposals) load, render and are accepted exactly as stored (stored `H`,
+  straight lines, no refit). The ground's division `k1` (`calibration/camera_rigs/*.json`, clip -> rig by
+  `centre_fit.rig_for_clip`; Emirates 0.0147, Vitality 0.035; unknown grounds none) is only a *suggestion*, reported as
+  `default_distortion` by `GET /calibration/api/clips/{clip}/meta` and on proposals: it is the value the lens box
+  jumps to when ticked on, Snap's starting k1 while the lens is off, and the review page's preview toggle. The editor
+  header has the lens box (on/off, k1, `-`/`+`, source); `,` / `.` nudge k1 by 0.002 (Shift: 0.01) with a live
+  refit, and the lens is part of the undo snapshot. When a lens is active (stored with a record, turned on, or set by
+  Snap) the finders (`/auto_points`), `/fit`, `/warp` and Save all use it, so what is drawn is what is saved; Save
+  records it as `distortion`. On the review page a per-card "Lens" button (key `l`) re-renders the bird's-eye warp
+  through the suggested k1 as a preview only: the stored H, overlay and Accept are untouched.
+  - Tests: `tests/labeller/test_calibration_lens.py`, `tests/calibration/test_lens.py::test_default_distortion_*`,
+    `test_calibration_editor_js.py::test_lens_helpers_under_node` (buttons/keys UNTESTED-FRONTEND)
+- **LAB-1226** (SHOULD) `POST /calibration/api/snap` (editor button "Snap to lines", key `s`, optional "k1 only")
+  takes the `/fit` body plus `{clip, frame_index, mode: "full"|"k1"}` and refines `H` and `k1` of the current fit
+  against the frame's line mask (`calibration/lens.py`; with the lens off it also searches from the ground's suggested k1 and keeps the better accepted answer, both judged (and falling back) against the operator's current fit; k1-only mode keeps H and the request's lens: robust soft-L1 least squares over the 8 homography
+  parameters + k1 from the current solution with bounded steps, the clicked points as soft constraints; evidence =
+  `centre_circle.line_mask_for` + the far-edge strip, scored with `pitch_finders.Field/Template/evaluate`). It is
+  accepted only if the line F1 improves and no clicked point moves more than ~4 px (of 1280 px); then the clicked
+  points are moved onto the snapped model (so the server refit from them reproduces it; Undo restores them and
+  the old lens). Otherwise the answer carries `accepted: false` and a `reason` and the input fit. Always returns
+  `f1_before/after`, `k1_before/after`, `max_click_shift_px` and the touchline/goal-line `edge_before/after`
+  residual. Nothing is stored. Offline evaluation: `python -m footy_track.scripts.calib_lens_eval`.
+  - Tests: `tests/calibration/test_lens.py`, `tests/labeller/test_calibration_lens.py::test_snap_route_*`
 
 ## 17. Labelling site (informative)
 
@@ -1521,6 +1560,255 @@ restricted to the job's cards (progress and results are).
     `::test_frames_endpoint_expands_items_in_job_order_with_the_progress_rule`; the page itself is UNTESTED-FRONTEND
     (driven by hand in headless Chromium).
 
+### Prepared Ball Check jobs: inline cards, disk renders, bounds (LAB-1409..1416)
+
+`labelling_jobs submit --kind ball_check --items cards.json --prepare` submits a job **and** queues the
+Prefect flow `ballcheck-prepare` (`~/code/jobs/footy_ballcheck.py`), which renders every card's still and
+clip to `$FOOTY_BALLCHECK_RENDERS_DIR` (default `/mnt/storage/footy_data/ballcheck_renders`) so the phone only
+downloads finished files. `labelling_jobs prepare <job> [--hold] [--where mini|desktop]` does the same for an
+existing job (read-only for the job; the renders just land in the cache). `labelling_jobs gc [--dry-run]` is the
+housekeeping (it also runs hourly inside the server, `FOOTY_JOBS_GC_INTERVAL_S`).
+
+**Defaults** (all env-overridable; see `jobs.py` / `ball_check_cache.py`):
+
+| thing | default |
+|---|---|
+| cards per ball_check job | 500; `max_cards` / `--allow-large` raises it to a hard ceiling of **2000** |
+| frames per frame-kind job | 5000 (hard 20000) |
+| unlabelled cards across jobs that are prepared / being prepared | **1500** (a `--prepare` over it is refused with HTTP 429, nothing is created) |
+| render cache size cap | **5 GB**, LRU |
+| free-disk floor on `/mnt/storage` | **20 GB** (preparing is refused below it, HTTP 507; a render run stops at it) |
+| renders of a done / cancelled job | deleted **24 h** after it closed |
+| renders of a live job | deleted after **3 days** with no labelling activity on it |
+| jobs and cards | **never expire**; only the renders are temporary. Verdicts are never deleted |
+
+- **LAB-1409** (MUST) A `ball_check` item with a `bbox` (normalised `{x,y,w,h}`) and no `box_index` is an *inline
+  card*; the job serves its cards in item order at `/ball_check?dataset=D&source=list&job=<id>` with no review-list file
+  and no `labeller_datasets.json` edit. Pointer items (`{clip, frame_index, box_index, source?}`) behave as before.
+  - Tests: `test_ball_check_prepare.py::test_inline_cards_are_served_in_item_order_without_a_list_file_or_registry_edit`,
+    `::test_pointer_cards_still_work_unchanged`
+- **LAB-1410** (MUST) An inline card's `box_index` is `2**30 + hash(job id, item position)` (so a list file can never
+  reach it and two jobs on one dataset never share `(clip, frame, box_index)`); its verdict is written with
+  `source: "list"` to `<marks_dir>/ball_checks/<clip>.jsonl` exactly like a list-mode verdict, so existing scorers
+  and the "list verdicts are not a detector precision sample" rule keep working.
+  - Tests: `::test_inline_verdict_lands_in_the_marks_dir_like_a_list_verdict_and_counts_as_progress`,
+    `::test_two_jobs_on_one_dataset_never_collide_even_on_the_same_frame`
+- **LAB-1411** (MUST) The phone only receives `label`, `provenance`/`role`, `confidence`, `note`, `other_bbox` (the keys the
+  page prints or draws) plus geometry; every other key is hidden: kept in the job, returned in `results`
+  (`labels[].meta`, `items[].item`), never sent to the page. A blind batch supplies none of the shown keys.
+  - Tests: `::test_hidden_keys_are_never_sent_to_the_page_but_pass_through_to_results`
+- **LAB-1412** (MUST) Crops and clips are cached on disk (key = clip file identity, frame, box and other-box geometry,
+  pad, reticle, `at`, render version and the render constants), checked before rendering, written atomically
+  (temp file under `.tmp/`, outside `blobs/`), and concurrent requests for one key share one render. The prepare flow
+  fills the cache under the keys the server hands it (`GET /api/jobs/<job>/prepare_plan`), with the same render
+  functions, so a prepared card is served from disk, also after a restart.
+  - Tests: `::test_disk_cache_miss_then_hit_and_lru_touch`, `::test_disk_write_is_atomic_and_stages_outside_the_served_folder`,
+    `::test_concurrent_renders_of_one_key_are_a_single_render`, `::test_key_covers_everything_that_changes_the_bytes`,
+    `::test_server_serves_a_prepared_card_from_disk_and_survives_a_restart`
+- **LAB-1413** (MUST) Job state: submitted with `--prepare` a job is `preparing` (with `prepare.prepared/total`) until the
+  run finishes, then `open`; it is not a board link and the page shows the progress instead of cards. A failed
+  run leaves the job `open` (cards render on demand) with `prepare.state = failed` and the reason. Only one prepare
+  run per job at a time; a run that stops reporting is declared failed by gc.
+  - Tests: `::test_submit_with_prepare_is_preparing_until_the_flow_finishes`, `::test_failed_prepare_releases_the_job_so_it_still_works_on_demand`,
+    `::test_only_one_prepare_per_job_and_a_stale_one_can_be_redone`
+- **LAB-1414** (MUST) Bounds: card cap (+ hard ceiling), queued-card cap, free-disk floor, cache size cap (see table).
+  - Tests: `::test_card_cap_is_rejected_then_allowed_up_to_the_hard_ceiling`, `::test_cli_refuses_over_the_cap_before_posting`,
+    `::test_queued_card_cap_refuses_a_prepare_that_would_pass_it`, `::test_disk_floor_refuses_to_prepare`,
+    `::test_lru_eviction_order_orphans_then_finished_jobs_then_open_jobs`
+- **LAB-1415** (MUST) gc deletes the renders of done/cancelled jobs 24 h after closing and of live jobs 3 days after their last
+  labelling activity (job stays open, `prepare.state = evicted`), never touches verdicts or jobs, and creates nothing in the
+  registry, clips or marks listings.
+  - Tests: `::test_gc_deletes_renders_of_a_done_job_after_the_grace_but_keeps_its_verdicts`, `::test_idle_job_loses_renders_after_3_days_but_stays_open`,
+    `::test_housekeeping_does_not_grow_the_clip_or_registry_listings`
+- **LAB-1416** (MUST) When labelling resumes on a job whose renders were evicted (the job is opened, or one of its cards is
+  requested) a fresh `ballcheck-prepare` run is queued for its remaining unlabelled cards (judged ones are skipped); the
+  phone is served by on-demand rendering meanwhile. A failed attempt backs off for 10 minutes.
+  - Tests: `::test_labelling_resuming_on_an_evicted_job_reprepares_only_the_remaining_cards`, `::test_first_card_request_of_an_evicted_job_also_reprepares`
+
+## 19b. Broadcast review (job kind `broadcast_review`)
+
+Human yes/no on frames the broadcast classifier (`classifier.py`, argmax of `Yes`/`No`, i.e. `p_yes > 0.5`,
+the rule `split_broadcast_segments` cuts with) was unsure about, plus a random sample. Produced per match by the
+Prefect flow `broadcast-review` (jobs repo, `footy_broadcast_review.py`). Item:
+`{clip: <match key>, frame, ts_s, p_yes, pred, reason: edge_mid|edge_boundary|random, dist_to_transition_s}`.
+Frames are `<dataset clips_dir>/<match>/f<frame>.jpg`; verdicts (`yes`/`no`/`unsure`) are written to
+`<marks_dir>/broadcast_review/<match>.json` and counted as progress. Page: `/broadcast_review?dataset=..&job=<id>`
+(Y / N / U keys; the model's call and `p_yes` are shown while answering). Training: `python -m
+footy_track.scripts.export_broadcast_review --dataset broadcast_review --out <dir>` writes `train/{Yes,No}/`
+for `scripts/train_classifier.py --local-dataset` (`unsure` skipped; train/valid/test come from the split authority `footy_track.splits`, docs/data.md "Train/eval partitioning"; `--valid-matches` is an explicit whole-match override).
+
+## 19c. Labelling hooks: refit, reorder and kick off work *while* a job is being labelled (LAB-1417..1426)
+
+Any job (every kind) can carry **hooks**: things the server does as labels arrive. Code: `hooks.py` (event point,
+triggers, registry, bounds), `job_edit.py` (reorder / append / history), `jobs_routes.py` (API), `broadcast_review.py`
+(`broadcast_calibrate`, the first action). Stage 1 of "learn the classifier's real boundary while labelling".
+
+**Event point.** Every label write calls `hooks.emit(kind, clip=, unit=, verdict=)` once, after it is persisted:
+
+| write | where it is emitted | event `kind` / `unit` | job kinds it can answer |
+|---|---|---|---|
+| Ball Check verdict / undo | `ball_check._append_verdict` | `ball_check` / `(source, frame, box)` | ball_check |
+| ball_place: box edit, no-ball, not-broadcast (+ clears) | `server.py` routes (`/edit`, `/no-ball`, `/not-broadcast`, `/*/clear`), `review.py` (`/review/correct`, `/review/delete`) | `ball_place` / frame | ball_place |
+| calibration GT save / delete / accepted proposal | `calibration.py` `gt_save`/`gt_delete`, `calibration_proposals.accept` | `calibration_gt` / frame | calibration |
+| frame-type flag (not_broadcast, too_few_points) set / clear | `calibration.mark_*` / `clear_*` | `frame_type` / frame | calibration, frame_type |
+| identity pair / review | `identity_routes.label_pair` (one event per clip of the pair), `submit_review` | `identity` / - | identity |
+| broadcast-review verdict | `broadcast_review.set_verdict` | `broadcast_review` / frame | broadcast_review |
+
+`emit` only queues a small event (bounded queue, `EVENT_QUEUE_MAX`; a full queue drops the event and counts it); one
+daemon thread matches it to the live jobs *that contain that unit* (same dataset, canonical clip id for the
+clip-aliased kinds) and counts it against their hooks; actions run on a 3-thread pool. Hook errors are logged and
+recorded, never raised into the write.
+`FOOTY_LABELLING_HOOKS=0` turns the whole thing off.
+
+**Config** (`job["hooks"]`; at submit `hooks: [...]`, later `PUT /api/jobs/<ref>/hooks`, CLI `labelling_jobs hooks REF
+--set hooks.json`, `submit --hooks hooks.json`; `GET /api/jobs/<ref>/hooks` shows config, per-hook runtime and history):
+
+```json
+[{"name": "calibrate",
+  "trigger": {"every_n": 20, "min_interval_s": 60, "on_done": false},
+  "action": {"type": "builtin", "name": "broadcast_calibrate", "params": {}}},
+ {"name": "rescore",
+  "trigger": {"every_n": 50, "min_interval_s": 600, "on_done": true},
+  "action": {"type": "prefect", "deployment": "my-flow/my-deployment", "params": {"top": 100}}}]
+```
+
+**Actions.** `hooks.register_action(name, fn, kinds=(...))`; `fn(ctx) -> dict` gets `ctx.job` (fresh), `ctx.params`,
+`ctx.event`, `ctx.trigger` (`every_n` / `on_done` / `manual`), runs with the job's dataset current, and steers the job
+via `ctx.reorder(...)` / `ctx.append(...)`. Built in: `shuffle_unanswered` and `sort_by_field` (`params.key`,
+`descending`) for any kind, `broadcast_calibrate` for broadcast_review. A `prefect` action queues `deployment` through
+`prefect_client.create_flow_run` with `{job_id, hook, trigger, dataset, labeller_url?, **params}`; the run stays "in
+flight" until Prefect reports a terminal state (polled), and the flow talks back through the reorder / append API.
+`FOOTY_HOOKS_PREFECT_ALLOW=a/b,c/d` restricts which deployments a job may name.
+
+**Bounds** (per `(job, hook)` unless said): one run in flight (a later trigger waits; `on_done` is skipped if its run is
+still in flight, so give it its own hook); `min_interval_s` debounce (default 60; at least 30 for prefect actions);
+after a failed run no new run for **10 min** (`BACKOFF_S`, like `maybe_reprepare`; also persisted, so a restart keeps it);
+a run that never reports is declared failed after 2 h; at most **8 hooks per job**, 3 prefect runs in flight across
+all jobs, 2000 queued events; hook params at most 4000 bytes of JSON. `POST /api/jobs/<ref>/hooks/<name>/run` runs one
+now (skips the debounce only).
+
+**Mutation API** (`job_edit.py`; live jobs only):
+
+* `POST /api/jobs/<ref>/reorder {order: [item positions], by?, note?, if_rev?}` - the listed *unanswered* items go first,
+  in that order; the other unanswered items follow in their old order; **answered items never move** (unanswered items
+  are re-dealt into the positions unanswered items already held), nothing is added or removed. Answered / unknown /
+  repeated positions are skipped and counted. "Answered" = every unit of the item has a label in the real store.
+* `POST /api/jobs/<ref>/append {items, by?, note?, if_rev?}` - same item shapes as submit; items whose unit is already
+  in the job are skipped; bounded by the job's card/frame cap (its stored `max_cards`, else the default; hard ceiling
+  as at submit), at most 500 per call, and for a prepared ball_check job the queued-card cap (429) and disk floor (507).
+  Appended items get `added_by: {by, ts, note?}` (an item key: it is echoed in results); appended inline cards get
+  their `box_index` from the job id and their real position. They render on demand (call `/prepare` to pre-render).
+* `rev` on the job counts reorders/appends (`GET /api/jobs/<ref>/rev` is the cheap poll); `hook_history` keeps the last 50
+  reorders, appends, hook runs (with the action's summary, e.g. a refit) and errors; `hook_state` keeps last run /
+  backoff per hook.
+
+**Pages.** `/broadcast_review?job=`, `/ball_check?...&job=` and `/labeller?job=` poll `rev` (every 10-12 s); on a change
+they re-read the job order, keep the frame/card on screen as the user's place and take the *next* one from the new order.
+
+- **LAB-1417** (MUST) Every label write of every kind above emits exactly one event after it is persisted, naming the job it
+  belongs to when the unit is in a live hooked job; emitting never blocks, never raises into the write, drops (and counts)
+  when the queue is full, and runs hooks off the request thread.
+  - Tests: `test_hooks.py::test_event_fires_for_a_non_broadcast_kind_ball_check`, `::test_event_fires_for_broadcast_review_and_only_for_that_jobs_frames`,
+    `::test_event_fires_for_ball_place_marks`, `::test_event_fires_for_frame_type_flags_on_calibration_and_frame_type_jobs`,
+    `::test_event_fires_for_identity_pairs_and_reviews`, `::test_a_failing_or_full_hook_pipeline_never_breaks_the_write`,
+    `::test_emit_is_off_the_request_thread`
+- **LAB-1418** (MUST) Hooks are stored in the job, set at submit and replaced through the API / CLI; the config is validated
+  (names, triggers, registered action for the job kind, prefect deployment name and debounce floor) and capped at 8 per job.
+  - Tests: `::test_hooks_are_set_at_submit_and_updated_through_the_api`, `::test_hook_config_is_validated_and_capped`, `::test_cli_hooks_roundtrip`
+- **LAB-1419** (MUST) Triggers and bounds: `every_n` counts the job's own events, `min_interval_s` debounces, at most one run in
+  flight per (job, hook), a failure backs off 10 min (persisted), `on_done` runs once at completion, a manual run skips the
+  debounce only; a `prefect` action queues the named deployment with `{job_id, ...params}`, stays in flight until Prefect
+  says the run ended, backs off when queueing fails or the run fails, and is capped across jobs.
+  - Tests: `::test_every_n_triggers_after_n_events_and_debounce_holds_the_rest`, `::test_at_most_one_run_in_flight_per_job_and_hook`,
+    `::test_a_failed_run_backs_off_for_ten_minutes_and_is_recorded`, `::test_on_done_runs_once_when_the_job_completes`,
+    `::test_manual_run_skips_the_debounce_but_not_the_backoff`, `::test_prefect_action_queues_the_deployment_and_stays_in_flight_until_it_ends`,
+    `::test_prefect_failure_backs_off_and_unreachable_prefect_is_recorded`, `::test_prefect_inflight_cap_across_jobs`,
+    `::test_generic_builtin_actions_shuffle_and_sort_any_kind`
+- **LAB-1420** (MUST) Reordering moves only unanswered items; answered items keep their positions, no item is added, lost or
+  duplicated, verdicts and progress are unchanged; the job gets a new `rev` and a history entry; a no-op changes nothing;
+  closed jobs are refused; `if_rev` guards against a concurrent change.
+  - Tests: `::test_reorder_moves_only_unanswered_items_and_never_answered_ones`, `::test_reorder_is_a_noop_when_nothing_changes_and_honours_if_rev`,
+    `::test_reorder_works_for_window_items_of_a_frame_kind`
+- **LAB-1421** (MUST) Appending records provenance (`added_by`), skips duplicates, keeps answered items and their verdicts, and
+  respects the per-job cap, the per-call cap, and (prepared ball_check) the queued-card cap and disk floor; nothing is written
+  when refused.
+  - Tests: `::test_append_adds_items_with_provenance_skips_duplicates_and_keeps_answers`, `::test_append_respects_the_per_job_cap_and_per_call_cap`,
+    `::test_append_to_a_prepared_ball_check_job_honours_queued_cap_and_disk_floor`, `::test_append_is_refused_for_closed_jobs_and_validates_items`
+- **LAB-1422** (MUST) The pages that walk a job in order pick up a new order without losing the user's place: the server serves the
+  job in its new order with `rev`; the pages poll `rev`, keep the current frame/card and take the next from the new order.
+  - Tests (server half): `::test_broadcast_page_api_serves_the_new_order_and_rev`, `::test_ball_check_queue_serves_the_new_order_and_rev`,
+    `::test_labeller_job_frames_carry_the_rev`, `::test_pages_poll_the_rev_and_keep_the_users_place` (text check); the page logic itself is
+    UNTESTED-FRONTEND.
+- **LAB-1423** (MUST) `broadcast_calibrate` fits Platt scaling `P(yes) = sigmoid(a * logit(p_yes) + b)` (p clipped to [1e-6, 1-1e-6],
+  `unsure` excluded, all yes/no verdicts of the dataset) and writes each new fit as an immutable
+  `<marks_dir>/broadcast_review/calibration/vNNN.json` (`a, b, n, n_yes, n_no, boundary_p_yes` = the p_yes where calibrated p = 0.5,
+  `ts`, `version`, `matches`); the same data again reuses the latest version; fewer than 10 yes or 10 no (with a stored p_yes) is a
+  no-op that says why.
+  - Tests: `::test_platt_fit_recovers_the_known_scaling_and_boundary`, `::test_broadcast_calibrate_writes_a_versioned_file_and_reorders_by_uncertainty`,
+    `::test_broadcast_calibrate_is_a_noop_with_a_reason_when_there_are_too_few_verdicts`, `::test_the_real_dataset_verdicts_fit_when_available`
+- **LAB-1424** (MUST) After a fit the job's remaining frames are reordered by `|a * logit(p_yes) + b|` ascending (distance to the fitted
+  boundary on the logit scale) plus Gaussian jitter (0.5) and a per-time-bucket penalty (60 s buckets, 0.15 per more-uncertain frame
+  already ranked) so no cluster hogs the top; answered frames never move; it fires as verdicts arrive.
+  - Tests: `::test_broadcast_calibrate_writes_a_versioned_file_and_reorders_by_uncertainty`, `::test_broadcast_calibrate_fires_as_verdicts_arrive`
+- **LAB-1425** (MUST) The broadcast review page shows the calibrated p and the fitted boundary (and version, n) next to the raw p_yes.
+  - Tests (server half): `::test_broadcast_calibrate_writes_a_versioned_file_and_reorders_by_uncertainty` (`calibration`, `p_cal` in the job view);
+    the page text is UNTESTED-FRONTEND.
+- **LAB-1426** (MUST) Actions are registered by name (`hooks.register_action`) so each labelling kind can add its own; the registry
+  rejects an action on a job kind it is not for.
+  - Tests: `::test_hook_config_is_validated_and_capped`, `::test_generic_builtin_actions_shuffle_and_sort_any_kind`
+
+### How other kinds use it (documentation only)
+
+* **ball_check** (inline cards): attach `{"type": "prefect", "deployment": "ballcheck-rescore/ballcheck-rescore", "params": {...}}`
+  with `every_n: 50`. The flow reads `GET /api/jobs/<job_id>/results` (the verdicts so far, hidden keys in `labels[].meta`), refits
+  or re-scores the detector candidates, then `POST /api/jobs/<job_id>/reorder` with the positions of the unanswered cards by the new
+  score (read the current order with `GET /api/jobs/<job_id>`, pass `if_rev`) and `POST .../append` with fresh near-boundary
+  cards (`bbox`, hidden `score` keys; caps, queued-card cap and disk floor apply; follow with `POST .../prepare` to pre-render).
+  An in-process equivalent is `register_action("rescore_cards", fn, kinds=("ball_check",))` where `fn` calls `ctx.reorder` /
+  `ctx.append`.
+* **ball_place**: same shape with window items; `sort_by_field` / `shuffle_unanswered` already work on them, and a prefect action
+  can append `{clip, frame}` items around frames the labeller found hard. Items are frames/windows, so reorder moves whole windows.
+* Pointer ball_check jobs (no inline cards) are served by the review list, not the job's item order, so reordering them has no
+  page effect; use inline cards.
+
+## 19d. Review fixes: the architecture review's bug-fix pass (LAB-1427..1434)
+
+Tests: `test_review_bugfixes.py` (names below are within it).
+
+- **LAB-1427** (MUST) A Ball Check verdict only counts as saved when the HTTP status is 2xx **and** the JSON body has
+  `ok: true` (the endpoint answers some validation errors with 200 `{"ok": false}`, and a 500 has no JSON). The card advances
+  optimistically and the next ones prefetch as before; when the save did not land (non-2xx, `ok` not true, network error) the
+  card goes back to the front of the queue, `judged`/`remaining` are rolled back and the status line says
+  `Verdict NOT saved (...)`. `save_box` uses the same check.
+  - Tests: `::test_ball_check_judge_keeps_the_card_when_the_save_fails` (the page's own `judge` run under node); the layout of
+    the message is UNTESTED-FRONTEND.
+- **LAB-1428** (MUST) Blocking cv2 / label-file work never runs on the event loop: `/clips/status` runs in a worker thread and
+  the identity data routes are threadpool `def`s, so a slow request does not stall other pages (B1, B8).
+  - Tests: `::test_clips_status_does_not_block_the_event_loop`, `::test_identity_routes_do_not_block_the_event_loop`,
+    `::test_identity_data_routes_are_not_async_with_blocking_bodies`
+- **LAB-1429** (MUST) `jobs.compute` and `broadcast_review.job_view` read each match's store once per call, not once per item (B2).
+  - Tests: `::test_jobs_compute_reads_each_broadcast_review_store_once`, `::test_broadcast_job_view_reads_each_store_once`
+- **LAB-1430** (MUST) Every calibration-GT read-modify-write (save, delete, accept a proposal, flag/unflag not-broadcast) goes
+  through `calibration.update_gt` under one process lock; nothing is written when the document did not change (B5).
+  - Tests: `::test_concurrent_calibration_gt_updates_lose_nothing` (with `::test_unlocked_read_modify_write_would_lose_updates`
+    proving the race is real), `::test_update_gt_writes_nothing_when_the_document_is_unchanged`
+- **LAB-1431** (MUST) A clip name from a request body that becomes part of a path (`/ball_check/verdict`, `/ball_check/undo`,
+  `/ball_check/save_box`, `/review/correct`, `/review/delete`) must match `names.safe_clip_name` (`[A-Za-z0-9][A-Za-z0-9._-]*`, at
+  most 201 chars, no `..`); anything else is a 422 and nothing is written (B6).
+  - Tests: `::test_ball_check_verdict_rejects_unsafe_clip_names`, `::test_review_and_save_box_reject_unsafe_clip_names`,
+    `::test_real_clip_names_still_pass`
+- **LAB-1432** (MUST) `/review/correct` and `/review/delete` replace the sidecar atomically (temp file + fsync + rename, mode kept):
+  a crash mid-write leaves the old file.
+  - Tests: `::test_review_correct_and_delete_replace_the_file_atomically`, `::test_a_crash_mid_write_leaves_the_sidecar_intact`
+- **LAB-1433** (MUST) `GET /ingest` is a 404, not a 500 page, and the hub has no Ingest card (OPEN-1); the ingest APIs still work.
+  - Tests: `::test_ingest_page_route_is_gone_and_the_hub_does_not_link_to_it`
+- **LAB-1434** (MUST) The sidecar box scan behind the Ball Check `sidecar` queue and `/review/queue` re-parses only the sidecars
+  whose (mtime, size, inode) or video path changed (B13). The deploy script also builds the candidate pool after a restart
+  (`warm_ball_check --source candidates`, B12).
+  - Tests: `::test_sidecar_scan_reparses_only_changed_files`; `test_task_board.py::test_warm_helper_candidate_pool` (the
+    `labeller_deploy.sh` wiring is UNTESTED)
+
+
 ## 15. Traceability summary
 
 | Section | Requirements | Tested | UNTESTED | UNTESTED-FRONTEND |
@@ -1540,7 +1828,9 @@ restricted to the job's cards (progress and results are).
 | 16. Pitch calibration (LAB-12xx) | 23 | 18 | 0 | 5 |
 | 18. Datasets (LAB-13xx) | 6 | 5 | 0 | 1 |
 | 19. Labelling jobs (LAB-14xx) | 8 | 7 | 0 | 1 |
-| **Total** | **138** | **101** | **8** | **29** |
+| 19c. Labelling hooks (LAB-1417..1426) | 10 | 8 | 0 | 2 |
+| 19d. Review fixes (LAB-1427..1434) | 8 | 7 | 1 | 0 |
+| **Total** | **156** | **116** | **9** | **31** |
 
 Open items: 4 (OPEN-1..4) + 1 fixed on main (undo provenance, `95b60cc`).
 Test suite: 138 tests in `tests/labeller/` (all green), plus the

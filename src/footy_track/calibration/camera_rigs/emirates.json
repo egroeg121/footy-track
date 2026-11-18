@@ -83,5 +83,7 @@
     -32.7
    ]
   }
- }
+ },
+ "ground": "emirates",
+ "note": "Camera-rig prior from the exp/calibration-ptz branch (fixed centre of projection per ground); fit on the calibration GT frames."
 }

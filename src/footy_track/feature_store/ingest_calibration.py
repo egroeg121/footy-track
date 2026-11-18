@@ -60,6 +60,7 @@ from footy_track.feature_store.schema import (
     Stage,
 )
 from footy_track.feature_store.store import FeatureStore
+from footy_track.splits import split_counts
 
 log = logging.getLogger(__name__)
 
@@ -589,6 +590,7 @@ def main(argv: list[str] | None = None) -> None:
         f"runs={sorted(r.runs)}"
     )
     print(f"by_source={dict(r.by_source)} by_status={dict(r.by_status)}")
+    print(f"games by split={split_counts(r.games)}")
     if r.rows_deleted:
         print(f"replaced: deleted {r.rows_deleted} existing calibration rows")
     if r.skipped:

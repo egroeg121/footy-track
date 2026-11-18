@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Matches</title>
+<style>
+  :root { --bg:#0f1419; --panel:#1a2129; --ink:#e6edf3; --muted:#9bb0c0;
+          --accent:#1e90ff; --green:#3fb950; --amber:#d29922; --red:#f85149; --border:#2d3742; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:14px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+  main { padding:12px 12px 48px; max-width:1400px; margin:0 auto; }
+  header { display:flex; flex-wrap:wrap; gap:12px; align-items:baseline; margin-bottom:10px; }
+  header a { color:var(--muted); text-decoration:none; font-size:13px; }
+  h1 { font-size:20px; margin:0; }
+  .muted { color:var(--muted); font-size:12px; }
+  .wrap { overflow-x:auto; border:1px solid var(--border); border-radius:8px; }
+  table { border-collapse:collapse; width:100%; min-width:900px; }
+  th, td { text-align:left; vertical-align:top; padding:8px 10px; border-bottom:1px solid var(--border); }
+  th { font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); background:var(--panel); position:sticky; top:0; }
+  td.match { min-width:170px; }
+  td.match .src { color:var(--muted); font-size:11px; word-break:break-all; }
+  .cell { font-size:12px; min-width:110px; }
+  .g { font-weight:700; font-size:15px; }
+  .done .g { color:var(--green); } .running .g, .partial .g { color:var(--amber); }
+  .failed .g { color:var(--red); } .none .g, .na .g, .queued .g { color:var(--muted); }
+  .txt { color:var(--muted); margin-top:2px; word-break:break-word; }
+  .bar { height:4px; background:var(--border); border-radius:2px; margin-top:4px; }
+  .bar i { display:block; height:100%; background:var(--amber); border-radius:2px; }
+  .done .bar i { background:var(--green); }
+  a.run { color:var(--accent); text-decoration:none; font-size:11px; }
+  tr.queued td { opacity:.65; }
+  td.split { font-size:12px; font-weight:600; color:var(--muted); }
+  td.split.heldout { color:var(--red); } td.split.train { color:var(--green); }
+  label { font-size:12px; color:var(--muted); }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <a href="/">&larr; Home</a>
+    <h1>Matches</h1>
+    <span class="muted" id="stamp">loading...</span>
+    <label><input type="checkbox" id="showQueued" checked> show queued</label>
+  </header>
+  <div class="wrap"><table>
+    <thead><tr id="head"></tr></thead>
+    <tbody id="rows"><tr><td>Loading...</td></tr></tbody>
+  </table></div>
+  <p class="muted" id="note"></p>
+</main>
+<script>
+const GLYPH = {done:"✓", running:"⏳", partial:"◐", failed:"✗", queued:"…", none:"—", na:"—"};
+const TITLES = {download:"Download", segments:"Segments", detection:"Detection", tracking:"Tracking",
+                calibration:"Calibration", projection:"Projection"};
+function esc(s) { return String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+function ago(iso) {
+  if (!iso) return "";
+  const s = (Date.now() - new Date(iso)) / 1000;
+  if (!isFinite(s)) return "";
+  if (s < 90) return Math.round(s) + "s ago";
+  if (s < 5400) return Math.round(s / 60) + "m ago";
+  if (s < 172800) return Math.round(s / 3600) + "h ago";
+  return Math.round(s / 86400) + "d ago";
+}
+function cell(c) {
+  const pct = c.pct != null && (c.state === "running" || c.state === "partial" || c.state === "done")
+    ? `<div class="bar"><i style="width:${Math.round(c.pct * 100)}%"></i></div>` : "";
+  const link = c.link ? ` <a class="run" href="${esc(c.link)}" target="_blank" rel="noopener">flow run</a>` : "";
+  const when = c.when ? ` <span class="muted">${esc(ago(c.when))}</span>` : "";
+  const label = c.state === "running" ? (c.pct != null ? Math.round(c.pct * 100) + "%" : "running") : "";
+  return `<td class="cell ${esc(c.state)}"><span class="g">${GLYPH[c.state] || "—"}</span> ${esc(label)}${when}` +
+         `<div class="txt">${esc(c.text)}${link}</div>${pct}</td>`;
+}
+async function load() {
+  try {
+    const d = await (await fetch("/api/matches")).json();
+    document.getElementById("head").innerHTML = "<th>Match</th><th>Split</th>" + d.stages.map(s => `<th>${TITLES[s]}</th>`).join("");
+    const showQ = document.getElementById("showQueued").checked;
+    document.getElementById("rows").innerHTML = d.matches
+      .filter(m => showQ || m.stages.download.state !== "queued")
+      .map(m => `<tr class="${esc(m.stages.download.state)}"><td class="match"><b>${esc(m.title)}</b>` +
+        `<div class="src">${esc(m.source)}</div></td>` +
+        `<td class="split ${esc(m.split)}">${esc(m.split)}</td>` + d.stages.map(s => cell(m.stages[s])).join("") + "</tr>").join("");
+    document.getElementById("stamp").textContent = "updated " + new Date().toLocaleTimeString() + " (auto-refresh 30s)";
+    document.getElementById("note").textContent = d.links_available ? "" : "Prefect API unreachable: flow-run links omitted.";
+  } catch (e) {
+    document.getElementById("stamp").textContent = "load failed: " + e;
+  }
+}
+document.getElementById("showQueued").addEventListener("change", load);
+load(); setInterval(load, 30000);
+</script>
+</body>
+</html>

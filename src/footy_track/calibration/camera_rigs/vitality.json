@@ -101,5 +101,7 @@
     ]
    ]
   }
- }
+ },
+ "ground": "vitality",
+ "note": "Camera-rig prior from the exp/calibration-ptz branch (fixed centre of projection per ground); fit on the calibration GT frames."
 }

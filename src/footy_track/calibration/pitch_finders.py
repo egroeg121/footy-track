@@ -7,29 +7,18 @@ assumes a fixed image or pitch distance between structures: only the Laws-fixed 
 r 9.15; penalty area 16.5 x 40.32; goal area 5.5 x 18.32; D = circle r 9.15 about the spot 11 m out)
 are used as templates, and pitch ids are mapped to metres with the *request's* ``PitchModel``.
 
-A. ``find_centre`` (centre circle + halfway line + the line's end at the touchline)
--------------------------------------------------------------------------------
-``centre_circle`` gives the halfway line ``l``, the circle's image ellipse ``E`` and ``V`` = pole of
-``l`` w.r.t. ``E`` = the vanishing point of the pitch x (length) axis. Every touchline is parallel to
-x, so it is a long line *through V*: that is how the touchline is found (angle test against V), and
-its intersection with ``l`` is the pitch point ``(0, +W/2)`` (``HALFWAY_TOP``; ``HALFWAY_BOTTOM`` for the
-near touchline). No image distance between circle and touchline is assumed.
-
-Three collinear points with known pitch positions on ``l`` (circle top ``y=+9.15``, circle bottom
-``y=-9.15``, touchline end ``y=+W/2``) fix the 1-D projective map ``s(y) = (a y + b) / (c y + 1)`` of
-the line, hence the vanishing point of the y axis ``W_inf`` (image of ``y -> inf``, ``s = a / c``).
-Then::
-
-    vanishing line  m = V x W_inf
-    circle centre   O = E^-1 m                  (the pole of the vanishing line)
-    (+-9.15, 0)     = (line O-V) x E            (x axis meets the circle)
-
-``CENTRE_SPOT``, ``CENTRE_CIRCLE_LEFT`` and ``CENTRE_CIRCLE_RIGHT`` are therefore *derived* points
-(``derived: true``): they are exact if the touchline end and the pitch width are right. With both
-touchlines visible the width itself is over-determined and is estimated from the cross ratio
-(``info["width_est_m"]``). The result is re-checked by rendering the halfway line / circle / touchline
-template under the implied homography against the mask; if that fails the derived points are dropped
-and only the 2 circle points are returned.
+A. ``find_centre`` (centre circle + halfway line -> a fitted homography and its points)
+----------------------------------------------------------------------------------------
+``centre_circle`` gives the halfway line ``l``, the circle's image ellipse ``E`` and ``V`` = pole of ``l``
+w.r.t. ``E`` = the vanishing point of the pitch x (length) axis. ``centre_fit`` (see its docstring) solves the one
+remaining degree of freedom (the vanishing point of the y axis on ``l``) from a touchline end, the ground's fixed
+camera centre, or the square-pixel prior, builds ``H`` from the circle's four axis points, scores it on the whole
+template against the mask and returns *points computed from that H* (circle top / bottom / left / right, spot,
+halfway-line ends in frame, free circle points), so the editor reproduces the same ``H``. The touchline is
+still found as a long line through ``V`` (angle test; the faint far-edge strip is part of the mask used to
+verify it), its junction with ``l`` being ``(0, +-W/2)`` from the request's pitch dims. When no candidate is
+accepted only the 2 circle x line points are returned. ``shape=False`` keeps the earlier derivation (touchline
+end only, 3-4 known points on ``l`` -> circle centre -> left / right) for comparison.
 
 B. ``find_d`` (penalty area template)
 -------------------------------------
@@ -404,6 +393,7 @@ class _Ctx:
     fld: Field | None = None
     #: line pixels used to look for the touchline (mask + faint far strip): ``(mask, obs, und)``
     tl: tuple[np.ndarray, np.ndarray, np.ndarray] | None = None
+    fld_tl: Field | None = None
 
     @property
     def diag(self) -> float:
@@ -413,6 +403,14 @@ class _Ctx:
         if self.fld is None:
             self.fld = Field(self.und, self.size)
         return self.fld
+
+    def field_tl(self) -> Field:
+        """Distance field of the mask *plus* the faint far touchline strip (used to verify a touchline)."""
+        if self.tl is None:
+            return self.field()
+        if self.fld_tl is None:
+            self.fld_tl = Field(self.tl[2], self.size)
+        return self.fld_tl
 
 
 def _ctx(mask: np.ndarray, dist: dict | None, pitch: PitchModel | None, prep=None) -> _Ctx:
@@ -519,9 +517,18 @@ def find_centre(
     prep: tuple[np.ndarray, np.ndarray] | None = None,
     min_confidence: float | None = None,
     far_mask: np.ndarray | None = None,
+    rig=None,
+    shape: bool = True,
+    use: tuple[str, ...] = ("touchline", "rig", "intrinsic"),
+    circle: cc.Detection | None = None,
+    refine: bool = True,
 ) -> FinderDetection:
-    """Centre circle x halfway line (2 points) plus, when the touchline end is visible, the end(s) of
-    the halfway line and the derived circle left/right/spot points. See the module docstring."""
+    """Centre circle x halfway line -> a fitted pitch homography and the points derived from it.
+
+    ``shape=True`` (default): ``centre_fit`` solves ``H`` from the circle + line shape (touchline end / camera rig of
+    the ground / square-pixel prior, whichever the whole template supports best) and returns the named keypoints
+    and free circle points computed from it. ``circle`` is an already computed ``centre_circle`` detection (evaluation). ``shape=False`` is the earlier behaviour: the 2 circle x line points
+    plus the points derived from a touchline end when one is found. See the module docstring."""
     t0 = time.perf_counter()
     ctx = _ctx(mask, dist, pitch, prep)
     w, h = ctx.size
@@ -532,7 +539,7 @@ def find_centre(
     if far_mask is not None and far_mask.any():
         m2 = mask | far_mask
         ctx.tl = (m2, *cc._prep_points(m2, dist))
-    det = cc.detect_from_mask(
+    det = circle or cc.detect_from_mask(
         mask, dist, ("centre",), pitch=ctx.pitch, min_confidence=min_confidence, prep=(ctx.obs, ctx.und)
     )
     out.notes = det.notes
@@ -548,11 +555,45 @@ def find_centre(
     out.result = res
     out.debug = {"ellipse": r.ellipse, "anchor": r.anchor}
     try:
-        _add_touchline_points(ctx, r, res, out)
+        if shape:
+            _add_shape_points(ctx, r, res, out, rig, use, refine)
+        else:
+            _add_touchline_points(ctx, r, res, out)
     except (np.linalg.LinAlgError, ValueError, FloatingPointError) as exc:  # never lose the 2 base points
         info["touchline"] = f"failed: {exc}"
     out.seconds = time.perf_counter() - t0
     return out
+
+
+def _add_shape_points(
+    ctx: _Ctx, r: cc.CirclePoints, res: FinderResult, out: FinderDetection, rig, use: tuple[str, ...], refine: bool = True
+) -> None:
+    """Shape-first path (``calibration.centre_fit``): replaces the base points by the fit's points when accepted."""
+    import footy_track.calibration.centre_fit as cf  # noqa: PLC0415  (centre_fit imports this module)
+
+    L, E = r.anchor, r.ellipse
+    V = np.linalg.solve(cc._conic(E), _line_h(L.o, L.n))
+    V = V / np.abs(V).max()
+    touch = _find_touchlines(ctx, r, V)
+    sf, log = cf.fit_shape(ctx, r, ctx.field_tl(), touch, rig, use, refine)
+    res.info["shape"] = {"candidates": log}
+    if sf is None:
+        res.info["shape"]["accepted"] = None
+        return
+    pts = cf.points_from_fit(sf, ctx, r.confidence)
+    if not pts:
+        res.info["shape"]["accepted"] = None
+        res.info["shape"]["why"] = "fewer than 4 points in general position in frame"
+        return
+    res.points = pts
+    res.info["shape"].update(
+        accepted=sf.source,
+        precision=sf.ev["core_precision"],
+        template_f1=sf.ev["f1"],
+        **{k: v for k, v in sf.info.items() if k in ("f_over_w", "jitter", "ground", "rms_px", "ends", "alternatives")},
+    )
+    res.info["touchline_ends"] = sorted({"HALFWAY_TOP" if e == "far" else "HALFWAY_BOTTOM" for e in sf.X})
+    out.debug.update(H_px=sf.H, template=cf._core_tpl(ctx.pitch))
 
 
 def _add_touchline_points(ctx: _Ctx, r: cc.CirclePoints, res: FinderResult, out: FinderDetection) -> None:
@@ -1115,6 +1156,7 @@ def find_points(
     mask = cc.line_mask_for(bgr)
     if kind == "centre":
         return find_centre(mask, dist, pitch, far_mask=far_mask_for(bgr), **kw)
+    kw.pop("rig", None)
     return find_d(mask, dist, pitch, **kw)
 
 

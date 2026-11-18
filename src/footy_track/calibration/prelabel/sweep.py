@@ -21,6 +21,7 @@ from footy_track.calibration.prelabel.evaluate import gt_px_errors, read_gt
 from footy_track.calibration.prelabel.fit import fit_and_score
 from footy_track.calibration.prelabel.identifier import IdentifyInput, MockIdentifier
 from footy_track.calibration.video import read_frame
+from footy_track.splits import split_label
 
 THRESHOLDS = (5.0, 10.0)
 
@@ -86,7 +87,7 @@ def noise_sweep(
             ok = [v for v in vals if v is not None]
             item[f"{stage}_median_px"] = float(np.median(ok)) if ok else None
         summary.append(item)
-    return {"clip": clip, "frames": frames, "n_seeds": n_seeds, "drop_prob": drop_prob,
+    return {"clip": clip, "split": split_label(clip), "frames": frames, "n_seeds": n_seeds, "drop_prob": drop_prob,
             "mislabel_prob": mislabel_prob, "lines": lines, "summary": summary, "rows": rows}
 
 
@@ -97,7 +98,7 @@ def format_sweep(res: dict) -> str:
     def px(v):
         return "   -  " if v is None else f"{v:6.1f}"
 
-    head = (f"label noise sweep: {res['clip']} frames {res['frames']} x {res['n_seeds']} seeds"
+    head = (f"label noise sweep: {res['clip']} [{res.get('split', '?')}] frames {res['frames']} x {res['n_seeds']} seeds"
             f" (drop={res['drop_prob']}, mislabel={res['mislabel_prob']}, line labels={res['lines']})")
     cols = (f"{'sigma':>6s} {'n':>4s} | {'<=5px pre':>9s} {'post':>5s} | {'<=10px pre':>10s} {'post':>5s} |"
             f" {'median px pre':>13s} {'post':>6s} | {'refined':>7s} {'rej':>4s} {'bad':>4s}")

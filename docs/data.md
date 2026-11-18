@@ -134,9 +134,65 @@ There are two, and neither is a multi-match benchmark. Both are defined by files
 | **Roboflow v11-test** | `detection_dataset/roboflow_dataset_11/test` | 268 images, 243 `in_play_ball` | Never evaluated in any log found. 265 of the 268 images (241 of 243 balls) are frames cut from the full Man City match video, not from clips, so it is one match. Counted from file names, 2026-11-08. |
 | **Ball-tracker harness set** (`ball_eval`) | Every clip with a `<stem>.jsonl` sidecar in `eval_data/clips/` | One file, `mancity_seg104.jsonl`: 4 rows, all with the same centre, and no matching MP4 | Effectively empty. The bake-off that used it ran the ball-blind 640 px checkpoint, so its results are not valid ([Architecture, section 4.1](architecture.md#41-status-by-stage)). |
 
-The harness set doubles as the **leakage guard**: `export_training_dataset` excludes every clip that has a sidecar in `eval_data/clips/` from train and val (`scripts/export_training_dataset.py:78-80, 362-363`). It matches clip names exactly, and one clip has up to three names, so the guard can miss ([T-03](todo.md)). The split in v11 itself is by clip, but v11 train, val and test are all mostly Man City (v11 train has 1,010 balls, 517 of them from `astonvilla_seg080`).
+The harness set doubles as a **leakage guard** on top of the [split authority](#traineval-partitioning): `export_training_dataset` excludes every clip that has a sidecar in `eval_data/clips/` from every split (`scripts/export_training_dataset.py:78-80, 362-363`). It matches clip names exactly, and one clip has up to three names, so the guard can miss ([T-03](todo.md)). The split in v11 itself is by clip, but v11 train, val and test are all mostly Man City (v11 train has 1,010 balls, 517 of them from `astonvilla_seg080`).
 
 What a better set needs (diverse matches, dense contiguous frames, explicit `no_ball` frames) is in [Best pipeline and label needs, section 3](pipeline-and-labels.md#3-label-needs-and-gaps).
+
+## Train/eval partitioning
+
+One module, `footy_track.splits`, decides what is training data and what is evaluation data. Every dataset export, eval script and labelling flow asks it; none keeps its own list. The eval set **grows as matches and clips are added** and an item never moves once assigned.
+
+| Tier | `split_of` value | What it is | How it is assigned | Recorded in |
+|---|---|---|---|---|
+| Heldout match | `eval_heldout_match` | A whole match that is evaluation only. | New matches: `sha1(match key) % 4 == 0` (about 25%). Manual edits win. | `match_splits.json` (`FOOTY_MATCH_SPLITS`), written by the jobs repo's `footy_splits.py` |
+| In-match eval | `eval_in_match` | One clip in five of a *train* match. | `sha1(canonical clip id) % 5 == 0` (about 20%), at clip granularity, never per frame. | `clip_splits.json` next to it (`FOOTY_CLIP_SPLITS`), written by `python -m footy_track.splits assign --apply` |
+| Train | `train` | Everything else. | | |
+
+**Rules.**
+
+- **Sticky.** An assignment is written once and never rewritten. The clip register stores the rule it was assigned under (`modulus`, `eval_remainder`), so changing the constant in code does not reshuffle old clips. A manual entry in either register wins over the hash; a heldout match wins over a clip entry.
+- **Monotone.** Adding clips or matches only adds eval items. This is what the old position-based split (`_pick_spread`, "every k-th clip of the sorted list") could not do: adding one clip moved the others.
+- **Clip granularity.** The key is `canonical_clip_id` (`clip_id.py` maps `mancity_seg010`, `arsenal_mancity_seg010` and `arsenal_mancity_20250925_seg010` to one id), so every alias of a clip is on the same side. Broadcast-review frames have no clip, so a window of 6000 consecutive frames (`<match key>_w<NNNN>`, 2 to 4 minutes) plays that role.
+- **Fail closed.** A missing or invalid register raises (`RegisterError`) instead of guessing. `FOOTY_MATCH_SPLITS_ALLOW_SEED=1` is for tests only. A match that is not in the register is treated as train pool and flagged (`arsenal_example` is one today).
+- **Why a second file.** `match_splits.json` is rewritten by the jobs repo and validated entry by entry, so a `clips` section inside it would break both. The sibling file has its own lock. Writes are atomic (temp file, `os.replace`) under an exclusive `flock` on `<file>.lock`, and re-read the file under the lock, so concurrent writers cannot lose each other's entries.
+
+**How each dataset uses it.**
+
+| Consumer | Train | Val | Test |
+|---|---|---|---|
+| `export_training_dataset` (player/ball detection, tracking) | `train` | `eval_in_match` | left out; `--heldout-as-test` writes `eval_heldout_match` as `test/` |
+| `export_broadcast_review` (broadcast-view classifier) | `train/` | `valid/`: `eval_in_match` windows | left out; `--heldout-as-test` writes `test/`. `--valid-matches` is an explicit whole-match override. |
+| `ball_tracking_eval score`, `claude_verify_*` (`--split`) | grouped as `train` | `eval_in_match` | `eval_heldout_match`; a hand-made `split.json` still works as an override |
+| Pitch calibration (`prelabel_calibration eval`/`sweep`, `projection_eval`) | reported per split (`split` on every row, `by_split` in the summary) | | |
+| Feature-store ingest (`ingest_gt`, `ingest_calibration`, ball checks) | the report prints games or clips per split. No stored column: it would go stale as the eval set grows. Use `splits.annotate_split(df)` at read time. | | |
+
+**Commands.**
+
+```bash
+python -m footy_track.splits show [NAME ...]             # registers; how a clip / file name resolves
+python -m footy_track.splits assign                      # DRY RUN: what would be added to clip_splits.json
+python -m footy_track.splits assign --apply              # write it (atomic, locked)
+python -m footy_track.splits stats                       # clips per split per dataset
+python -m footy_track.splits contamination DIR [DIR ...] # eval items inside a training dataset (read-only)
+```
+
+`--preview` (before the sub-command) reads with the hash rule while `clip_splits.json` does not exist yet, so the numbers can be previewed before it is applied. Never use it for an export.
+
+**Contamination check.** `contamination` maps each image file to a match and clip and counts eval items inside the training subset (`--train-subsets`, default `train`). Roboflow renames `<clip>_<frame>.jpg` to `<clip>_<frame>_jpg.rf.<hash>.jpg`; the original name is everything before `.rf.`. The old match name (`arsenal_norwich_*`) and the Roboflow-era prefixes (`Arsenal-Aston-Villa`, `Bournemouth-vs-Arsenal-1`) are mapped through the register aliases and a short legacy table. Images cut from a *full* match video (`arsenal_mancity_20250925_000472`, `Arsenal-Aston-Villa_000022`) name the match but no clip, so the report can tell whether the match is held out but **cannot tell whether the clip is in-match eval**: those are listed as "match known, clip unknown" and are the uncertainty in the result.
+
+Measured 2026-11-17 against the real datasets, with the clip register previewed (hash rule, not yet applied):
+
+| Dataset | Train images | `eval_heldout_match` in train | `eval_in_match` in train | Clip unknown | Unmapped |
+|---|---|---|---|---|---|
+| Detector `roboflow_dataset_11` (v11) | 1035 | 0 | 212 (20.5%), all from `bournemouth_1st_seg070` | 94 (9.1%) | 0 |
+| Broadcast classifier `roboflow_dataset_9` | 594 | 77 (13.0%), all Nottingham Forest | 0 | 517 (87.0%) | 0 |
+| Broadcast classifier `roboflow_dataset_10` | 387 | 53 (13.7%), all Nottingham Forest | 0 | 334 (86.3%) | 0 |
+
+The hash rule is blind to how much data a clip carries. `bournemouth_1st_seg070` is the second-largest GT clip (3,840 rows) and the hash puts it in the eval tier, which is why one clip accounts for the whole v11 figure. If an eval tier that large for one clip is not wanted, pin it with a manual `train` entry in `clip_splits.json` before applying; the register keeps manual entries.
+
+## Versioned datasets and results
+
+The labels are also frozen into three independently versioned datasets (`tracking`, `broadcast`, `calibration`), each with train and eval parts from the split authority above. A version is a content-hashed, read-only Parquet snapshot written only when the labels change, and model metrics are stored per dataset version, split and cohort (`eval_result`). One command ingests every label source: `python -m footy_track.feature_store.ingest_all`; `python -m footy_track.datasets bump all` writes new versions. See [Versioned datasets and progress tracking](design/datasets_and_progress.md) for the item definitions, manifest, cohorts and contamination flags.
 
 ## Feature store
 

@@ -723,6 +723,26 @@ async function jobPrev() {
 $("jobNextBtn").onclick = jobNext;
 $("jobPrevBtn").onclick = jobPrev;
 
+// A labelling hook may reorder / top up the job while it is being labelled (job.rev goes up): poll,
+// swap in the new order, and keep the frame on screen as the user's place (jobPos follows it).
+async function jobRefresh() {
+  if (!job || jobBusy || document.hidden) return;
+  try {
+    const r = await fetch(`/api/jobs/${encodeURIComponent(JOB_ID)}/frames`);
+    if (!r.ok) return;
+    const fresh = await r.json();
+    if (fresh.rev === job.rev) return;
+    fresh.frames.forEach(f => { if (f.done) jobDone.add(jobKey(f.clip, f.frame)); });
+    const here = jobIndexHere(), key = here >= 0 ? jobKey(job.frames[here].clip, job.frames[here].frame) : null;
+    const lastKey = job.frames[jobPos] ? jobKey(job.frames[jobPos].clip, job.frames[jobPos].frame) : null;
+    job = fresh;
+    const at = fresh.frames.findIndex(f => jobKey(f.clip, f.frame) === (key || lastKey));
+    jobPos = at >= 0 ? at : Math.min(Math.max(jobPos, 0), fresh.frames.length - 1);
+    jobRender();
+  } catch (err) { /* offline: next tick */ }
+}
+setInterval(jobRefresh, 12000);
+
 async function jobStart() {
   let why = "";
   try {

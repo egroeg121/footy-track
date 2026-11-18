@@ -61,6 +61,7 @@ from footy_track.feature_store.schema import (
     Stage,
 )
 from footy_track.feature_store.store import FeatureStore
+from footy_track.splits import split_counts
 
 DATASET_TAG = "ball_gt_marks"
 
@@ -390,6 +391,7 @@ def main(argv: list[str] | None = None) -> None:
             f"detections={roboflow_report.detections_written}"
         )
     print(f"gt-marks games={len(gt_report.games)} frames={gt_report.frames_written}")
+    print(f"gt-marks games by split={split_counts(gt_report.games)}")
     print(
         f"gt-marks detections={gt_report.detections_written} by_source={dict(gt_report.by_source)}"
     )
@@ -403,7 +405,8 @@ def main(argv: list[str] | None = None) -> None:
             f"by_verdict={dict(bc_report.by_verdict)} matched={bc_report.matched} "
             f"unmatched={bc_report.unmatched} reviewed_marked={bc_report.reviewed_marked} "
             f"rejected={bc_report.rejected} "
-            f"hand_label_conflicts={bc_report.hand_label_conflicts}"
+            f"hand_label_conflicts={bc_report.hand_label_conflicts} "
+            f"by_split={dict(bc_report.by_split)}"
         )
     if gt_report.clips_missing_video:
         print(

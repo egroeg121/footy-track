@@ -46,8 +46,11 @@ from footy_track.identity.store import (
     load_pair_labels,
     load_tracklet_reviews,
 )
-from footy_track.labeller import datasets
+from footy_track.labeller import datasets, hooks
 
+# The data routes below are plain ``def``: FastAPI runs them in its threadpool (with the request's
+# dataset ContextVar), so cv2 decoding / label-file scans no longer stall the event loop and every
+# other page (B8 of the labelling architecture review; same starvation PR #61 fixed for /frame).
 router = APIRouter(prefix="/identity")
 
 _STATIC_DIR = Path(__file__).parent / "web"
@@ -118,7 +121,7 @@ async def merge_page() -> HTMLResponse:
 
 
 @router.get("/tracklets")
-async def list_tracklets(clip: str, min_frames: int = 25) -> dict:
+def list_tracklets(clip: str, min_frames: int = 25) -> dict:
     """Summarise the tracklets in one clip, with review state attached.
 
     ``checked_fraction`` is deliberately surfaced: it turns "I reviewed this"
@@ -180,7 +183,7 @@ async def list_tracklets(clip: str, min_frames: int = 25) -> dict:
 
 
 @router.get("/risky-frames")
-async def risky_frames(clip: str, track_id: int, k: int = 12) -> dict:
+def risky_frames(clip: str, track_id: int, k: int = 12) -> dict:
     """Which frames of a tracklet a human should actually look at.
 
     An ID switch happens at one moment; a uniform sample of 12 frames from 288
@@ -219,7 +222,7 @@ async def risky_frames(clip: str, track_id: int, k: int = 12) -> dict:
 
 
 @router.get("/best-frame")
-async def best_frame(clip: str, track_id: int, n: int = 3) -> dict:
+def best_frame(clip: str, track_id: int, n: int = 3) -> dict:
     """Frames most likely to show a READABLE BACK NUMBER.
 
     Box size alone is the wrong criterion: a large crop of a player facing the
@@ -349,7 +352,7 @@ async def best_frame(clip: str, track_id: int, n: int = 3) -> dict:
 
 
 @router.get("/crop/{clip}/{frame}.jpg")
-async def crop(
+def crop(
     clip: str,
     frame: int,
     x: float = 0.0,
@@ -465,7 +468,7 @@ def _render_track_frame(img, b: dict, idx: int, out_size: int):
 
 
 @router.get("/track-video/{clip}/{track_id}.mp4")
-async def track_video(clip: str, track_id: int, max_frames: int = 150) -> Response:
+def track_video(clip: str, track_id: int, max_frames: int = 150) -> Response:
     """Render the tracked player as a short video, box drawn, player centred.
 
     Stills answer "are these the same person"; a video answers "does the box
@@ -535,7 +538,7 @@ async def track_video(clip: str, track_id: int, max_frames: int = 150) -> Respon
 
 
 @router.post("/pair")
-async def label_pair(body: dict) -> dict:
+def label_pair(body: dict) -> dict:
     """Record a same/different/unknown verdict and re-derive the clusters.
 
     Contradictions are returned rather than resolved: if A~B, B~C but A!=C, one
@@ -552,6 +555,8 @@ async def label_pair(body: dict) -> dict:
         _labels_dir(),
         PairLabel(a=a, b=b, verdict=verdict, annotator=body.get("annotator", "human")),
     )
+    for clip in dict.fromkeys((a.clip, b.clip)):  # labelling hooks: one event per clip the pair touches
+        hooks.emit("identity", clip=clip, verdict=verdict.value)
     res = build_clusters(load_pair_labels(_labels_dir()))
     return {
         "ok": True,
@@ -565,7 +570,7 @@ async def label_pair(body: dict) -> dict:
 
 
 @router.post("/review")
-async def submit_review(body: dict) -> dict:
+def submit_review(body: dict) -> dict:
     """Record which intervals of a tracklet a human actually inspected."""
     try:
         tracklet = TrackletRef(clip=body["clip"], track_id=int(body["track_id"]))
@@ -583,6 +588,7 @@ async def submit_review(body: dict) -> dict:
         annotator=body.get("annotator", "human"),
     )
     append_tracklet_review(_labels_dir(), review)
+    hooks.emit("identity", clip=tracklet.clip, verdict="unsure" if review.unsure else "reviewed")
     return {
         "ok": True,
         "is_pure": review.is_pure(),
@@ -593,7 +599,7 @@ async def submit_review(body: dict) -> dict:
 
 
 @router.get("/clusters")
-async def clusters() -> dict:
+def clusters() -> dict:
     """Current identity clusters, plus any contradictions blocking trust."""
     labels = load_pair_labels(_labels_dir())
     res = build_clusters(labels)

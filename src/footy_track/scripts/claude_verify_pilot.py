@@ -43,6 +43,7 @@ from footy_track.autolabel.verify_pilot import (
     score_question,
     summarise,
 )
+from footy_track.splits import load_split_arg
 
 VIDEO_SUFFIXES = {".mp4", ".mov", ".avi", ".mkv"}
 BATCH = 6
@@ -90,9 +91,9 @@ def cmd_prepare(args: argparse.Namespace) -> int:  # noqa: PLR0912, PLR0915
         select_device,
     )
 
-    split = json.loads(args.split.read_text())
     gts = load_gt(args.gt)
     caches = {p.stem: read_cache(p) for p in sorted(args.cache.glob("*.jsonl"))}
+    split = load_split_arg(args.split, caches)
     clips = {}
     for clip, cache in caches.items():
         if clip not in gts or clip not in split:
@@ -432,7 +433,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--cache", type=Path, required=True)
     p.add_argument("--gt", type=Path, required=True)
     p.add_argument("--videos", type=Path, nargs="+", required=True)
-    p.add_argument("--split", type=Path, required=True)
+    p.add_argument("--split", type=Path, default=None, help="legacy {clip: seen|held_out} JSON; default: split authority")
     p.add_argument("--weights", type=Path, required=True)
     p.add_argument("--out", type=Path, required=True)
     p.add_argument("--seed", type=int, default=7)
