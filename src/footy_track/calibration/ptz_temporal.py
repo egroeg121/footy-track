@@ -27,6 +27,8 @@ from pathlib import Path
 
 import cv2
 import numpy as np
+import scipy.sparse as sp
+import scipy.sparse.linalg as spla
 from scipy.linalg import cho_factor, cho_solve
 
 from footy_track.calibration import geometry as geo
@@ -836,6 +838,25 @@ def _robust_w(r: Array, c: float, quad: Array) -> Array:
     return w
 
 
+#: below this many unknowns a dense Cholesky is faster; above it the sparse LU (banded chain + a few shared columns)
+#: keeps time and memory linear in the segment length (dense: 5000 frames = 15000 unknowns = ~11 GB, OOM on the desktop)
+SPARSE_ABOVE = 600
+
+
+def _spd_solve(M, g: Array) -> Array:
+    """Solve ``M x = g`` for the symmetric positive definite normal matrix ``M`` (sparse): dense Cholesky for small
+    systems, sparse LU (``splu``, symmetric ordering, no pivoting away from the diagonal) for long segments."""
+    n = M.shape[0]
+    if n <= SPARSE_ABOVE:
+        cf = cho_factor(M.toarray(), lower=True, check_finite=False)
+        return cho_solve(cf, g, check_finite=False)
+    lu = spla.splu(sp.csc_matrix(M), permc_spec="MMD_AT_PLUS_A", diag_pivot_thresh=0.0, options={"SymmetricMode": True})
+    x = lu.solve(g)
+    if not np.all(np.isfinite(x)):
+        raise np.linalg.LinAlgError("sparse solve not finite")
+    return x
+
+
 def lm_solve(rs: _Resid, x0: Array, n_iter: int = 25, log=None, tag: str = "") -> tuple[Array, dict]:
     """Levenberg-Marquardt with IRLS Cauchy weights on all data rows (the smoothness / prior rows stay quadratic)."""
     quad = np.zeros(rs.n_res, bool)
@@ -855,16 +876,15 @@ def lm_solve(rs: _Resid, x0: Array, n_iter: int = 25, log=None, tag: str = "") -
         w = _robust_w(r, c, quad)
         sw = np.sqrt(w)
         Jw = J.multiply(sw[:, None]).tocsr()
-        A = (Jw.T @ Jw).toarray()
+        A = (Jw.T @ Jw).tocsc()
         g = Jw.T @ (sw * r)
-        d = np.diag(A).copy()
+        d = A.diagonal().copy()
         d[d < 1e-9] = 1e-9
         improved = False
         for _ in range(8):
             try:
-                cf = cho_factor(A + lam * np.diag(d), lower=True, check_finite=False)
-                step = -cho_solve(cf, g, check_finite=False)
-            except np.linalg.LinAlgError:
+                step = -_spd_solve(A + lam * sp.diags(d), g)
+            except (np.linalg.LinAlgError, RuntimeError):
                 lam *= 10
                 continue
             xn = x + step
