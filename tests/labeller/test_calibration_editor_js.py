@@ -74,3 +74,34 @@ def test_auto_circle_helpers_under_node(tmp_path):
     f.write_text(html[a:b] + AUTO_CHECK)
     r = subprocess.run(["node", str(f)], capture_output=True, text=True, timeout=30)
     assert r.returncode == 0, r.stderr
+
+
+LENS_CHECK = r"""
+const assert = require("assert");
+assert.equal(makeLens(0, 1.78), null);                                 // k1 = 0 is no lens
+assert.equal(makeLens(NaN, 1.78), null);
+assert.deepEqual(makeLens(0.0147, 16 / 9), {model: "division", k1: 0.0147, centre: [0.5, 0.5], aspect: 16 / 9});
+assert.equal(lensK1Of(null), 0);
+assert.equal(lensK1Of({k1: 0.035}), 0.035);
+let k = 0;
+for (let i = 0; i < 5; i++) k = nudgeK1(k, 1, false);
+assert.equal(k, 0.01);                                                 // no float drift from repeated nudges
+assert.equal(nudgeK1(0.01, -1, true), 0);                              // Shift = 0.01 steps
+assert.equal(nudgeK1(0, -1, false), -0.002);
+const ok = {accepted: true, f1_before: 0.86, f1_after: 0.9, k1_before: 0, k1_after: 0.0231, max_click_shift_px: 2.84,
+            edge_before: {median_px: 1.5}, edge_after: {median_px: 0.8}};
+const t = snapStatusText(ok);
+assert.ok(t.includes("0.860") && t.includes("0.900") && t.includes("0.0231") && t.includes("1.5") && t.includes("2.8"));
+assert.equal(snapStatusText({accepted: false, reason: "line F1 did not improve"}), "line F1 did not improve");
+assert.ok(snapStatusText({accepted: true, f1_before: 0.5, f1_after: 0.6, k1_before: 0, k1_after: 0.01, edge_before: null}).includes("snapped"));
+"""
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node not installed")
+def test_lens_helpers_under_node(tmp_path):
+    html = PAGE.read_text()
+    a, b = html.index("// ---- lens helpers"), html.index("// ---- end lens helpers")
+    f = tmp_path / "lens.js"
+    f.write_text(html[a:b] + LENS_CHECK)
+    r = subprocess.run(["node", str(f)], capture_output=True, text=True, timeout=30)
+    assert r.returncode == 0, r.stderr

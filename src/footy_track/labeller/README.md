@@ -1224,6 +1224,33 @@ becomes GT without a human accepting it; accepted GT carries
   frame-accurate, reader cached per video); `/calibration/api/frame` and `/warp` use it.
   - Tests: `tests/calibration/test_video.py`
 
+### Lens: default distortion and "Snap to lines" (LAB-1225..1226)
+
+- **LAB-1225** (SHOULD) Broadcast lenses are barrel distorted, so long lines curve near the frame edges and a
+  plain homography cannot follow them. A frame with no loaded lens uses the **ground's default**: the division
+  `k1` of its camera rig (`calibration/camera_rigs/*.json`, clip -> rig by `centre_fit.rig_for_clip`; Emirates
+  0.0147, Vitality 0.035; unknown grounds get none), reported as `default_distortion` by
+  `GET /calibration/api/clips/{clip}/meta`. The editor shows the lens in the header (on/off, k1, `-`/`+`, source),
+  and `,` / `.` nudge k1 by 0.002 (Shift: 0.01), refitting live; the lens is part of the undo snapshot. The
+  finders (`/auto_points`), `/fit`, `/warp` and the saved GT all use the same lens, so what is drawn is what is
+  saved. Saving records it (`distortion`); a lens switched off on a ground that has a default is saved as
+  `"lens": "off"`. A stored record with neither (older GT, proposals) is *rendered* with the default
+  (`distortion_source: "rig_default"`; for proposals `H`, `overlay` and `mean_err_m` are re-derived from the points
+  under that lens, and accepting saves what the card showed); stored files are never rewritten by a read.
+  - Tests: `tests/labeller/test_calibration_lens.py`, `tests/calibration/test_lens.py::test_default_distortion_*`,
+    `test_calibration_editor_js.py::test_lens_helpers_under_node` (buttons/keys UNTESTED-FRONTEND)
+- **LAB-1226** (SHOULD) `POST /calibration/api/snap` (editor button "Snap to lines", key `s`, optional "k1 only")
+  takes the `/fit` body plus `{clip, frame_index, mode: "full"|"k1"}` and refines `H` and `k1` of the current fit
+  against the frame's line mask (`calibration/lens.py`: robust soft-L1 least squares over the 8 homography
+  parameters + k1 from the current solution with bounded steps, the clicked points as soft constraints; evidence =
+  `centre_circle.line_mask_for` + the far-edge strip, scored with `pitch_finders.Field/Template/evaluate`). It is
+  accepted only if the line F1 improves and no clicked point moves more than ~4 px (of 1280 px); then the clicked
+  points are moved onto the snapped model (so the server refit from them reproduces it; Undo restores them and
+  the old lens). Otherwise the answer carries `accepted: false` and a `reason` and the input fit. Always returns
+  `f1_before/after`, `k1_before/after`, `max_click_shift_px` and the touchline/goal-line `edge_before/after`
+  residual. Nothing is stored. Offline evaluation: `python -m footy_track.scripts.calib_lens_eval`.
+  - Tests: `tests/calibration/test_lens.py`, `tests/labeller/test_calibration_lens.py::test_snap_route_*`
+
 ## 17. Labelling site (informative)
 
 **One site, always main.** Open `http://mac-mini-i7:8011/` on the tailnet. It serves
