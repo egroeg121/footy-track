@@ -20,7 +20,9 @@
          padding:7px 10px; font:inherit; cursor:pointer; text-decoration:none; display:inline-block; }
   button:hover, a.btn:hover { border-color:var(--accent); }
   button.on, a.btn.on { background:#16314d; border-color:var(--accent); }
-  button:disabled, a.btn.off { opacity:.4; pointer-events:none; }
+  button:disabled, a.btn.off { opacity:.4; }
+  button:disabled { pointer-events:none; }
+  a.btn.off { cursor:not-allowed; } /* stays hoverable so its title explains why */
   .chip { font-size:12px; color:var(--muted); }
   .chip b { color:var(--ink); }
   .g { color:var(--green); } .a { color:var(--amber); } .r { color:var(--red); }
@@ -251,8 +253,11 @@ async function show() {
   $("ov").innerHTML = showLines ? overlaySVG(f.overlay, 2.5) : "";
   $("msg").textContent = f.status === "uncalibrated" ? "no calibration for this frame" : "";
   const el = $("editLink");
-  el.href = f.editor_url; el.classList.toggle("off", !f.editor_ok);
-  el.title = f.editor_ok ? "open this frame in the calibration editor (E)" : "this clip has no video the editor can find (not in the current dataset, not a full-match segment; try ?dataset=)";
+  el.href = f.editor_ok ? f.editor_url : "#"; el.classList.toggle("off", !f.editor_ok);
+  el.onclick = f.editor_ok ? null : (ev) => ev.preventDefault();
+  el.title = f.editor_ok ? "open this frame in the calibration editor (E)"
+    : f.editor_mode === "cv2_seek" ? "editor numbers frames differently for this clip (cv2 seek); see VFR note"
+    : "this clip has no video the editor can find (not in a dataset, not a full-match segment; try ?dataset=)";
   const bits = [
     `<span class="badge ${f.status}">${f.status}</span>`,
     `<span>seg <b>${seg.segment}</b> (${esc(seg.source)}, ${pct(seg.accepted_frac)} accepted) · local <b>${f.local}</b> · global <b>${f.frame}</b></span>`,

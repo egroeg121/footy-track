@@ -8,8 +8,13 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from footy_track.feature_store.ingest_calibration import (
+    CalibrationImportReport,
+    parse_gt_file,
+)
 from footy_track.labeller import calibration as cal
 from footy_track.labeller import calibration_match as cm
+from footy_track.labeller import datasets, jobs
 from footy_track.labeller import match_segments as ms
 
 from ..calibration.test_geometry import H, W
@@ -176,10 +181,14 @@ def test_dataset_clip_gt_reuses_its_sidecar_no_duplicate(ed):
     assert [p.name for p in (ed.gt / "calibration_gt").iterdir()] == ["arsenal_mancity_seg010.json"]
 
 
-def test_match_page_editor_ok_now_true_for_segment_clips(ed):
+def test_match_page_links_only_clips_the_editor_numbers_by_decoded_index(ed):
     assert cm._editor_has_clip("arsenal_bournemouth_1st_seg087") is True
-    assert cm._editor_has_clip("arsenal_mancity_seg010") is True
+    assert cm._editor_mode("arsenal_bournemouth_1st_seg087") == "decoded"
+    # opens (dataset dir) but by the cv2 seek: not linked
+    assert cm._editor_has_clip("arsenal_mancity_seg010") is False
+    assert cm._editor_mode("arsenal_mancity_seg010") == "cv2_seek"
     assert cm._editor_has_clip("arsenal_bournemouth_1st_seg999") is False
+    assert cm._editor_mode("arsenal_bournemouth_1st_seg999") is None
 
 
 def test_editor_and_match_page_decode_the_same_file_and_index(ed):
@@ -206,3 +215,159 @@ def test_match_page_reads_by_pts(monkeypatch):
     monkeypatch.setattr(cm, "read_frame_exact", lambda v, i: seen.append((v, i)))
     cm._read_frame(Path("x.mp4"), 9)
     assert seen == [(Path("x.mp4"), 9)]
+
+
+# ---------------------------------------------------------------------------
+# Frame-index convention: per clip, independent of the active dataset
+# ---------------------------------------------------------------------------
+
+SEG_CLIP = "arsenal_bournemouth_1st_seg087"
+
+
+@pytest.fixture
+def multi(client, tmp_path, data, monkeypatch):
+    """Two registered datasets; ``calib`` (default) has no clips, ``other`` holds the Bournemouth clip; the same clip
+    is also a full-match segment. Reads record which reader was used."""
+    for var in ("FOOTY_CLIPS_DIR", "FOOTY_GT_MARKS_DIR", "FOOTY_BALL_CANDIDATES_DIR"):
+        monkeypatch.delenv(var, raising=False)
+    dirs = {n: {"clips": tmp_path / n / "clips", "marks": tmp_path / n / "marks"} for n in ("calib", "other")}
+    for d in dirs.values():
+        d["clips"].mkdir(parents=True)
+        d["marks"].mkdir(parents=True)
+    reg = tmp_path / "reg.json"
+    monkeypatch.setenv("FOOTY_LABELLER_DATASETS", str(reg))
+    datasets.write_registry(reg, "calib", {
+        n: {"clips_dir": str(d["clips"]), "marks_dir": str(d["marks"])} for n, d in dirs.items()})
+    seg = _match(data, "arsenal_bournmouth_1st_half", [BOURN])
+    calls: list[tuple[str, str, int]] = []
+    monkeypatch.setattr(cal, "read_frame_exact", lambda v, i: calls.append(("exact", str(v), i)) or np.zeros((H, W, 3), np.uint8))
+    monkeypatch.setattr(cal, "read_frame", lambda v, i: calls.append(("seek", str(v), i)) or np.zeros((H, W, 3), np.uint8))
+    monkeypatch.setattr(cal, "_video_meta", lambda v: {"frames": 50, "fps": 25.0, "width": W, "height": H})
+    client.dirs, client.seg, client.calls, client.reg = dirs, seg, calls, reg
+    cm._EDITOR_CACHE.clear()
+    cal._WARNED_SEEK.clear()
+    yield client
+    datasets.invalidate()
+
+
+def _gt_file(multi, ds="calib"):
+    return multi.dirs[ds]["marks"] / "calibration_gt" / f"{SEG_CLIP}.json"
+
+
+def test_clip_in_another_dataset_keeps_cv2_seek_whichever_dataset_is_active(multi):
+    other_video = multi.dirs["other"]["clips"] / BOURN
+    other_video.touch()
+    # active dataset is calib, which has no such clip: still the other dataset's file, still the seek
+    assert cal._find_video(SEG_CLIP) == other_video
+    assert cal.frame_convention(SEG_CLIP) == "cv2_seek"
+    assert multi.get(f"/calibration/api/frame/{SEG_CLIP}/5.jpg").status_code == 200
+    assert multi.calls == [("seek", str(other_video), 5)]
+    # and with the owning dataset active
+    assert multi.get(f"/calibration/api/frame/{SEG_CLIP}/6.jpg?dataset=other").status_code == 200
+    assert multi.calls[-1] == ("seek", str(other_video), 6)
+
+
+def test_current_dataset_is_searched_before_the_others(multi):
+    (multi.dirs["other"]["clips"] / BOURN).touch()
+    mine = multi.dirs["calib"]["clips"] / BOURN
+    mine.touch()
+    assert cal._find_video(SEG_CLIP) == mine
+
+
+def test_extra_clips_dirs_of_other_datasets_count(multi, tmp_path):
+    extra = tmp_path / "extra"
+    extra.mkdir()
+    (extra / BOURN).touch()
+    datasets.write_registry(multi.reg, "calib", {
+        "calib": {"clips_dir": str(multi.dirs["calib"]["clips"]), "marks_dir": str(multi.dirs["calib"]["marks"])},
+        "other": {"clips_dir": str(multi.dirs["other"]["clips"]), "marks_dir": str(multi.dirs["other"]["marks"]),
+                  "extra_clips_dirs": [str(extra)]}})
+    assert cal._find_video(SEG_CLIP) == extra / BOURN
+    assert cal.frame_convention(SEG_CLIP) == "cv2_seek"
+
+
+def test_clip_found_only_as_a_segment_is_read_by_decoded_index(multi):
+    assert cal._find_video(SEG_CLIP) == multi.seg / BOURN
+    assert cal.frame_convention(SEG_CLIP) == "decoded"
+    multi.get(f"/calibration/api/frame/{SEG_CLIP}/9.jpg")
+    assert multi.calls == [("exact", str(multi.seg / BOURN), 9)]
+
+
+def test_new_saves_record_convention_and_video(multi):
+    r = multi.put(f"/calibration/api/gt/{SEG_CLIP}/12", json=_body())
+    assert r.status_code == 200
+    rec = json.loads(_gt_file(multi).read_text())["frames"]["12"]
+    assert rec["frame_index_convention"] == "decoded"
+    assert rec["video"] == f"arsenal_bournmouth_1st_half/split_video_broadcast_frames/{BOURN}"
+    # the next frame of the same clip stays decoded (the sidecar holds only decoded frames)
+    assert multi.put(f"/calibration/api/gt/{SEG_CLIP}/13", json=_body()).status_code == 200
+    assert json.loads(_gt_file(multi).read_text())["frames"]["13"]["frame_index_convention"] == "decoded"
+
+
+def test_dataset_clip_save_is_marked_cv2_seek(multi):
+    (multi.dirs["other"]["clips"] / BOURN).touch()
+    assert multi.put(f"/calibration/api/gt/{SEG_CLIP}/4", json=_body()).status_code == 200
+    rec = json.loads(_gt_file(multi).read_text())["frames"]["4"]
+    assert rec["frame_index_convention"] == "cv2_seek"
+    assert rec["video"].endswith(f"other/clips/{BOURN}") or rec["video"].endswith(BOURN)
+
+
+def test_legacy_gt_sidecar_forces_the_seek_on_the_segment_file(multi, caplog):
+    gt = _gt_file(multi)
+    gt.parent.mkdir(parents=True)
+    legacy = {"frame_index": 802, "H": [[1, 0, 0], [0, 1, 0], [0, 0, 1]], "correspondences": []}  # no marker
+    gt.write_text(json.dumps({"clip": SEG_CLIP, "frames": {"802": legacy}}))
+    cm._EDITOR_CACHE.clear()
+    with caplog.at_level("WARNING"):
+        assert cal.frame_convention(SEG_CLIP) == "cv2_seek"
+        multi.get(f"/calibration/api/frame/{SEG_CLIP}/802.jpg")
+    assert multi.calls == [("seek", str(multi.seg / BOURN), 802)]
+    assert any("frame_index_convention" in r.message for r in caplog.records)
+    assert cm._editor_has_clip(SEG_CLIP) is False and cm._editor_mode(SEG_CLIP) == "cv2_seek"
+    # a save into that sidecar is marked cv2_seek: the conventions never mix in one file
+    assert multi.put(f"/calibration/api/gt/{SEG_CLIP}/810", json=_body()).status_code == 200
+    frames = json.loads(gt.read_text())["frames"]
+    assert frames["810"]["frame_index_convention"] == "cv2_seek" and "frame_index_convention" not in frames["802"]
+    assert cal.frame_convention(SEG_CLIP) == "cv2_seek"
+
+
+def test_sidecar_of_only_decoded_frames_stays_decoded(multi):
+    gt = _gt_file(multi)
+    gt.parent.mkdir(parents=True)
+    gt.write_text(json.dumps({"clip": SEG_CLIP, "frames": {"3": {"frame_index_convention": "decoded"}}}))
+    assert cal.frame_convention(SEG_CLIP) == "decoded"
+
+
+def test_gt_readers_ignore_the_new_keys(multi):
+    multi.put(f"/calibration/api/gt/{SEG_CLIP}/12", json=_body())
+    path = _gt_file(multi)
+    report = CalibrationImportReport()
+    parsed = parse_gt_file(path, SEG_CLIP, report)
+    assert parsed is not None and len(parsed.calib) == 1
+    assert report.warnings == [] and report.skipped == 0
+    doc = json.loads(path.read_text())
+    assert cal._read_gt(SEG_CLIP)["frames"]["12"] == doc["frames"]["12"]
+    assert cal._gt_frames(SEG_CLIP) == [12]
+    assert jobs  # imported: its calibration reader picks named fields only (_CALIB_FIELDS)
+
+
+def test_unsafe_clip_names_find_nothing(multi):
+    for bad in ("../x", "a/b", ".hidden", "x*", "x[0]", ""):
+        assert cal._find_video(bad) is None, bad
+
+
+def test_match_page_dims_the_link_for_seek_clips_and_says_why(multi, monkeypatch):
+    """frame_info reports editor_ok False + editor_mode cv2_seek for a clip that lives in a dataset dir."""
+    (multi.dirs["other"]["clips"] / BOURN).touch()
+    cm._EDITOR_CACHE.clear()
+    assert cm._editor_has_clip(SEG_CLIP) is False
+    assert cm._editor_mode(SEG_CLIP) == "cv2_seek"
+    html = (Path(cm.__file__).parent / "web" / "calibration_match.html").read_text()
+    assert "editor numbers frames differently for this clip (cv2 seek); see VFR note" in html
+
+
+def test_clip_only_in_another_dataset_and_not_a_segment_stays_isolated(multi):
+    (multi.dirs["other"]["clips"] / "private_clip.mp4").touch()
+    assert cal._find_video("private_clip") is None
+    assert multi.get("/calibration/api/clips/private_clip/meta").status_code == 404
+    assert multi.get("/calibration/api/clips/private_clip/meta?dataset=other").status_code == 200

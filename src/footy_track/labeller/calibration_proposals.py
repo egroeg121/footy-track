@@ -241,7 +241,7 @@ async def accept_proposal(clip: str, run_id: str, idx: int, body: dict | None = 
     origin = {"source": run.get("source") or "claude", "run_id": run_id, "proposal_status": status}
     if padded:
         origin["padded_synthetic"] = padded
-    gt_rec = cal._gt_record(idx, res, fit_body, origin)
+    gt_rec = cal._gt_record(idx, res, fit_body, origin, clip=clip)
 
     def _store() -> None:
         cal.update_gt(clip, lambda doc: doc["frames"].update({str(idx): gt_rec}))
