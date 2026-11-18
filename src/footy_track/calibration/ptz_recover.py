@@ -87,12 +87,15 @@ def rig_variants(rig: ptz.Rig) -> list[tuple[str, ptz.Rig]]:
     ``rig.info["pose_prior"]["side_cx_m"]`` (the rig alone when absent). The broadcast also uses a gantry camera level with
     each penalty-area line: free-C fits of the penalty-D finder points of the weak segments land at C_x = +32.8 / -32.1 m
     with C_y, C_z within 2 m of the centre camera (seg073 / seg108 / seg156); their fixed-C reprojection error is 215 px at the
-    centre position and 1-7 px at the side one."""
+    centre position and 1-7 px at the side one. An entry is a number (x offset) or ``[dx, dy, dz]`` (the Vitality's side gantries
+    sit 0.6-1.7 m further back and 0.8-1.1 m higher than the centre rig: with only dx the line F1 at the side position drops
+    from 0.65 to 0.38)."""
     side = ((rig.info or {}).get("pose_prior") or {}).get("side_cx_m")
     out = [("centre", rig)]
-    for dx in side or []:
-        out.append((f"x{dx:+g}", ptz.Rig(np.array([rig.C[0] + dx, rig.C[1], rig.C[2]]), rig.roll, rig.k1, rig.sigma_C, rig.pitch,
-                                         rig.info)))
+    for e in side or []:
+        dx, dy, dz = (e, 0.0, 0.0) if np.isscalar(e) else e  # a number = x offset only; [dx, dy, dz] = a full offset from the rig C
+        out.append((f"x{dx:+g}", ptz.Rig(np.array([rig.C[0] + dx, rig.C[1] + dy, rig.C[2] + dz]), rig.roll, rig.k1, rig.sigma_C,
+                                         rig.pitch, rig.info)))
     return out
 
 

@@ -87,10 +87,18 @@
     1.6,
     3.2
    ],
-   "source": "tilt_deg = a + b*ln(f_px) over accepted frames (every 5th) of the 76 Bournemouth 1st-half segments with accepted_frac >= 0.5 (8230 frames; pan 1-99% 47-129 deg, f 1-99% 2141-4665 px, tilt resid 1-99% -2.4..2.2 deg, std 0.79); ranges widened; tilt_offsets_deg scaled to the smaller sigma. side_cx_m: free-C fits of penalty-D finder points on weak segments 26, 41 (C_x=+36.4..+37.2, rms 1-3 px with C_y,C_z free) and 33, 57, 100 (C_x=-36.4..-36.6); fixed-C at the centre reprojects them 140-330 px off.",
+   "source": "tilt_deg = a + b*ln(f_px) over accepted frames (every 5th) of the 76 Bournemouth 1st-half segments with accepted_frac >= 0.5 (8230 frames; pan 1-99% 47-129 deg, f 1-99% 2141-4665 px, tilt resid 1-99% -2.4..2.2 deg, std 0.79); ranges widened; tilt_offsets_deg scaled to the smaller sigma. side_cx_m: free-C fits of penalty-D finder points on weak segments 26, 41 (C_x=+36.4..+37.2, rms 1-3 px with C_y,C_z free) and 33, 57, 100 (C_x=-36.4..-36.6); fixed-C at the centre reprojects them 140-330 px off. Side offsets [dx,dy,dz] from the rig C = medians of the free-C (all three free, sigma 100/3/1.5 m) fits: +side (11 frames, segs 26/41) C=(36.63,-52.50,8.96), -side (11 frames, segs 33/57/100) C=(-36.55,-51.38,8.66); with dx only the line F1 at the side position is 0.38 instead of 0.65.",
    "side_cx_m": [
-    36.6,
-    -36.6
+    [
+     36.7,
+     -1.7,
+     1.1
+    ],
+    [
+     -36.5,
+     -0.6,
+     0.8
+    ]
    ]
   }
  }

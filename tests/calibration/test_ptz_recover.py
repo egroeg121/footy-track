@@ -45,8 +45,13 @@ def test_rig_variants_add_the_two_penalty_line_camera_positions_of_each_ground()
     assert np.allclose(v[1][1].C - em.C, [32.7, 0, 0]) and v[1][1].k1 == em.k1 and v[2][1].roll == em.roll
     vit = ptz.Rig.from_json(RIGS / "vitality.json")  # penalty-area line at 52.5 - 16.5 = 36 m (free-C fits: +-36.6)
     vv = pr.rig_variants(vit)
-    assert [n for n, _ in vv] == ["centre", "x+36.6", "x-36.6"]
-    assert np.allclose(vv[2][1].C - vit.C, [-36.6, 0, 0]) and np.allclose(vv[2][1].C[1:], vit.C[1:])
+    assert [n for n, _ in vv] == ["centre", "x+36.7", "x-36.5"]
+    # the side gantries sit a little further back and higher than the centre rig (free-C fits), x is +-36.5 m
+    assert np.allclose(vv[1][1].C - vit.C, [36.7, -1.7, 1.1]) and np.allclose(vv[2][1].C - vit.C, [-36.5, -0.6, 0.8])
+    assert 8.5 < vv[1][1].C[2] < 9.5 and 36.0 < abs(vv[2][1].C[0]) < 37.0
+    r = ptz.Rig(np.array([0.0, -60.0, 10.0]), info={"pose_prior": {"side_cx_m": [5.0, [2.0, -1.0, 0.5]]}})
+    assert [n for n, _ in pr.rig_variants(r)] == ["centre", "x+5", "x+2"]  # numbers stay x-only offsets
+    assert np.allclose(pr.rig_variants(r)[1][1].C, [5.0, -60.0, 10.0]) and np.allclose(pr.rig_variants(r)[2][1].C, [2.0, -61.0, 10.5])
     assert [n for n, _ in pr.rig_variants(ptz.Rig(np.zeros(3)))] == ["centre"]  # a rig without a prior: one position
 
 
