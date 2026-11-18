@@ -1,4 +1,5 @@
-"""The ``ball_mining_refit`` hook: hit rates, Platt on R+A only, LTT, versioned state, reorder of unanswered U / M cards."""
+"""Refit of a round (library + ``ball_round refit``, outside the labeller server): hit rates, Platt on R+A only, LTT, versioned
+state, reorder of unanswered U / M cards through the API (with ``if_rev``)."""
 
 from __future__ import annotations
 
@@ -9,17 +10,16 @@ import pytest
 
 from footy_track.ball_mining import refit
 from footy_track.ball_mining.round import ROUND_HOOKS
-from footy_track.labeller import datasets, hooks, jobs
+from footy_track.labeller import hooks, job_edit, jobs, jobs_client, prefect_client
+from footy_track.scripts import ball_round
 
 CLIP = "m1_seg001"
 
 
-@pytest.fixture(autouse=True)
-def _hooks_clean():
-    hooks._reset_for_tests()
-    yield
-    hooks.drain()
-    hooks._reset_for_tests()
+def run_refit(api, job_id, **kw):
+    """``(summary, latest stored state)`` of a refit through the API double."""
+    out = refit.refit_round(job_id, client=api, **kw)
+    return out, refit.latest_state(refit.resolve_marks("train", None))
 
 
 def card(
@@ -119,8 +119,9 @@ def test_hit_rates_are_per_bucket_and_unsure_is_not_counted_as_a_decision():
     }
 
 
-def test_calibration_uses_only_random_and_audit_verdicts(round_job):
-    state, cal = refit.refit(jobs.read_job(round_job["id"]))
+def test_calibration_uses_only_random_and_audit_verdicts(api, round_job):
+    _, state = run_refit(api, round_job["id"], reorder=False)
+    cal = state["calibration"]
     assert (
         cal["fitted"] and cal["buckets_used"] == ["R", "A"] and cal["n"] == 660
     )  # the 50 U verdicts are not in the fit
@@ -132,8 +133,8 @@ def test_calibration_uses_only_random_and_audit_verdicts(round_job):
     assert state["scorer_version"] == "raw_conf" and state["n_verdicts"] == 710
 
 
-def test_threshold_comes_from_the_audit_verdicts_alone(round_job):
-    state, _ = refit.refit(jobs.read_job(round_job["id"]))
+def test_threshold_comes_from_the_audit_verdicts_alone(api, round_job):
+    _, state = run_refit(api, round_job["id"], reorder=False)
     g = state["threshold"]["global"]
     assert (
         g["status"] == "valid" and 0.80 <= g["threshold"] <= 0.85
@@ -146,11 +147,11 @@ def test_threshold_comes_from_the_audit_verdicts_alone(round_job):
     assert state["threshold"]["per_match"]["m1"]["threshold"] == g["threshold"]
 
 
-def test_with_too_few_audits_the_fallback_is_recorded_as_such(ds):
+def test_with_too_few_audits_the_fallback_is_recorded_as_such(api, ds):
     job = submit([card(i * 100, "A", 0.99, pi=0.1) for i in range(10)])
     for i in range(10):
         answer(ds, job["id"], i, "ball")
-    state, cal = refit.refit(jobs.read_job(job["id"]))
+    _, state = run_refit(api, job["id"], reorder=False)
     assert state["auto_accept"] == {
         "threshold": 0.95,
         "scale": "claude_verify_conf",
@@ -158,17 +159,17 @@ def test_with_too_few_audits_the_fallback_is_recorded_as_such(ds):
     }
     assert (
         state["threshold"]["global"]["status"] == "no_valid_threshold"
-        and cal["fitted"] is False
-        and "need >= 10" in cal["noop"]
+        and state["calibration"]["fitted"] is False
+        and "need >= 10" in state["calibration"]["noop"]
     )
 
 
 def test_state_files_are_versioned_immutable_and_reused_for_the_same_verdicts(
-    ds, round_job
+    api, ds, round_job
 ):
-    job = jobs.read_job(round_job["id"])
-    s1, _ = refit.refit(job)
-    s2, _ = refit.refit(job)
+    jid = round_job["id"]
+    s1, _ = run_refit(api, jid, reorder=False)
+    s2, _ = run_refit(api, jid, reorder=False)
     assert (s1["version"], s1["reused"], s2["version"], s2["reused"]) == (
         1,
         False,
@@ -179,23 +180,23 @@ def test_state_files_are_versioned_immutable_and_reused_for_the_same_verdicts(
         "v001.json"
     ]
     answer(
-        ds, job["id"], len(job["items"]) - 1, "ball"
+        ds, jid, len(jobs.read_job(jid)["items"]) - 1, "ball"
     )  # one more verdict -> a new version
-    s3, _ = refit.refit(jobs.read_job(job["id"]))
+    s3, latest = run_refit(api, jid, reorder=False)
     assert s3["version"] == 2 and sorted(
         p.name for p in (ds / "ball_mining" / "state").iterdir()
     ) == ["v001.json", "v002.json"]
-    assert refit.latest_state(ds)["version"] == 2
+    assert latest["version"] == 2
 
 
-def test_verdicts_of_another_scorer_version_do_not_feed_the_fit(ds):
+def test_verdicts_of_another_scorer_version_do_not_feed_the_fit(api, ds):
     items = [card(i * 100, "A", 0.99, pi=0.1, scorer="old") for i in range(150)] + [
         card(20000 + i * 100, "A", 0.99, pi=0.1, scorer="new") for i in range(5)
     ]
     job = submit(items)
     for i in range(155):
         answer(ds, job["id"], i, "ball")
-    st, _ = refit.refit(jobs.read_job(job["id"]))  # the job's items are mostly "old"
+    _, st = run_refit(api, job["id"], reorder=False)  # the job's items are mostly "old"
     assert (
         st["scorer_version"] == "old"
         and st["n_rows_other_scorer"] == 5
@@ -203,7 +204,7 @@ def test_verdicts_of_another_scorer_version_do_not_feed_the_fit(ds):
     )
 
 
-def test_gold_accepted_too_often_flags_the_round(ds):
+def test_gold_accepted_too_often_flags_the_round(api, ds):
     job = submit([card(i * 100, "G", None) for i in range(8)])
     for i, v in enumerate(
         [
@@ -218,13 +219,31 @@ def test_gold_accepted_too_often_flags_the_round(ds):
         ]
     ):
         answer(ds, job["id"], i, v)
-    state, _ = refit.refit(jobs.read_job(job["id"]))
+    _, state = run_refit(api, job["id"], reorder=False)
     assert state["gold"] == {
         "n": 7,
         "accepted_wrong": 4,
         "accept_rate": 0.5714,
         "flagged": True,
     }
+
+
+def test_verdicts_of_all_rounds_of_the_dataset_feed_the_fit_but_not_other_jobs(
+    api, ds, round_job
+):
+    other = submit(
+        [card(900000 + i * 100, "A", 0.99, pi=0.1) for i in range(5)],
+        key="ball-round/2026-11-18/2",
+    )
+    for i in range(5):
+        answer(ds, other["id"], i, "ball")
+    plain = submit(
+        [card(990000, "A", 0.99, pi=0.1)], key="someone-else/x"
+    )  # not a round: never read
+    answer(ds, plain["id"], 0, "not_ball")
+    _, st = run_refit(api, round_job["id"], reorder=False)
+    assert st["n_verdicts"] == 715 and st["hit_rates"]["A"]["n"] == 605
+    assert not any(c == ("results", plain["id"]) for c in api.calls)
 
 
 def test_priority_order_redeals_u_and_m_cards_inside_their_own_slots():
@@ -256,19 +275,22 @@ def test_priority_order_redeals_u_and_m_cards_inside_their_own_slots():
     )  # no calibration: raw |p - 0.5|, so the p=0.5 card leads
 
 
-def test_the_hook_refits_stores_state_and_reorders_only_unanswered_u_and_m_cards(
-    ds, round_job
+def test_refit_stores_state_and_reorders_only_unanswered_u_and_m_cards_through_the_api(
+    api, ds, round_job
 ):
     jid = round_job["id"]
     before = jobs.read_job(jid)
-    res = hooks.run_now(jid, "refit")
-    entry = res["history"][-1]
-    assert entry["ok"] is True and entry["action"] == "ball_mining_refit", entry
+    out, _ = run_refit(api, jid)
     assert (
-        entry["result"]["version"] == 1
-        and entry["result"]["calibrated"] is True
-        and entry["result"]["changed"] is True
-    )
+        out["version"] == 1
+        and out["calibrated"] is True
+        and out["changed"] is True
+        and out["attempts"] == 1
+    ), out
+    reorder_call = next(c for c in api.calls if c[0] == "reorder")
+    assert reorder_call[3] == "ball_round_refit" and reorder_call[5] == (
+        before.get("rev") or 0
+    )  # if_rev from the same read
     after = jobs.read_job(jid)
     n_answered = 710
     assert (
@@ -292,26 +314,134 @@ def test_the_hook_refits_stores_state_and_reorders_only_unanswered_u_and_m_cards
     assert (ds / "ball_mining" / "state" / "v001.json").is_file()
 
 
-def test_the_close_hook_writes_a_final_state_and_does_not_reorder(ds, round_job):
-    job = jobs.read_job(round_job["id"])
-    hook = next(h for h in job["hooks"] if h["name"] == "close")
-    assert hook["trigger"]["on_done"] is True and hook["action"]["params"] == {
-        "close": True
-    }
-    ctx = hooks.HookContext(job, hook, "on_done", None, {"close": True})
-    with datasets.using("train"):
-        out = refit._action(ctx)
-    assert "reordered" not in out and refit.latest_state(ds)["closed"] is True
-    assert jobs.read_job(job["id"]).get("rev", 0) == job.get("rev", 0)
+def test_a_rev_conflict_rereads_the_job_and_retries_with_the_fresh_rev(
+    api, ds, round_job
+):
+    jid = round_job["id"]
+    fired = []
 
+    def racing_change(ref, order):  # someone reorders between our read and our write
+        if not fired:
+            fired.append(1)
+            n = [i for i, _ in refit.unanswered_from_results(api.results(ref))]
+            job_edit.reorder_unanswered(jid, n[::-1], by="someone")
 
-def test_hook_config_is_valid_for_ball_check_jobs_only():
-    assert [h["name"] for h in hooks.validate_hooks("ball_check", ROUND_HOOKS)] == [
-        "refit",
-        "close",
-    ]
+    api.before_reorder = racing_change
+    out, _ = run_refit(api, jid)
+    assert out["attempts"] == 2 and "reordered" in out
+    reorders = [c for c in api.calls if c[0] == "reorder"]
     assert (
-        hooks.validate_hooks("ball_check", ROUND_HOOKS)[0]["trigger"]["every_n"] == 50
+        len(reorders) == 2 and reorders[1][5] == reorders[0][5] + 1
+    )  # second try carries the new rev
+    assert jobs.read_job(jid)["rev"] == 2
+
+
+def test_a_persistent_rev_conflict_gives_up_after_the_retries_without_failing(
+    api, ds, round_job
+):
+    jid = round_job["id"]
+
+    def always(ref, order):
+        n = [i for i, _ in refit.unanswered_from_results(api.results(ref))]
+        job_edit.reorder_unanswered(jid, n[::-1], by="busy")
+
+    api.before_reorder = always
+    out, st = run_refit(api, jid)
+    assert out["reorder"] == "rev_conflict" and out["attempts"] == refit.REORDER_TRIES
+    assert st["version"] == 1  # the state was stored anyway
+
+
+def test_other_api_errors_fail_closed_and_a_finished_job_is_not_reordered(
+    api, ds, round_job
+):
+    jid = round_job["id"]
+
+    def boom(*a, **k):
+        raise jobs_client.JobsError(500, "labeller down")
+
+    api.reorder = boom
+    with pytest.raises(jobs_client.JobsError):
+        run_refit(api, jid)
+    assert (
+        refit.latest_state(ds)["version"] == 1
+    )  # the state was written before the failed reorder
+    jobs._set_status(jid, "done", only_from=jobs.LIVE, by="test")
+    api.reorder = lambda *a, **k: pytest.fail("a finished job must not be reordered")
+    out, _ = run_refit(api, jid)
+    assert out["reorder"] == "skipped, job is done"
+
+
+def test_no_ball_mining_action_is_registered_in_the_labeller():
+    hooks._load_builtins()
+    assert (
+        not any("ball_mining" in n for n in hooks.ACTIONS)
+        and "broadcast_calibrate" in hooks.ACTIONS
     )
-    with pytest.raises(jobs.JobError, match="ball_check"):
-        hooks.validate_hooks("calibration", ROUND_HOOKS)
+
+
+def test_round_hooks_are_prefect_actions_for_the_two_deployments():
+    cleaned = hooks.validate_hooks("ball_check", ROUND_HOOKS)
+    assert [(h["name"], h["trigger"].get("every_n"), h["trigger"]["on_done"], h["action"]["type"], h["action"]["deployment"]) for h in cleaned] == [
+        ("refit", 50, False, "prefect", "ball-refit/ball-refit"),
+        ("close", None, True, "prefect", "ball-round-close/ball-round-close"),
+    ]  # fmt: skip
+    assert all(
+        h["trigger"]["min_interval_s"] >= hooks.MIN_PREFECT_INTERVAL_S for h in cleaned
+    )
+    assert [h["action"]["params"] for h in cleaned] == [
+        {},
+        {},
+    ]  # the job ref arrives as job_id, added by the labeller
+
+
+def test_the_prefect_run_the_hook_queues_carries_the_job_id(monkeypatch, round_job):
+    """What ``hooks._queue_prefect`` sends: ``job_id`` is the flow's job reference (there is no ``job_ref``)."""
+    sent = {}
+    monkeypatch.setattr(
+        prefect_client,
+        "create_flow_run",
+        lambda params, deployment, name=None: sent.update(
+            params=params, deployment=deployment
+        )
+        or "run-1",
+    )
+    monkeypatch.setenv("FOOTY_LABELLER_URL", "http://127.0.0.1:8011")
+    job = jobs.read_job(round_job["id"])
+    hook = next(h for h in job["hooks"] if h["name"] == "refit")
+    assert hooks._queue_prefect(job, hook, "every_n") == "run-1"
+    assert sent["deployment"] == "ball-refit/ball-refit"
+    assert sent["params"] == {
+        "job_id": job["id"],
+        "hook": "refit",
+        "trigger": "every_n",
+        "dataset": "train",
+        "labeller_url": "http://127.0.0.1:8011",
+    }
+
+
+def test_cli_refit_prints_one_json_line_and_exits_2_on_an_api_error(
+    monkeypatch, api, ds, round_job, capsys
+):
+    monkeypatch.setattr(refit.jobs_client, "results", api.results)
+    monkeypatch.setattr(refit.jobs_client, "list_jobs", api.list_jobs)
+    monkeypatch.setattr(refit.jobs_client, "reorder", api.reorder)
+    assert (
+        ball_round.main(
+            ["refit", "--job", round_job["id"], "--labeller-url", "http://x:1"]
+        )
+        == 0
+    )
+    doc = json.loads(capsys.readouterr().out)
+    assert (
+        doc["status"] == "ok"
+        and doc["version"] == 1
+        and doc["changed"] is True
+        and doc["job"] == round_job["id"]
+    )
+
+    def down(*a, **k):
+        raise jobs_client.JobsError(503, "labeller down")
+
+    monkeypatch.setattr(refit.jobs_client, "results", down)
+    assert ball_round.main(["refit", "--job", round_job["id"]]) == 2
+    assert json.loads(capsys.readouterr().out)["status"] == "error"

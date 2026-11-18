@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+import json
+
 import numpy as np
 import pandas as pd
 import pytest
 
 from footy_track.ball_mining import miner
 from footy_track.ball_mining.schema import validate_pool
-from footy_track.labeller import datasets
+from footy_track.labeller import datasets, job_edit, jobs, jobs_client
 
 
 def make_pool(rows: list[dict]) -> pd.DataFrame:
@@ -92,3 +94,51 @@ def ds(tmp_path, monkeypatch):
     datasets.invalidate()
     yield root / "marks"
     datasets.invalidate()
+
+
+class LocalApi:
+    """The labeller API calls the refit / close code makes (``list_jobs``, ``results``, ``reorder``), served in-process from the
+    real job and label stores, with the same JSON document shapes and 409 / 422 bodies as ``jobs_routes``. ``before_reorder`` is
+    called with the ``(ref, order)`` of every reorder, to simulate a concurrent change."""
+
+    JobsError = jobs_client.JobsError
+
+    def __init__(self):
+        self.calls: list[tuple] = []
+        self.before_reorder = None
+
+    def list_jobs(self, **f):
+        self.calls.append(("list", f))
+        return [
+            jobs.public(j, None, items=False)
+            for j in jobs.filter_jobs(kind=f.get("kind"), dataset=f.get("dataset"))
+        ]
+
+    def results(self, ref):
+        self.calls.append(("results", ref))
+        job, c = jobs.job_with_progress(jobs.resolve(ref))
+        return json.loads(json.dumps(jobs.results_doc(job, c), default=str))
+
+    def reorder(self, ref, order, *, by="api", note=None, if_rev=None, url=None):
+        self.calls.append(("reorder", ref, list(order), by, note, if_rev))
+        if self.before_reorder:
+            self.before_reorder(ref, order)
+        try:
+            return job_edit.reorder_unanswered(
+                jobs.resolve(ref)["id"], order, by=by, note=note, if_rev=if_rev
+            )
+        except jobs.JobError as e:
+            raise jobs_client.JobsError(
+                e.status, {"detail": e.detail, **e.extra}
+            ) from None
+
+
+@pytest.fixture
+def api():
+    return LocalApi()
+
+
+@pytest.fixture(autouse=True)
+def _no_label_hooks(monkeypatch):
+    """Completing a round job in a test must not start the hook worker (which would try to queue a Prefect run)."""
+    monkeypatch.setenv("FOOTY_LABELLING_HOOKS", "0")

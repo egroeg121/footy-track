@@ -1,12 +1,13 @@
-"""The ``ball_mining_refit`` labelling hook (design §3.2 "Adaptive within a round", §6 Loop 2 "Refit" and "Close").
+"""Refit of a training round (design §3.2 "Adaptive within a round", §6 Loop 2 "Refit"): a **library plus CLI that run
+outside the labeller server** (``ball_round refit --job <ref>``; Prefect flow ``ball-refit`` in the jobs repo).
 
-Attached to a round's ``ball_check`` job (``round.py`` does this) as two hooks of one action::
+The labeller only *triggers* it: ``round.ROUND_HOOKS`` attach a hook of action type ``prefect`` (every 50 verdicts) that
+queues the ``ball-refit/ball-refit`` deployment with ``{job_id, hook, trigger, dataset, labeller_url?}``; the flow runs the CLI,
+which talks back through the labeller's API (``GET /api/jobs/<ref>/results``, ``POST /api/jobs/<ref>/reorder``). Nothing
+here is registered as an in-process hook action.
 
-    {"name": "refit", "trigger": {"every_n": 50},  "action": {"type": "builtin", "name": "ball_mining_refit"}}
-    {"name": "close", "trigger": {"on_done": true}, "action": {"type": "builtin", "name": "ball_mining_refit", "params": {"close": true}}}
-
-Each run, over **every training verdict of the dataset** (all rounds; cards carry ``sampling`` as a hidden key, which
-the job results hand back as ``labels[].meta``):
+Each run, over **every training verdict of the dataset** (all ``ball-round/*`` jobs; cards carry ``sampling`` as a hidden
+key, which the job results hand back as ``labels[].meta``):
 
 1. per-bucket hit rates (share of decided cards that were the real ball), for reporting;
 2. a Platt fit ``P(real) = sigmoid(a * logit(p_real) + b)`` against the verdicts, using **only R and A** cards (the
@@ -15,12 +16,14 @@ the job results hand back as ``labels[].meta``):
 4. the gold check: if planted-wrong (G) cards are accepted more than 10 % of the time the round is flagged;
 5. an immutable ``<marks>/ball_mining/state/vNNN.json`` (same data again reuses the latest version, as
    ``broadcast_calibrate`` does);
-6. unless it is the ``close`` run: a new order for the unanswered cards. Inside the slots the U cards already hold they
-   are re-dealt by ``|p_cal - 0.5|`` ascending (most uncertain first), and the M cards inside the M slots by ``p_cal``
-   descending (most plausible gap first). R / A / N / G cards never move, so audits and gold stay interleaved at random
-   and answered cards are untouched (``job_edit.reorder_unanswered``).
+6. unless it is the close run (``close.py``): a new order for the unanswered cards, POSTed to ``/api/jobs/<ref>/reorder``
+   with ``if_rev`` (the ``rev`` read together with the unanswered positions; a 409 rev conflict re-reads and retries, up
+   to ``REORDER_TRIES`` times). Inside the slots the U cards already hold they are re-dealt by ``|p_cal - 0.5|``
+   ascending (most uncertain first), and the M cards inside the M slots by ``p_cal`` descending (most plausible gap
+   first). R / A / N / G cards never move, so audits and gold stay interleaved at random and answered cards are
+   untouched (the API never moves answered cards).
 
-``ball_mining_refit`` is registered with ``hooks.register_action`` when ``hooks._load_builtins`` imports this module.
+Any other API error propagates (fail closed): the state file may exist, the job is simply not reordered.
 """
 
 from __future__ import annotations
@@ -39,12 +42,16 @@ from footy_track.ball_mining.threshold import (
     learn_then_test,
     learn_then_test_per_match,
 )
-from footy_track.labeller import datasets, hooks, job_edit, jobs
+from footy_track.labeller import datasets, jobs, jobs_client
 from footy_track.labeller.broadcast_review import fit_platt, logit, sigmoid
 
 LOGGER = logging.getLogger(__name__)
 
 STATE_SCHEMA = "ball-mining-state/v1"
+ROUND_KEY_PREFIX = "ball-round/"
+REORDER_TRIES = 3
+REORDER_BY = "ball_round_refit"
+LIVE = ("open", "in_progress")
 CAL_MIN_PER_CLASS = 10
 GOLD_ACCEPT_FLAG = 0.10
 _STATE_NAME = re.compile(r"^v(\d{3,})\.json$")
@@ -79,36 +86,58 @@ def latest_state(marks_dir: str | Path) -> dict | None:
 # ---------------------------------------------------------------------------
 
 
-def is_mining_job(job: dict) -> bool:
-    return job.get("kind") == "ball_check" and any(
-        ((it.get("sampling") or {}).get("regime") == "train")
-        for it in job.get("items") or []
+def is_round_job(job: dict) -> bool:
+    """A job the training miner created (``ball-round/<date>/<n>``); cancelled ones are skipped by the callers."""
+    return job.get("kind") == "ball_check" and str(job.get("key") or "").startswith(
+        ROUND_KEY_PREFIX
     )
 
 
-def collect_rows(dataset: str) -> list[dict]:
-    """One row per live verdict on a training card of any job of ``dataset``: ``bucket, band, match, p_real, pi,
-    scorer_version, verdict, clip, frame, job``. Must run under ``datasets.using(dataset)`` (the hook does)."""
+def rows_from_results(doc: dict) -> list[dict]:
+    """One row per live verdict on a training card of a ``labelling-job-results/v1`` document: ``bucket, band, match,
+    p_real, pi, scorer_version, verdict, clip, frame, job, gold_kind``."""
     rows = []
-    for job in jobs.all_jobs():
-        if (
-            job.get("dataset") != dataset
-            or job.get("status") == "cancelled"
-            or not is_mining_job(job)
-        ):
+    for lab in doc.get("labels") or []:
+        meta = lab.get("meta") or {}
+        s = meta.get("sampling") or {}
+        if s.get("regime") != "train":
             continue
-        for lab in jobs.compute(job)["labels"]:
-            meta = lab.get("meta") or {}
-            s = meta.get("sampling") or {}
-            if s.get("regime") != "train":
-                continue
-            rows.append({
-                "bucket": s.get("bucket"), "band": s.get("band"), "match": meta.get("match") or s.get("match"),
-                "p_real": meta.get("p_real"), "pi": s.get("pi"), "scorer_version": meta.get("scorer_version") or s.get("scorer_version"),
-                "verdict": lab.get("verdict"), "clip": lab.get("clip"), "frame": lab.get("frame_index"), "job": job["id"],
-                "gold_kind": (s.get("gold") or {}).get("kind"),
-            })  # fmt: skip
+        rows.append({
+            "bucket": s.get("bucket"), "band": s.get("band"), "match": meta.get("match") or s.get("match"),
+            "p_real": meta.get("p_real"), "pi": s.get("pi"), "scorer_version": meta.get("scorer_version") or s.get("scorer_version"),
+            "verdict": lab.get("verdict"), "clip": lab.get("clip"), "frame": lab.get("frame_index"), "job": doc["job"]["id"],
+            "gold_kind": (s.get("gold") or {}).get("kind"),
+        })  # fmt: skip
     return rows
+
+
+def collect_rows(client, dataset: str, *, current: dict | None = None) -> list[dict]:
+    """Verdict rows of every live (not cancelled) round job of ``dataset``, read through the labeller API. ``current`` is
+    the already fetched results document of one of them (not fetched twice)."""
+    rows = []
+    for j in client.list_jobs(kind="ball_check", dataset=dataset, limit="5000"):
+        if not is_round_job(j) or j.get("status") == "cancelled":
+            continue
+        doc = (
+            current
+            if current is not None and current["job"]["id"] == j["id"]
+            else client.results(j["id"])
+        )
+        rows.extend(rows_from_results(doc))
+    if current is not None and not any(r["job"] == current["job"]["id"] for r in rows):
+        rows.extend(
+            rows_from_results(current)
+        )  # listed under another status filter / just created
+    return rows
+
+
+def unanswered_from_results(doc: dict) -> list[tuple[int, dict]]:
+    """``(position, item)`` of the cards not fully answered, in job order (the rule ``job_edit.answered_positions`` uses)."""
+    return [
+        (p["index"], p["item"])
+        for p in doc.get("items") or []
+        if not (p["total"] and p["done"] >= p["total"])
+    ]
 
 
 def hit_rates(rows: list[dict]) -> dict[str, dict]:
@@ -240,19 +269,18 @@ def current_scorer(job: dict) -> str | None:
     return c.most_common(1)[0][0] if c else None
 
 
-def refit(
-    job: dict,
+def compute_state(
+    doc: dict,
+    rows: list[dict],
     *,
-    trigger: str = "manual",
-    marks_dir: str | Path | None = None,
+    marks: Path,
+    closed: bool = False,
     params: dict | None = None,
-) -> tuple[dict, dict | None]:
-    """Compute and store the state for ``job``'s dataset; returns ``(state, calibration)``."""
+) -> tuple[dict, dict]:
+    """Compute and store the state for the round whose results are ``doc``; returns ``(state, calibration)``."""
     params = params or {}
-    ds = datasets.get(job["dataset"])
-    marks = Path(marks_dir) if marks_dir else ds.marks_dir
-    rows = collect_rows(job["dataset"])
-    scorer = current_scorer(job)
+    job = doc["job"]
+    scorer = current_scorer({"items": [p["item"] for p in doc.get("items") or []]})
     same = [r for r in rows if r.get("scorer_version") in (scorer, None)]
     cal = fit_calibration(
         same, min_per_class=int(params.get("min_per_class", CAL_MIN_PER_CLASS))
@@ -267,7 +295,7 @@ def refit(
     decided = [r for r in rows if r.get("verdict") in (*CORRECT, *WRONG)]
     state = {
         "schema": STATE_SCHEMA, "ts": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"), "job_id": job["id"], "round": job.get("key"),
-        "trigger": trigger, "closed": trigger == "on_done", "scorer_version": scorer, "n_verdicts": len(decided),
+        "trigger": "close" if closed else "refit", "closed": closed, "scorer_version": scorer, "n_verdicts": len(decided),
         "n_rows_other_scorer": len(rows) - len(same), "hit_rates": hit_rates(rows), "gold": gold_check(rows), "calibration": cal,
         "threshold": {"global": ltt.as_dict(), "per_match": {m: r.as_dict() for m, r in per_match.items()}, "grid": [0.99, 0.50, 0.01],
                       "method": "learn-then-test, fixed sequence from high t, exact binomial", **kw},
@@ -276,25 +304,62 @@ def refit(
     return write_state(marks, state), cal
 
 
-def _action(ctx: hooks.HookContext) -> dict:
-    """Refit hit rates, Platt (R+A) and the LTT threshold from the round verdicts, store ``state/vNNN.json`` and re-prioritise
-    the unanswered U / M cards (params: ``close``, ``reorder`` (true), ``min_per_class``, ``target``, ``delta``)."""
-    state, cal = refit(ctx.job, trigger=ctx.trigger, params=ctx.params)
-    out = {"version": state["version"], "n_verdicts": state["n_verdicts"], "reused": state["reused"], "hit_rates": {b: v["hit_rate"] for b, v in state["hit_rates"].items()},
-           "calibrated": bool(cal and cal.get("fitted")), "auto_accept": state["auto_accept"], "gold": state["gold"]}  # fmt: skip
-    if (
-        ctx.params.get("close")
-        or ctx.trigger == "on_done"
-        or not ctx.params.get("reorder", True)
-    ):
-        return out
-    order = priority_order(job_edit.unanswered_items(ctx.job), cal)
-    res = ctx.reorder(
-        order,
-        note=f"ball_mining state v{state['version']}",
-        meta={"state_version": state["version"], "n": state["n_verdicts"]},
-    )
-    return {**out, "reordered": res["unanswered"], "changed": res["changed"]}
+def resolve_marks(dataset: str, marks_dir: str | Path | None) -> Path:
+    return Path(marks_dir) if marks_dir else datasets.get(dataset).marks_dir
 
 
-hooks.register_action("ball_mining_refit", _action, kinds=("ball_check",))
+def _apply_order(client, ref: str, doc: dict, cal: dict | None, state: dict) -> dict:
+    """POST the new order with ``if_rev``; on a rev conflict (a reorder / append landed since the read) re-read the job and
+    recompute the order from the fresh unanswered cards, up to ``REORDER_TRIES`` times."""
+    note = f"ball_mining state v{state['version']} ({state['n_verdicts']} verdicts)"
+    for attempt in range(1, REORDER_TRIES + 1):
+        if doc["job"].get("status") not in LIVE:
+            return {"reorder": f"skipped, job is {doc['job'].get('status')}"}
+        order = priority_order(unanswered_from_results(doc), cal)
+        try:
+            res = client.reorder(
+                ref,
+                order,
+                by=REORDER_BY,
+                note=note,
+                if_rev=int(doc["job"].get("rev") or 0),
+            )
+        except jobs_client.JobsError as e:
+            if e.status == 409 and isinstance(e.body, dict) and "rev" in e.body:
+                LOGGER.info(
+                    "reorder of %s hit a rev conflict (attempt %d): re-reading",
+                    ref,
+                    attempt,
+                )
+                doc = client.results(ref)
+                continue
+            raise
+        return {"reordered": res["unanswered"], "changed": res["changed"], "rev": res["rev"], "attempts": attempt}  # fmt: skip
+    return {"reorder": "rev_conflict", "attempts": REORDER_TRIES}
+
+
+def summary(state: dict, cal: dict | None) -> dict:
+    return {"version": state["version"], "n_verdicts": state["n_verdicts"], "reused": state["reused"], "closed": state["closed"],
+            "hit_rates": {b: v["hit_rate"] for b, v in state["hit_rates"].items()}, "calibrated": bool(cal and cal.get("fitted")),
+            "auto_accept": state["auto_accept"], "gold": state["gold"]}  # fmt: skip
+
+
+def refit_round(
+    ref: str,
+    *,
+    client=None,
+    marks_dir: str | Path | None = None,
+    params: dict | None = None,
+    reorder: bool = True,
+) -> dict:
+    """Refit from the verdicts of the dataset's rounds, store ``state/vNNN.json`` and (``reorder``) POST the new order of the
+    unanswered U / M cards of job ``ref`` (id or exact title). Returns a small JSON-able summary."""
+    client = client or jobs_client
+    doc = client.results(ref)
+    rows = collect_rows(client, doc["job"]["dataset"], current=doc)
+    marks = resolve_marks(doc["job"]["dataset"], marks_dir)
+    state, cal = compute_state(doc, rows, marks=marks, params=params)
+    out = {"job": doc["job"]["id"], "key": doc["job"].get("key"), **summary(state, cal)}
+    if reorder:
+        out.update(_apply_order(client, ref, doc, cal, state))
+    return out

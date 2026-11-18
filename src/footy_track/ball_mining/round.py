@@ -2,7 +2,9 @@
 
 ``plan``   mine the pool and return the cards + report; nothing is written to the labeller.
 ``create`` tick rule (open training cards < 100 and today's cards < 600), then submit one ``ball_check`` job with
-           idempotent key ``ball-round/<date>/<n>`` and the refit / close hooks attached (``ball_mining_refit``).
+           idempotent key ``ball-round/<date>/<n>`` and two ``prefect`` hooks attached (``ROUND_HOOKS``): every 50 verdicts the
+           labeller queues ``ball-refit/ball-refit``, on completion ``ball-round-close/ball-round-close``. The flows (jobs repo
+           ``footy_ball_round.py``) run ``ball_round refit`` / ``close`` (``refit.py`` / ``close.py``); the labeller does no work.
 ``status`` open / today counts, the tick decision and the latest state file.
 
 The labeller is reached through ``jobs_client`` (stdlib HTTP, ``$FOOTY_LABELLER_URL``); pass another object with the
@@ -34,12 +36,16 @@ DAILY_CARDS_MAX = 600
 DEFAULT_DATASET = "calib"
 DEFAULT_DATA_ROOT = "/mnt/storage/footy_data"
 
-#: Hooks attached to every round job (``hooks.validate_hooks`` shape).
+#: Hooks attached to every round job (``hooks.validate_hooks`` shape). Both are ``prefect`` actions: the labeller only queues
+#: the deployment, with ``{job_id, hook, trigger, dataset, labeller_url?}`` (the job is named ``job_id``, there is no way to
+#: add the job ref to ``params`` at submit time since the id does not exist yet); the flows take those and run the CLI.
+REFIT_DEPLOYMENT = "ball-refit/ball-refit"
+CLOSE_DEPLOYMENT = "ball-round-close/ball-round-close"
 ROUND_HOOKS = [
-    {"name": "refit", "trigger": {"every_n": 50, "min_interval_s": 30},
-     "action": {"type": "builtin", "name": "ball_mining_refit", "params": {}}},
+    {"name": "refit", "trigger": {"every_n": 50, "min_interval_s": 60},
+     "action": {"type": "prefect", "deployment": REFIT_DEPLOYMENT, "params": {}}},
     {"name": "close", "trigger": {"on_done": True},
-     "action": {"type": "builtin", "name": "ball_mining_refit", "params": {"close": True}}},
+     "action": {"type": "prefect", "deployment": CLOSE_DEPLOYMENT, "params": {}}},
 ]  # fmt: skip
 
 
@@ -70,11 +76,7 @@ def marks_dir(dataset: str) -> Path:
 # ---------------------------------------------------------------------------
 
 
-def _is_round(j: dict) -> bool:
-    return (
-        str(j.get("key") or "").startswith(f"{KEY_PREFIX}/")
-        and j.get("kind") == "ball_check"
-    )
+_is_round = refit_mod.is_round_job
 
 
 def _cards(j: dict) -> tuple[int, int]:
@@ -197,7 +199,7 @@ def plan_round(
 
 
 def job_body(result: MineResult, key: str, cfg: RoundConfig) -> dict:
-    """The ``POST /api/jobs`` body: inline ball_check cards plus the refit / close hooks."""
+    """The ``POST /api/jobs`` body: inline ball_check cards plus the prefect refit / close hooks."""
     n = len(result.cards)
     body = {
         "title": f"Ball mining {key.split('/', 1)[1]}",

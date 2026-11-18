@@ -108,8 +108,9 @@ def test_job_body_is_a_valid_ball_check_job_with_the_refit_and_close_hooks(
         and body["key"] == f"ball-round/{DAY}/1"
         and len(body["items"]) == 100
     )
-    assert [(h["name"], h["trigger"].get("every_n"), h["trigger"].get("on_done", False), h["action"]["name"]) for h in body["hooks"]] == [
-        ("refit", 50, False, "ball_mining_refit"), ("close", None, True, "ball_mining_refit")]  # fmt: skip
+    assert [(h["name"], h["trigger"].get("every_n"), h["trigger"].get("on_done", False), h["action"]["type"], h["action"]["deployment"]) for h in body["hooks"]] == [
+        ("refit", 50, False, "prefect", "ball-refit/ball-refit"),
+        ("close", None, True, "prefect", "ball-round-close/ball-round-close")]  # fmt: skip
     job, created = jobs.submit(body, "train")  # the real validator: items, hooks, key
     again, created2 = jobs.submit(body, "train")
     assert (
@@ -131,10 +132,10 @@ def test_create_submits_once_then_the_tick_rule_blocks_the_next_round(
         and sub["kind"] == "ball_check"
         and len(sub["items"]) == 60
     )
-    assert [h["action"]["name"] for h in sub["hooks"]] == [
-        "ball_mining_refit",
-        "ball_mining_refit",
-    ]
+    assert [h["action"]["deployment"] for h in sub["hooks"]] == [
+        "ball-refit/ball-refit",
+        "ball-round-close/ball-round-close",
+    ]  # prefect actions: the labeller only triggers the flows
     log = json.loads(
         (ds / "ball_mining" / "rounds" / f"ball-round_{DAY}_1.json").read_text()
     )

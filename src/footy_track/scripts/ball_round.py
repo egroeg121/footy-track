@@ -4,6 +4,14 @@
     python -m footy_track.scripts.ball_round plan   --pool /mnt/storage/footy_data/ball_pool
     python -m footy_track.scripts.ball_round create --pool ... [--force] [--dry-run] [--prepare]
     python -m footy_track.scripts.ball_round status
+    python -m footy_track.scripts.ball_round refit --job <ref>      # Prefect flow ball-refit (hook every_n 50)
+    python -m footy_track.scripts.ball_round close --job <ref>      # Prefect flow ball-round-close (hook on_done)
+
+``refit`` and ``close`` run OUTSIDE the labeller server (the job's hooks only queue the Prefect deployments): they read the
+verdicts through the labeller API (``$FOOTY_LABELLER_URL`` or ``--labeller-url``), write ``<marks>/ball_mining/state/vNNN.json``
+and POST the new order to ``/api/jobs/<ref>/reorder`` (``refit``), or write the tier-3 auto-accept files
+``<ball_auto>/<scorer_version>/<match>.jsonl`` and record the round as closed (``close``). Both print one JSON line; exit 2 on
+an API or input error (nothing is retried here).
 
 ``plan`` never touches the labeller. ``create`` posts one ``ball_check`` job (key ``ball-round/<date>/<n>``) unless the
 tick rule says no (open training cards < 100 and today's cards < 600; ``--force`` overrides). The pool is either the
@@ -15,10 +23,15 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
+import urllib.error
 from pathlib import Path
 
+from footy_track.ball_mining import close as close_mod
+from footy_track.ball_mining import refit as refit_mod
 from footy_track.ball_mining import round as rnd
+from footy_track.labeller import jobs_client
 
 
 def _common(p: argparse.ArgumentParser) -> None:
@@ -96,6 +109,56 @@ def _print_report(rep: dict) -> None:
     print("inclusion probabilities (R, A):", json.dumps(rep["inclusion_probabilities"]))
 
 
+def _job_args(p: argparse.ArgumentParser) -> None:
+    p.add_argument("--job", required=True, help="the round job: id or exact title")
+    p.add_argument("--labeller-url", default=None, help="default $FOOTY_LABELLER_URL")
+    p.add_argument(
+        "--marks-dir",
+        default=None,
+        help="override the dataset's marks dir (state, closed marker)",
+    )
+    p.add_argument(
+        "--params", default=None, help='JSON: {"min_per_class", "target", "delta"}'
+    )
+
+
+def _run_job_cmd(a: argparse.Namespace) -> int:
+    """``refit`` / ``close``: one JSON line on stdout; rc 0 ok, 2 on an API / input error."""
+    if a.labeller_url:
+        os.environ["FOOTY_LABELLER_URL"] = a.labeller_url
+    params = json.loads(a.params) if a.params else None
+    try:
+        if a.cmd == "refit":
+            out = refit_mod.refit_round(
+                a.job, marks_dir=a.marks_dir, params=params, reorder=not a.no_reorder
+            )
+        else:
+            out = close_mod.close_round(a.job, pool=a.pool, root=a.out_root, marks_dir=a.marks_dir, data_root=a.data_root,
+                                        params=params, force=a.force, allow_flagged=a.allow_flagged)  # fmt: skip
+    except (
+        jobs_client.JobsError,
+        urllib.error.URLError,
+        OSError,
+        RuntimeError,
+        ValueError,
+        KeyError,
+    ) as e:
+        print(
+            json.dumps(
+                {
+                    "job": a.job,
+                    "status": "error",
+                    "error": f"{type(e).__name__}: {e}"[:500],
+                }
+            )
+        )
+        return 2
+    print(
+        json.dumps({"status": "ok", **out} if "status" not in out else out, default=str)
+    )
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
@@ -119,7 +182,47 @@ def main(argv: list[str] | None = None) -> int:
         "status", help="open / today counts, tick decision, latest state"
     )
     _common(p)
+    p = sub.add_parser(
+        "refit",
+        help="refit from the round's verdicts, write state, POST the new order (outside the server)",
+    )
+    _job_args(p)
+    p.add_argument(
+        "--no-reorder", action="store_true", help="only write the state file"
+    )
+    p = sub.add_parser(
+        "close",
+        help="final refit, tier-3 auto-accept files, record the round as closed",
+    )
+    _job_args(p)
+    p.add_argument(
+        "--pool",
+        default=close_mod.DEFAULT_POOL,
+        help="pool Parquet file or directory (default %(default)s)",
+    )
+    p.add_argument(
+        "--out-root",
+        default=None,
+        help=f"auto-accept root (default $FOOTY_BALL_AUTO_ROOT or {close_mod.DEFAULT_OUT_ROOT})",
+    )
+    p.add_argument(
+        "--data-root",
+        default=None,
+        help="footy_data root (segments.json for the +-10 s eval exclusion)",
+    )
+    p.add_argument(
+        "--force",
+        action="store_true",
+        help="redo a closed round / close a job that is not done",
+    )
+    p.add_argument(
+        "--allow-flagged",
+        action="store_true",
+        help="write auto-accepts even if the gold check flagged the round",
+    )
     a = ap.parse_args(argv)
+    if a.cmd in ("refit", "close"):
+        return _run_job_cmd(a)
     cfg = _cfg(a)
     if a.cmd == "status":
         print(json.dumps(rnd.status(cfg), indent=1, default=str))
