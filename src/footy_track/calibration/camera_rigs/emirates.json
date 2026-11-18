@@ -15,6 +15,75 @@
   105.0,
   68.0
  ],
+ "info": {
+  "n_frames": 66,
+  "n_points": 368,
+  "cost": 1733.3972155969213,
+  "ground": "emirates",
+  "excluded": [
+   {
+    "key": "arsenal_mancity_seg031:328",
+    "why": "too few consistent points",
+    "n": 3
+   }
+  ],
+  "dropped_points": [
+   {
+    "key": "arsenal_astonvilla_seg050:192",
+    "index": 1,
+    "res_px": 27.77678395477185
+   },
+   {
+    "key": "arsenal_astonvilla_seg110:495",
+    "index": 4,
+    "res_px": 20.500413757505125
+   },
+   {
+    "key": "arsenal_mancity_seg010:375",
+    "index": 4,
+    "res_px": 24.754818007979825
+   },
+   {
+    "key": "arsenal_mancity_seg010:575",
+    "index": 4,
+    "res_px": 22.72514487085891
+   },
+   {
+    "key": "arsenal_mancity_seg080:52",
+    "index": 2,
+    "res_px": 33.737993891572216
+   },
+   {
+    "key": "arsenal_mancity_seg080:87",
+    "index": 2,
+    "res_px": 41.419060303202265
+   },
+   {
+    "key": "arsenal_mancity_seg110:787",
+    "index": 1,
+    "res_px": 22.731771789113985
+   }
+  ],
+  "fit_date": "2026-11-15",
+  "pose_prior": {
+   "tilt_a": 96.825,
+   "tilt_b": -10.106,
+   "tilt_sigma_deg": 1.12,
+   "pan_deg": [
+    40.0,
+    145.0
+   ],
+   "f_px": [
+    1800.0,
+    8000.0
+   ],
+   "source": "tilt_deg = a + b*ln(f_px) over accepted frames (every 5th) of the 140 accepted Arsenal v Man City segments (18100 frames; pan 1-99% 51-128 deg, f 1-99% 2850-5750 px, tilt resid 1-99% -3.9..3.2 deg); ranges widened",
+   "side_cx_m": [
+    32.7,
+    -32.7
+   ]
+  }
+ },
  "ground": "emirates",
  "note": "Camera-rig prior from the exp/calibration-ptz branch (fixed centre of projection per ground); fit on the calibration GT frames."
 }

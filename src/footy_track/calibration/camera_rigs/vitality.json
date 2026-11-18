@@ -15,6 +15,93 @@
   105.0,
   68.0
  ],
+ "info": {
+  "n_frames": 7,
+  "n_points": 35,
+  "cost": 136.69659029215,
+  "bootstrap": {
+   "n": 30,
+   "C_mean": [
+    -0.08484043991895283,
+    -49.99369040437528,
+    7.745094141699668
+   ],
+   "C_std": [
+    0.07784642711629562,
+    1.625751357491589,
+    0.19220580513776053
+   ],
+   "C_p5": [
+    -0.1727923759319989,
+    -50.89051669854803,
+    7.4307506986320675
+   ],
+   "C_p95": [
+    0.049417944800235515,
+    -47.28907690298193,
+    7.909376111466662
+   ],
+   "roll_mean_deg": 0.16270933710817773,
+   "roll_std_deg": 0.0958794693355,
+   "k1_mean": 0.019986815438079845,
+   "k1_std": 0.01791999293928346
+  },
+  "ground": "vitality",
+  "excluded": [
+   {
+    "key": "arsenal_bournemouth_1st_seg100:373",
+    "why": "median residual",
+    "median_px": 224.78283555751383,
+    "rms_px": 443.7206785736782
+   }
+  ],
+  "dropped_points": [
+   {
+    "key": "arsenal_bournemouth_1st_seg035:435",
+    "index": 3,
+    "res_px": 22.739993819616423
+   },
+   {
+    "key": "arsenal_bournemouth_1st_seg070:229",
+    "index": 0,
+    "res_px": 96.04366501888794
+   }
+  ],
+  "fit_date": "2026-11-15",
+  "pose_prior": {
+   "tilt_a": 71.46,
+   "tilt_b": -7.768,
+   "tilt_sigma_deg": 0.8,
+   "pan_deg": [
+    35.0,
+    145.0
+   ],
+   "f_px": [
+    1500.0,
+    8000.0
+   ],
+   "tilt_offsets_deg": [
+    -3.2,
+    -1.6,
+    0.0,
+    1.6,
+    3.2
+   ],
+   "source": "tilt_deg = a + b*ln(f_px) over accepted frames (every 5th) of the 76 Bournemouth 1st-half segments with accepted_frac >= 0.5 (8230 frames; pan 1-99% 47-129 deg, f 1-99% 2141-4665 px, tilt resid 1-99% -2.4..2.2 deg, std 0.79); ranges widened; tilt_offsets_deg scaled to the smaller sigma. side_cx_m: free-C fits of penalty-D finder points on weak segments 26, 41 (C_x=+36.4..+37.2, rms 1-3 px with C_y,C_z free) and 33, 57, 100 (C_x=-36.4..-36.6); fixed-C at the centre reprojects them 140-330 px off. Side offsets [dx,dy,dz] from the rig C = medians of the free-C (all three free, sigma 100/3/1.5 m) fits: +side (11 frames, segs 26/41) C=(36.63,-52.50,8.96), -side (11 frames, segs 33/57/100) C=(-36.55,-51.38,8.66); with dx only the line F1 at the side position is 0.38 instead of 0.65.",
+   "side_cx_m": [
+    [
+     36.7,
+     -1.7,
+     1.1
+    ],
+    [
+     -36.5,
+     -0.6,
+     0.8
+    ]
+   ]
+  }
+ },
  "ground": "vitality",
  "note": "Camera-rig prior from the exp/calibration-ptz branch (fixed centre of projection per ground); fit on the calibration GT frames."
 }
