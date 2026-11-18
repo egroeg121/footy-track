@@ -183,3 +183,87 @@ Yes for Emirates matches (Forest, Villa): standard-pass results are untouched an
 (`code_repo` already defaults to a worktree of the same git repo, so the branch name resolves on the mini; pass the sha for a pinned
 run.) For a fresh match, run the flow with `code_ref=exp/calib-temporal-weak` from the start: the recovery is part of the runner, a
 good segment costs nothing extra, and a weak one costs 3-9 CPU-minutes. For Bournemouth / Vitality estimate the pose band first.
+
+## Vitality (Bournemouth 1st half): pose prior, side positions, weak-segment re-run
+
+Branch `exp/calib-temporal-weak-vit` (off `exp/calib-temporal-weak` 0229b1b); run code 84b0311 (`vitality.json` + `ptz_recover.rig_variants` /
+`prior_grid`). Standard-pass results of the flow run (7d00646): 120 of 121 segments (seg092 unreadable: disk fault), 66.2% of 64920 frames accepted,
+44 segments below 50% (15702 frames, 12.8% accepted).
+
+* **Pose prior** (`rig.info.pose_prior` in `vitality.json`): over every 5th accepted frame of the 76 segments with accepted_frac >= 0.5
+  (8230 frames) `tilt_deg = 71.46 - 7.768 ln f` within 0.79 deg (MAD 0.71; 1-99%: -2.4..+2.2; per-segment mean offsets sd 0.6), pan 47-129 deg
+  (1-99%), f 2141-4665 px; ranges widened to pan 35-145, f 1500-8000, sigma 0.8, and `tilt_offsets_deg` of the search grid scaled to the
+  narrower band (+-3.2). The 404 accepted frames of the partly accepted weak segments lie on the same line (resid -0.4 +- 0.9, max 3.5).
+  The camera is low (z 7.8 m), tilt only 2-15 deg. Selection bias: only frames the standard pass accepts.
+* **Side positions**: free-C (C_x free, then all three) solves of penalty-D finder points on 6 probe frames of each weak segment give C_x
+  = +36.6 +- 0.1 (segs 26, 41) and -36.55 +- 0.1 (33, 57, 100), i.e. level with the penalty-area lines (+-36 m) as at the Emirates; the
+  centre-C reprojection of those points is 140-330 px off, the side one 1-3 px. Unlike the Emirates the side gantries are higher and further
+  back than the centre rig: median free-C (+) (36.63, -52.50, 8.96), (-) (-36.55, -51.38, 8.66) against the rig (-0.10, -50.82, 7.84).
+  With x-only side positions the line F1 at the side camera was 0.38 (seg057) against 0.65 free and only seg041 was recovered; with the
+  `[dx, dy, dz]` offsets `[36.7, -1.7, 1.1]` / `[-36.5, -0.6, 0.8]` segs 26, 33, 53, 57, 100 (and 41) are recovered. Frame-level evidence
+  is thin for the y/z offsets (sd of the y fits 0.4-0.8 m: a flat ridge). Seg000 (corner-flag camera), 042, 005 gave no usable finder fit.
+* **Result** (44 weak segments, new rig, desktop, 3 processes): 15702 frames, accepted 12.8% -> 36.0%; whole match 66.2% -> 71.9%
+  (calibrated incl. unaccepted solutions 79.9% -> 88.9%). 14 of 44 segments now >= 50% accepted, 27 > 0, 5 >= 80%. No weak segment
+  got worse in accepted fraction. Seg087 loses calibrated frames (100% -> 86%: the recovery was kept for +0.2 pt accepted).
+  The two-stage history: pose prior + centre-only recovery gave 12.8 -> 28.1% weak / 66.2 -> 70.0% match.
+
+| seg | frames | before | with prior, x-only sides | final | camera | confirmed anchors |
+|---|---|---|---|---|---|---|
+| 0 | 147 | 0% | 0% | 0% | standard kept | 0/3 |
+| 1 | 207 | 0% | 39% | 39% | centre | 7/8 |
+| 2 | 318 | 0% | 0% | 0% | standard kept | 0/4 |
+| 3 | 252 | 0% | 42% | 42% | centre | 7/7 |
+| 5 | 38 | 0% | 0% | 0% | standard kept | 0/2 |
+| 21 | 44 | 0% | 100% | 100% | centre | 9/9 |
+| 26 | 439 | 0% | 0% | 68% | x+36.7 | 11/11 |
+| 31 | 119 | 0% | 68% | 68% | centre | 9/9 |
+| 33 | 557 | 0% | 0% | 24% | x-36.5 | 11/12 |
+| 37 | 290 | 0% | 2% | 2% | centre | 5/7 |
+| 41 | 749 | 0% | 100% | 86% | x+36.7 | 10/10 |
+| 42 | 197 | 0% | 0% | 0% | standard kept | 0/4 |
+| 46 | 78 | 0% | 0% | 0% | standard kept | 0/4 |
+| 51 | 168 | 0% | 5% | 5% | centre | 7/8 |
+| 53 | 645 | 0% | 0% | 22% | x-36.5 | 6/6 |
+| 56 | 56 | 0% | 100% | 100% | centre | 12/12 |
+| 57 | 364 | 0% | 0% | 100% | x-36.5 | 12/12 |
+| 61 | 159 | 0% | 0% | 0% | standard kept | 0/3 |
+| 63 | 121 | 0% | 0% | 0% | standard kept | 0/4 |
+| 70 | 611 | 39% | 39% | 39% | centre | 17/17 |
+| 73 | 247 | 21% | 60% | 60% | centre | 12/12 |
+| 74 | 30 | 0% | 100% | 100% | centre | 6/6 |
+| 75 | 944 | 36% | 58% | 58% | centre | 16/19 |
+| 77 | 448 | 0% | 0% | 0% | standard kept | 0/5 |
+| 78 | 1064 | 0% | 0% | 0% | standard kept | 2/11 |
+| 80 | 473 | 41% | 41% | 41% | standard kept | 1/5 |
+| 81 | 253 | 45% | 49% | 49% | centre | 10/10 |
+| 84 | 735 | 50% | 51% | 51% | centre | 9/10 |
+| 86 | 597 | 23% | 57% | 57% | centre | 8/9 |
+| 87 | 1026 | 46% | 46% | 46% | centre | 20/20 |
+| 94 | 160 | 0% | 0% | 0% | standard kept | 0/3 |
+| 95 | 175 | 0% | 0% | 0% | standard kept | 0/3 |
+| 97 | 158 | 0% | 0% | 0% | standard kept | 0/3 |
+| 98 | 132 | 0% | 0% | 0% | standard kept | 0/3 |
+| 99 | 407 | 0% | 42% | 42% | centre | 10/10 |
+| 100 | 746 | 0% | 0% | 55% | x-36.5 | 6/6 |
+| 101 | 269 | 0% | 0% | 0% | standard kept | 1/3 |
+| 102 | 47 | 0% | 0% | 0% | standard kept | 0/2 |
+| 103 | 195 | 0% | 0% | 0% | standard kept | 0/3 |
+| 105 | 587 | 0% | 53% | 53% | centre | 7/8 |
+| 108 | 450 | 0% | 0% | 0% | standard kept | 1/5 |
+| 109 | 545 | 17% | 19% | 19% | centre | 11/11 |
+| 110 | 351 | 0% | 46% | 46% | centre | 24/24 |
+| 111 | 104 | 0% | 54% | 54% | centre | 10/10 |
+
+Not recovered (17 segments, accepted 0%): close-ups, replays, corner-flag and tight goal-mouth shots, and views where fewer than two
+confirmed anchors exist (0 2 5 42 46 61 63 77 78 94 95 97 98 101 102 103 108); their standard result is kept.
+
+**GT** (`ball_gt_marks/calibration_gt`, pitch error on the 5 m grid, `err5`): the three clips the task named (seg030 1 GT frame, seg050 5, seg085 3)
+are accepted >= 50% by the standard pass, so the recovery never runs and `states_full.npy` is bit-identical to the flow run (medians
+0.155 / 0.41-0.63 / 0.14-0.33 m, unchanged). Frames of recovered segments: seg100:373 0.37 m (p90 1.9; unrecoverable before, it fits only
+at C_x = -36.5), seg110:290 0.17 m (accepted) and seg110:0 1.21 m (not accepted), seg031:59 0.54 m (not accepted),
+seg075:802 3.4 m median (accepted; the GT is an exactly determined 4-point DLT of the centre circle; our overlay sits on the circle and the
+halfway line by eye, so the GT frame is the suspect, not settled).
+
+Sheet: `/mnt/storage/footy_data/scratch/temporal/rerun_weak/sheet_bmth_weak.jpg` (27 segments with accepted frames, three frames each, green =
+accepted) and `sheet_bmth_weak_unsolved.jpg` (the 17 with none). Twelve segments' overlays were checked on contrast-enhanced full-size frames (seg001,
+003, 026, 033, 041, 053, 056, 086, 087, 100, 109, 110): penalty box, D, circle and halfway line sit on the real markings. No wrong accept found.
