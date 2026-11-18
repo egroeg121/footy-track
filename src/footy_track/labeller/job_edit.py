@@ -233,3 +233,44 @@ def append_items(
         _save(job, bump_rev=True)
         return {"added": len(fresh), "skipped_duplicates": skipped, "total": len(job["items"]), "rev": job["rev"]}
 
+
+
+# ---------------------------------------------------------------------------
+# Trim
+# ---------------------------------------------------------------------------
+
+
+def trim_items(job_id: str, keep: object, *, by: str = "api", note: str | None = None, if_rev: int | None = None) -> dict:
+    """Shrink a live job to the items named in ``keep`` (a list of item objects, matched on the same
+    unit key as :func:`append_items`, e.g. ``{clip, frame}`` for broadcast_review) plus every answered item.
+
+    Answered items are never removed (the rule of this module), so the job can end up larger than ``keep``.
+    Unanswered items not in ``keep`` are dropped; the survivors keep their order and their own fields.
+    Nothing is deleted from disk. Bumps ``rev`` (pages re-read) and records a history entry.
+    """
+    if not isinstance(keep, list) or not all(isinstance(x, dict) for x in keep):
+        raise JobError(422, "keep must be a list of item objects")
+    with jobs._LOCK:
+        job = _editable(job_id)
+        kind = job["kind"]
+        if kind == "other":
+            raise JobError(422, "'other' jobs have no item shape; trim is not supported")
+        if if_rev is not None and int(job.get("rev") or 0) != if_rev:
+            raise JobError(409, f"job is at rev {job.get('rev') or 0}, not {if_rev}; re-read it", rev=int(job.get("rev") or 0))
+        wanted = {_dedupe_key(kind, it) for it in jobs._normalise_items(kind, keep)} if keep else set()
+        done = answered_positions(job)
+        kept, dropped = [], 0
+        for i, it in enumerate(job["items"]):
+            if i in done or _dedupe_key(kind, it) in wanted:
+                kept.append(it)
+            else:
+                dropped += 1
+        if not dropped:
+            return {"removed": 0, "total": len(job["items"]), "answered_kept": len(done), "rev": int(job.get("rev") or 0)}
+        if not kept:
+            raise JobError(422, "trim would leave the job empty; cancel it instead")
+        job["items"] = kept
+        _push_history(job, {"event": "trim", "by": by, "removed": dropped, "kept": len(kept),
+                            **({"note": note} if note else {})})  # fmt: skip
+        _save(job, bump_rev=True)
+        return {"removed": dropped, "total": len(kept), "answered_kept": len(done), "rev": job["rev"]}

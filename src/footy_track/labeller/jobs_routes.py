@@ -262,6 +262,22 @@ async def job_append(ref: str, body: dict):
         return _err(e)
 
 
+@router.post("/api/jobs/{ref:path}/trim")
+async def job_trim(ref: str, body: dict):
+    """Shrink a live job to ``{keep: [item, ...], by?, note?, if_rev?}`` (matched on the item's unit, e.g.
+    ``{clip, frame}``). Answered items are always kept; nothing on disk is deleted."""
+
+    def work():
+        job = jobs.resolve(ref)
+        return job_edit.trim_items(job["id"], body.get("keep"), by=str(body.get("by") or "api")[:80],
+                                   note=body.get("note"), if_rev=body.get("if_rev"))  # fmt: skip
+
+    try:
+        return await asyncio.to_thread(work)
+    except jobs.JobError as e:
+        return _err(e)
+
+
 @router.get("/api/jobs/{ref:path}/frames")
 async def job_frames(ref: str):
     """The job's frames in order with ``done`` flags (same rule as progress). Drives the

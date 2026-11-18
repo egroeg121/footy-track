@@ -116,3 +116,88 @@ def test_export_heldout_match_frames_are_left_out(two, web, tmp_path, monkeypatc
     assert c["Yes"] == 0 and c["heldout_skipped"] == 1
     c = exp.export(ds, tmp_path / "o2", heldout_as_test=True)
     assert c["Yes"] == 1 and (tmp_path / "o2" / "test" / "Yes").is_dir()
+
+
+# ---------------------------------------------------------------------------
+# Per-match evaluation + job trim
+# ---------------------------------------------------------------------------
+
+
+def test_wilson():
+    from footy_track.labeller.broadcast_review import wilson
+
+    assert wilson(0, 0) is None
+    lo, hi = wilson(35, 35)
+    assert hi == 1.0 and 0.9 < lo < 0.95
+    lo, hi = wilson(5, 10)
+    assert round(lo, 3) == 0.237 and round(hi, 3) == 0.763
+
+
+def test_eval_match_separates_random_and_edge():
+    from footy_track.labeller.broadcast_review import eval_match
+
+    rows = [
+        {"verdict": "yes", "pred": "Yes", "reason": "random"},
+        {"verdict": "no", "pred": "Yes", "reason": "random"},  # wrong
+        {"verdict": "no", "p_yes": 0.1, "reason": "random"},  # pred from p_yes
+        {"verdict": "unsure", "pred": "Yes", "reason": "random"},
+        {"verdict": "no", "pred": "Yes", "reason": "edge_mid"},  # edge, false yes
+        {"verdict": "yes", "pred": "No", "reason": "edge_boundary"},  # edge, false no
+        {"verdict": "yes", "pred": "Yes", "reason": "edge_mid"},
+        {"verdict": None, "pred": "Yes", "reason": "random"},  # not labelled
+    ]
+    e = eval_match(rows)
+    assert (e["random"]["n"], e["random"]["correct"]) == (3, 2) and abs(e["random"]["acc"] - 2 / 3) < 1e-9
+    assert e["edge"] == {"n": 3, "wrong": 2, "false_yes": 1, "false_no": 1}
+    assert e["unsure"] == 1
+    assert eval_match([])["random"]["acc"] is None
+
+
+def _submit_mixed(web, key, match, n_random=4, n_edge=4):
+    items = [{"clip": match, "frame": 1000 + k, "ts_s": 100 + k, "p_yes": 0.9, "pred": "Yes", "reason": "random"} for k in range(n_random)]
+    items += [{"clip": match, "frame": 2000 + k, "ts_s": 200 + k, "p_yes": 0.5, "pred": "Yes", "reason": "edge_mid"} for k in range(n_edge)]
+    r = web.post("/api/jobs", json={"title": f"Broadcast review: {match}", "kind": "broadcast_review", "dataset": "nottinghamforest",
+                                    "items": items, "key": key})
+    assert r.status_code == 201, r.text
+    return r.json()
+
+
+def test_summary_ranks_worst_first(two, web):
+    a, b = "aaa.match", "bbb.match"
+    ja, jb = _submit_mixed(web, "k-a", a), _submit_mixed(web, "k-b", b)
+    put = lambda m, f, v: web.put(f"/broadcast_review/api/verdict/{m}/{f}?dataset=nottinghamforest", json={"verdict": v})  # noqa: E731
+    for f in range(1000, 1004):  # a: 2/4 right on random, 1 wrong edge
+        put(a, f, "yes" if f < 1002 else "no")
+    put(a, 2000, "no")
+    for f in range(1000, 1004):  # b: 4/4 right
+        put(b, f, "yes")
+    r = web.get("/broadcast_review/api/summary?dataset=nottinghamforest").json()
+    ms = r["matches"]
+    assert [m["match"] for m in ms] == [a, b] and ms[0]["split"] in ("train", "unknown") and r["pooled"]
+    assert (ms[0]["labelled"], ms[0]["total"]) == (5, 8)
+    assert ms[0]["random"]["acc"] == 0.5 and ms[0]["random"]["n"] == 4 and ms[0]["edge"]["wrong"] == 1
+    assert ms[1]["random"]["acc"] == 1.0 and ms[0]["job_id"] == ja["id"] and ms[1]["job_id"] == jb["id"]
+
+
+def test_trim_keeps_answered_and_listed(two, web):
+    m = "ccc.match"
+    j = _submit_mixed(web, "k-c", m)  # frames 1000-1003 random, 2000-2003 edge
+    web.put(f"/broadcast_review/api/verdict/{m}/1003?dataset=nottinghamforest", json={"verdict": "yes"})  # answered, not in keep
+    keep = [{"clip": m, "frame": 1000}, {"clip": m, "frame": 2001}]
+    r = web.post(f"/api/jobs/{j['id']}/trim", json={"keep": keep, "by": "test"})
+    assert r.status_code == 200, r.text
+    assert r.json()["removed"] == 5 and r.json()["total"] == 3 and r.json()["answered_kept"] == 1
+    view = web.get(f"/broadcast_review/api/job/{j['id']}").json()
+    assert [f["frame"] for f in view["frames"]] == [1000, 1003, 2001] and view["rev"] == 1
+    assert web.post(f"/api/jobs/{j['id']}/trim", json={"keep": keep}).json()["removed"] == 0  # idempotent
+    assert web.post(f"/api/jobs/{j['id']}/trim", json={"keep": "x"}).status_code == 422
+    assert web.post(f"/api/jobs/{j['id']}/trim", json={"keep": [{"clip": m, "frame": 5}], "if_rev": 0}).status_code == 409
+
+
+def test_pool_by_split():
+    from footy_track.labeller.broadcast_review import pool_by_split
+
+    mk = lambda split, n, k, ew, en: {"split": split, "total": 50, "labelled": n + en, "random": {"n": n, "correct": k}, "edge": {"n": en, "wrong": ew}}  # noqa: E731
+    p = {r["split"]: r for r in pool_by_split([mk("train", 10, 9, 1, 5), mk("train", 30, 30, 0, 5), mk("heldout", 50, 40, 0, 0)])}
+    assert p["train"]["random"]["n"] == 40 and p["train"]["random"]["correct"] == 39 and p["train"]["edge"] == {"n": 10, "wrong": 1}
+    assert p["heldout"]["random"]["acc"] == 0.8 and p["heldout"]["matches"] == 1

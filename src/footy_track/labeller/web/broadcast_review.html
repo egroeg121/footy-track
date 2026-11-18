@@ -23,11 +23,17 @@
   .row { display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; margin-top:8px; }
   .info { margin:6px 0; font-size:13px; color:var(--muted); text-align:center; min-height:20px; }
   .done { text-align:center; padding:40px 0; font-size:18px; }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  th, td { text-align:left; padding:6px 8px; border-bottom:1px solid var(--border); }
+  th { color:var(--muted); font-weight:normal; }
+  td.num { text-align:right; font-variant-numeric:tabular-nums; }
+  td a { color:var(--ink); }
+  .note { color:var(--muted); font-size:12px; margin:8px 0; }
 </style>
 </head>
 <body>
 <main>
-  <header><a href="/">&larr; Home</a><h1 id="title">Broadcast review</h1><span id="count"></span></header>
+  <header><a href="/">&larr; Home</a><h1 id="title">Broadcast review</h1><a id="sumlink" href="#">per-match summary</a><span id="count"></span></header>
   <div class="bar"><i id="fill" style="width:0"></i></div>
   <div id="view"></div>
 </main>
@@ -44,8 +50,37 @@ async function fetchJob() {
   const r = await api(`/broadcast_review/api/job/${encodeURIComponent(JOB)}`);
   return await r.json();
 }
+const esc = t => String(t).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const pct = x => x == null ? "-" : (100 * x).toFixed(0) + "%";
+const jobUrl = id => `/broadcast_review?${dsq}${dsq ? "&" : ""}job=${encodeURIComponent(id)}`;
+// No ?job=: worst-first table of the classifier's accuracy per match (random stratum only, Wilson 95% CI).
+async function loadSummary() {
+  document.getElementById("title").textContent = "Broadcast review: per match";
+  const v = document.getElementById("view");
+  const r = await api("/broadcast_review/api/summary");
+  const d = await r.json();
+  const rows = d.matches.map(m => {
+    const rd = m.random, ci = rd.ci ? ` (${pct(rd.ci[0])}-${pct(rd.ci[1])})` : "";
+    const name = m.job_id ? `<a href="${jobUrl(m.job_id)}">${esc(m.title)}</a>` : esc(m.title);
+    return `<tr><td>${name}</td><td>${esc(m.split)}</td><td class="num">${m.labelled}/${m.total}</td>
+      <td class="num">${pct(rd.acc)}${ci}</td><td class="num">${rd.n}</td>
+      <td class="num">${m.edge.wrong}/${m.edge.n}</td></tr>`;
+  }).join("");
+  const pooled = d.pooled.map(p => {
+    const rd = p.random, ci = rd.ci ? ` (${pct(rd.ci[0])}-${pct(rd.ci[1])})` : "";
+    return `<tr><td><b>All ${esc(p.split)} (${p.matches} matches)</b></td><td>${esc(p.split)}</td><td class="num">${p.labelled}/${p.total}</td>
+      <td class="num">${pct(rd.acc)}${ci}</td><td class="num">${rd.n}</td><td class="num">${p.edge.wrong}/${p.edge.n}</td></tr>`;
+  }).join("");
+  v.innerHTML = `<table><thead><tr><th>Match (worst first)</th><th>Split</th><th class="num">Labelled</th>
+    <th class="num">Accuracy, random frames (95% CI)</th><th class="num">n random</th><th class="num">Edge wrong</th></tr></thead>
+    <tbody>${rows}${pooled}</tbody></table>
+    <div class="note">Accuracy uses only the random frames (the one unbiased sample of a match; class-balanced), against stored
+    scores.npz p_yes, unsure excluded. Edge wrong = edge frames the classifier got wrong, reported separately (they are picked for
+    being near the boundary, so not an accuracy). Wide interval = label more frames for that match.</div>`;
+}
+document.getElementById("sumlink").href = `/broadcast_review${dsq ? "?" + dsq : ""}`;
 async function load() {
-  if (!JOB) { document.getElementById("view").textContent = "No ?job= given."; return; }
+  if (!JOB) { await loadSummary(); return; }
   job = await fetchJob();
   if (job.error) { document.getElementById("view").textContent = job.error; return; }
   document.getElementById("title").textContent = job.title;

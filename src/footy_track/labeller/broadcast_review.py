@@ -325,6 +325,136 @@ hooks.register_action("broadcast_calibrate", _broadcast_calibrate, kinds=("broad
 
 
 # ---------------------------------------------------------------------------
+# Per-match evaluation of the classifier against the verdicts (worst match first)
+# ---------------------------------------------------------------------------
+#
+# ``pred`` / ``p_yes`` are the scores.npz values the selection was made from (video-decoded frames, stored on
+# the job item and echoed into each verdict): they are NOT re-scored from the JPEGs, whose JPEG round trip
+# flips calls near the boundary. Only the ``random`` stratum is an unbiased sample of the match, so it alone
+# gives the headline accuracy (with a Wilson interval); the edge strata (``edge_mid`` / ``edge_boundary`` /
+# ``edge_cal``) were picked for being uncertain, so their error count is reported separately, never pooled.
+# ``unsure`` verdicts are excluded. The random stratum is stratified by predicted class (>= 25 % each), so it is
+# class-balanced rather than strictly uniform: read the figure as "accuracy on a class-balanced random sample".
+
+RANDOM_BUCKET = "random"
+
+
+def wilson(k: int, n: int, z: float = 1.96) -> tuple[float, float] | None:
+    """Wilson score interval for ``k`` successes in ``n`` trials (None when ``n == 0``)."""
+    if n <= 0:
+        return None
+    p = k / n
+    d = 1 + z * z / n
+    c = p + z * z / (2 * n)
+    h = z * math.sqrt(p * (1 - p) / n + z * z / (4 * n * n))
+    return max(0.0, (c - h) / d), min(1.0, (c + h) / d)
+
+
+def _pred_yes(rec: dict) -> bool | None:
+    pred = rec.get("pred")
+    if pred in ("Yes", "No"):
+        return pred == "Yes"
+    p = rec.get("p_yes")
+    return p > 0.5 if isinstance(p, (int, float)) and not isinstance(p, bool) else None
+
+
+def eval_match(rows: list[dict]) -> dict:
+    """``rows`` = ``[{verdict, pred?, p_yes?, reason?}]`` (verdict None = not labelled yet) -> the match's numbers."""
+    rnd_n = rnd_ok = edge_n = edge_wrong = unsure = no_pred = 0
+    fp = fn = 0  # edge errors split: model said Yes but human No (fp) / the reverse (fn)
+    for r in rows:
+        v = r.get("verdict")
+        if v == "unsure":
+            unsure += 1
+        if v not in ("yes", "no"):
+            continue
+        pred = _pred_yes(r)
+        if pred is None:
+            no_pred += 1
+            continue
+        ok = pred == (v == "yes")
+        if r.get("reason") == RANDOM_BUCKET:
+            rnd_n += 1
+            rnd_ok += ok
+        else:
+            edge_n += 1
+            if not ok:
+                edge_wrong += 1
+                fp += pred
+                fn += not pred
+    ci = wilson(rnd_ok, rnd_n)
+    return {"random": {"n": rnd_n, "correct": rnd_ok, "acc": rnd_ok / rnd_n if rnd_n else None,
+                       "ci": list(ci) if ci else None},
+            "edge": {"n": edge_n, "wrong": edge_wrong, "false_yes": fp, "false_no": fn},
+            "unsure": unsure, "no_pred": no_pred}  # fmt: skip
+
+
+def match_split(match: str) -> str:
+    """``train`` / ``heldout`` (or the raw label, ``unknown`` when the register cannot be read) from the one
+    split authority (``footy_track.splits``; read-only here)."""
+    try:
+        from footy_track import splits  # noqa: PLC0415
+
+        s = splits.split_label(match)
+    except Exception:  # noqa: BLE001 - a metrics table must not crash on a missing register
+        return "unknown"
+    return "heldout" if s == "eval_heldout_match" else s
+
+
+def pool_by_split(matches: list[dict]) -> list[dict]:
+    """Pooled numbers per split: random-stratum accuracy over all the split's matches (Wilson 95 %), edge errors, counts."""
+    out = []
+    for split in sorted({m["split"] for m in matches}):
+        ms_ = [m for m in matches if m["split"] == split]
+        n = sum(m["random"]["n"] for m in ms_)
+        k = sum(m["random"]["correct"] for m in ms_)
+        ci = wilson(k, n)
+        out.append({"split": split, "matches": len(ms_), "total": sum(m["total"] for m in ms_),
+                    "labelled": sum(m["labelled"] for m in ms_),
+                    "random": {"n": n, "correct": k, "acc": k / n if n else None, "ci": list(ci) if ci else None},
+                    "edge": {"n": sum(m["edge"]["n"] for m in ms_), "wrong": sum(m["edge"]["wrong"] for m in ms_)}})
+    return out
+
+
+def match_summary(ds: datasets.Dataset) -> list[dict]:
+    """One row per match of the dataset (every broadcast_review job's clips plus any verdict file), ranked
+    worst-first by random-stratum accuracy; matches with no random verdict yet come last."""
+    by_match: dict[str, dict] = {}
+    for job in jobs.all_jobs():
+        if job.get("kind") != "broadcast_review" or job.get("dataset") != ds.name or job.get("status") == "cancelled":
+            continue
+        for it in job["items"]:
+            m = by_match.setdefault(it["clip"], {"items": {}, "jobs": []})
+            m["items"].setdefault(it["frame"], it)
+            if job["id"] not in m["jobs"]:
+                m["jobs"].append(job["id"])
+                m.setdefault("title", job["title"].removeprefix("Broadcast review: "))
+    root = ds.marks_dir / "broadcast_review"
+    for path in sorted(root.glob("*.json")) if root.is_dir() else []:
+        by_match.setdefault(path.stem, {"items": {}, "jobs": []})
+    out = []
+    for match, m in by_match.items():
+        try:
+            store = read_store(ds, match)
+        except ValueError:
+            continue
+        rows, total = [], len(m["items"])
+        for frame, it in m["items"].items():
+            v = store.get(frame)
+            rows.append({**it, "verdict": v["verdict"] if v else None})
+        for frame, v in store.items():  # verdicts of frames no longer in any job still count
+            if frame not in m["items"]:
+                rows.append({**v, "verdict": v["verdict"]})
+        e = eval_match(rows)
+        out.append({"match": match, "split": match_split(match), "title": m.get("title") or match, "job_id": (m["jobs"] or [None])[0],
+                    "total": total, "labelled": sum(1 for r in rows if r["verdict"]), **e})
+    out.sort(key=lambda r: (r["random"]["acc"] is None,
+                            r["random"]["acc"] if r["random"]["acc"] is not None else 0.0,
+                            r["random"]["ci"][0] if r["random"]["ci"] else 0.0, r["match"]))
+    return out
+
+
+# ---------------------------------------------------------------------------
 # Routes (the dataset comes from ?dataset= via the middleware)
 # ---------------------------------------------------------------------------
 
@@ -332,6 +462,14 @@ hooks.register_action("broadcast_calibrate", _broadcast_calibrate, kinds=("broad
 @router.get("/broadcast_review", response_class=HTMLResponse)
 async def page() -> HTMLResponse:
     return HTMLResponse((_WEB / "broadcast_review.html").read_text(), headers={"Cache-Control": "no-store, max-age=0"})
+
+
+@router.get("/broadcast_review/api/summary")
+async def summary_view():
+    """Per-match accuracy of the classifier against the verdicts, worst first (see ``match_summary``)."""
+    ds = datasets.current()
+    matches = await asyncio.to_thread(match_summary, ds)
+    return {"dataset": ds.name, "matches": matches, "pooled": pool_by_split(matches)}
 
 
 @router.get("/broadcast_review/frame/{match}/{frame}.jpg")
