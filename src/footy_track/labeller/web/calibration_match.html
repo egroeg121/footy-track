@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script src="/static/dataset.js"></script>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#0f1419" />
+<title>Match calibration</title>
+<style>
+  :root { --bg:#0f1419; --panel:#1a2129; --ink:#e6edf3; --muted:#9bb0c0;
+          --accent:#1e90ff; --green:#3fb950; --amber:#d29922; --red:#f85149; --border:#2d3742; }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  body { margin:0; background:var(--bg); color:var(--ink);
+         font:14px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+         padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
+  header { display:flex; flex-wrap:wrap; align-items:center; gap:8px 14px; padding:8px 14px; border-bottom:1px solid var(--border); }
+  header a { color:var(--muted); text-decoration:none; font-size:13px; }
+  h1 { font-size:18px; margin:0; }
+  select, button, a.btn { background:var(--panel); color:var(--ink); border:1px solid var(--border); border-radius:8px;
+         padding:7px 10px; font:inherit; cursor:pointer; text-decoration:none; display:inline-block; }
+  button:hover, a.btn:hover { border-color:var(--accent); }
+  button.on, a.btn.on { background:#16314d; border-color:var(--accent); }
+  button:disabled, a.btn.off { opacity:.4; pointer-events:none; }
+  .chip { font-size:12px; color:var(--muted); }
+  .chip b { color:var(--ink); }
+  .g { color:var(--green); } .a { color:var(--amber); } .r { color:var(--red); }
+  main { padding:10px 14px 40px; max-width:1500px; margin:0 auto; }
+  #stripWrap { position:relative; margin-bottom:8px; }
+  canvas#strip { width:100%; height:64px; display:block; border:1px solid var(--border); border-radius:6px;
+                 background:#0b0f13; cursor:pointer; touch-action:none; }
+  #stripTip { position:absolute; top:-26px; transform:translateX(-50%); background:#000c; border:1px solid var(--border);
+              border-radius:6px; padding:1px 7px; font-size:12px; pointer-events:none; display:none; white-space:nowrap; }
+  .legend { display:flex; gap:14px; font-size:12px; color:var(--muted); flex-wrap:wrap; margin:2px 0 8px; }
+  .legend i { display:inline-block; width:10px; height:10px; border-radius:2px; margin-right:4px; vertical-align:-1px; }
+  .bar { display:flex; flex-wrap:wrap; gap:6px; align-items:center; margin:8px 0; }
+  .bar .sp { flex:1; }
+  #stage { position:relative; line-height:0; background:#000; border:3px solid var(--border); border-radius:8px;
+           max-width:1280px; margin:0 auto; }
+  #stage.accepted { border-color:var(--green); } #stage.calibrated { border-color:var(--amber); }
+  #stage.uncalibrated { border-color:var(--red); }
+  #shot { width:100%; height:auto; display:block; min-height:120px; user-select:none; -webkit-user-drag:none; }
+  #ov { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; }
+  #msg { position:absolute; left:0; right:0; top:42%; text-align:center; font-size:18px; line-height:1.3;
+         color:#fff; text-shadow:0 1px 4px #000; pointer-events:none; }
+  #info { max-width:1280px; margin:6px auto 0; display:flex; flex-wrap:wrap; gap:4px 16px; font-size:13px; color:var(--muted); }
+  #info b { color:var(--ink); }
+  .badge { font-weight:700; padding:1px 8px; border-radius:999px; font-size:12px; color:#06121c; }
+  .badge.accepted { background:var(--green); } .badge.calibrated { background:var(--amber); }
+  .badge.uncalibrated { background:var(--red); color:#fff; }
+  #keys { max-width:1280px; margin:8px auto 0; font-size:12px; color:var(--muted); }
+  kbd { background:var(--panel); border:1px solid var(--border); border-radius:4px; padding:0 5px; font-size:11px; }
+  #gridView { display:none; }
+  #grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(250px,1fr)); gap:8px; }
+  .cell { position:relative; background:#000; border:3px solid var(--border); border-radius:8px; cursor:pointer; line-height:0; overflow:hidden; }
+  .cell.accepted { border-color:var(--green); } .cell.calibrated { border-color:var(--amber); } .cell.uncalibrated { border-color:var(--red); }
+  .cell img { width:100%; height:auto; display:block; aspect-ratio:16/9; background:#111; }
+  .cell svg { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; }
+  .cell .cap { position:absolute; left:0; right:0; bottom:0; line-height:1.25; padding:2px 6px; font-size:11px;
+               background:#000a; color:#e6edf3; }
+  .empty { color:var(--muted); padding:30px; text-align:center; }
+  @media (max-width:700px) { main { padding:8px 8px 40px; } #grid { grid-template-columns:repeat(2,1fr); } #keys { display:none; } }
+</style>
+</head>
+<body>
+<header>
+  <a href="/main">&larr; Hub</a>
+  <h1>Match calibration</h1>
+  <select id="matchSel" aria-label="Match"></select>
+  <span class="chip" id="totals"></span>
+  <span class="sp" style="flex:1"></span>
+  <button id="tabViewer" class="on">Viewer</button>
+  <button id="tabGrid">Grid</button>
+  <a class="btn" href="/calibration/review">Review proposals</a>
+</header>
+<main>
+  <div id="stripWrap"><div id="stripTip"></div><canvas id="strip"></canvas></div>
+  <div class="legend">
+    <span><i style="background:#3fb950"></i>accepted (line evidence confirms)</span>
+    <span><i style="background:#d29922"></i>calibrated, not accepted</span>
+    <span><i style="background:#f85149"></i>uncalibrated</span>
+    <span>strip: share of frames per pixel; bottom band: per segment; click or drag to seek</span>
+  </div>
+
+  <section id="viewerView">
+    <div class="bar">
+      <select id="segSel" aria-label="Segment"></select>
+      <button id="prevSeg" title="previous segment (Up / [)">&#9198; seg</button>
+      <button id="prevFr" title="previous frame (Left)">&#9664;</button>
+      <button id="nextFr" title="next frame (Right)">&#9654;</button>
+      <button id="nextSeg" title="next segment (Down / ])">seg &#9197;</button>
+      <select id="stepSel" aria-label="Step">
+        <option value="1" selected>step 1</option><option value="5">step 5</option><option value="25">step 25</option>
+        <option value="100">step 100</option><option value="500">step 500</option></select>
+      <button id="prevUnc" title="previous uncertain run (Shift+N)">&#9664; uncertain</button>
+      <button id="nextUnc" title="next uncertain run (N)">uncertain &#9654;</button>
+      <span class="sp"></span>
+      <button id="ovBtn" class="on" title="toggle pitch lines (O)">Lines</button>
+      <a class="btn" id="editLink" href="#" target="_blank" rel="noopener" title="open this frame in the calibration editor (E)">Open in editor</a>
+    </div>
+    <div id="stage"><img id="shot" alt="frame" draggable="false" /><svg id="ov" viewBox="0 0 1 1" preserveAspectRatio="none"></svg><div id="msg"></div></div>
+    <div id="info"></div>
+    <div id="keys"><kbd>&larr;</kbd><kbd>&rarr;</kbd> step by the selected size (Shift = &times;5) &middot; <kbd>&uarr;</kbd><kbd>&darr;</kbd> or <kbd>[</kbd><kbd>]</kbd> segment &middot;
+      <kbd>N</kbd> / <kbd>Shift+N</kbd> next / previous uncertain &middot; <kbd>O</kbd> lines &middot; <kbd>E</kbd> editor &middot; <kbd>G</kbd> grid</div>
+  </section>
+
+  <section id="gridView">
+    <div class="bar">
+      <select id="gMode"><option value="even">evenly spaced</option><option value="random">random</option>
+        <option value="uncertain">uncertain only</option><option value="accepted">accepted only</option></select>
+      <select id="gN"><option>12</option><option selected>24</option><option>48</option></select>
+      <label class="chip"><input type="checkbox" id="gSeg" /> current segment only</label>
+      <button id="gShuffle">Reshuffle</button>
+      <span class="chip" id="gCount"></span>
+    </div>
+    <div id="grid"></div>
+  </section>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const API = "/calibration/match/api";
+const COLORS = ["#f85149", "#d29922", "#3fb950"];            // uncalibrated, calibrated, accepted
+const NAMES = ["uncalibrated", "calibrated", "accepted"];
+let D = null;                  // summary of the current match
+let codes = null;              // Uint8Array per row
+let pre = null;                // prefix counts [3][n+1]
+let row = 0;                   // current global row
+let gSeed = 1;
+let showLines = true;
+let rowStarts = [];            // segment row0 for binary search
+const infoCache = new Map();   // "seg/local" -> frame_info promise
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
+const pct = (x) => (x == null ? "-" : (100 * x).toFixed(1) + "%");
+
+async function getJSON(url) {
+  const r = await fetch(url);
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || `${r.status}`);
+  return j;
+}
+
+// ---------------------------------------------------------------- state in the URL
+function pushState() {
+  const seg = segOf(row), q = new URLSearchParams(location.search);
+  q.set("match", D.match); q.set("seg", seg.segment); q.set("local", localOf(row, seg));
+  q.set("view", $("gridView").style.display === "block" ? "grid" : "viewer");
+  history.replaceState(null, "", "?" + q.toString());
+}
+
+// ---------------------------------------------------------------- rows <-> (segment, local)
+function segIdx(r) {            // index into D.segments of the segment holding row r (segments with n>0 only)
+  let lo = 0, hi = rowStarts.length - 1;
+  while (lo < hi) { const m = (lo + hi + 1) >> 1; if (rowStarts[m].row0 <= r) lo = m; else hi = m - 1; }
+  return rowStarts[lo].i;
+}
+const segOf = (r) => D.segments[segIdx(r)];
+const localOf = (r, seg) => seg.first_local + (r - seg.row0);
+function rowOf(segment, local) {
+  const s = D.segments.find((x) => x.segment === segment && x.n > 0);
+  if (!s) return null;
+  return Math.max(s.row0, Math.min(s.row0 + s.n - 1, s.row0 + local - s.first_local));
+}
+
+// ---------------------------------------------------------------- strip
+function buildStrip() {
+  codes = new Uint8Array(D.n_rows);
+  pre = [0, 1, 2].map(() => new Int32Array(D.n_rows + 1));
+  for (const s of D.segments) { let p = s.row0; for (const [c, n] of s.rle) { codes.fill(c, p, p + n); p += n; } }
+  for (let i = 0; i < D.n_rows; i++) for (let c = 0; c < 3; c++) pre[c][i + 1] = pre[c][i] + (codes[i] === c ? 1 : 0);
+  rowStarts = D.segments.map((s, i) => ({row0: s.row0, i})).filter((x) => D.segments[x.i].n > 0).sort((a, b) => a.row0 - b.row0);
+}
+function drawStrip() {
+  const cv = $("strip"), dpr = window.devicePixelRatio || 1;
+  const W = Math.max(200, Math.floor(cv.clientWidth * dpr)), H = Math.floor(cv.clientHeight * dpr);
+  cv.width = W; cv.height = H;
+  const ctx = cv.getContext("2d"), n = D.n_rows, top = H - Math.round(12 * dpr);
+  ctx.clearRect(0, 0, W, H);
+  for (let x = 0; x < W; x++) {
+    const a = Math.floor(x * n / W), b = Math.max(a + 1, Math.floor((x + 1) * n / W));
+    let y = top;
+    for (const c of [2, 1, 0]) {                         // accepted at the bottom of the stack
+      const h = (pre[c][Math.min(b, n)] - pre[c][a]) / (b - a) * top;
+      if (h <= 0) continue;
+      ctx.fillStyle = COLORS[c]; ctx.fillRect(x, y - h, 1, h); y -= h;
+    }
+  }
+  for (const s of D.segments) {                          // per-segment band
+    if (!s.n) continue;
+    const x0 = s.row0 * W / n, x1 = (s.row0 + s.n) * W / n, f = s.accepted_frac ?? 0;
+    ctx.fillStyle = f >= 0.8 ? COLORS[2] : f >= 0.3 ? COLORS[1] : COLORS[0];
+    ctx.fillRect(x0, top + 2 * dpr, Math.max(1, x1 - x0 - 1), H - top - 2 * dpr);
+  }
+  ctx.fillStyle = "#0b0f13"; // segment separators across the whole strip
+  for (const s of D.segments) if (s.n) ctx.fillRect(Math.round(s.row0 * W / n), top, 1, H - top);
+  const mx = Math.round(row * W / n);                    // marker
+  ctx.fillStyle = "#fff"; ctx.fillRect(mx - 1, 0, 2 * dpr, H);
+}
+function stripRow(ev) {
+  const r = $("strip").getBoundingClientRect();
+  return Math.max(0, Math.min(D.n_rows - 1, Math.floor((ev.clientX - r.left) / r.width * D.n_rows)));
+}
+(function wireStrip() {
+  const cv = $("strip"), tip = $("stripTip");
+  let drag = false;
+  cv.addEventListener("pointerdown", (e) => { drag = true; cv.setPointerCapture(e.pointerId); goRow(stripRow(e), true); });
+  cv.addEventListener("pointerup", () => { drag = false; });
+  cv.addEventListener("pointermove", (e) => {
+    if (!D) return;
+    const r = stripRow(e), s = segOf(r);
+    tip.style.display = "block"; tip.style.left = (e.clientX - cv.getBoundingClientRect().left) + "px";
+    tip.textContent = `seg ${s.segment} · f${localOf(r, s)} · ${NAMES[codes[r]]} · seg ${pct(s.accepted_frac)}`;
+    if (drag) goRow(r, true);
+  });
+  cv.addEventListener("pointerleave", () => { tip.style.display = "none"; });
+  window.addEventListener("resize", () => { if (D) drawStrip(); });
+})();
+
+// ---------------------------------------------------------------- overlay drawing
+function overlaySVG(overlay, sw) {
+  let out = "";
+  for (const [name, runs] of Object.entries(overlay || {})) {
+    const col = name.includes("CIRCLE") || name.includes("ARC") ? "#ffd33d" : "#ff2bd6";
+    for (const run of runs)
+      out += `<polyline fill="none" stroke="${col}" stroke-width="${sw}" vector-effect="non-scaling-stroke" opacity="0.85" points="${run.map(([u, v]) => u.toFixed(4) + "," + v.toFixed(4)).join(" ")}"/>`;
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------- viewer
+function frameURL(seg, local, w) { return `${API}/frame/${encodeURIComponent(D.match)}/${seg}/${local}.jpg?w=${w}`; }
+function infoURL(seg, local) { return `${API}/frame_info?match=${encodeURIComponent(D.match)}&segment=${seg}&local=${local}`; }
+function getInfo(seg, local) {
+  const k = seg + "/" + local;
+  if (!infoCache.has(k)) {
+    infoCache.set(k, getJSON(infoURL(seg, local)));
+    if (infoCache.size > 80) infoCache.delete(infoCache.keys().next().value);
+  }
+  return infoCache.get(k);
+}
+let showToken = 0;
+async function show() {
+  if (!D || !D.n_rows) return;
+  const token = ++showToken, seg = segOf(row), local = localOf(row, seg);
+  $("segSel").value = String(seg.segment);
+  drawStrip(); pushState();
+  $("shot").src = frameURL(seg.segment, local, 1280);
+  let f;
+  try { f = await getInfo(seg.segment, local); } catch (e) { $("msg").textContent = "frame info failed: " + e.message; return; }
+  if (token !== showToken) return;
+  $("stage").className = f.status;
+  $("ov").innerHTML = showLines ? overlaySVG(f.overlay, 2.5) : "";
+  $("msg").textContent = f.status === "uncalibrated" ? "no calibration for this frame" : "";
+  const el = $("editLink");
+  el.href = f.editor_url; el.classList.toggle("off", !f.editor_ok);
+  el.title = f.editor_ok ? "open this frame in the calibration editor (E)" : "this clip is not in the editor's current dataset (try ?dataset=)";
+  const bits = [
+    `<span class="badge ${f.status}">${f.status}</span>`,
+    `<span>seg <b>${seg.segment}</b> (${esc(seg.source)}, ${pct(seg.accepted_frac)} accepted) · local <b>${f.local}</b> · global <b>${f.frame}</b></span>`,
+    `<span>line F1 <b>${f.evidence_f1 ?? "-"}</b> (nearest evidence frame)</span>`,
+  ];
+  if (f.f_px) bits.push(`<span>pan ${f.pan_deg}° tilt ${f.tilt_deg}° f ${f.f_px}px · k1 ${f.k1 != null ? f.k1.toFixed(4) : "-"}</span>`);
+  bits.push(`<span>${row + 1} / ${D.n_rows}</span>`);
+  $("info").innerHTML = bits.join("");
+  const nx = Math.min(D.n_rows - 1, row + 1), ns = segOf(nx);           // warm the next frame
+  getInfo(ns.segment, localOf(nx, ns)).catch(() => {});
+}
+function goRow(r, quiet) { row = Math.max(0, Math.min(D.n_rows - 1, r)); if (viewerOn()) show(); else { drawStrip(); pushState(); } }
+function step(d) { goRow(row + d * parseInt($("stepSel").value, 10)); }
+function jumpSeg(d) {
+  const i = segIdx(row), order = rowStarts.map((x) => x.i), p = order.indexOf(i), q = p + d;
+  if (q < 0 || q >= order.length) return;
+  goRow(D.segments[order[q]].row0);
+}
+async function jumpUncertain(dir) {
+  const seg = segOf(row), local = localOf(row, seg);
+  try {
+    const j = await getJSON(`${API}/next?match=${encodeURIComponent(D.match)}&segment=${seg.segment}&local=${local}&dir=${dir}`);
+    if (!j.found) { $("msg").textContent = dir > 0 ? "no more uncertain frames" : "no earlier uncertain frames"; return; }
+    const r = rowOf(j.segment, j.local);
+    if (r != null) goRow(r);
+  } catch (e) { $("msg").textContent = e.message; }
+}
+const viewerOn = () => $("viewerView").style.display !== "none";
+
+// ---------------------------------------------------------------- grid
+async function loadGrid() {
+  const seg = segOf(row);
+  const q = new URLSearchParams({match: D.match, n: $("gN").value, mode: $("gMode").value, seed: gSeed});
+  if ($("gSeg").checked) q.set("segment", seg.segment);
+  $("grid").innerHTML = '<div class="empty">loading&hellip;</div>';
+  let j;
+  try { j = await getJSON(`${API}/grid?` + q); } catch (e) { $("grid").innerHTML = `<div class="empty">${esc(e.message)}</div>`; return; }
+  $("gCount").textContent = `${j.frames.length} frames`;
+  if (!j.frames.length) { $("grid").innerHTML = '<div class="empty">no frames match</div>'; return; }
+  $("grid").innerHTML = j.frames.map((f, i) =>
+    `<div class="cell ${f.status}" data-i="${i}" title="click to open in the viewer">` +
+    `<img loading="lazy" src="${frameURL(f.segment, f.local, 480)}" alt="">` +
+    `<svg viewBox="0 0 1 1" preserveAspectRatio="none">${overlaySVG(f.overlay, 1.6)}</svg>` +
+    `<div class="cap">seg ${f.segment} · f${f.local} · ${f.status}${f.evidence_f1 != null ? " · F1 " + f.evidence_f1 : ""}</div></div>`).join("");
+  $("grid").querySelectorAll(".cell").forEach((c) => c.addEventListener("click", () => {
+    const f = j.frames[+c.dataset.i], r = rowOf(f.segment, f.local);
+    if (r != null) { setTab("viewer"); goRow(r); }
+  }));
+}
+function setTab(t) {
+  const g = t === "grid";
+  $("viewerView").style.display = g ? "none" : "block";
+  $("gridView").style.display = g ? "block" : "none";
+  $("tabViewer").classList.toggle("on", !g); $("tabGrid").classList.toggle("on", g);
+  if (g) loadGrid(); else show();
+  pushState();
+}
+
+// ---------------------------------------------------------------- load
+async function loadMatch(match, seg, local) {
+  infoCache.clear();
+  $("totals").textContent = "loading…";
+  try { D = await getJSON(`${API}/summary?match=${encodeURIComponent(match)}`); }
+  catch (e) { D = null; $("totals").innerHTML = `<span class="r">${esc(e.message)}</span>`; return; }
+  const t = D.totals || {};
+  $("totals").innerHTML = `<b class="g">${pct(t.accepted_frac)}</b> accepted · <b class="a">${pct(t.calibrated_frac)}</b> calibrated · ` +
+    `${t.frames} frames · ${t.segments} segments (${t.segments_recovered} recovered${t.segments_missing ? ", " + t.segments_missing + " missing" : ""}) · <span title="${esc(JSON.stringify(D.code_shas || {}))}">${esc(D.version_id)}</span>`;
+  $("segSel").innerHTML = D.segments.filter((s) => s.n > 0).map((s) =>
+    `<option value="${s.segment}">seg ${s.segment} · ${pct(s.accepted_frac)}${s.source === "recovered" ? " · recovered" : ""}</option>`).join("");
+  buildStrip();
+  const r0 = seg != null ? rowOf(seg, local ?? 0) : 0;
+  row = r0 ?? 0;
+  if (viewerOn()) show(); else { drawStrip(); loadGrid(); }
+}
+async function init() {
+  const q = new URLSearchParams(location.search);
+  let list;
+  try { list = await getJSON(`${API}/matches`); } catch (e) { $("totals").textContent = e.message; return; }
+  if (!list.matches.length) { $("totals").innerHTML = '<span class="r">no match calibration files yet (run scripts/calibration_match_combine.py)</span>'; return; }
+  $("matchSel").innerHTML = list.matches.map((m) => `<option value="${esc(m.match)}">${esc(m.match)} · ${pct(m.accepted_frac)}</option>`).join("");
+  const want = q.get("match");
+  if (want && list.matches.some((m) => m.match === want)) $("matchSel").value = want;
+  const seg = q.get("seg") != null ? parseInt(q.get("seg"), 10) : null, local = q.get("local") != null ? parseInt(q.get("local"), 10) : null;
+  if (q.get("view") === "grid") { $("viewerView").style.display = "none"; $("gridView").style.display = "block"; $("tabViewer").classList.remove("on"); $("tabGrid").classList.add("on"); }
+  await loadMatch($("matchSel").value, seg, local);
+}
+
+$("matchSel").addEventListener("change", () => { history.replaceState(null, "", "?match=" + encodeURIComponent($("matchSel").value)); loadMatch($("matchSel").value); });
+$("segSel").addEventListener("change", () => { const r = rowOf(parseInt($("segSel").value, 10), 0); if (r != null) goRow(r); });
+$("prevFr").addEventListener("click", () => step(-1)); $("nextFr").addEventListener("click", () => step(1));
+$("prevSeg").addEventListener("click", () => jumpSeg(-1)); $("nextSeg").addEventListener("click", () => jumpSeg(1));
+$("prevUnc").addEventListener("click", () => jumpUncertain(-1)); $("nextUnc").addEventListener("click", () => jumpUncertain(1));
+$("ovBtn").addEventListener("click", () => { showLines = !showLines; $("ovBtn").classList.toggle("on", showLines); show(); });
+$("tabViewer").addEventListener("click", () => setTab("viewer")); $("tabGrid").addEventListener("click", () => setTab("grid"));
+for (const id of ["gMode", "gN", "gSeg"]) $(id).addEventListener("change", () => loadGrid());
+$("gShuffle").addEventListener("click", () => { gSeed++; loadGrid(); });
+document.addEventListener("keydown", (e) => {
+  if (!D || e.target.matches("select, input") || e.ctrlKey || e.metaKey || e.altKey) return;
+  const k = e.key;
+  if (k === "g" || k === "G") { setTab(viewerOn() ? "grid" : "viewer"); return; }
+  if (!viewerOn()) return;
+  if (k === "ArrowRight") { e.preventDefault(); step(e.shiftKey ? 5 : 1); }
+  else if (k === "ArrowLeft") { e.preventDefault(); step(e.shiftKey ? -5 : -1); }
+  else if (k === "ArrowDown" || k === "]") { e.preventDefault(); jumpSeg(1); }
+  else if (k === "ArrowUp" || k === "[") { e.preventDefault(); jumpSeg(-1); }
+  else if (k === "n") jumpUncertain(1);
+  else if (k === "N") jumpUncertain(-1);
+  else if (k === "o" || k === "O") $("ovBtn").click();
+  else if (k === "e" || k === "E") { const a = $("editLink"); if (!a.classList.contains("off")) window.open(a.href, "_blank"); }
+});
+init();
+</script>
+</body>
+</html>

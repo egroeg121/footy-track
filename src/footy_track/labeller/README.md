@@ -37,6 +37,7 @@ uv run uvicorn footy_track.labeller.server:app --reload
 | `/ball_check` | Mobile ball verification (swipe yes/no) |
 | `/calibration` | Manual pitch calibration (frame <-> pitch point pairs, §16) |
 | `/calibration/review` | Mobile accept/reject of machine pitch-calibration proposals (§16, LAB-1210..1219) |
+| `/calibration/match?match=` | Spot-check a whole match's PTZ calibration: status strip, overlay viewer, sampled grid (`labeller/calibration_match.py`; reads `<data>/calibration/ptz_v3/<match>.parquet` written by `scripts/calibration_match_combine.py`, read-only) |
 
 Test suite: `tests/labeller/` (run `uv run pytest tests/labeller/`). Test
 references below are `file::test_name` within `tests/labeller/`.
