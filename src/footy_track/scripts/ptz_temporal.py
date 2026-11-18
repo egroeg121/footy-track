@@ -710,7 +710,7 @@ def cmd_shared(args):
             stf = np.load(wd(args.clip) / "states_full.npy")
             fr = [t for t in range(0, cache.n, 5) if np.all(np.isfinite(stf[t]))]
             ev = {t: cache.evidence(t) for t in fr if cache.evidence(t) is not None}
-            us.append(pt.Unit(uid, fr, stf[fr], ev, [p for p in pairs if p.i % 5 == 0 and p.j - p.i == 5]))
+            us.append(pt.Unit(len(units), fr, stf[fr], ev, [p for p in pairs if p.i % 5 == 0 and p.j - p.i == 5]))
         t0 = time.time()
         shn, _, info = pt.fit_shared(us, rig, PITCH, log=log)
         res[tag] = {"C": shn.C.tolist(), "roll_deg": float(np.degrees(shn.roll)), "k1": shn.k1, "info": info,
