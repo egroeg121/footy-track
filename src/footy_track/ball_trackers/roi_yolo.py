@@ -45,6 +45,7 @@ import torch
 from ultralytics import YOLO
 
 from footy_track.ball_eval.dataset import BBox
+from footy_track.device import pick_device, use_half
 
 # Default trained detector: yolo11s fine-tuned on broadcast footage.
 # Classes: 0=ball, 1=coach, 2=in_play_ball, 3=person, 4=player, 5=player_sub, 6=referee
@@ -90,11 +91,7 @@ def _kf_update(kf: dict, cx: float, cy: float) -> None:
 
 
 def _pick_device() -> str:
-    if torch.backends.mps.is_available():
-        return "mps"
-    if torch.cuda.is_available():
-        return "cuda"
-    return "cpu"
+    return pick_device()
 
 
 def _kalman_predict(
@@ -245,6 +242,7 @@ class RoiYoloTracker:
             results = self._model.predict(
                 crop_bgr,
                 device=self._device,
+                half=use_half(self._device),
                 conf=self._min_confidence,
                 classes=self._ball_classes,
                 verbose=False,

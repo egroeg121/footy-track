@@ -9,9 +9,10 @@ import argparse
 import os
 from datetime import datetime
 
-import torch
 from roboflow import Roboflow
 from ultralytics import YOLO
+
+from footy_track.device import pick_device
 
 
 def apply_mps_assigner_workaround() -> None:
@@ -56,7 +57,7 @@ def train_detector(
     imgsz: int = 640,
     batch: int = -1,
     amp: bool = True,
-    device: str = "mps",
+    device: str | None = None,
     workers: int = 8,
     cache: bool | str = True,
 ):
@@ -89,12 +90,10 @@ def train_detector(
         dataset = version.download(model_format="yolov8", location=dataset_location)
         dataset_location = dataset.location
 
+    device = pick_device(device)
     print(f"Dataset location: {dataset_location}")
 
-    # Check for GPU availability
-    print(
-        f"MPS available: {torch.backends.mps.is_available()}, MPS built: {torch.backends.mps.is_built()}"
-    )
+    print(f"Training device: {device}")
 
     # Set up training run
     run_name = f"{datetime.now():%Y-%m-%d_%H-%M}_model_name={str(model_name)}_dataset_version={dataset_version}_epochs={epochs}_freeze_layers={freeze_layers}_imgsz={imgsz}"
@@ -179,8 +178,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--device",
         type=str,
-        default="mps",
-        help="Training device (mps, cpu, 0 for CUDA).",
+        default=None,
+        help="Training device (mps, cpu, 0 for CUDA). Default: auto (cuda, mps, cpu).",
     )
     parser.add_argument(
         "--workers",

@@ -6,9 +6,10 @@ import argparse
 import os
 from datetime import datetime
 
-import torch
 from roboflow import Roboflow
 from ultralytics import YOLO
+
+from footy_track.device import pick_device
 
 
 def train_classifier(
@@ -18,6 +19,7 @@ def train_classifier(
     epochs: int,
     name_prepend: str = "",
     local_dataset: str | None = None,
+    device: str | None = None,
 ):
     """
     Downloads a dataset from Roboflow (or uses a local path) and trains a YOLO classifier.
@@ -49,10 +51,7 @@ def train_classifier(
 
     print(f"Dataset location: {dataset_location}")
 
-    # Check for GPU availability
-    print(
-        f"MPS available: {torch.backends.mps.is_available()}, MPS built: {torch.backends.mps.is_built()}"
-    )
+    print(f"Training device: {pick_device(device)}")
 
     # Set up training run
     run_name = f"{datetime.now():%Y-%m-%d_%H-%M}_model_name={str(model_name)}_dataset_version={dataset_version}_epochs={epochs}_freeze_layers={freeze_layers}"
@@ -72,7 +71,7 @@ def train_classifier(
         cache=True,
         augment=True,
         plots=True,
-        device="mps",
+        device=pick_device(device),
         project="footy_scan_classifier",
         name=run_name,
     )
@@ -112,6 +111,9 @@ if __name__ == "__main__":
     )
 
     parser.add_argument(
+        "--device", type=str, default=None, help="Training device. Default: auto (cuda, mps, cpu)."
+    )
+    parser.add_argument(
         "--local-dataset",
         type=str,
         default=None,
@@ -126,4 +128,5 @@ if __name__ == "__main__":
         freeze_layers=args.freeze,
         epochs=args.epochs,
         local_dataset=args.local_dataset,
+        device=args.device,
     )

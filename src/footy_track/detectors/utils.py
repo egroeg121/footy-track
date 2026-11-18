@@ -5,6 +5,7 @@ import torch
 from PIL import Image
 from torchvision import transforms, utils
 
+from footy_track.device import pick_device
 from footy_track.schema import FrameDetections, ObjectDetection
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
@@ -12,13 +13,7 @@ if TYPE_CHECKING:  # pragma: no cover - typing only
 
 
 def _available_device():
-    if torch.backends.mps.is_available():
-        device = torch.device("mps")
-    elif torch.cuda.is_available():
-        device = torch.device("cuda")
-    else:
-        device = torch.device("cpu")
-    return device
+    return torch.device(pick_device())
 
 
 color_map = {
