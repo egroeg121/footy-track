@@ -153,6 +153,7 @@ def _ensure_started() -> None:
     global _worker, _EXEC  # noqa: PLW0603
     if _worker is not None and _worker.is_alive():
         return
+    _load_builtins()  # a restarted server has live hooked jobs (e.g. broadcast_calibrate) whose actions must be registered before the first run
     with _THREAD_LOCK:
         if _worker is not None and _worker.is_alive():
             return
