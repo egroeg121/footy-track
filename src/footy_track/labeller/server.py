@@ -40,6 +40,7 @@ from footy_track.ball_eval.metrics import bbox_iou  # noqa: E402
 from footy_track.labeller import datasets, hooks  # noqa: E402
 from footy_track.labeller.ball_check import router as ball_check_router  # noqa: E402
 from footy_track.labeller.calibration import router as calibration_router  # noqa: E402
+from footy_track.labeller.calibration_match import router as calibration_match_router  # noqa: E402
 from footy_track.labeller.calibration_proposals import router as calibration_proposals_router  # noqa: E402
 from footy_track.labeller.constants import (  # noqa: E402
     BALL_LABELS,
@@ -702,6 +703,7 @@ app.include_router(review_router)
 app.include_router(ball_check_router)
 app.include_router(calibration_router)
 app.include_router(calibration_proposals_router)
+app.include_router(calibration_match_router)
 app.include_router(ingest_router)
 app.include_router(tasks_router)
 app.include_router(jobs_router)
