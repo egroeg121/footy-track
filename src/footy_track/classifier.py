@@ -7,6 +7,7 @@ from pathlib import Path
 
 from ultralytics import YOLO
 
+from footy_track.device import pick_device
 from footy_track.schema import (
     BroadcastClassification,
     EnumBroadcastClassification,
@@ -139,7 +140,7 @@ class UltralyticsClassifier(Classifier):
         return EnumBroadcastClassification.NO
 
     def _model_infer(self, image_path: Path):
-        return self.model.predict(source=image_path, device="mps", verbose=False)
+        return self.model.predict(source=image_path, device=pick_device(), verbose=False)
 
     def predict_from_path(self, image_path: Path) -> FrameClassifications:
         """Predict the class of an image from its path."""

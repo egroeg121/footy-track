@@ -17,6 +17,7 @@ from footy_track.constants import (
     PLAYER_TAG,
     REFEREE_TAG,
 )
+from footy_track.device import use_half
 from footy_track.schema import FrameDetections, ObjectDetection
 from footy_track.utils import get_project_root
 
@@ -167,9 +168,8 @@ class UltralyticsObjectDetector(ObjectDetector):
         imgsz: int = DEFAULT_IMGSZ,
         device: str | None = None,
     ):
-        # Default: shared device selection util (prefers MPS on Apple, then CUDA,
-        # then CPU). Pass ``device`` to override, e.g. the inference pipeline's
-        # cuda -> mps -> cpu order.
+        # Default: shared device selection (cuda/ROCm, then MPS, then CPU).
+        # Pass ``device`` to override.
         dev = device or _available_device()
         self.device = dev.type if isinstance(dev, torch.device) else str(dev)
         self.model = YOLO(model_uri)
@@ -236,7 +236,7 @@ class UltralyticsObjectDetector(ObjectDetector):
         results = self.model.predict(
             frames,
             device=self.device,
-            half=self.device == "cuda",
+            half=use_half(self.device),
             **self.predict_kwargs,
         )
         out = []

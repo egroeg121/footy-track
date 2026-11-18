@@ -51,7 +51,6 @@ from typing import Protocol
 
 import cv2
 import numpy as np
-import torch
 
 from footy_track.ball_trackers.detection_tracker import (
     DETECTED,
@@ -61,6 +60,7 @@ from footy_track.ball_trackers.detection_tracker import (
 )
 from footy_track.ball_trackers.factory import make_ball_tracker
 from footy_track.constants import BALL_TAG, IN_PLAY_BALL_TAG
+from footy_track.device import pick_device
 from footy_track.schema import FrameDetections
 from footy_track.scripts.track_detections import (
     DEFAULT_LABELS,
@@ -106,16 +106,8 @@ class InferenceConfig:
 
 
 def select_device() -> str:
-    """cuda, then mps, then cpu.
-
-    Not ``detectors.utils._available_device`` (mps first) and not the training
-    script's ``--device mps`` default, which fails on every non-Apple machine.
-    """
-    if torch.cuda.is_available():
-        return "cuda"
-    if torch.backends.mps.is_available():
-        return "mps"
-    return "cpu"
+    """cuda (incl. ROCm), then mps, then cpu; see :func:`footy_track.device.pick_device`."""
+    return pick_device()
 
 
 def iter_frames(

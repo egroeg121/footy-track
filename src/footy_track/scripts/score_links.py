@@ -36,6 +36,7 @@ import numpy as np
 import torch
 from torch import nn
 
+from footy_track.device import pick_device
 from footy_track.identity.linker import (
     DEFAULT_MAX_GAP,
     Candidate,
@@ -124,7 +125,7 @@ def score_clip(
     min_frames: int = 25,
     device: str | None = None,
 ) -> list[Candidate]:
-    device = device or ("cuda" if torch.cuda.is_available() else "cpu")
+    device = pick_device(device)
     rows = load_rows(tracklets_dir / f"{clip}.jsonl")
     if not rows:
         return []
