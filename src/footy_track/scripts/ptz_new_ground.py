@@ -141,7 +141,10 @@ def cmd_anchors(a):
     store_p.write_text(json.dumps(store))
 
 
-def units_of(out: Path, store: dict, min_f1: float, max_per_seg: int = 99) -> tuple[list, list[dict]]:
+def units_of(out: Path, store: dict, min_f1: float, max_per_seg: int = 99, to_C=None, roll: float = 0.0,
+             k1: float = 0.02) -> tuple[list, list[dict]]:
+    """Units of the anchored frames. The per-frame search lets C move inside its sigma, so a pose belongs to *its own* C:
+    with ``to_C`` every pose is re-expressed at that common centre (``pt.reseed_states``) before the shared fit."""
     units, recs = [], []
     per_seg: dict[str, int] = {}
     for key, r in sorted(store.items(), key=lambda kv: -(kv[1].get("f1") or 0)):
@@ -157,7 +160,10 @@ def units_of(out: Path, store: dict, min_f1: float, max_per_seg: int = 99) -> tu
         if ev is None:
             continue
         per_seg[sk] = per_seg.get(sk, 0) + 1
-        units.append(pt.Unit(len(units), [r["t"]], np.array([[r["pan"], r["tilt"], r["logf"]]]), {r["t"]: ev}))
+        st = np.array([[r["pan"], r["tilt"], r["logf"]]])
+        if to_C is not None and r.get("C") is not None:
+            st = pt.reseed_states(st, pt.Shared(np.array(r["C"]), roll, k1), pt.Shared(np.asarray(to_C, float), roll, k1))
+        units.append(pt.Unit(len(units), [r["t"]], st, {r["t"]: ev}))
         recs.append({"key": key, **{k: r[k] for k in ("match", "seg", "t", "f1", "ok")}})
     return units, recs
 
@@ -173,7 +179,7 @@ def unit_f1(units, poses, shn: pt.Shared) -> np.ndarray:
 def cmd_fit(a):
     out = OUT / a.ground
     store = json.loads((out / a.store).read_text())
-    units, recs = units_of(out, store, a.min_f1, a.max_per_seg)
+    units, recs = units_of(out, store, a.min_f1, a.max_per_seg, to_C=_vec(a.anchor_C or a.prior), k1=a.k1)
     prior = ptz.Rig(_vec(a.prior), 0.0, a.k1, (5.0, 12.0, 6.0), (105.0, 68.0))
     if a.prior_sigma:
         prior = prior.with_sigma(tuple(_vec(a.prior_sigma)))
@@ -213,6 +219,76 @@ def cmd_fit(a):
     log("RESULT", {k: v for k, v in res.items() if k not in ("finalists",)})
 
 
+def _side_work(args):
+    seg, t, rig_d, out_root, sx = args
+    rig = ptz.Rig(np.array(rig_d["C"]) + np.array([sx, 0.0, 0.0]), rig_d["roll"], rig_d["k1"], (6.0, 6.0, 4.0), (105.0, 68.0))
+    cache = pt.ClipCache(Path("x"), Path(out_root) / seg["match"] / Path(seg["seg"]).stem)
+    ev = cache.evidence(t)
+    if ev is None:
+        return None
+    cam, hyps, info = ptz.search_lines(ev, rig, PITCH, margin=pt.MARGIN, min_f1=pt.MIN_F1, **SEARCH)
+    best = cam or (hyps[0].cam if hyps else None)
+    if best is None:
+        return None
+    return {"sx": sx, "match": seg["match"], "seg": seg["seg"], "t": t, "ok": cam is not None, "f1": info.get("f1"),
+            "C": [float(c) for c in best.C]}
+
+
+def cmd_sideprobe(a):
+    """Look for side gantry positions: main-camera frames the centre rig could not explain (F1 < ``--below``) are searched
+    again with C started at ``C + (+-sx, 0, 0)`` and a loose sigma; the frames that become accepted give free-C estimates of
+    the side positions (cf. reports/ptz_v3_weak.md: Emirates C_x = +-32.7 m, Vitality +-36.6 m)."""
+    out = OUT / a.ground
+    store = json.loads((out / a.store).read_text())
+    r = ptz.Rig.from_json(a.rig)
+    rig_d = {"C": [float(c) for c in r.C], "roll": float(r.roll), "k1": float(r.k1)}
+    weak = [{"match": v["match"], "seg": v["seg"]} | {"t": v["t"], "f1": v.get("f1") or 0} for v in store.values()
+            if (v.get("pmain") or 0) >= 0.5 and not v.get("ok") and "pan" in v and (v.get("f1") or 0) < a.below]
+    weak.sort(key=lambda v: v["f1"])
+    weak = weak[: a.n]
+    log(len(weak), "weak main-camera frames; side offsets", a.sx)
+    jobs = [(w, w["t"], rig_d, str(out / "cache"), sx) for w in weak for sx in (-a.sx, a.sx)]
+    with mp.get_context("fork").Pool(a.jobs) as pool:
+        res = [x for x in pool.imap_unordered(_side_work_unpack, jobs) if x]
+    summ = {}
+    for sign in (-1, 1):
+        ok = [x for x in res if np.sign(x["sx"]) == sign and x["ok"]]
+        Cs = np.array([x["C"] for x in ok]) if ok else np.zeros((0, 3))
+        summ[f"{'+' if sign > 0 else '-'}side"] = {
+            "n_ok": len(ok), "n_tried": sum(1 for x in res if np.sign(x["sx"]) == sign),
+            "C_median": np.median(Cs, 0).tolist() if len(Cs) else None, "C_std": Cs.std(0).tolist() if len(Cs) else None,
+            "f1_median": float(np.median([x["f1"] for x in ok])) if ok else None, "segments": len({x["seg"] for x in ok})}
+    log("SIDE", json.dumps(summ))
+    (out / f"side_{a.tag}.json").write_text(json.dumps({"summary": summ, "frames": res}, indent=1, default=float))
+
+
+def _side_work_unpack(j):
+    return _side_work(j)
+
+
+def pose_prior_from_poses(z, min_f1: float = 0.6) -> dict:
+    """Provisional pose band ``tilt_deg = a + b ln f`` (``ptz_recover.pose_prior`` format) from the fitted poses of the rig-fit
+    frames (those with line F1 >= ``min_f1`` at the fitted rig); refined later from the accepted frames of a whole match."""
+    f1, P = z["f1"], z["poses"]
+    m = f1 >= min_f1
+    pan, tilt, logf = np.degrees(P[m, 0]), np.degrees(P[m, 1]), P[m, 2]
+    keep = np.ones(len(logf), bool)
+    for _ in range(4):
+        b, a_ = np.polyfit(logf[keep], tilt[keep], 1)
+        r = tilt - (a_ + b * logf)
+        s = float(np.std(r[keep]))
+        keep = np.abs(r) < 3 * max(s, 0.3)
+    s = float(np.std(r[keep]))
+    f = np.exp(logf)
+    sigma = max(s, 0.8)  # few frames: do not trust a tiny scatter
+    return {"tilt_a": round(float(a_), 3), "tilt_b": round(float(b), 3), "tilt_sigma_deg": round(sigma, 2),
+            "pan_deg": [round(max(30.0, float(pan.min()) - 15), 1), round(min(150.0, float(pan.max()) + 15), 1)],
+            "f_px": [round(float(f.min()) * 0.65, -1), round(float(f.max()) * 1.4, -1)],
+            "tilt_offsets_deg": [round(k * sigma, 2) for k in (-4, -2, 0, 2, 4)],
+            "source": f"PROVISIONAL: tilt_deg = a + b ln f over the {int(m.sum())} rig-fit frames with line F1 >= {min_f1} at the "
+                      f"fitted rig ({int(keep.sum())} within 3 sigma, scatter {s:.2f} deg); ranges widened; refine from a whole-match run"}
+
+
 def cmd_rig(a):
     """Write the rig json from a fit result."""
     out = OUT / a.ground
@@ -222,6 +298,9 @@ def cmd_rig(a):
             "n_frames": res["n_units"], "n_segments": res["n_segments"], "cost": res["cost"],
             "line_f1_median_at_fit": res["f1_median"], "frac_f1_ge_0.6": res["f1_ge_0.6"], "prior_C": res["prior_C"],
             "finalists": res["finalists"], "bootstrap": res.get("bootstrap"), "matches": a.matches.split(",")}
+    up = out / f"fit_{a.tag}_units.npz"
+    if up.exists():
+        info["pose_prior"] = pose_prior_from_poses(np.load(up), min_f1=0.6)
     if a.extra:
         info.update(json.loads(a.extra))
     rig = {"C": res["C"], "roll": float(np.radians(res["roll_deg"])), "k1": res["k1"], "sigma_C": [1.0, 3.0, 1.0],
@@ -232,7 +311,7 @@ def cmd_rig(a):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=["anchors", "fit", "rig"])
+    ap.add_argument("cmd", choices=["anchors", "fit", "rig", "sideprobe"])
     ap.add_argument("--ground", required=True)
     ap.add_argument("--matches", default="")
     ap.add_argument("--video-root", default=str(Path.home() / "footy/grounds/video"))
@@ -256,11 +335,14 @@ def main():
     ap.add_argument("--stride", type=int, default=2)
     ap.add_argument("--iters", type=int, default=20)
     ap.add_argument("--boot", type=int, default=0)
+    ap.add_argument("--below", type=float, default=0.5, help="sideprobe: frames with search F1 below this")
+    ap.add_argument("--n", type=int, default=60, help="sideprobe: number of weak frames")
+    ap.add_argument("--sx", type=float, default=33.0, help="sideprobe: start |C_x| offset (m)")
     ap.add_argument("--tag", default="a")
     ap.add_argument("--rig-out", default=None)
     ap.add_argument("--extra", default=None)
     a = ap.parse_args()
-    {"anchors": cmd_anchors, "fit": cmd_fit, "rig": cmd_rig}[a.cmd](a)
+    {"anchors": cmd_anchors, "fit": cmd_fit, "rig": cmd_rig, "sideprobe": cmd_sideprobe}[a.cmd](a)
 
 
 if __name__ == "__main__":
