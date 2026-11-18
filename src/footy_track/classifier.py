@@ -1,4 +1,5 @@
 import logging
+import os
 import random
 import tempfile
 from abc import ABC, abstractmethod
@@ -20,11 +21,24 @@ logger = logging.getLogger(__name__)
 CURRENT_BEST_GUESS_CLASSIFIER_CLASS = None
 
 
+CLASSIFIER_WEIGHTS_ENV = "FOOTY_CLASSIFIER_WEIGHTS"
+# Repo-relative default. Prefect GPU jobs symlink their configured weights over this path in the
+# per-sha worktree (see jobs/footy_common.footy_env), so it must stay where it is.
+_DEFAULT_CLASSIFIER_RELPATH = "model_saves/classifier/20251226-yolo11n-cls/0.987.pt"
+
+
+def default_classifier_path() -> Path:
+    """Weights of the broadcast-view classifier: ``$FOOTY_CLASSIFIER_WEIGHTS`` if set, else the repo-relative file."""
+    override = os.environ.get(CLASSIFIER_WEIGHTS_ENV, "").strip()
+    if override:
+        return Path(override).expanduser()
+    return Path(__file__).resolve().parents[2] / _DEFAULT_CLASSIFIER_RELPATH
+
+
 def get_current_best_guess_classifier() -> "Classifier":
     """Returns the current best guess classifier class."""
     # Try to load the local model; fall back to random if unavailable
-    repo_root = Path(__file__).resolve().parents[2]
-    model_path = repo_root / "model_saves/classifier/20251226-yolo11n-cls/0.987.pt"
+    model_path = default_classifier_path()
 
     try:
         return UltralyticsClassifier(model_path=model_path)

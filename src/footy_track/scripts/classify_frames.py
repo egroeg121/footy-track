@@ -5,7 +5,7 @@ from pathlib import Path
 
 from rich.logging import RichHandler
 
-from footy_track.classifier import UltralyticsClassifier
+from footy_track.classifier import UltralyticsClassifier, default_classifier_path
 
 logging.basicConfig(
     level="INFO",
@@ -23,8 +23,8 @@ def main():
     parser.add_argument(
         "--model_path",
         type=str,
-        default="model_saves/classifier/20251226-yolo11n-cls/0.987.pt",
-        help="Path or name of the classifier model.",
+        default=str(default_classifier_path()),
+        help="Path or name of the classifier model (default: $FOOTY_CLASSIFIER_WEIGHTS, else the repo-relative weights).",
     )
     args = parser.parse_args()
 
