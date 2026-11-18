@@ -53,9 +53,10 @@ from footy_track.calibration.frame_type import (
     update_frame_types,
 )
 from footy_track.calibration.prelabel.proposals import read_proposals, update_proposals
-from footy_track.calibration.video import read_frame
+from footy_track.calibration.video import read_frame, read_frame_exact
 from footy_track.clip_id import canonical_clip_id
 from footy_track.labeller import datasets, hooks
+from footy_track.labeller.match_segments import SEGMENTS_DIR, find_segment_video
 from footy_track.labeller.review import _clips_dir, _gt_marks_dir
 from footy_track.labeller.review import _find_video as _find_video_exact
 
@@ -100,7 +101,11 @@ def _video_meta(video: Path) -> dict | None:
 
 
 def _read_frame(video: Path, idx: int) -> np.ndarray | None:
-    # cv2 with an ffmpeg fallback for clips OpenCV decodes as black.
+    # Full-match segments (the ``/calibration/match`` fallback) are addressed by decoded-frame index, which cv2 seeks
+    # do not reproduce on long-GOP / variable-frame-rate files: read them by pts. Dataset clips keep the cv2 seek
+    # (with an ffmpeg fallback for clips OpenCV decodes as black) their existing labels were made against.
+    if video.parent.name == SEGMENTS_DIR:
+        return read_frame_exact(video, idx)
     return read_frame(video, idx)
 
 
@@ -640,7 +645,8 @@ async def pitch_model(length: float = DEFAULT_LENGTH, width: float = DEFAULT_WID
 def _find_video(clip: str):
     """Video for ``clip``: exact stem first, else any file whose canonical clip id
     matches (proposal sidecars store canonical ids, e.g. ``arsenal_astonvilla_seg110``
-    for ``astonvilla_seg110.mp4``)."""
+    for ``astonvilla_seg110.mp4``), in the active dataset's clip dirs; finally the full-match broadcast segment
+    (``labeller.match_segments``)."""
     video = _find_video_exact(clip)
     if video is not None:
         return video
@@ -651,6 +657,11 @@ def _find_video(clip: str):
     for d in datasets.current().extra_clips_dirs:
         if video is None and d.is_dir():
             video = find_video(d, clip)
+    if video is None:
+        # last resort: the full-match broadcast segments (what /calibration/match links to). The dataset dirs above
+        # keep priority, so a clip that exists in a dataset never switches video; GT is keyed by canonical clip id
+        # either way, so a labelled clip never gets a second sidecar.
+        video = find_segment_video(clip)
     return video
 
 

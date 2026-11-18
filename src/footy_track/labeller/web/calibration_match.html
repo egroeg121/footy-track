@@ -252,7 +252,7 @@ async function show() {
   $("msg").textContent = f.status === "uncalibrated" ? "no calibration for this frame" : "";
   const el = $("editLink");
   el.href = f.editor_url; el.classList.toggle("off", !f.editor_ok);
-  el.title = f.editor_ok ? "open this frame in the calibration editor (E)" : "this clip is not in the editor's current dataset (try ?dataset=)";
+  el.title = f.editor_ok ? "open this frame in the calibration editor (E)" : "this clip has no video the editor can find (not in the current dataset, not a full-match segment; try ?dataset=)";
   const bits = [
     `<span class="badge ${f.status}">${f.status}</span>`,
     `<span>seg <b>${seg.segment}</b> (${esc(seg.source)}, ${pct(seg.accepted_frac)} accepted) · local <b>${f.local}</b> · global <b>${f.frame}</b></span>`,

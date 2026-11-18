@@ -12,7 +12,7 @@ the pitch lines are drawn client-side as SVG from the overlay JSON (a few KB per
 stepping through frames never re-renders anything on the server. Nothing is written.
 
 Frames are addressed by ``(segment, local frame)``: the index into the segment's mp4 under
-``<data>/<match>/split_video_broadcast_frames/`` (the same index the calibration editor uses for the clip).
+``<data>/<match>/split_video_broadcast_frames/`` (the same decoded-frame index the calibration editor uses for the clip).
 """
 
 from __future__ import annotations
@@ -32,7 +32,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, Response
 from footy_track.calibration import geometry as geo
 from footy_track.calibration import match_calibration as mcal
 from footy_track.calibration.pitch_model import PitchModel
-from footy_track.calibration.video import read_frame
+from footy_track.calibration.video import read_frame_exact
 from footy_track.clip_id import canonical_clip_id
 from footy_track.labeller import matches_status
 
@@ -66,7 +66,9 @@ def _err(status: int, msg: str) -> JSONResponse:
 
 
 def _read_frame(video: Path, idx: int) -> np.ndarray | None:
-    return read_frame(video, idx)
+    # ``local`` numbers frames as a sequential decode does; a CAP_PROP_POS_FRAMES seek is tens to ~170 frames off
+    # on the long-GOP / variable-frame-rate segments (Bournemouth seg087), so seek by pts instead.
+    return read_frame_exact(video, idx)
 
 
 def _video_path(match: str, file: str) -> Path:
@@ -78,7 +80,8 @@ _EDITOR_CACHE: dict[tuple[str, str], tuple[float, bool]] = {}
 
 
 def _editor_has_clip(clip: str) -> bool:
-    """Whether the calibration editor of the active dataset can open ``clip`` (its video is in its clip dirs).
+    """Whether the calibration editor can open ``clip``: its video is in the active dataset's clip dirs, or it is a
+    segment of a full match (``labeller.match_segments``).
 
     Cached for ``_EDITOR_TTL_S`` per (dataset, clip): the lookup scans the clip directories."""
     from footy_track.labeller import (  # noqa: PLC0415 (avoid an import cycle at module load)
