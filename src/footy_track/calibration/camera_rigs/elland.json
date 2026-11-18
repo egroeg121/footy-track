@@ -1,0 +1,150 @@
+{
+ "C": [
+  0.008342326802541652,
+  -52.75640227517795,
+  11.147675788838798
+ ],
+ "roll": 0.00042964806447609116,
+ "k1": 0.02,
+ "sigma_C": [
+  1.0,
+  3.0,
+  1.0
+ ],
+ "pitch": [
+  105.0,
+  68.0
+ ],
+ "info": {
+  "ground": "elland",
+  "fit_date": "2026-11-18",
+  "method": "label-free shared multi-start fit of (C, roll) over main-camera frames with lines-only anchors; k1 fixed (see footy_track.scripts.ptz_new_ground)",
+  "n_frames": 484,
+  "n_segments": 305,
+  "cost": 268301.52109164407,
+  "line_f1_median_at_fit": 0.680472935828848,
+  "frac_f1_ge_0.6": 0.7933884297520661,
+  "prior_C": [
+   0.019040609174055683,
+   -52.37798357636659,
+   11.203348437124083
+  ],
+  "finalists": [
+   {
+    "seed_C": [
+     0.019040609174055683,
+     -52.37798357636659,
+     11.203348437124083
+    ],
+    "screen_cost": 134372.58521093152,
+    "screen_C": [
+     0.01495695688277535,
+     -52.50208407820487,
+     11.101966683594386
+    ],
+    "final_C": [
+     0.008342326802541652,
+     -52.75640227517795,
+     11.147675788838798
+    ],
+    "final_cost": 268301.52109164407,
+    "final_roll": 0.00042964806447609116,
+    "final_k1": 0.02
+   },
+   {
+    "seed_C": [
+     -1.9809593908259444,
+     -52.37798357636659,
+     11.203348437124083
+    ],
+    "screen_cost": 137542.13381093668,
+    "screen_C": [
+     -1.6856647932264193,
+     -52.65163575552712,
+     11.100025105726077
+    ],
+    "final_C": [
+     -1.3363902946364312,
+     -52.99176214106594,
+     11.192435610153076
+    ],
+    "final_cost": 273478.7911132944,
+    "final_roll": 0.004686648151948263,
+    "final_k1": 0.02
+   },
+   {
+    "seed_C": [
+     0.019040609174055683,
+     -56.37798357636659,
+     11.203348437124083
+    ],
+    "screen_cost": 135283.92288109654,
+    "screen_C": [
+     -0.060001611172696055,
+     -56.01360337237002,
+     11.414144509005967
+    ],
+    "final_C": [
+     -0.08892044740017181,
+     -55.72569655794061,
+     11.479394959919286
+    ],
+    "final_cost": 269938.2505967497,
+    "final_roll": 0.0006304645465899667,
+    "final_k1": 0.02
+   }
+  ],
+  "bootstrap": {
+   "n": 4,
+   "mean": [
+    -0.0038112077137629125,
+    -52.88220890162021,
+    11.175300775002023,
+    0.025893441005828705,
+    0.02
+   ],
+   "std": [
+    0.004540623996827316,
+    0.018648397976050664,
+    0.009904001796142162,
+    0.0016488488675736027,
+    0.0
+   ],
+   "names": [
+    "Cx",
+    "Cy",
+    "Cz",
+    "roll_deg",
+    "k1"
+   ]
+  },
+  "matches": [
+   "leeds-united-vs-crystal-palace-2026-27",
+   "leeds-united-vs-manchester-united-2026-27"
+  ],
+  "pose_prior": {
+   "tilt_a": 82.106,
+   "tilt_b": -8.703,
+   "tilt_sigma_deg": 1.2,
+   "pan_deg": [
+    30.0,
+    150.0
+   ],
+   "f_px": [
+    1150.0,
+    7220.0
+   ],
+   "tilt_offsets_deg": [
+    -4.8,
+    -2.4,
+    0.0,
+    2.4,
+    4.8
+   ],
+   "source": "PROVISIONAL: tilt_deg = a + b ln f over the 384 rig-fit frames with line F1 >= 0.6 at the fitted rig (380 within 3 sigma, scatter 1.20 deg); ranges widened; refine from a whole-match run"
+  },
+  "p_main_min": 0.35,
+  "p_main_min_why": "8% of the sampled Elland Road frames have classifier p_main in [0.2, 0.5) (2-5% at Emirates / Spurs / Everton); same setting as Stamford",
+  "note_vs_stamford": "C equals the Stamford Bridge fit to 0.12 m (0.04,-52.65,11.15 vs 0.01,-52.76,11.15) although independently fitted from other video: coincidence of two similar gantries or a shared attractor of the y/z ridge; line F1 at the fit 0.68 / 0.65, lower than Emirates 0.76 / Spurs 0.76 / Everton 0.80"
+ }
+}
