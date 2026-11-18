@@ -149,7 +149,7 @@ def recover_pass(cache, rig, shot_info, out: Path, trim: bool = False) -> dict:
     prior = pr.pose_prior(rig)
     pitch = pte.PITCH
     pm = {t: pt.pmain_of(cache, t) for t in cache.ev_frames}
-    base_runs = [(x["start"], x["end"]) for x in shot_info if x["p_main"] >= 0.5]
+    base_runs = [(x["start"], x["end"]) for x in shot_info if x["p_main"] >= x.get("p_min", 0.5)]
     # trimming is opt-in: cutting where the main-camera probability drops also cut valid zoomed goal-area views (Man City seg108
     # f130-174: 100% accepted untrimmed, 75% trimmed; seg073 80% vs 72%), and the F1 acceptance already rejects real tails
     runs = pr.trim_runs(base_runs, cache, pm) if trim else base_runs

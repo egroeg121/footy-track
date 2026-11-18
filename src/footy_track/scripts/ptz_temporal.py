@@ -112,9 +112,11 @@ def prep(clip: str, rig: ptz.Rig, gaps=(1, 5)):
     shots = pt.segment_shots(cache.hd)
     pm = {t: pt.pmain_of(cache, t) for t in cache.ev_frames}
     shot_info = []
+    p_min = float((rig.info or {}).get("p_main_min", 0.5))  # a ground whose look the classifier knows less well may lower it
     for a, b in shots:
         v = [pm[t] for t in cache.ev_frames if a <= t <= b and np.isfinite(pm[t])]
-        shot_info.append({"start": a, "end": b, "p_main": float(np.median(v)) if v else float("nan"), "n_ev": len(v)})
+        shot_info.append({"start": a, "end": b, "p_main": float(np.median(v)) if v else float("nan"), "n_ev": len(v),
+                          "p_min": p_min})
     log("shots:", shot_info)
     # lines-only anchors on every evidence frame (cached)
     ap = wd(clip) / "anchors_lines.json"
@@ -172,7 +174,7 @@ def motion(cache, shots, shot_info, anchors, rig, gaps=(1, 5)):
     fnom = f_nominal(cache, anchors)
     allp = []
     for sh in shot_info:
-        if not sh["p_main"] >= 0.5:
+        if not sh["p_main"] >= sh.get("p_min", 0.5):
             continue
         a, b = sh["start"], sh["end"]
         log(f"motion shot {a}-{b}")
@@ -188,7 +190,7 @@ def segments(shot_info, pairs) -> list[tuple[int, int]]:
     ok1 = {p.i for p in pairs if p.j - p.i == 1 and p.ok}
     out = []
     for sh in shot_info:
-        if not sh["p_main"] >= 0.5:
+        if not sh["p_main"] >= sh.get("p_min", 0.5):
             continue
         a = sh["start"]
         for t in range(sh["start"], sh["end"]):

@@ -142,6 +142,9 @@
     5.22
    ],
    "source": "PROVISIONAL: tilt_deg = a + b ln f over the 226 rig-fit frames with line F1 >= 0.6 at the fitted rig (218 within 3 sigma, scatter 1.30 deg); ranges widened; refine from a whole-match run"
-  }
+  },
+  "p_main_min": 0.35,
+  "p_main_min_why": "main-camera classifier (trained on Emirates / Bournemouth) gives 9% of the sampled Stamford frames p in [0.2, 0.5) vs 2-5% elsewhere: a clean centre-circle shot (manu seg197) had shot p_main 0.44 and was dropped at the default 0.5; the F1 acceptance still guards",
+  "sideprobe": "120 weakest main frames, C started at x = +-33: 1 frame with a degenerate C (z=0), no side gantry found"
  }
 }
