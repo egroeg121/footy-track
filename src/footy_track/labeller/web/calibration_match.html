@@ -256,7 +256,7 @@ async function show() {
   el.href = f.editor_ok ? f.editor_url : "#"; el.classList.toggle("off", !f.editor_ok);
   el.onclick = f.editor_ok ? null : (ev) => ev.preventDefault();
   el.title = f.editor_ok ? "open this frame in the calibration editor (E)"
-    : f.editor_mode === "cv2_seek" ? "editor numbers frames differently for this clip (cv2 seek); see VFR note"
+    : f.editor_mode === "cv2_seek" ? "the editor numbers this clip's frames differently (older labels use cv2 seek), so it would open a different image; use the page here"
     : "this clip has no video the editor can find (not in a dataset, not a full-match segment; try ?dataset=)";
   const bits = [
     `<span class="badge ${f.status}">${f.status}</span>`,

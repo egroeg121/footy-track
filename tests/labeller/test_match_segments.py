@@ -363,7 +363,7 @@ def test_match_page_dims_the_link_for_seek_clips_and_says_why(multi, monkeypatch
     assert cm._editor_has_clip(SEG_CLIP) is False
     assert cm._editor_mode(SEG_CLIP) == "cv2_seek"
     html = (Path(cm.__file__).parent / "web" / "calibration_match.html").read_text()
-    assert "editor numbers frames differently for this clip (cv2 seek); see VFR note" in html
+    assert "the editor numbers this clip's frames differently (older labels use cv2 seek), so it would open a different image; use the page here" in html
 
 
 def test_clip_only_in_another_dataset_and_not_a_segment_stays_isolated(multi):
