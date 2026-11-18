@@ -271,6 +271,8 @@ class DatasetVersion:
         """Items of ``split`` (``eval_all`` = both eval tiers; ``None`` = everything), restricted
         to those first seen at or before version ``cohort``."""
         rows = self.rows()
+        if split:
+            split = splits.to_result_split(split)  # accepts train / eval / test as well
         if split == "eval_all":
             rows = [r for r in rows if r["split"] != splits.TRAIN]
         elif split:

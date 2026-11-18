@@ -84,10 +84,10 @@ def test_export_layout(two, web, tmp_path, monkeypatch):
     ]
     assert (out / side / "Yes" / f"{MATCH}_f100.jpg").is_file()
     assert (out / side / "No" / f"{MATCH}_f200.jpg").is_file()
-    # explicit override still wins
-    out2 = tmp_path / "out2"
-    assert exp.export(datasets.get("nottinghamforest"), out2, {MATCH})["Yes"] == 1
-    assert (out2 / "valid" / "Yes").is_dir()
+    # no hand-picked validation list any more: the authority decides
+    import inspect
+
+    assert "valid_matches" not in inspect.signature(exp.export).parameters
 
 
 def test_export_unmappable_match_is_an_error(two, web, tmp_path):
@@ -112,7 +112,7 @@ def test_export_heldout_match_frames_are_left_out(two, web, tmp_path, monkeypatc
     _manifest(tmp_path, monkeypatch)
     web.put(f"/broadcast_review/api/verdict/{MATCH}/100?dataset=nottinghamforest", json={"verdict": "yes"})
     ds = datasets.get("nottinghamforest")
-    c = exp.export(ds, tmp_path / "o", allow_unmapped=False)
+    c = exp.export(ds, tmp_path / "o", allow_unmapped=False, include_test=False)
     assert c["Yes"] == 0 and c["heldout_skipped"] == 1
-    c = exp.export(ds, tmp_path / "o2", heldout_as_test=True)
+    c = exp.export(ds, tmp_path / "o2")  # default: test/ is written
     assert c["Yes"] == 1 and (tmp_path / "o2" / "test" / "Yes").is_dir()

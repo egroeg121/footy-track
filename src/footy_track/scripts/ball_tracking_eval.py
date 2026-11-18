@@ -8,9 +8,11 @@
     python -m footy_track.scripts.ball_tracking_eval score \
         --cache cache_dir --gt gt_dir --trackers online,bidirectional,viterbi
 
-Clips are grouped by the global split authority (``footy_track.splits``): ``eval_heldout_match``
-and ``eval_in_match`` are the evaluation tiers (the headline numbers), ``train`` the clips a
-detector may have seen. ``--split split.json`` is the legacy override, a JSON object
+Clips are grouped by the global split authority (``footy_track.splits``) into the three
+partitions: ``eval`` (``eval_in_match``; use it to choose trackers / parameters), ``test``
+(``eval_heldout_match``; final reporting only, never tune on it) and ``train`` (clips a detector
+may have seen: not a score of generalisation). A partition with no clips gets no row, so a test
+number is never printed for train-only data. ``--split split.json`` is the legacy override, a JSON object
 ``{"<canonical clip id>": "seen" | "held_out"}`` (groups ``held-out`` / ``seen``); without it the
 authority is used. ``--param tracker.key=value`` overrides a tracker parameter. See
 docs/ball-tracking-eval.md.
@@ -111,7 +113,7 @@ def split_groups(
 ) -> tuple[dict[str, list[str]], dict[str, str]]:
     """Report groups ``{label: [clip]}`` plus ``{clip: split label}``.
 
-    Default: the split authority (tiers ``eval_heldout_match`` / ``eval_in_match`` / ``train``).
+    Default: the split authority's partitions ``train`` / ``eval`` / ``test`` (empty ones omitted).
     ``legacy`` is a hand-made ``{clip: seen|held_out}`` map and keeps the old groups.
     """
     if legacy:
@@ -124,12 +126,11 @@ def split_groups(
             },
             labels,
         )
-    labels = {c: authority.split_of_name(c) for c in clips}
+    labels = {c: authority.partition_of_name(c) for c in clips}
     groups: dict[str, list[str]] = {
-        s: [c for c in clips if labels[c] == s]
-        for s in (authority.EVAL_HELDOUT, authority.EVAL_IN_MATCH, authority.TRAIN)
+        p: [c for c in clips if labels[c] == p] for p in authority.PARTITIONS
     }
-    groups["eval (both tiers)"] = [c for c in clips if authority.is_eval(labels[c])]
+    groups = {p: cs for p, cs in groups.items() if cs}  # no empty rows (no test row on train-only data)
     groups["all"] = list(clips)
     return groups, labels
 

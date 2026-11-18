@@ -20,8 +20,10 @@ here: it comes from the global split authority (:mod:`footy_track.splits`, docs/
 
 * ``train``              -> ``train/``
 * ``eval_in_match``      -> ``val/``   (the ~1-in-5 clips of train matches registered as eval)
-* ``eval_heldout_match`` -> left out (never in a training export); with ``--heldout-as-test``
-  they become ``test/`` (evaluation only, for a trainer that reports a test split).
+* ``eval_heldout_match`` -> ``test/`` (final reporting only, never used for tuning);
+  ``--no-test`` leaves them out of the export instead.
+
+In the canonical vocabulary (docs/data.md): ``train/`` = train, ``val/`` = eval, ``test/`` = test.
 
 The split is by clip (a clip never straddles two splits). Missing/invalid registers fail closed
 before anything is queried or written.
@@ -166,14 +168,14 @@ def _query_multiclass_detections(
 
 
 def _split_by_clip_identity(
-    game_ids: list[str], *, heldout_as_test: bool = False
+    game_ids: list[str], *, include_test: bool = True
 ) -> tuple[set[str], set[str], set[str], dict[str, set[str]], set[str]]:
     """Partition ``game_id``s with the split authority (:mod:`footy_track.splits`).
 
     Every alias ``game_id`` of one physical clip (T-03) gets the clip's split, and an alias of a
     held-out match is held out whichever alias it is. Returns ``(train, val, test, aliases_by_id,
     heldout)``: ``val`` is the in-match eval tier, ``test`` the heldout-match tier when
-    ``heldout_as_test`` (else ``test`` is empty and those clips are returned in ``heldout`` for
+    ``include_test`` (else ``test`` is empty and those clips are returned in ``heldout`` for
     the caller to drop)."""
     aliases_by_id: dict[str, set[str]] = defaultdict(set)
     for game_id in game_ids:
@@ -187,7 +189,7 @@ def _split_by_clip_identity(
             split = EVAL_HELDOUT
         else:
             split = authority.split_of_name(cid)
-        target = authority.export_dir(split, heldout_as_test=heldout_as_test)
+        target = authority.export_dir(split, include_test=include_test)
         {"train": train, "val": val, "test": test, None: heldout}[target].update(group)
     return train, val, test, aliases_by_id, heldout
 
@@ -403,7 +405,7 @@ def _build_manifest(
     unresolved_clips: set[str],
     aliases_by_id: dict[str, set[str]],
     heldout_boxes: int = 0,
-    heldout_as_test: bool = False,
+    include_test: bool = True,
 ) -> dict:
     manifest = {
         "tag": tag,
@@ -411,7 +413,8 @@ def _build_manifest(
             "module": "footy_track.splits",
             "train": "train",
             "val": "eval_in_match",
-            "test": "eval_heldout_match" if heldout_as_test else None,
+            "test": "eval_heldout_match" if include_test else None,
+            "partitions": {"train": "train", "val": "eval", "test": "test"},
             "heldout_excluded_boxes": heldout_boxes,
         },
         "classes": class_names,
@@ -446,7 +449,8 @@ def export(
     data_root: Path | None = None,
     classes: list[str] | None = None,
     sources: list[str] | None = None,
-    heldout_as_test: bool = False,
+    include_test: bool = True,
+    heldout_as_test: bool | None = None,
     include_rejected: bool = False,
 ) -> dict:
     """Export a leakage-free YOLO dataset.
@@ -463,8 +467,8 @@ def export(
     values (e.g. ``["hand_label"]``); ``None``/empty means unrestricted.
 
     The train/val/test assignment comes from :mod:`footy_track.splits` (clip-level, sticky): train
-    -> ``train``, in-match eval -> ``val``, held-out-match eval -> dropped (or ``test`` with
-    ``heldout_as_test=True``). There are no fractions to choose.
+    -> ``train``, in-match eval -> ``val``, held-out-match eval -> ``test`` (dropped with
+    ``include_test=False``). There are no fractions to choose.
 
     Boxes the user marked ``not_ball`` in Ball Check are dropped from the
     positives (the export has no negatives/background notion, so they are
@@ -499,9 +503,11 @@ def export(
             continue
         rows_by_clip[r.game_id].append(r)
 
-    has_test = heldout_as_test
+    if heldout_as_test is not None:  # deprecated spelling
+        include_test = heldout_as_test
+    has_test = include_test
     train_clips, val_clips, test_clips, aliases_by_id, heldout_clips = (
-        _split_by_clip_identity(list(rows_by_clip), heldout_as_test=heldout_as_test)
+        _split_by_clip_identity(list(rows_by_clip), include_test=include_test)
     )
     heldout_boxes = sum(len(rows_by_clip[c]) for c in heldout_clips)
     for c in heldout_clips:
@@ -562,7 +568,7 @@ def export(
         unresolved_clips=unresolved_clips,
         aliases_by_id=aliases_by_id,
         heldout_boxes=heldout_boxes,
-        heldout_as_test=heldout_as_test,
+        include_test=include_test,
     )
     (out_dir / "manifest.yaml").write_text(yaml.safe_dump(manifest, sort_keys=False))
     return manifest
@@ -580,12 +586,15 @@ def main(argv: list[str] | None = None) -> None:
         "--exclude-clip", action="append", default=[], dest="exclude_clip"
     )
     parser.add_argument(
-        "--heldout-as-test",
+        "--no-test",
         action="store_true",
-        help="Write held-out-match clips as a test/ split (evaluation only). Default: "
-        "they are left out of the export entirely. val/ is always the in-match "
-        "eval tier (footy_track.splits).",
+        help="Leave held-out-match clips (the test partition) out of the export. Default: "
+        "they are written as test/ (final reporting only). val/ is the eval partition "
+        "(in-match eval tier, footy_track.splits).",
     )
+    parser.add_argument(
+        "--heldout-as-test", action="store_true", help=argparse.SUPPRESS
+    )  # deprecated no-op: test/ is now the default
     parser.add_argument("--tag", type=str, default="ball_v1")
     parser.add_argument(
         "--data-root",
@@ -637,7 +646,7 @@ def main(argv: list[str] | None = None) -> None:
         video_dir=args.video_dir,
         eval_dir=args.eval_dir,
         extra_exclude=set(args.exclude_clip),
-        heldout_as_test=args.heldout_as_test,
+        include_test=not args.no_test,
         data_root=args.data_root,
         tag=args.tag,
         classes=classes,

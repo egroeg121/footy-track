@@ -58,7 +58,8 @@ class ResultRow:
 
     def tuple(self, now: str, sha: str | None) -> tuple:
         return (
-            self.task, self.dataset, self.dataset_version, self.split, self.cohort_version,
+            self.task, self.dataset, self.dataset_version, splits.to_result_split(self.split),
+            self.cohort_version,
             self.model_name, self.model_version, self.metric,
             None if self.value is None else float(self.value), self.n_items,
             self.run_at or now, self.code_sha or sha, self.contaminated, self.contamination_note,
@@ -66,8 +67,13 @@ class ResultRow:
 
 
 def _validate(r: ResultRow) -> None:
-    if r.split not in RESULT_SPLITS:
-        raise ValueError(f"split {r.split!r} not in {RESULT_SPLITS}")
+    # the canonical partition names (train / eval / test) are accepted and stored as the old values
+    try:
+        canon = splits.to_result_split(r.split)
+    except ValueError:
+        canon = None
+    if canon not in RESULT_SPLITS:
+        raise ValueError(f"split {r.split!r} not in {RESULT_SPLITS} (or train / eval / test)")
     if r.task not in TASKS:
         raise ValueError(f"task {r.task!r} not in {TASKS}")
 
@@ -118,6 +124,8 @@ def list_results(
 ) -> list[dict[str, Any]]:
     """Result rows (newest run per key by default), oldest dataset version first."""
     where, params = [], []
+    if split is not None:
+        split = splits.to_result_split(split)
     for col, val in (("dataset", dataset), ("task", task), ("model_name", model),
                      ("dataset_version", dataset_version), ("split", split)):
         if val is not None:

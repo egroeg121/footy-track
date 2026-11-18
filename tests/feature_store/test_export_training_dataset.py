@@ -102,7 +102,7 @@ def test_export_split_is_stable_when_clips_are_added(tmp_path) -> None:
     assert set(before["train_clips"]) <= set(after["train_clips"])
 
 
-def test_export_heldout_match_dropped_or_test(tmp_path) -> None:
+def test_export_heldout_match_is_test_by_default_or_dropped(tmp_path) -> None:
     images_dir = tmp_path / "imgs"
     images_dir.mkdir()
     eval_dir = tmp_path / "eval"
@@ -112,15 +112,11 @@ def test_export_heldout_match_dropped_or_test(tmp_path) -> None:
     _seed_clip(store, tmp_path, "clip_a", images_dir, frames=(0,))
     kw = dict(video_dir=tmp_path, eval_dir=eval_dir, extra_exclude=set(), tag="t")
 
-    m = export(store, out_dir=tmp_path / "o1", **kw)
-    exported = set(m["train_clips"]) | set(m["val_clips"])
-    assert exported == {"clip_a"}
-    assert "test" not in m and m["split_authority"]["heldout_excluded_boxes"] == 2
-    assert not (tmp_path / "o1" / "images" / "test").exists()
-
-    m = export(store, out_dir=tmp_path / "o2", heldout_as_test=True, **kw)
+    # default: the test partition is written as test/
+    m = export(store, out_dir=tmp_path / "o2", **kw)
     assert m["test_clips"] == ["arsenal_nottinghamforest_seg012"]
     assert m["test"]["images"] == 2
+    assert m["split_authority"]["partitions"] == {"train": "train", "val": "eval", "test": "test"}
     dy = yaml.safe_load((tmp_path / "o2" / "data.yaml").read_text())
     assert dy["test"] == "images/test"
     assert store.query(
@@ -268,7 +264,7 @@ def test_export_keeps_aliases_of_one_clip_on_one_side_and_excludes_eval_aliases(
     eval_dir.mkdir()
     (eval_dir / "mancity_seg010.jsonl").write_text("{}\n")
 
-    for heldout_as_test in (False, True):
+    for heldout_as_test in (False, True):  # deprecated kwarg still honoured
         manifest = export(
             store,
             out_dir=tmp_path / f"out_{heldout_as_test}",
@@ -682,3 +678,10 @@ def test_export_fails_closed_without_register(tmp_path, monkeypatch):
             tag="t",
         )
     assert not out.exists()
+
+    # opt-out: --no-test semantics
+    m = export(store, out_dir=tmp_path / "o1", include_test=False, **kw)
+    exported = set(m["train_clips"]) | set(m["val_clips"])
+    assert exported == {"clip_a"}
+    assert "test" not in m and m["split_authority"]["heldout_excluded_boxes"] == 2
+    assert not (tmp_path / "o1" / "images" / "test").exists()

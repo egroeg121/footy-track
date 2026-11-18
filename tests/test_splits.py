@@ -459,8 +459,54 @@ def test_split_maps(regs):
     assert legacy["arsenal_nottinghamforest_seg001"] == "held_out"
     assert set(legacy.values()) <= {"seen", "held_out"}
     assert sp.load_split_arg(None, ids) == legacy
-    assert sp.export_dir(sp.EVAL_HELDOUT) is None
-    assert sp.export_dir(sp.EVAL_HELDOUT, heldout_as_test=True) == "test"
+    assert sp.export_dir(sp.EVAL_HELDOUT) == "test"  # test/ is the default
+    assert sp.export_dir(sp.EVAL_HELDOUT, include_test=False) is None
+    assert sp.export_dir(sp.EVAL_HELDOUT, heldout_as_test=False) is None  # deprecated spelling
+    assert sp.export_dir("test") == "test" and sp.export_dir("eval") == "val"
     assert (
         sp.export_dir(sp.EVAL_IN_MATCH) == "val" and sp.export_dir(sp.TRAIN) == "train"
     )
+
+
+# --- canonical train / eval / test partitions ----------------------------------------------
+def test_partition_vocabulary_and_aliases():
+    assert sp.PARTITIONS == ("train", "eval", "test")
+    assert sp.PARTITION_OF_SPLIT == {
+        "train": "train", "eval_in_match": "eval", "eval_heldout_match": "test",
+    }
+    for old, new in [
+        ("eval_in_match", "eval"), ("valid", "eval"), ("val", "eval"), ("validation", "eval"),
+        ("eval_heldout_match", "test"), ("heldout", "test"), ("held_out", "test"),
+        ("seen", "train"), ("train", "train"), ("eval", "eval"), ("test", "test"),
+    ]:
+        assert sp.to_partition(old) == new
+    assert sp.to_split("eval") == sp.EVAL_IN_MATCH and sp.to_split("test") == sp.EVAL_HELDOUT
+    with pytest.raises(ValueError):
+        sp.to_partition("bogus")
+    # the old values still round-trip, so nothing stored has to change
+    for s in sp.SPLITS:
+        assert sp.to_split(sp.to_partition(s)) == s
+
+
+def test_partition_of_matches_split_of(tmp_path, monkeypatch):
+    names = ["arsenal_nottinghamforest_seg001", "bournemouth_1st_seg070", "mancity_seg010", "clip_a_seg003"]
+    for n in names:
+        assert sp.partition_of_name(n) == sp.PARTITION_OF_SPLIT[sp.split_of_name(n)]
+        assert sp.partition_label(n) == sp.PARTITION_OF_SPLIT[sp.split_label(n)]
+    assert sp.partition_of_name("arsenal_nottinghamforest_seg001") == "test"
+    assert sum(sp.partition_counts(names).values()) == len(names)
+
+
+def test_match_partition():
+    assert sp.match_partition("arsenal_nottinghamforest") == "test"
+    assert sp.match_partition("no_such_match_xyz") == "unassigned"
+
+
+def test_image_partition_flags_unmapped_and_keeps_it_out_of_test():
+    part, flag = sp.image_partition("totally_unknown_thing_000012_jpg.rf." + "a" * 32 + ".jpg")
+    assert (part, flag) == ("unmapped", "unmapped")
+    part, flag = sp.image_partition("arsenal_nottinghamforest_seg001_000010.jpg")
+    assert (part, flag) == ("test", None)
+    # a known train-pool match with no clip in the name: train, flagged (may be in-match eval)
+    part, flag = sp.image_partition("arsenal_mancity_20250925_000472_jpg.rf." + "b" * 32 + ".jpg")
+    assert part in ("train", "test") and (part != "train" or flag == "clip_unknown")

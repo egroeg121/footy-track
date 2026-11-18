@@ -14,13 +14,13 @@ always land on the same side:
 
 * ``train``              -> ``train/``
 * ``eval_in_match``      -> ``valid/`` (windows of train matches registered/hashed as eval)
-* ``eval_heldout_match`` -> left out; with ``--heldout-as-test`` -> ``test/``
+* ``eval_heldout_match`` -> ``test/`` (final reporting only; ``--no-test`` leaves it out)
 
 A match is identified by its full-match video stem (the review's ``<match>`` key), resolved to the
 register key through ``full_matches/manifest.jsonl``. An unresolvable match is an error (it might
 be a held-out match): add it to the manifest/register, or pass ``--allow-unmapped`` to treat it as
-a plain train-pool match keyed by its own name. ``--valid-matches`` stays as an explicit override
-that forces whole matches into ``valid/``. Pass ``--into`` an existing folder dataset (e.g. the
+a plain train-pool match keyed by its own name (flagged ``unmapped_train`` in the counts; it is
+never ``test``). There is no hand-picked validation list any more. Pass ``--into`` an existing folder dataset (e.g. the
 Roboflow export) to add the reviewed frames to it. Re-running is idempotent.
 """
 
@@ -45,13 +45,14 @@ _DIR = {"train": "train", "val": "valid", "test": "test"}
 def export(
     ds: datasets.Dataset,
     out: Path,
-    valid_matches: set[str] | None = None,
     *,
-    heldout_as_test: bool = False,
+    include_test: bool = True,
+    heldout_as_test: bool | None = None,
     allow_unmapped: bool = False,
 ) -> dict:
-    valid_matches = valid_matches or set()
-    counts = {"Yes": 0, "No": 0, "unsure": 0, "missing_image": 0, "heldout_skipped": 0}
+    if heldout_as_test is not None:  # deprecated spelling
+        include_test = heldout_as_test
+    counts = {"Yes": 0, "No": 0, "unsure": 0, "missing_image": 0, "heldout_skipped": 0, "unmapped_train": 0}
     root = ds.marks_dir / "broadcast_review"
     stores = sorted(root.glob("*.json")) if root.is_dir() else []
     unmapped: dict[str, None] = {}
@@ -59,24 +60,23 @@ def export(
     for store in stores:
         match = store.stem
         key = authority.match_key_of(match)
-        if key is None and match not in valid_matches:
+        if key is None:
             unmapped[match] = None
         for frame, rec in sorted(br.read_store(ds, match).items()):
             cls = CLASS.get(rec["verdict"])
             if cls is None:
                 counts["unsure"] += 1
                 continue
-            if match in valid_matches:
-                sub: str | None = "valid"
-            else:
-                split = authority.split_of(
-                    key or match, authority.broadcast_window_id(key or match, frame)
-                )
-                sub = authority.export_dir(split, heldout_as_test=heldout_as_test)
-                sub = _DIR.get(sub) if sub else None
+            split = authority.split_of(
+                key or match, authority.broadcast_window_id(key or match, frame)
+            )
+            sub = authority.export_dir(split, include_test=include_test)
+            sub = _DIR.get(sub) if sub else None
             if sub is None:
                 counts["heldout_skipped"] += 1
                 continue
+            if key is None:
+                counts["unmapped_train"] += 1
             plan.append((match, frame, cls, out / sub / cls))
     if unmapped and not allow_unmapped:
         raise ValueError(
@@ -101,8 +101,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--dataset", default="broadcast_review", help="labeller dataset name in the registry")
     ap.add_argument("--out", type=Path, required=True)
     ap.add_argument("--into", action="store_true", help="--out is an existing dataset: add to it")
-    ap.add_argument("--valid-matches", default="", help="override: comma-separated match keys forced into valid/")
-    ap.add_argument("--heldout-as-test", action="store_true", help="write held-out-match frames to test/ (default: leave out)")
+    ap.add_argument("--no-test", action="store_true", help="leave held-out-match (test partition) frames out instead of writing test/")
+    ap.add_argument("--heldout-as-test", action="store_true", help=argparse.SUPPRESS)  # deprecated no-op: test/ is the default
     ap.add_argument("--allow-unmapped", action="store_true", help="treat matches missing from the register as train-pool")
     args = ap.parse_args(argv)
     if not args.into and args.out.exists() and any(args.out.iterdir()):
@@ -110,8 +110,8 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     try:
         counts = export(
-            datasets.get(args.dataset), args.out, {m for m in args.valid_matches.split(",") if m},
-            heldout_as_test=args.heldout_as_test, allow_unmapped=args.allow_unmapped,
+            datasets.get(args.dataset), args.out,
+            include_test=not args.no_test, allow_unmapped=args.allow_unmapped,
         )
     except ValueError as e:
         print(e, file=sys.stderr)

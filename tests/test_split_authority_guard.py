@@ -117,9 +117,10 @@ def test_ball_tracking_eval_routes_through_the_authority(stub_authority):
     from footy_track.scripts import ball_tracking_eval as bte
 
     groups, labels = bte.split_groups(["x_seg001", "y_seg002"])
-    assert set(labels.values()) == {authority.EVAL_IN_MATCH}
-    assert groups[authority.EVAL_IN_MATCH] == ["x_seg001", "y_seg002"]
-    assert groups[authority.TRAIN] == []
+    assert set(labels.values()) == {authority.EVAL}
+    assert groups[authority.EVAL] == ["x_seg001", "y_seg002"]
+    # no empty rows: nothing is reported for test / train when there are no such clips
+    assert authority.TEST not in groups and authority.TRAIN not in groups
     # the legacy json is an explicit override and keeps the old vocabulary
     legacy, _ = bte.split_groups(["x_seg001"], {"x_seg001": "held_out"})
     assert legacy["held-out"] == ["x_seg001"]

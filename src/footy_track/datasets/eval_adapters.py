@@ -54,8 +54,12 @@ class EvalAdapter(Protocol):
 
 
 def _items(dv: DatasetVersion, split: str, cohort: int | None) -> list[dict]:
+    try:
+        split = splits.to_result_split(split)  # train / eval / test accepted too
+    except ValueError:
+        split = None
     if split not in RESULT_SPLITS:
-        raise ValueError(f"split {split!r} not in {RESULT_SPLITS}")
+        raise ValueError(f"split not in {RESULT_SPLITS} (or train / eval / test)")
     return dv.select(split, cohort)
 
 

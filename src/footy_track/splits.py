@@ -67,6 +67,26 @@ EVAL_HELDOUT: Split = "eval_heldout_match"
 EVAL_IN_MATCH: Split = "eval_in_match"
 SPLITS: tuple[Split, ...] = (TRAIN, EVAL_IN_MATCH, EVAL_HELDOUT)
 
+# --- The three canonical partitions (what every consumer, export and report should speak) -------
+#: ``train`` = ``split_of`` value ``train``; ``eval`` (validation: model selection, early stopping)
+#: = ``eval_in_match``; ``test`` (never used for tuning, final reporting only) =
+#: ``eval_heldout_match``. The ``split_of`` vocabulary stays valid everywhere (stored rows,
+#: ``eval_result.split``, old CLIs); :func:`to_partition` maps any old spelling to the new one.
+EVAL = "eval"
+TEST = "test"
+PARTITIONS: tuple[str, ...] = (TRAIN, EVAL, TEST)
+#: Not a partition: a dataset image whose match cannot be found. Reported, never put in ``test``.
+UNMAPPED = "unmapped"
+PARTITION_OF_SPLIT: dict[str, str] = {TRAIN: TRAIN, EVAL_IN_MATCH: EVAL, EVAL_HELDOUT: TEST}
+SPLIT_OF_PARTITION: dict[str, Split] = {v: k for k, v in PARTITION_OF_SPLIT.items()}  # type: ignore[misc]
+#: Every spelling found in the repo today -> its canonical partition.
+PARTITION_ALIASES: dict[str, str] = {
+    **PARTITION_OF_SPLIT,
+    "valid": EVAL, "val": EVAL, "validation": EVAL, "eval": EVAL,
+    "heldout": TEST, "held_out": TEST, "held-out": TEST, "test": TEST,
+    "seen": TRAIN,
+}
+
 #: One clip in ``IN_MATCH_MODULUS`` is in-match eval (``sha1(clip id) % 5 == 0``, ~20 %).
 IN_MATCH_MODULUS = 5
 IN_MATCH_REMAINDER = 0
@@ -370,12 +390,90 @@ def is_eval(split: str) -> bool:
 EXPORT_DIR = {TRAIN: "train", EVAL_IN_MATCH: "val", EVAL_HELDOUT: "test"}
 
 
-def export_dir(split: Split, *, heldout_as_test: bool = False) -> str | None:
-    """Where an export puts an item of ``split``: ``train`` / ``val`` (in-match eval) / ``test``
-    (heldout-match eval, only with ``heldout_as_test``; otherwise ``None`` = leave it out)."""
-    if split == EVAL_HELDOUT and not heldout_as_test:
+def export_dir(
+    split: str, *, include_test: bool = True, heldout_as_test: bool | None = None
+) -> str | None:
+    """Where an export puts an item of ``split`` (either vocabulary): ``train`` / ``val`` (the
+    ``eval`` partition) / ``test`` (the ``test`` partition). ``include_test=False`` leaves test
+    items out (``None``). ``heldout_as_test`` is the deprecated spelling of ``include_test``
+    (``--heldout-as-test`` used to be needed to *get* a test dir; it is now the default)."""
+    if heldout_as_test is not None:
+        include_test = heldout_as_test
+    part = to_partition(split)
+    if part == TEST and not include_test:
         return None
-    return EXPORT_DIR[split]
+    return EXPORT_DIR[SPLIT_OF_PARTITION[part]]
+
+
+def to_partition(value: str) -> str:
+    """Canonical partition (``train`` / ``eval`` / ``test``) for any split spelling in use."""
+    try:
+        return PARTITION_ALIASES[value]
+    except KeyError:
+        raise ValueError(
+            f"unknown split {value!r}; expected one of {sorted(PARTITION_ALIASES)}"
+        ) from None
+
+
+def to_split(value: str) -> Split:
+    """The ``split_of`` vocabulary value (stored / ``eval_result.split``) for a partition spelling."""
+    return SPLIT_OF_PARTITION[to_partition(value)]
+
+
+EVAL_ALL = "eval_all"  # result/select pseudo-split: both eval tiers (eval + test), never train
+
+
+def to_result_split(value: str) -> str:
+    """Stored/queried ``eval_result.split`` / ``DatasetVersion.select`` value for any spelling:
+    ``eval`` -> ``eval_in_match``, ``test`` -> ``eval_heldout_match``, ``eval_all`` kept."""
+    if value in (EVAL_ALL, "eval+test", "eval_and_test"):
+        return EVAL_ALL
+    return to_split(value)
+
+
+def partition_of(match_key: str | None, clip_id: str | None = None) -> str:
+    """:func:`split_of` in the canonical vocabulary: ``train`` / ``eval`` / ``test``."""
+    return PARTITION_OF_SPLIT[split_of(match_key, clip_id)]
+
+
+def partition_of_name(name: str) -> str:
+    return PARTITION_OF_SPLIT[split_of_name(name)]
+
+
+def partition_label(name: str) -> str:
+    """:func:`partition_of_name` for reports: ``"unknown"`` when the register is unavailable."""
+    label = split_label(name)
+    return PARTITION_OF_SPLIT.get(label, label)
+
+
+def partition_counts(names: Iterable[str]) -> dict[str, int]:
+    return dict(sorted(Counter(partition_label(n) for n in names).items()))
+
+
+def match_partition(match_key: str) -> str:
+    """Match-level partition: ``test`` (heldout match), ``train`` (train pool: some of its clips
+    are ``eval``) or ``unassigned`` (not in the register). For dashboards."""
+    state = ms.split_for_match(match_key)
+    return {ms.HELDOUT: TEST, ms.TRAIN: TRAIN}.get(state, "unassigned")
+
+
+def image_partition(filename: str) -> tuple[str, str | None]:
+    """``(partition, flag)`` for a dataset image file name (Roboflow or ours).
+
+    * match not found -> ``("unmapped", "unmapped")``: unknown provenance, it is never ``test``
+      and must not be reported as a test image; training on it is allowed but flagged;
+    * match known, clip not (frames cut from a full match video) -> ``test`` if the match is
+      heldout, else ``("train", "clip_unknown")`` (it may be in-match ``eval``; cannot be told);
+    * otherwise the authority's answer, flag ``None``.
+    """
+    ref = parse_image_name(filename)
+    if ref.match_key is None and ref.clip_id is None:
+        return UNMAPPED, UNMAPPED
+    if ref.clip_id is None:
+        if split_of(ref.match_key) == EVAL_HELDOUT:
+            return TEST, None
+        return TRAIN, "clip_unknown"
+    return partition_of(ref.match_key, ref.clip_id), None
 
 
 def split_map(clip_ids: Iterable[str]) -> dict[str, Split]:
