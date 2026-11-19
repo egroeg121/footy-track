@@ -18,7 +18,7 @@ the sidecar on every call, so completeness is evaluated at write time against th
 Split guard: heldout / eval-in-match clips are refused (403) unless the request sets ``eval: true``; such
 windows feed the player eval panel and are never training data.
 
-See ``src/footy_track/labeller/README.md`` section 19i (LAB-1451..).
+See ``src/footy_track/labeller/README.md`` section 19j (LAB-1470..).
 """
 
 from __future__ import annotations

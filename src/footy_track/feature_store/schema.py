@@ -224,6 +224,9 @@ class PlayerCheckRow(_Row):
     count: int | None = Field(None, ge=0)  # asserted person count (count_n), else NULL
     run_id: str | None = None  # the count run ``<cluster>:<a>-<b>`` a count_n verdict resolved
     verified_by: str | None = None
+    verified_at: datetime | None = None
+
+
 class SeriesRow(_Row):
     """A fully-complete window of contiguous frames (docs/design/full_frame_labelling.md section 4).
 
@@ -618,6 +621,8 @@ DDL: tuple[str, ...] = (
         verified_at  TIMESTAMP,
         PRIMARY KEY (game_id, frame_index, cluster_id),
         CHECK (verdict IN ('ok', 'count_n', 'fixed', 'unsure'))
+    );
+    """,
     # Fully-complete windows (series review). end_frame is exclusive.
     """
     CREATE TABLE IF NOT EXISTS series (

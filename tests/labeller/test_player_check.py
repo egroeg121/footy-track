@@ -1,4 +1,4 @@
-"""Player Check API (README section 19i, LAB-1451..): queue, verdicts, completeness, split guard."""
+"""Player Check API (README section 19j, LAB-1470..): queue, verdicts, completeness, split guard."""
 
 from __future__ import annotations
 
