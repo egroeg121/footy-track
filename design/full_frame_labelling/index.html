@@ -1,0 +1,1126 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Tracking players, actions, and events in football matches.">
+      
+      
+      
+        <link rel="canonical" href="https://egroeg121.github.io/footy-track/design/full_frame_labelling/">
+      
+      
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.6.20">
+    
+    
+      
+        <title>Full-frame labelling: complete frames, progress, auto-label series - Footy Scan</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.e53b48f4.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+    
+  </head>
+  
+  
+    <body dir="ltr">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#full-frame-labelling-complete-frames-progress-auto-label-series" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="Footy Scan" class="md-header__button md-logo" aria-label="Footy Scan" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Footy Scan
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Full-frame labelling: complete frames, progress, auto-label series
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="Footy Scan" class="md-nav__button md-logo" aria-label="Footy Scan" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Footy Scan
+  </label>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Overview
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Architecture
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../pipeline-and-labels/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Pipeline and labels
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../data/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Data
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    Training
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            Training
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../training/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Training
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../training/notable_runs/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Notable Training Runs
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../inference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Inference
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../inference-web/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Inference web app
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../ball-tracking-eval/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Ball tracking evaluation
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../feature_store/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Feature store
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../datasets_and_progress/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Versioned datasets and progress
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_11" >
+        
+          
+          <label class="md-nav__link" for="__nav_11" id="__nav_11_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    Design
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_11_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_11">
+            <span class="md-nav__icon md-icon"></span>
+            Design
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../pipeline_overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Pipeline Overview
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../player_reid/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Player Re-ID
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tracking-pipeline/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Tracking Pipeline Design
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../claude_autolabel_loop/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Claude-assisted Ball Labelling
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../system_design/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    System Design
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../system_overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    System Overview
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../pipeline_architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Pipeline Architecture
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../timings/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Time Formats
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../data_formats/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Data Formats
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_12" >
+        
+          
+          <label class="md-nav__link" for="__nav_12" id="__nav_12_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    Development
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_12_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_12">
+            <span class="md-nav__icon md-icon"></span>
+            Development
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Getting Started
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../agent_guidelines/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Agent Guidelines
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../contributing-docs/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    How to contribute to the docs
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../todo/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    TODO
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-fully-labelled-frame" class="md-nav__link">
+    <span class="md-ellipsis">
+      1. Fully labelled frame
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-exporter-scriptsexport_training_datasetpy" class="md-nav__link">
+    <span class="md-ellipsis">
+      2. Exporter (scripts/export_training_dataset.py)
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-progress-view" class="md-nav__link">
+    <span class="md-ellipsis">
+      3. Progress view
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-auto-label-pipeline-priority" class="md-nav__link">
+    <span class="md-ellipsis">
+      4. Auto-label pipeline (priority)
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4b-offline-teacher-pipeline-framing-for-sections-4-and-5" class="md-nav__link">
+    <span class="md-ellipsis">
+      4b. Offline teacher pipeline (framing for sections 4 and 5)
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4c-player-check-verifying-player-labels-especially-clusters" class="md-nav__link">
+    <span class="md-ellipsis">
+      4c. Player Check (verifying player labels, especially clusters)
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-task-breakdown-priority-order" class="md-nav__link">
+    <span class="md-ellipsis">
+      5. Task breakdown (priority order)
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-open-questions" class="md-nav__link">
+    <span class="md-ellipsis">
+      6. Open questions
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+
+<h1 id="full-frame-labelling-complete-frames-progress-auto-label-series">Full-frame labelling: complete frames, progress, auto-label series<a class="headerlink" href="#full-frame-labelling-complete-frames-progress-auto-label-series" title="Permanent link">&para;</a></h1>
+<p>Status: Tasks 1-10 implemented and merged 2026-11-19 (PRs #107, #109-#118); the pieces are untested against real models and the real store. Original proposal 2026-11-19. KB relied on: <code>footy-claude-autolabel-loop</code> (Claude verify precision, queue), <code>footy-datasets-and-progress</code> (store, splits, <code>/progress</code>, Prefect nightly), <code>footy-labeller-gotchas</code> (sidecar data loss, <code>_segNNN</code> clips not contiguous). Builds on <code>ball_sampling.md</code>, <code>feature_store.md</code>.</p>
+<h2 id="1-fully-labelled-frame">1. Fully labelled frame<a class="headerlink" href="#1-fully-labelled-frame" title="Permanent link">&para;</a></h2>
+<p>A frame is <strong>fully labelled</strong> when each class group (<code>ball</code>, <code>player</code>) has state <code>complete</code> or <code>absent</code>:
+- <code>ball</code>: <code>complete</code> = a verified ball box exists; <code>absent</code> = explicit no_ball (sidecar <code>no_ball</code> tag or Ball Check frame verdict). <code>unsure</code> and unreviewed are neither.
+- <code>player</code> (player, player_sub, referee, coach, person): <code>complete</code> = a human asserted "all visible people are boxed". A zero-person frame is <code>absent</code>.</p>
+<p><strong>Storage: explicit table, not a derived view.</strong> <code>reviewed</code> boxes prove only that those boxes were checked, never that no other player is missing, so player completeness cannot be derived. Derivation also makes the ball side depend on JSONL verdict logs the store does not hold.</p>
+<p><div class="highlight"><pre><span></span><code>frame_label_state(game_id, frame_index, cls_group, state,  -- complete|absent|partial|unreviewed
+                  method, run_id, verified_by, verified_at, PRIMARY KEY(game_id, frame_index, cls_group))
+</code></pre></div>
+- <code>method</code>: <code>hand_series</code> (accept-all), <code>hand_frame</code>, <code>verdict</code>, <code>sidecar_marker</code>.
+- <code>run_id</code> points at the proposing run (provenance).
+- View <code>frame_complete(game_id, frame_index)</code> = both groups in (<code>complete</code>,<code>absent</code>). Absence of a row means <code>unreviewed</code>.
+- Writers: labeller flush writes <code>no_ball</code>, plus <code>complete</code> for ball when a human box exists. Ball Check verdicts write ball state. The series review (section 4) writes both groups. Existing GT is NOT back-filled as player-complete; only clips the user flags (<code>--legacy-complete-clips</code>) are.
+- Missing label never implies background. Only <code>complete</code>/<code>absent</code> frames reach training.</p>
+<h2 id="2-exporter-scriptsexport_training_datasetpy">2. Exporter (<code>scripts/export_training_dataset.py</code>)<a class="headerlink" href="#2-exporter-scriptsexport_training_datasetpy" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Query joins <code>frame_complete</code>; only those frames are emitted. Frames with partial state are skipped, with a manifest count.</li>
+<li>Positives are canonical boxes of reviewed sources. Negatives: ball <code>absent</code> frames are written with an empty ball label set. Ball Check <code>not_ball</code> boxes are kept as <code>hard_negatives.json</code> (and optional empty-region crops), never as a class.</li>
+<li>Class ids are stable: a fixed list in <code>constants.py</code> (<code>player=0, ball=1, referee=2, ...</code>) replaces sorted-label ids. The manifest records the list, and a test fails if ids change.</li>
+<li><code>--sources</code> defaults to <code>hand_label,reviewed</code> (machine boxes enter only via <code>reviewed=true</code>). <code>--sources all</code> remains explicit.</li>
+<li>Train/val comes from <code>splits.split_of</code> only (existing guard test applies). Manifest reports frames by state, split and class.</li>
+</ul>
+<h2 id="3-progress-view">3. Progress view<a class="headerlink" href="#3-progress-view" title="Permanent link">&para;</a></h2>
+<p><code>GET /progress/labelling</code> returns, per clip and totals: <code>frames</code>, <code>ball_labelled</code> (ball in complete/absent), <code>player_labelled</code>, <code>fully_labelled</code>, <code>partial</code>, plus <code>by_method</code> and <code>by_split</code>. It reads the store (not the JSONL), so it can run on the mini. Add a "Labelling coverage" table to the existing <code>/progress</code> page, and a per-clip badge to the clip list (replacing the weak <code>_clip_completion</code> heuristic in <code>server.py</code>).</p>
+<h2 id="4-auto-label-pipeline-priority">4. Auto-label pipeline (priority)<a class="headerlink" href="#4-auto-label-pipeline-priority" title="Permanent link">&para;</a></h2>
+<p>Stages, each writing a run row and resumable:</p>
+<ol>
+<li><strong>Select windows</strong> (mini CPU). Contiguous windows of N=250 frames (5 s at 50 fps) taken inside one <code>_segNNN</code> clip, since segments cannot be chained. Choose train-match clips only, balanced across matches, favouring windows with lowest ball-tracker agreement or fewest labels. Heldout matches are excluded (rule zero in <code>ball_sampling.md</code>). Output: <code>windows.json</code>.</li>
+<li><strong>Propose</strong> (desktop GPU, Prefect <code>gpu</code> pool, existing <code>stage-inputs</code> then GPU then <code>push-outputs</code> chain). Per frame: RT-DETR for players and referees and ball candidates (its player mAP50 of ~0.98 comes from the original one-game dataset and says nothing about other matches, camera angles or kits, so player proposals are treated as unmeasured), then ROI-YOLO or ViTTrack bidirectionally for the ball (forward/backward disagreement is a flag). SAM3 is used only to fill missing person boxes when the detector count disagrees with its neighbours. Output: <code>proposals/&lt;window&gt;.npz</code> plus <code>ingest</code> as <code>detection</code> rows (<code>source=yolo|vittrack|sam3</code>, <code>reviewed=false</code>, <code>needs_review=true</code>).</li>
+<li><strong>Pre-verify</strong> (mini, Claude verify v2.2 as in the queue). Ball verdict on the tracker candidate (precision 61/62 held-out). Mark frames <code>auto_ok</code> when the track is smooth, forward and backward trackers agree, the verdict is <code>ball</code> at high confidence, and the person count is stable within the window. Everything else is <code>flagged</code>. The auto-accept threshold must come from audits (target 0.95; 0.8 measured at about 65%).</li>
+<li><strong>Review</strong> (human, phone/desktop). A new window card shows a 5 s contact strip of every k-th frame with boxes overlaid, with "Accept all", and per-frame exceptions: tap a frame, then one of: fix box (existing <code>/review/correct</code>), ball not_ball, ball absent, "players incomplete" (frame is demoted to <code>partial</code>). Flagged frames come first, using the Viterbi-margin order. 10% of <code>auto_ok</code> frames are shown blind as an audit. If exceptions exceed 10%, the window is rejected and returns to stage 2 with the corrected anchors as re-track seeds.</li>
+<li><strong>Commit</strong> (mini). Accept writes <code>reviewed=true</code> on accepted machine boxes, <code>frame_label_state</code> rows with <code>method=hand_series</code> and <code>run_id</code> of the proposing run, and the window's audit stats. Boxes the human touched become <code>hand_label</code>. Windows with every frame complete are registered as a <strong>series</strong> (<code>series(game_id,start,end,run_id)</code>), which the exporter can use for temporal training.</li>
+</ol>
+<p>GPU: stage 2 only. CPU: selection, verify, commit, export. The nightly <code>footy-nightly-datasets</code> ingests, then bumps dataset versions.</p>
+<h2 id="4b-offline-teacher-pipeline-framing-for-sections-4-and-5">4b. Offline teacher pipeline (framing for sections 4 and 5)<a class="headerlink" href="#4b-offline-teacher-pipeline-framing-for-sections-4-and-5" title="Permanent link">&para;</a></h2>
+<p>Two separate systems, deliberately:
+- <strong>Offline pipeline ("teacher")</strong>: a versioned set of heavy models with no real-time limit that auto-labels training data. Members: large detector at high resolution plus test-time augmentation, bidirectional ROI-YOLO/ViTTrack ball tracking, SAM3 for missing people, temporal smoothing/Viterbi, Claude verify. It is a pipeline version (<code>offline_vN</code>), recorded on every label it writes (<code>source=offline_vN</code>, <code>run_id</code>).
+- <strong>Online detector ("student")</strong>: the RT-DETR that must run fast. It trains only on fully labelled frames (section 1).</p>
+<p>Label tiers: <strong>gold</strong> = human-verified (hand label, accept-all review, exceptions); <strong>silver</strong> = teacher output that passed the <code>auto_ok</code> rules and the blind audit (<code>method=offline_audited</code>). Student trains on gold + silver. The teacher is scored, and the student evaluated, on gold only (held-out matches, never silver).</p>
+<p><strong>Human labelling is targeted, not uniform.</strong> Every labelling request must be one of:
+1. <em>Improves the teacher</em>: frames where teacher members disagree (forward/backward tracker, detector vs SAM3 person count), flagged frames, audit failures, and hard cases it gets wrong (small/occluded ball, crowded boxes). Corrected frames become teacher training data and gold eval.
+2. <em>Becomes student training data</em>: windows reviewed as series, where the teacher already does well and human time confirms it.
+3. <em>Measures the teacher</em>: the gold eval set and the 10% blind audit, which set the <code>auto_ok</code> precision.
+Anything that is none of these (random frames, clips already well covered) is not queued. The review queue is ranked by expected teacher gain (disagreement, margin), and the progress view reports gold vs silver counts per teacher version and the teacher's measured precision/recall on gold.</p>
+<p>Loop: label targeted frames -&gt; retrain/tune teacher -&gt; teacher v(N+1) relabels everything, audit pass rate rises -&gt; more silver per human minute -&gt; retrain student.</p>
+<h2 id="4c-player-check-verifying-player-labels-especially-clusters">4c. Player Check (verifying player labels, especially clusters)<a class="headerlink" href="#4c-player-check-verifying-player-labels-especially-clusters" title="Permanent link">&para;</a></h2>
+<p>Ball Check verifies one box per card. Player errors are different: a missed person, a duplicate box on one person, one box over two overlapping people, a wrong class (player vs referee), a ghost box. Almost all of them occur where boxes overlap. So the unit is the <strong>cluster</strong>, not the box, and the question is "does each person here have exactly one box?"</p>
+<p><strong>Box rule (must be fixed before labelling):</strong> box the <em>visible</em> extent of each person (modal box), one box per person, even when boxes overlap heavily. Do not box a person under 12 px tall.</p>
+<p><strong>1. Triage by geometry (mini CPU, no model).</strong> For each frame in a window, group boxes into clusters: connected components where IoU &gt; 0.2 or the centre distance is under 0.6 of the mean box width. Isolated boxes with a stable track and high confidence are <code>auto_ok</code>. Clusters, unstable tracks and frames with disagreement go to a human.</p>
+<p><strong>2. Count over time.</strong> Track each cluster through the window. The number of people in a cluster changes only when someone enters or leaves it, so a count that flickers (3, 3, 2, 3) points at the bad frame. The reviewer sees a short strip of 3-5 frames of the cluster with a count timeline and resolves only the change points; "count is N for frames a-b" is one tap and fixes all frames in that run.</p>
+<p><strong>3. Independent count (flag only).</strong> Re-run the cluster crop upscaled 2x with a different model (SAM3 or a pose/head detector) and compare person counts. A disagreement flags the cluster. This is a flag, never an auto-accept, until audits show it is reliable (same rule as Claude verify).</p>
+<p><strong>4. Card types.</strong>
+- <em>Cluster card</em> (priority): a zoomed crop of the cluster, boxes in distinct colours with index numbers, overlapping boxes drawn with offset outlines so each stays visible, the count timeline underneath. Swipe right = every person has exactly one box; swipe left = opens fix mode: tap an unboxed person to add, tap a box to delete (duplicate/ghost), drag a line across a box to split a merged pair, tap the class chip to change player/referee.
+- <em>Frame sweep card</em>: whole frame, boxes shown, one question "anyone unboxed?" with tap-to-place. Catches small far players and people at the frame edge that triage never sees.
+- <em>Audit card</em>: 10% of <code>auto_ok</code> frames, shown blind (no boxes) for full relabelling. The disagreement with the machine boxes gives the miss rate per overlap bucket (isolated / touching / heavy overlap) and sets the auto-accept threshold.</p>
+<p><strong>5. Model-assisted check (optional, gated).</strong> Claude gets the numbered cluster crop and lists persons without a box, boxes covering two people, and duplicates. Used first only to order the queue; promoted to a filter if its precision on audited clusters reaches the 0.95 target.</p>
+<p><strong>6. State.</strong> One row per cluster check: <code>player_check(game_id, frame_index, cluster_id, bbox, n_boxes, verdict, asserted_count, method, verified_by, verified_at)</code>. A frame's player state is <code>complete</code> when every cluster is verified and its sweep is done; any flagged or fixed-but-unreverified cluster makes it <code>partial</code>. Fixes write <code>hand_frame</code> boxes (gold).</p>
+<p><strong>6b. No trust in the 0.98.</strong> The detector's player mAP50 (0.98-0.99) was measured on the original one-game dataset, so it is in-distribution and does not predict performance on new matches (the same gap seen for the ball: 0.92 in-distribution vs 0.49 on held-out clips). Consequences:
+- Nothing is auto-accepted for players on the strength of detector confidence alone. The <code>auto_ok</code> rule for isolated boxes starts at "audit everything" and relaxes per match only once that match's blind audits show a low miss rate.
+- Player miss rate and box quality are reported <strong>per match and per overlap bucket</strong>, never pooled into one number.
+- A <strong>player eval panel</strong> is needed beside the ball one: fully hand-labelled frames (blind, all people boxed) from the heldout matches, sampled with logged inclusion probabilities, used to score the teacher and the student. Player mAP/recall/precision on this panel is the headline; the one-game number is retired from reporting.
+- Player audits from train matches measure drift across kits, camera zoom and crowd density, and decide how much human review each new match needs.</p>
+<p><strong>7. Cost target.</strong> Under 3 s for a clean cluster card (swipe), under 15 s with fixes. Report cost per card type on <code>/progress</code> alongside the miss rate per overlap bucket.</p>
+<h2 id="5-task-breakdown-priority-order">5. Task breakdown (priority order)<a class="headerlink" href="#5-task-breakdown-priority-order" title="Permanent link">&para;</a></h2>
+<p>Additions from 4b: Task 1's <code>method</code> also takes <code>offline_audited</code> plus a <code>teacher_version</code> column; Task 4 emits disagreement scores used by the queue ranking; new Task 9 below.</p>
+<ol>
+<li><strong>State table + ingest writers.</strong> Files: <code>feature_store/schema.py</code>, <code>store.py</code>, <code>ingest_gt.py</code>, tests. Writes <code>no_ball</code>/ball-box/verdict state. Accept: re-ingest is idempotent; <code>no_ball</code> gives ball <code>absent</code>; <code>unsure</code> stays unreviewed. Deps: none.</li>
+<li><strong>Window selector + propose flow.</strong> Files: new <code>autolabel/windows.py</code>, <code>autolabel/propose.py</code>, a Prefect entry in the jobs repo. Accept: windows stay inside a segment and never touch heldout; proposals ingest as unreviewed rows. Deps: 1 (for exclusion of already-complete frames).</li>
+<li><strong>Series review API and card.</strong> Files: <code>labeller/series_review.py</code>, <code>web/series.html</code>, <code>server.py</code> router. Accept: accept-all writes complete state; one exception demotes only that frame; the reject path re-queues. Deps: 1.</li>
+<li><strong>Pre-verify + auto_ok rules + audit sampler.</strong> Files: <code>autolabel/preverify.py</code>, tests with fixture tracks. Accept: flagged ordering is deterministic; audit fraction is 10% blind. Deps: 2.</li>
+<li><strong>Exporter filter.</strong> Files: <code>scripts/export_training_dataset.py</code>, <code>constants.py</code>, tests. Accept: no partial frame appears; negatives present; class ids frozen; default sources. Deps: 1.</li>
+<li><strong>Progress endpoint and UI.</strong> Files: <code>labeller/progress.py</code>, <code>web/progress*</code>, clip list badge. Accept: counts equal a fixture store; ball-only clip counts as not fully labelled. Deps: 1.</li>
+<li><strong>Series registry + temporal export option.</strong> Files: <code>schema.py</code>, exporter. Accept: contiguous series exported in frame order. Deps: 3, 5.</li>
+<li>
+<p><strong>Legacy backfill flag.</strong> Files: <code>ingest_gt.py</code> CLI. Accept: only named clips become player-complete. Deps: 1.</p>
+</li>
+<li>
+<p><strong>Teacher versioning, gold eval and targeting queue.</strong> Files: <code>autolabel/teacher.py</code> (pipeline config + version), <code>autolabel/queue.py</code> (rank by disagreement/margin, reject untargeted requests), <code>ball_eval/</code> gold scoring, progress additions. Accept: every offline label carries <code>teacher_version</code>; scoring a teacher version on the gold set outputs precision/recall; queue never returns frames from non-train matches or already-gold frames. Deps: 1, 4.</p>
+</li>
+<li>
+<p><strong>Player Check.</strong> Files: <code>autolabel/clusters.py</code> (geometric clustering, count timeline, triage), <code>labeller/player_check.py</code> + <code>web/player_check.html</code> (cluster / sweep / audit cards, fix mode), <code>player_check</code> table in <code>feature_store/schema.py</code>, tests. Accept: isolated stable boxes are <code>auto_ok</code>; overlapping boxes form one cluster; a count flicker is flagged; "count is N for a-b" resolves the run; a fixed cluster writes <code>hand_frame</code> boxes; frame player state is <code>complete</code> only when all clusters and the sweep are verified. Deps: 1, 2.</p>
+</li>
+</ol>
+<h2 id="6-open-questions">6. Open questions<a class="headerlink" href="#6-open-questions" title="Permanent link">&para;</a></h2>
+<ol>
+<li>Is a person visible but too small or occluded to box "complete"? Proposal: yes if no human would box it, but we need a minimum size (suggest 12 px height).</li>
+<li>Should a legacy clip with hand ball marks plus player marks (e.g. the <code>arsenal_*</code> clips) be treated as player-complete without recheck?</li>
+<li>Window length and review budget: is 5 s windows with about 10% exceptions an acceptable human cost, or should reviews be per-clip-segment?</li>
+</ol>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      <script id="__config" type="application/json">{"base": "../..", "features": [], "search": "../../assets/javascripts/workers/search.973d3a69.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.f55a23d4.min.js"></script>
+      
+    
+  </body>
+</html>
