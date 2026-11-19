@@ -1254,7 +1254,7 @@
 <td>Signals disagree, c in 0.5–0.95, or det conf 0.3–0.7</td>
 <td>verify</td>
 <td>35%</td>
-<td>Rank by uncertainty, then <strong>one card per cluster</strong> (k-means on embedding × match × 30 s time bucket) and at most 1 card per 2 s window</td>
+<td>Rank by uncertainty, then <strong>one card per cluster</strong> (k-means on embedding × match × 30 s time bucket) and at most 1 card per 2 s window. Across rounds: no card within +-3 s of any earlier card of the same clip (<code>exclude_s</code>), and at most 3 U/M/N/R cards per clip per round (<code>max_per_clip</code>); each round's seed derives from its key</td>
 </tr>
 <tr>
 <td><strong>M: missed</strong></td>
