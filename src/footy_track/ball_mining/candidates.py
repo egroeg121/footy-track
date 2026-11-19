@@ -47,6 +47,12 @@ META = "meta.json"
 
 # ---------------------------------------------------------------------------------------------- identities / paths
 def sha256_file(path: str | Path) -> str:
+    """sha256 of a weights file; of an OpenVINO export dir: sha256 over its sorted ``*.xml``/``*.bin`` (name + content hash)."""
+    if Path(path).is_dir():
+        d = hashlib.sha256()
+        for f in sorted([*Path(path).glob("*.xml"), *Path(path).glob("*.bin")]):
+            d.update(f.name.encode() + b"\0" + sha256_file(f).encode() + b"\0")
+        return d.hexdigest()
     h = hashlib.sha256()
     with open(path, "rb") as fh:
         while chunk := fh.read(8 << 20):
@@ -342,6 +348,19 @@ def detect_clip(
     )
 
 
+def backend_info(weights: str | Path) -> dict:
+    """``{"backend": "openvino"|"torch", "source_sha256"?}`` for the suggest/candidates meta. An OpenVINO export dir may
+    carry ``footy_source.json`` (written by ``scripts/setup_openvino_venv.sh``) naming the ``.pt`` it was exported from."""
+    from footy_track.detectors.ultralytics import is_openvino_dir  # noqa: PLC0415
+
+    if not is_openvino_dir(weights):
+        return {"backend": "torch"}
+    out: dict = {"backend": "openvino"}
+    with contextlib.suppress(OSError, ValueError):
+        out["source_sha256"] = json.loads((Path(weights) / "footy_source.json").read_text()).get("sha256")
+    return out
+
+
 def thread_cap() -> int:
     """Threads a stage may use: ``$BALL_POOL_THREADS``, else ``$OMP_NUM_THREADS``, else 4 (merlin shares its cores)."""
     for k in ("BALL_POOL_THREADS", "OMP_NUM_THREADS"):
@@ -463,7 +482,7 @@ def run_match(
         out / META,
         {
             "schema": SCHEMA, "complete": complete, "stride": stride, "imgsz": imgsz, "conf": conf, "person_conf": PERSON_CONF,
-            "detector": {"sha256": sha256, "sha8": sha8(sha256), "weights": str(weights)},
+            "detector": {"sha256": sha256, "sha8": sha8(sha256), "weights": str(weights), **backend_info(weights)},
             "expected": want, "clips": clips, "code_sha": code_sha, "updated": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
         },
     )  # fmt: skip
