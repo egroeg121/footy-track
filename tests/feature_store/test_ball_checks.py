@@ -192,6 +192,9 @@ def test_export_drops_not_ball_keeps_others(tmp_path) -> None:
         )
     _write(bc, _recs())
     import_ball_checks(store, bc)
+    from tests.feature_store.test_export_training_dataset import mark_complete
+
+    mark_complete(store, CLIP)
 
     def run(**kw):
         return export(
@@ -201,6 +204,7 @@ def test_export_drops_not_ball_keeps_others(tmp_path) -> None:
             eval_dir=tmp_path / "none",
             extra_exclude=set(),
             tag="t",
+            sources=["all"],
             **kw,
         )
 

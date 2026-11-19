@@ -6,6 +6,8 @@ sidecar format) for the contract these encode.
 
 from __future__ import annotations
 
+from footy_track.constants import FROZEN_CLASS_IDS, FROZEN_CLASS_NAMES  # noqa: F401  (frozen training class ids)
+
 # Provenance tags stored in each box's ObjectDetection.model field.
 PROV_LABELLER = "labeller"  # manual edit — ground truth, never auto-overwritten
 PROV_YOLO = "yolo"
@@ -25,6 +27,10 @@ KNOWN_BOX_LABELS = BALL_LABELS | PLAYER_LABELS
 # Skip-marker tags (frame recorded, no box).
 NO_BALL_TAG = "no_ball"
 NOT_BROADCAST_TAG = "not_broadcast"
+#: Frame-level assertion "every visible person on this frame is boxed" (docs/design/full_frame_labelling.md
+#: section 1). Unlike the two skip markers it COEXISTS with box lines on the same frame (its own ``bbox: null``
+#: line, tags exactly ``["players_complete"]``) and never suppresses or replaces boxes.
+PLAYERS_COMPLETE_TAG = "players_complete"
 
 #: Marker tags (written after the provenance) of a box accepted as-is from a detector suggestion (eval panel,
 #: ``ball_eval/panel_suggest.py``). Audit only: the box is ordinary tier-1 ``labeller`` GT.

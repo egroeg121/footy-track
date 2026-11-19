@@ -35,14 +35,18 @@ import duckdb
 from footy_track.feature_store.extra_schema import EXTRA_DDL
 from footy_track.feature_store.schema import (
     DDL,
+    METHOD_RANK,
     TABLES,
     VIEWS,
     CalibrationRow,
     DetectionRow,
+    FrameLabelStateRow,
     FrameRow,
     GameRow,
     PitchKeypointRow,
+    PlayerCheckRow,
     RunRow,
+    SeriesRow,
     TrackMetaRow,
 )
 
@@ -151,6 +155,28 @@ _COLUMNS: dict[str, tuple[str, ...]] = {
         "matched_detection_id",
         "match_iou",
     ),
+    "frame_label_state": (
+        "game_id",
+        "frame_index",
+        "cls_group",
+        "state",
+        "method",
+        "run_id",
+        "teacher_version",
+        "verified_by",
+        "verified_at",
+    ),
+    "player_check": (
+        "game_id",
+        "frame_index",
+        "cluster_id",
+        "verdict",
+        "count",
+        "run_id",
+        "verified_by",
+        "verified_at",
+    ),
+    "series": ("game_id", "start_frame", "end_frame", "run_id", "verified_at"),
     "calibration": (
         "game_id",
         "source",
@@ -205,6 +231,9 @@ _PK: dict[str, tuple[str, ...]] = {
     "detection": ("game_id", "source", "run_id", "frame_index", "detection_id"),
     "track_meta": ("game_id", "source", "run_id", "track_id"),
     "detection_review": ("game_id", "vsource", "frame_index", "box_index"),
+    "frame_label_state": ("game_id", "frame_index", "cls_group"),
+    "player_check": ("game_id", "frame_index", "cluster_id"),
+    "series": ("game_id", "start_frame", "end_frame"),
     "calibration": ("game_id", "source", "run_id", "frame_index"),
     "pitch_keypoint": ("game_id", "source", "run_id", "frame_index", "point_idx"),
 }
@@ -328,6 +357,107 @@ class FeatureStore:
     def upsert_pitch_keypoints(self, rows: Sequence[PitchKeypointRow]) -> int:
         return self._upsert("pitch_keypoint", rows)
 
+    def register_series(self, rows: Sequence[SeriesRow]) -> int:
+        """Register fully-complete windows (idempotent on game/start/end)."""
+        return self._upsert("series", rows)
+
+    def read_series(self, game_id: str | None = None) -> pd.DataFrame:
+        sql, params = "SELECT * FROM series WHERE TRUE", []
+        if game_id is not None:
+            sql += " AND game_id = ?"
+            params.append(game_id)
+        return self.query(sql + " ORDER BY game_id, start_frame", params)
+
+    def upsert_frame_label_states(self, rows: Sequence[FrameLabelStateRow]) -> int:
+        """Upsert ``frame_label_state`` rows with method precedence.
+
+        An existing row is replaced only when the incoming row's method rank
+        (``schema.METHOD_RANK``) is >= the existing row's, so a weaker writer
+        (e.g. the sidecar ingest) never downgrades a stronger one (hand_series).
+        Equal rank: last write wins. Within one call the strongest row per key
+        wins (ties: the later row). Returns the number of rows offered.
+        """
+        rows = list(rows)
+        best: dict[tuple, FrameLabelStateRow] = {}
+        for r in rows:
+            k = (r.game_id, r.frame_index, r.cls_group.value)
+            if k not in best or METHOD_RANK[r.method] >= METHOD_RANK[best[k].method]:
+                best[k] = r
+        if not best:
+            return 0
+        cols = _COLUMNS["frame_label_state"]
+        rank_sql = (
+            "CASE {m} "
+            + " ".join(f"WHEN '{m}' THEN {v}" for m, v in METHOD_RANK.items())
+            + " END"
+        )
+        set_clause = ", ".join(
+            f"{c} = excluded.{c}" for c in cols if c not in _PK["frame_label_state"]
+        )
+        sql_head = f"INSERT INTO frame_label_state ({', '.join(cols)}) VALUES "
+        sql_tail = (
+            f" ON CONFLICT (game_id, frame_index, cls_group) DO UPDATE SET {set_clause}"
+            f" WHERE {rank_sql.format(m='excluded.method')}"
+            f" >= {rank_sql.format(m='frame_label_state.method')}"
+        )
+        ph = "(" + ", ".join("?" for _ in cols) + ")"
+        items = list(best.values())
+        for start in range(0, len(items), _UPSERT_CHUNK):
+            chunk = items[start : start + _UPSERT_CHUNK]
+            self._conn.execute(
+                sql_head + ", ".join(ph for _ in chunk) + sql_tail,
+                [getattr(r, c) for r in chunk for c in cols],
+            )
+        return len(rows)
+
+    def read_frame_label_states(
+        self, game_id: str | None = None, cls_group: str | None = None
+    ) -> pd.DataFrame:
+        """Read ``frame_label_state`` rows, optionally filtered by game / class group."""
+        sql = "SELECT * FROM frame_label_state WHERE TRUE"
+        params: list[object] = []
+        if game_id is not None:
+            sql += " AND game_id = ?"
+            params.append(game_id)
+        if cls_group is not None:
+            sql += " AND cls_group = ?"
+            params.append(cls_group)
+        return self.query(sql + " ORDER BY game_id, frame_index, cls_group", params)
+
+    def upsert_player_checks(self, rows: Sequence[PlayerCheckRow]) -> int:
+        """Upsert Player Check decisions (last write per (game, frame, cluster) wins)."""
+        return self._upsert("player_check", rows)
+
+    def read_player_checks(
+        self, game_id: str, frames: Sequence[int] | None = None
+    ) -> pd.DataFrame:
+        """Player Check rows of one game, optionally restricted to *frames*."""
+        sql = "SELECT * FROM player_check WHERE game_id = ?"
+        params: list[object] = [game_id]
+        if frames is not None:
+            if not frames:
+                return self.query(sql + " AND FALSE", params)
+            sql += f" AND frame_index IN ({', '.join('?' for _ in frames)})"
+            params.extend(int(f) for f in frames)
+        return self.query(sql + " ORDER BY frame_index, cluster_id", params)
+
+    def delete_frame_label_states(
+        self, game_id: str, cls_group: str, method: str
+    ) -> int:
+        """Delete one writer's rows (*method*) for a game/class group; rows set by
+        any other method are never touched. Used so a re-flush drops stale derived
+        rows (e.g. a ``no_ball`` marker the user has since removed)."""
+        n = self._conn.execute(
+            "SELECT count(*) FROM frame_label_state "
+            "WHERE game_id = ? AND cls_group = ? AND method = ?",
+            [game_id, cls_group, method],
+        ).fetchone()[0]
+        self._conn.execute(
+            "DELETE FROM frame_label_state WHERE game_id = ? AND cls_group = ? AND method = ?",
+            [game_id, cls_group, method],
+        )
+        return int(n)
+
     # -- replace (delete) --------------------------------------------------- #
 
     @contextmanager
@@ -440,7 +570,8 @@ class FeatureStore:
                 root = out_dir / table
                 partition = (
                     "game_id, source"
-                    if table in ("detection", "track_meta", "calibration", "pitch_keypoint")
+                    if table
+                    in ("detection", "track_meta", "calibration", "pitch_keypoint")
                     else "game_id"
                 )
                 self._conn.execute(

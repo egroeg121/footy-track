@@ -6,7 +6,8 @@ CLI:
         --gt-dir /mnt/storage/footy_data/ball_gt_marks \\
         --video-dir /home/george/code/footy_track/refinery/rig/eval_data/clips \\
         --db data/feature_store.duckdb \\
-        [--dry-run] [--clip <stem>] [--roboflow-dir <path>] [--legacy-all-reviewed]
+        [--dry-run] [--clip <stem>] [--roboflow-dir <path>] [--legacy-all-reviewed] \\
+        [--legacy-complete-clips a,b] [--legacy-complete-file clips.txt]
 
 Each ``<clip_stem>.jsonl`` in ``--gt-dir`` holds one JSON object per line:
     {"frame_index": int, "bbox": {x,y,w,h} | null, "center": {...} | null,
@@ -23,6 +24,27 @@ Provenance tags and their tier mapping (default, per-tag tiering):
                                                      model tier, not human)
     yolo     -> source=yolo,       reviewed=False
     sam3     -> source=sam3,       reviewed=False
+
+Frame label state (``frame_label_state``, method ``sidecar_marker``): a ``no_ball`` tag gives ball
+``absent``; a ``labeller`` ball box gives ball ``complete``. A ``players_complete`` marker ("all players
+boxed", set by the labeller) gives player ``complete`` when the frame holds >= 1 player-class box
+(player/player_sub/referee/coach/person, any provenance) and player ``absent`` when it holds none. Frames
+WITHOUT the marker get no player state (no back-fill). The human assertion is written as
+``sidecar_marker`` rather than ``hand_frame`` on purpose: this writer replaces only its own stale rows,
+so removing the marker removes the state, which a ``hand_frame`` row (rank 4, never deleted here) could
+not do; and rank 1 keeps it from overriding any stronger row (hand_* / verdict / offline_audited), e.g. a
+Player Check ``partial``. Method precedence is ``schema.METHOD_RANK`` (hand_* > verdict > offline_audited >
+sidecar_marker): a flush never overwrites a state set by a stronger method, and replaces only its own
+stale ``sidecar_marker`` rows.
+
+Legacy back-fill (opt-in, explicit): ``--legacy-complete-clips a,b,c`` / ``--legacy-complete-file`` (one clip
+stem per line, ``#`` comments allowed) name clips labelled before the ``players_complete`` marker existed. For
+each NAMED clip only, every frame holding >= 1 hand-label (``labeller``) player-class box gets player
+``complete`` (method ``sidecar_marker``, verified_by ``legacy_backfill``, run_id ``gt_import_legacy_backfill``).
+Frames with no such box get nothing (not ``absent``); unnamed clips are untouched; the list is never defaulted.
+Being ``sidecar_marker`` rows they obey the same precedence (never override stronger rows) and are deleted and
+rewritten on every replace ingest, so dropping a clip from the list removes its rows. An explicit
+``players_complete`` marker on the frame wins over the back-fill row.
 
 Lines whose tags carry no recognized provenance tag are dropped (no
 detection emitted) — same fallback as before this change, now documented
@@ -54,9 +76,13 @@ from pathlib import Path
 from footy_track.feature_store.ball_checks import import_ball_checks
 from footy_track.feature_store.importers import import_roboflow
 from footy_track.feature_store.schema import (
+    ClsGroup,
     DetectionRow,
+    FrameLabelStateRow,
     FrameRow,
     GameRow,
+    LabelMethod,
+    LabelState,
     RunRow,
     Stage,
 )
@@ -73,7 +99,9 @@ DEFAULT_FPS = 25.0
 DEFAULT_WIDTH = 1920
 DEFAULT_HEIGHT = 1080
 
-_SKIP_TAGS = {"no_ball", "not_broadcast"}
+#: ``players_complete`` is a frame-level assertion line (bbox null), never an object class or a box.
+PLAYERS_COMPLETE_TAG = "players_complete"
+_SKIP_TAGS = {"no_ball", "not_broadcast", PLAYERS_COMPLETE_TAG}
 _PROVENANCE_TAGS = {"labeller", "vittrack", "yolo", "sam3"}
 #: Review marker written alongside a provenance tag: a human looked at this
 #: machine box and kept it. It is NOT a provenance and NOT an object class —
@@ -99,6 +127,12 @@ _PROVENANCE_TO_REVIEWED = {
     "yolo": False,
     "sam3": False,
 }
+_BALL_LABELS = {"ball", "in_play_ball", "out_of_play_ball"}
+#: Classes of the ``player`` group (docs/design/full_frame_labelling.md section 1).
+_PLAYER_LABELS = {"player", "player_sub", "referee", "coach", "person"}
+_LABELLER_USER = "labeller"
+LEGACY_VERIFIED_BY = "legacy_backfill"
+LEGACY_RUN_ID = f"{GT_RUN_PREFIX}legacy_backfill"
 _VIDEO_SUFFIXES = (".mp4", ".mov", ".avi", ".mkv")
 
 
@@ -110,6 +144,16 @@ class GtImportReport:
     by_source: dict[str, int] = field(default_factory=lambda: defaultdict(int))
     clips_missing_video: set[str] = field(default_factory=set)
     detections_deleted: int = 0
+    ball_absent: int = 0
+    ball_complete: int = 0
+    ball_state_conflicts: int = (
+        0  # frames with both a no_ball marker and a human ball box: left unreviewed
+    )
+    players_complete: int = 0  # players_complete marker with >= 1 player-class box
+    players_absent: int = 0  # players_complete marker with zero player-class boxes
+    players_legacy_complete: int = (
+        0  # frames back-filled complete for --legacy-complete-clips
+    )
 
 
 def _find_video(video_dir: Path, stem: str) -> Path | None:
@@ -156,7 +200,89 @@ def _split_tags(tags: list[str]) -> tuple[str | None, str | None, bool]:
     return obj_tag, prov_tag, checked
 
 
-def ingest_gt_jsonl(
+def _ball_state_rows(
+    stem: str,
+    no_ball_frames: set[int],
+    human_ball_frames: set[int],
+    report: GtImportReport,
+) -> list[FrameLabelStateRow]:
+    """Ball ``frame_label_state`` rows derived from a sidecar (docs/design/full_frame_labelling.md section 1).
+
+    Only the ball group is derived; player state is never inferred from existing GT (no
+    back-fill). A frame carrying both a ``no_ball`` marker and a human ball box is
+    contradictory: neither state is written.
+    """
+    conflicts = no_ball_frames & human_ball_frames
+    absent = sorted(no_ball_frames - conflicts)
+    complete = sorted(human_ball_frames - conflicts)
+    report.ball_absent = len(absent)
+    report.ball_complete = len(complete)
+    report.ball_state_conflicts = len(conflicts)
+    return [
+        FrameLabelStateRow(
+            game_id=stem,
+            frame_index=fi,
+            cls_group=ClsGroup.BALL,
+            state=state,
+            method=LabelMethod.SIDECAR_MARKER,
+            run_id=f"{GT_RUN_PREFIX}{_LABELLER_USER}",
+            verified_by=_LABELLER_USER,
+        )
+        for frames, state in (
+            (absent, LabelState.ABSENT),
+            (complete, LabelState.COMPLETE),
+        )
+        for fi in frames
+    ]
+
+
+def _player_state_rows(
+    stem: str,
+    marker_frames: set[int],
+    player_box_frames: set[int],
+    report: GtImportReport,
+    legacy_frames: set[int] | None = None,
+) -> list[FrameLabelStateRow]:
+    """Player ``frame_label_state`` rows: frames carrying the ``players_complete`` marker, plus (for a clip named
+    in --legacy-complete-clips) ``legacy_frames`` = frames with a hand-label player box and no marker."""
+    complete = sorted(marker_frames & player_box_frames)
+    absent = sorted(marker_frames - player_box_frames)
+    report.players_complete = len(complete)
+    report.players_absent = len(absent)
+    rows = [
+        FrameLabelStateRow(
+            game_id=stem,
+            frame_index=fi,
+            cls_group=ClsGroup.PLAYER,
+            state=state,
+            method=LabelMethod.SIDECAR_MARKER,
+            run_id=f"{GT_RUN_PREFIX}{_LABELLER_USER}",
+            verified_by=_LABELLER_USER,
+        )
+        for frames, state in (
+            (complete, LabelState.COMPLETE),
+            (absent, LabelState.ABSENT),
+        )
+        for fi in frames
+    ]
+    legacy = sorted((legacy_frames or set()) - marker_frames)
+    report.players_legacy_complete = len(legacy)
+    rows += [
+        FrameLabelStateRow(
+            game_id=stem,
+            frame_index=fi,
+            cls_group=ClsGroup.PLAYER,
+            state=LabelState.COMPLETE,
+            method=LabelMethod.SIDECAR_MARKER,
+            run_id=LEGACY_RUN_ID,
+            verified_by=LEGACY_VERIFIED_BY,
+        )
+        for fi in legacy
+    ]
+    return rows
+
+
+def ingest_gt_jsonl(  # noqa: PLR0912, PLR0915 - one parse-then-write pass; state derivation lives in _ball_state_rows
     store: FeatureStore,
     jsonl_path: Path,
     *,
@@ -164,6 +290,7 @@ def ingest_gt_jsonl(
     dry_run: bool = False,
     legacy_all_reviewed: bool = False,
     replace: bool = True,
+    legacy_complete: bool = False,
 ) -> GtImportReport:
     """Import one ``<clip_stem>.jsonl`` GT-marks file into the store.
 
@@ -172,7 +299,8 @@ def ingest_gt_jsonl(
     for the game is deleted, then the freshly parsed rows are inserted, so
     corrections and deletions in the sidecar leave no ghost rows. Other runs
     (roboflow, sam3, ...) are untouched. ``replace=False`` keeps the old
-    merge-only upsert behaviour.
+    merge-only upsert behaviour. ``legacy_complete`` back-fills player ``complete`` on frames with a
+    hand-label player box (see module docstring); the caller passes it only for explicitly named clips.
     """
     stem = jsonl_path.stem
     report = GtImportReport()
@@ -188,6 +316,11 @@ def ingest_gt_jsonl(
     # sequential detection_id.
     frame_indices: set[int] = set()
     dets_by_frame_source: dict[tuple[int, str], list[DetectionRow]] = defaultdict(list)
+    no_ball_frames: set[int] = set()
+    human_ball_frames: set[int] = set()
+    players_marker_frames: set[int] = set()
+    player_box_frames: set[int] = set()
+    human_player_frames: set[int] = set()
 
     for raw_line in jsonl_path.read_text().splitlines():
         line = raw_line.strip()
@@ -198,6 +331,10 @@ def ingest_gt_jsonl(
         frame_indices.add(frame_index)
 
         tags = rec.get("tags", [])
+        if "no_ball" in tags:
+            no_ball_frames.add(frame_index)
+        if PLAYERS_COMPLETE_TAG in tags:
+            players_marker_frames.add(frame_index)
         if any(t in _SKIP_TAGS for t in tags):
             continue  # frame recorded on the spine, no detection
 
@@ -206,6 +343,12 @@ def ingest_gt_jsonl(
         if obj_tag is None or prov_tag is None or bbox is None:
             continue
 
+        if obj_tag in _PLAYER_LABELS:
+            player_box_frames.add(frame_index)
+            if prov_tag == "labeller":
+                human_player_frames.add(frame_index)
+        if prov_tag == "labeller" and obj_tag in _BALL_LABELS:
+            human_ball_frames.add(frame_index)
         source = _PROVENANCE_TO_SOURCE[prov_tag]
         # A human-checked machine box is TIER 2: the machine drew the geometry
         # (source stays vittrack/yolo) but a human confirmed it, so it counts
@@ -237,6 +380,15 @@ def ingest_gt_jsonl(
                 dataset_tag=DATASET_TAG,
             )
         )
+
+    state_rows = _ball_state_rows(stem, no_ball_frames, human_ball_frames, report)
+    state_rows += _player_state_rows(
+        stem,
+        players_marker_frames,
+        player_box_frames,
+        report,
+        human_player_frames if legacy_complete else None,
+    )
 
     if dry_run:
         report.games.add(stem)
@@ -290,6 +442,16 @@ def ingest_gt_jsonl(
             report.detections_written += len(rows)
             report.by_source[source] += len(rows)
 
+        # The sidecar is the source of truth for its own markers: drop this writer's stale
+        # rows (a no_ball the user since removed), then upsert. Rows set by stronger methods
+        # (hand_series, verdict, ...) are never deleted and never overwritten (METHOD_RANK).
+        if replace:
+            for group in (ClsGroup.BALL, ClsGroup.PLAYER):
+                store.delete_frame_label_states(
+                    stem, group.value, LabelMethod.SIDECAR_MARKER.value
+                )
+        store.upsert_frame_label_states(state_rows)
+
     return report
 
 
@@ -302,6 +464,7 @@ def ingest_gt_dir(
     dry_run: bool = False,
     legacy_all_reviewed: bool = False,
     replace: bool = True,
+    legacy_complete_clips: set[str] | frozenset[str] = frozenset(),
 ) -> GtImportReport:
     total = GtImportReport()
     paths = sorted(gt_dir.glob("*.jsonl"))
@@ -315,8 +478,15 @@ def ingest_gt_dir(
             dry_run=dry_run,
             legacy_all_reviewed=legacy_all_reviewed,
             replace=replace,
+            legacy_complete=path.stem in legacy_complete_clips,
         )
+        total.players_legacy_complete += r.players_legacy_complete
         total.detections_deleted += r.detections_deleted
+        total.ball_absent += r.ball_absent
+        total.ball_complete += r.ball_complete
+        total.ball_state_conflicts += r.ball_state_conflicts
+        total.players_complete += r.players_complete
+        total.players_absent += r.players_absent
         total.games |= r.games
         total.frames_written += r.frames_written
         total.detections_written += r.detections_written
@@ -369,7 +539,30 @@ def main(argv: list[str] | None = None) -> None:
             "(no ghost rows after corrections/deletions). --no-replace merges only."
         ),
     )
+    parser.add_argument(
+        "--legacy-complete-clips",
+        type=str,
+        default="",
+        help=(
+            "Comma-separated clip stems labelled before the players_complete marker: every frame with a "
+            "hand-label player box becomes player 'complete' (verified_by legacy_backfill). Never defaulted."
+        ),
+    )
+    parser.add_argument(
+        "--legacy-complete-file",
+        type=Path,
+        default=None,
+        help="File with one legacy-complete clip stem per line (blank lines and # comments ignored).",
+    )
     args = parser.parse_args(argv)
+    legacy_clips = {
+        c.strip() for c in args.legacy_complete_clips.split(",") if c.strip()
+    }
+    if args.legacy_complete_file is not None:
+        for raw_ln in args.legacy_complete_file.read_text().splitlines():
+            stem = raw_ln.split("#", 1)[0].strip()
+            if stem:
+                legacy_clips.add(stem)
 
     store = FeatureStore.open(":memory:" if args.dry_run else args.db)
 
@@ -385,6 +578,7 @@ def main(argv: list[str] | None = None) -> None:
         dry_run=args.dry_run,
         legacy_all_reviewed=args.legacy_all_reviewed,
         replace=args.replace,
+        legacy_complete_clips=legacy_clips,
     )
 
     bc_dir = args.ball_checks_dir or (args.gt_dir / "ball_checks")
@@ -401,6 +595,12 @@ def main(argv: list[str] | None = None) -> None:
     print(f"gt-marks games by split={split_counts(gt_report.games)}")
     print(
         f"gt-marks detections={gt_report.detections_written} by_source={dict(gt_report.by_source)}"
+    )
+    print(
+        f"ball state: absent={gt_report.ball_absent} complete={gt_report.ball_complete} "
+        f"conflicts(left unreviewed)={gt_report.ball_state_conflicts}; "
+        f"player state: complete={gt_report.players_complete} absent={gt_report.players_absent} "
+        f"legacy_backfill_complete={gt_report.players_legacy_complete} (clips named: {len(legacy_clips)})"
     )
     if gt_report.detections_deleted:
         print(

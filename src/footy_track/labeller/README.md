@@ -140,6 +140,14 @@ One JSON object per line:
   no box). Frames with neither boxes nor markers are not written at all.
   - Tests: `test_session_roundtrip.py::test_flush_writes_skip_markers_with_null_bbox`,
     `test_session_roundtrip.py::test_roundtrip_no_ball_and_not_broadcast_sets`
+- **LAB-109** (MUST) `players_complete` frame marker ("all players boxed"): a bbox-less line `{frame_index, bbox: null,
+  center: null, tags: ["players_complete"]}` (`constants.PLAYERS_COMPLETE_TAG`). Unlike the skip markers it COEXISTS with the
+  frame's box lines (flush writes it in addition to boxes, and it does not suppress or replace them), loads into
+  `Session.players_complete_frames`, and survives every load -> flush cycle (it was the T-01 class of loss for marker
+  tags: anything not restored on load is erased by the next whole-file flush). Readers that skip `bbox: null` lines
+  (review, ball_check, jobs, scorer_data, detection_replay, ingest_all) ignore it.
+  - Tests: `test_session_roundtrip.py::test_players_complete_marker_survives_load_flush_and_keeps_boxes`,
+    `::test_players_complete_cleared_marker_is_not_written`
 - **LAB-103** (MUST) Round-trip fidelity: everything the UI shows survives
   save → reload with identical `model` tags, labels, and geometry (see also
   `tests/feature_store/test_roundtrip_fidelity.py` for the feature-store leg).
@@ -246,10 +254,14 @@ All request/response bodies are JSON unless noted.
 - **LAB-307** (MUST) `GET /next-detection/{from_idx}` → `{idx}` of the next
   frame strictly after `from_idx` with ≥1 box, else `{idx: null}`.
   - Tests: `test_http_endpoints.py::test_next_detection_finds_next_populated_frame`
-- **LAB-308** (MUST) `GET /marks` → `{no_ball, not_broadcast, ball, player}`
+- **LAB-308** (MUST) `GET /marks` → `{no_ball, not_broadcast, players_complete, ball, player}`
   frame-index lists; `ball`/`player` = frames whose boxes contain at least one
   ball-class / player-class label.
   - Tests: `test_http_endpoints.py::test_marks_reports_ball_player_and_skip_sets`
+- **LAB-310** (MUST) `POST /players-complete {idx}` adds the frame to `players_complete_frames` (boxes kept, unlike
+  `/no-ball`) and `POST /players-complete/clear {idx}` removes it; both schedule a flush and emit a `ball_place`-kind hook
+  event (`players_complete` / `players_complete_cleared`).
+  - Tests: `test_http_endpoints.py::test_players_complete_toggle_marks_and_keeps_boxes`
 - **LAB-309** (MUST) `POST /edit` `{idx, objects}` overwrites the frame with
   the client boxes (provenance per LAB-003, default `labeller`); a payload
   with ≥1 box removes the frame from both skip sets (an empty payload leaves
@@ -800,12 +812,29 @@ reads `<gt dir>/ball_checks/` (`--ball-checks-dir`) into the feature store's
   card follows the finger; vertical drags are ignored); buttons for
   unsure/zoom/undo; arrow keys and y/n/u/z on a desktop. The next crops are
   prefetched (stills and the next two clips) and the queue refills below 5
-  cards. When a card appears the page first plays its context clip (LAB-1009a,
-  a muted inline `<video>`), then on its `ended` event shows the still with the draggable box; the answer buttons work while it
-  plays, and Replay / `p` plays it again (stepping or Zoom also stop/restart it). A failed verdict POST puts
+  cards. When a card appears the page runs the card sequence (LAB-1016) over its
+  context clip (LAB-1009a, a muted inline `<video>`); the answer buttons work
+  throughout, and Replay / `p` runs it again (stepping or Zoom also stop/restart it). A failed verdict POST puts
   the card back rather than reporting a saved verdict.
   - Tests: UNTESTED-FRONTEND (`web/ball_check.html`; the server contract is
     LAB-1004..1009)
+- **LAB-1016** (SHOULD) Card sequence on load, per card: (1) FLASH the card's
+  own frame with its box overlaid (the still + SVG overlay; blind/no-box cards
+  flash the still alone) for `FLASH_MS` = 400 ms; (2) PLAY the context clip
+  (LAB-1009a; its box is burned in on the centre frame only, not tracked per
+  frame); a tap on the clip or Space pauses / resumes it; (3) on `ended` (or on
+  error / blocked autoplay) STAY on the paused boxed still with the draggable
+  box; no looping, no blanking. Verdicts (swipe, buttons, keys) work at any
+  point and the next card restarts the sequence; Replay / `p` re-runs it
+  (flash included). A token guard drops a stale sequence when the card changes.
+  - Tests: UNTESTED-FRONTEND (`web/ball_check.html`;
+    `test_ball_check.py::test_ball_check_page_has_flash_play_hold_sequence` only
+    checks the markers are present)
+- **LAB-1017** (MAY) Two per-viewer toggles, "Flash" and "Autoplay", default ON,
+  persisted in `localStorage` (`ballCheck.flash`, `ballCheck.auto`; reads and
+  writes wrapped in try/catch). Flash off skips the 400 ms hold before the clip;
+  Autoplay off shows the boxed still only until Replay is pressed.
+  - Tests: UNTESTED-FRONTEND
 - **LAB-1013a** (MUST) `POST /ball_check/save_box` on a candidate appends to
   the GT sidecar that already exists for that clip under any alias (candidate
   `arsenal_mancity_20250925_seg010` -> `arsenal_mancity_seg010.jsonl` or
@@ -1611,7 +1640,7 @@ restricted to the job's cards (progress and results are).
   - Tests: `tests/ball_eval/test_panel_suggest.py::test_blind_vs_shown_comparison_and_blind_only`,
     `::test_labels_placed_before_suggestions_existed_are_blind_equivalent`, `::test_accepted_marker_is_read_and_is_still_a_tier1_label`
 
-### Prepared Ball Check jobs: inline cards, disk renders, bounds (LAB-1409..1416, LAB-1448)
+### Prepared Ball Check jobs: inline cards, disk renders, bounds (LAB-1409..1416, LAB-1478)
 
 `labelling_jobs submit --kind ball_check --items cards.json --prepare` submits a job **and** queues the
 Prefect flow `ballcheck-prepare` (`~/code/jobs/footy_ballcheck.py`), which renders every card's still and
@@ -1675,7 +1704,7 @@ housekeeping (it also runs hourly inside the server, `FOOTY_JOBS_GC_INTERVAL_S`)
   requested) a fresh `ballcheck-prepare` run is queued for its remaining unlabelled cards (judged ones are skipped); the
   phone is served by on-demand rendering meanwhile. A failed attempt backs off for 10 minutes.
   - Tests: `::test_labelling_resuming_on_an_evicted_job_reprepares_only_the_remaining_cards`, `::test_first_card_request_of_an_evicted_job_also_reprepares`
-- **LAB-1448** (MUST) A training-round card (one with hidden `sampling.bucket` / `sources`) shows *why it was picked and where the box came
+- **LAB-1478** (MUST) A training-round card (one with hidden `sampling.bucket` / `sources`) shows *why it was picked and where the box came
   from* in its footer, `<reason> · <source>` (e.g. `in_play_ball · difficult · detector`), replacing `list`; cards without those keys keep `list`.
   The server computes one display field `why` in `jobs.page_card` (the page never derives it, and the bucket, `p_real`, `sources`
   and every other hidden key stay off the phone). Reason by bucket: U "difficult", M "possible missed ball", N "look-alike",
@@ -1953,6 +1982,114 @@ Unlike the panel it keeps `ingest` on: the verdicts are training data, and `feat
   - Tests: `::test_verdicts_in_other_datasets_on_the_same_canonical_clip_are_not_asked_again`, `::test_refit_and_the_gold_check_join_verdicts_in_the_new_marks_dir`,
     `::test_ingest_all_reads_the_training_dataset_marks_and_its_verdicts`
 
+## 19h. Players-complete marker (LAB-1448..1450)
+
+- **LAB-1448** (MUST) Labeller page: button `All players boxed (P)` and hotkey `P` toggle the `players_complete` marker on the
+  current frame (pending edits are saved first so the marker describes the boxes on screen; boxes are kept). A teal strip along
+  the bottom of the timeline bar marks every such frame; the object list shows an `All players boxed` row (click the x to clear);
+  `/marks.players_complete` restores it on load.
+  - Tests: UNTESTED-FRONTEND (server half under LAB-310).
+- **LAB-1449** (MUST) `feature_store/ingest_gt` writes `frame_label_state` player rows, method `sidecar_marker`, only for frames
+  carrying the marker: `complete` when the frame has >= 1 player-class box (player, player_sub, referee, coach, person; any
+  provenance), `absent` when it has none. Frames without the marker get no player state (no back-fill). The marker line is never a
+  detection or an object class. `GtImportReport.players_complete` / `players_absent` and the CLI line `player state: complete=N absent=N`
+  report it.
+  - Tests: `tests/feature_store/test_frame_label_state.py::test_players_complete_marker_gives_player_complete_or_absent`,
+    `::test_players_complete_feeds_frame_complete_view`
+- **LAB-1450** (MUST) Method is `sidecar_marker` (rank 1), not `hand_frame`, deliberately: ingest replaces only its own stale
+  `sidecar_marker` rows per (game, group), so removing the marker removes the state (a `hand_frame` row is never deleted by
+  ingest), and it can never override a stronger row (a Player Check `partial`, a series `hand_series`). Re-ingest is idempotent.
+  - Tests: `::test_removing_players_complete_marker_removes_state`, `::test_players_complete_reingest_idempotent`,
+    `::test_players_complete_does_not_override_stronger_row`
+- **LAB-1451** (MUST) Legacy back-fill, opt-in only: `ingest_gt --legacy-complete-clips a,b` / `--legacy-complete-file path` (one stem
+  per line) name clips labelled before the marker existed. For those clips only, each frame with a hand-label (`labeller`) player-class
+  box gets player `complete` (`sidecar_marker`, verified_by `legacy_backfill`, run_id `gt_import_legacy_backfill`); frames without one
+  get nothing. Never defaulted; same precedence/replace semantics as LAB-1450, so removing a clip from the list removes its rows.
+  `GtImportReport.players_legacy_complete` and the CLI `legacy_backfill_complete=N` report it.
+  - Tests: `tests/feature_store/test_frame_label_state.py::test_legacy_backfill_*`
+
+## 19i. Series review (LAB-1460..1468)
+
+A human accepts a proposed auto-label window (`autolabel/windows.py` + `autolabel/propose.py`, design `docs/design/full_frame_labelling.md`
+section 4 stages 4-5) in one go: accept-all plus per-frame exceptions. Code: `labeller/series_review.py` (router), `web/series.html` (card page at
+`/series`, linked from the index header and the home page). Inputs under `$FOOTY_AUTOLABEL_DIR` (default `$FOOTY_DATA/autolabel`):
+`windows.json`, `proposals/<window>.npz`; detections come from the feature store (`$FOOTY_FEATURE_STORE`). Outputs: `series_review/<window>.json`
+(status sidecar), `reproposals.json` (rejected windows + corrected anchors for re-track seeds).
+
+- **LAB-1460** (MUST) `GET /series/windows` lists train-split windows with status `unproposed | proposed | accepted | rejected`.
+  `GET /series/window/{id}` returns every frame with its boxes, disagreement score and `flagged`, flagged frames first (descending score, then
+  frame order). Flagged = score >= 0.3, or a person/ball disagreement flag in the npz.
+  - Tests: `tests/labeller/test_series_review.py::test_get_window_flagged_first_and_audit_boxes_hidden`
+- **LAB-1461** (MUST) 10% of the window's frames (rounded up), drawn from the unflagged ones with a seed derived from the window id only, are
+  blind-audit frames (`audit=true`): their boxes are not sent. The same window always yields the same audit frames. `audit_results` on accept
+  must cover exactly those frames (422 otherwise); an exception on an audit frame is refused (422).
+  - Tests: `::test_get_window_flagged_first_and_audit_boxes_hidden`, `::test_audit_results_must_cover_audit_frames`
+- **LAB-1462** (MUST) `POST /series/window/{id}/accept` with no exceptions marks every proposed box of the window `reviewed=true` and writes
+  `frame_label_state` rows `method=hand_series`, `run_id=autolabel:<window_id>`, for ball and player on every frame: `complete`, or `absent`
+  when the frame has no box of that group.
+  - Tests: `::test_accept_all_writes_complete_hand_series_for_both_groups`, `::test_no_ball_or_players_gives_absent`
+- **LAB-1463** (MUST) Exceptions (method `hand_frame`, only that frame/group changes): `ball_not_ball` leaves the ball box unreviewed, records it in
+  `detection_review` (`vsource=series`, verdict `not_ball`, matched to the box) and the ball state `unreviewed`; `ball_absent` -> ball `absent`
+  (box unreviewed + rejected); `players_incomplete` -> player `partial`; `fix_box` (label + bbox) writes the box to the clip's GT sidecar as
+  `labeller` provenance (the `/review/correct` path when `box_index` is given, else a new sidecar line), so it ingests as a `hand_label`; the
+  frame's group is `complete` for a ball fix and `partial` for a player fix, and the superseded machine boxes of that group stay unreviewed.
+  - Tests: `::test_one_exception_demotes_only_that_frame`, `::test_ball_not_ball_unreviews_ball_and_records_rejection`,
+    `::test_ball_absent_marks_ball_absent`, `::test_fix_box_goes_to_sidecar_as_hand_label`
+- **LAB-1464** (MUST) A window is REJECTED (status `rejected`, no `frame_label_state` or `reviewed` change, no sidecar GT write) when exceptions exceed
+  10% of its frames (`floor(0.1 * n)` allowed) or any audit result has `ok=false`. The rejection is queued in `reproposals.json` with the corrected
+  anchors (fix boxes, ball-absent frames, the reviewer's ball box on failed audit frames). A rejected window cannot be accepted until
+  `POST /series/window/{id}/reopen` (after re-propose).
+  - Tests: `::test_too_many_exceptions_rejects_without_state_and_requeues`, `::test_exactly_the_limit_is_accepted`, `::test_audit_failure_rejects_and_keeps_human_anchor`
+- **LAB-1465** (MUST) A window whose every frame is `frame_complete` after the commit is registered in `series(game_id, start_frame, end_frame
+  (exclusive), run_id, verified_at)` (`FeatureStore.register_series` / `read_series`, idempotent on game/start/end).
+  - Tests: `tests/feature_store/test_series.py`, `tests/labeller/test_series_review.py::test_full_window_registers_series_and_reaccept_is_idempotent`
+- **LAB-1466** (MUST) Windows of a heldout or in-match-eval clip, or of an unregistered match, are refused with 403 on every endpoint (re-checked with
+  `splits.split_of` via `windows.eligible_match_key`, not trusted from `windows.json`); a missing split register is 503 (fail closed); they are
+  hidden from the list.
+  - Tests: `::test_heldout_window_refused_everywhere`
+- **LAB-1467** (MUST) Re-accepting an accepted window returns the stored result (`idempotent: true`) and changes nothing in the store.
+  - Tests: `::test_full_window_registers_series_and_reaccept_is_idempotent`
+- **LAB-1468** (MUST) `/series` page: a contact strip of every k-th frame (default 10) plus all flagged, audit and exception frames, with boxes
+  overlaid (hidden on audit cards); "Accept all"; tap a frame to add/clear an exception; a visible `Exceptions n / limit` counter. `fix_box` is
+  not offered by the card (use Object Review, then reopen the window).
+  - Tests: UNTESTED-FRONTEND (page served: `::test_page_is_served`).
+
+## 19j. Player Check: cluster verification of player boxes (LAB-1470..1477)
+
+Design: `docs/design/full_frame_labelling.md` 4c / 6b (Task 10). Page `/player-check` (`web/player_check.html`, linked from the
+labeller home), API in `labeller/player_check.py`, geometry in `autolabel/clusters.py`, state in the feature-store
+`player_check` table (PK `game_id, frame_index, cluster_id`; `verdict` in ok / count_n / fixed / unsure; `count`; `run_id` = the
+count run `<cluster>:<a>-<b>`; `verified_by/at`). The frame sweep uses `cluster_id = '__sweep__'`.
+
+- **LAB-1470** (MUST) `autolabel/clusters.py` links frame clusters over a window (`track_clusters`, union-box overlap), gives each a count
+  timeline, change points and flicker frames (a short count run between two runs of the same count, e.g. 3,3,2,3; a persistent change is
+  not a flicker), and `triage_track`. Overlapping boxes form one cluster. The pre-existing `cluster_boxes` / `crowd_score` API is unchanged.
+  - Tests: `tests/autolabel/test_player_check_clusters.py`
+- **LAB-1471** (MUST) Triage policy defaults to `audit_all` (design 6b: no auto-accept on detector confidence). Only under the opt-in
+  `permissive` policy is an isolated, stable (>= 3 observations), confident track `auto_ok` and dropped from the queue.
+  - Tests: `::test_isolated_stable_box_is_auto_ok_only_under_permissive_policy`, `tests/labeller/test_player_check.py::test_permissive_policy_drops_isolated_stable_track`
+- **LAB-1472** (MUST) `GET /player-check/queue?clip=..&start&end&policy&eval`: cluster cards (worst flicker / size / overlap first, with strip
+  frames, count timeline, runs, crop), frame-sweep cards, and a deterministic 1-in-10 blind-audit frame list (no boxes). Verified clusters drop out.
+  - Tests: `tests/labeller/test_player_check.py::test_queue_flags_flicker_first_and_audits_everything_by_default`
+- **LAB-1473** (MUST) `POST /player-check/verdict`: `ok`, `count_is_N` with `start`/`end` (resolves that run; frames whose box count differs
+  from N are returned in `needs_fix` and stay uncompleted), `fixed` with `fix` = `[{frame_index, delete:[box_index], add:[{label,bbox}]}]`
+  (added boxes are `labeller` provenance = hand_label GT, written with `/review/correct`'s file, numbering and atomic write), `unsure`.
+  - Tests: `::test_count_is_n_resolves_a_run`, `::test_fixed_writes_hand_label_boxes`, `::test_fixed_without_boxes_is_rejected`
+- **LAB-1474** (MUST) A frame's player `frame_label_state` is `complete` (method `hand_frame`) only when ALL its clusters are verified AND its
+  sweep is verified; otherwise `partial`. `unsure` never completes.
+  - Tests: `::test_frame_complete_only_when_all_clusters_and_sweep_verified`, `::test_unsure_never_completes`
+- **LAB-1475** (MUST) Heldout / eval-in-match clips (per `footy_track.splits.split_of`) are refused with 403 unless the request sets `eval`;
+  such windows feed the player eval panel, never training.
+  - Tests: `::test_heldout_refused_unless_eval_flag`
+- **LAB-1476** (MUST) `player_check` store table + `FeatureStore.upsert_player_checks` / `read_player_checks`; verdict CHECK enforced.
+  - Tests: `tests/feature_store/test_frame_label_state.py::test_player_check_table_upserts_and_validates_verdict`
+- **LAB-1477** (SHOULD) Page: zoomed cluster strip, numbered distinct-colour boxes with offset outlines, count timeline, swipe/button ok vs fix,
+  sweep card, tap-to-add / tap-to-delete fix mode.
+  - Tests: UNTESTED-FRONTEND
+- Limits: cluster ids (`c0`...) are window-local and recomputed from the sidecar per call, so completeness is judged at write time against the
+  pre-fix boxes. Not built: audit-card submission (blind relabel), the independent second-model count (4c step 3), the Claude-assisted check
+  (step 5), split / merge-by-line fix tools, per-bucket miss-rate reporting.
+
 ## 15. Traceability summary
 
 | Section | Requirements | Tested | UNTESTED | UNTESTED-FRONTEND |
@@ -1967,7 +2104,7 @@ Unlike the panel it keeps `ingest` on: the verdicts are training data, and `feat
 | 8. Backend (LAB-7xx) | 11 | 8 | 3 | 0 |
 | 9. Labeller UI (LAB-8xx) | 11 | 0 | 0 | 11 |
 | 10. Review UI (LAB-9xx) | 7 | 0 | 0 | 7 |
-| 11. Ball Check (LAB-10xx) | 12 | 11 | 0 | 1 |
+| 11. Ball Check (LAB-10xx) | 14 | 11 | 0 | 3 |
 | 12. Confidence sampling (LAB-11xx) | 5 | 5 | 0 | 0 |
 | 16. Pitch calibration (LAB-12xx) | 23 | 18 | 0 | 5 |
 | 18. Datasets (LAB-13xx) | 6 | 5 | 0 | 1 |
@@ -1977,8 +2114,13 @@ Unlike the panel it keeps `ingest` on: the verdicts are training data, and `feat
 | 19e. Ball evaluation panel (LAB-1435..1438) | 4 | 4 | 0 | 0 |
 | 17b. Task board filters (LAB-1443) | 1 | 0 | 0 | 1 |
 | 19g. Eval panel suggestions (LAB-1445..1447) | 3 | 3 | 0 | 0 |
-| 19h. Ball Check card reason (LAB-1448) | 1 | 1 | 0 | 0 |
-| **Total** | **162** | **121** | **9** | **32** |
+| 2b. players_complete marker (LAB-109, LAB-310) | 2 | 2 | 0 | 0 |
+| 19h. Players-complete marker (LAB-1448..1450) | 3 | 2 | 0 | 1 |
+| 19j. Player Check (LAB-1470..1477) | 8 | 7 | 0 | 1 |
+| **Total** | **166** | **124** | **9** | **33** |
+| 19i. Series review (LAB-1460..1468) | 9 | 8 | 0 | 1 |
+| 19g. Ball Check card reason (LAB-1478) | 1 | 1 | 0 | 0 |
+| **Total** | **176** | **133** | **9** | **34** |
 
 Open items: 4 (OPEN-1..4) + 1 fixed on main (undo provenance, `95b60cc`).
 Test suite: 138 tests in `tests/labeller/` (all green), plus the

@@ -9,8 +9,15 @@ import yaml
 from PIL import Image
 
 from footy_track.feature_store import FeatureStore, import_labeller_json
+from footy_track.feature_store.schema import (
+    ClsGroup,
+    FrameLabelStateRow,
+    LabelMethod,
+    LabelState,
+)
 from footy_track.feature_store.ingest_gt import ingest_gt_jsonl
 from footy_track import splits as authority
+from footy_track.constants import FROZEN_CLASS_IDS, FROZEN_CLASS_NAMES
 from footy_track.scripts.export_training_dataset import (
     _distinct_labels,
     export,
@@ -24,12 +31,37 @@ def _half_eval_register(tmp_path, monkeypatch):
     (Production rate is 1 in 5; the rule is read from the register file.)"""
     reg = tmp_path / "clip_splits.json"
     reg.write_text(
-        json.dumps({"version": 1, "rule": {"modulus": 2, "eval_remainder": 0}, "clips": {}})
+        json.dumps(
+            {"version": 1, "rule": {"modulus": 2, "eval_remainder": 0}, "clips": {}}
+        )
     )
     monkeypatch.setenv("FOOTY_CLIP_SPLITS", str(reg))
     authority.clear_cache()
     yield
     authority.clear_cache()
+
+
+def mark_complete(
+    store, game_id=None, *, ball=LabelState.COMPLETE, player=LabelState.COMPLETE
+):
+    """Mark every frame (of ``game_id``, default all) fully labelled so the exporter's
+    ``frame_complete`` filter lets it through (nothing writes player completeness yet)."""
+    sql, params = "SELECT game_id, frame_index FROM frame", []
+    if game_id:
+        sql, params = sql + " WHERE game_id = ?", [game_id]
+    rows = []
+    for r in store.query(sql, params).itertuples():
+        for grp, st in ((ClsGroup.BALL, ball), (ClsGroup.PLAYER, player)):
+            rows.append(
+                FrameLabelStateRow(
+                    game_id=r.game_id,
+                    frame_index=int(r.frame_index),
+                    cls_group=grp,
+                    state=st,
+                    method=LabelMethod.HAND_FRAME,
+                )
+            )
+    store.upsert_frame_label_states(rows)
 
 
 def _seed_clip(store, tmp_path, stem, images_dir, frames):
@@ -54,6 +86,7 @@ def _seed_clip(store, tmp_path, stem, images_dir, frames):
             "UPDATE frame SET frame_uri = ? WHERE game_id = ? AND frame_index = ?",
             [str(img), stem, fi],
         )
+    mark_complete(store, stem)
 
 
 def _split_dir_of(manifest: dict, clip: str) -> str | None:
@@ -74,11 +107,17 @@ def test_export_follows_the_authority(tmp_path) -> None:
     eval_dir = tmp_path / "eval"
     eval_dir.mkdir()
     manifest = export(
-        store, out_dir=tmp_path / "o", video_dir=tmp_path, eval_dir=eval_dir,
-        extra_exclude=set(), tag="t",
+        store,
+        out_dir=tmp_path / "o",
+        video_dir=tmp_path,
+        eval_dir=eval_dir,
+        extra_exclude=set(),
+        tag="t",
     )
     for n in names:
-        want = "val" if authority.split_of_name(n) == authority.EVAL_IN_MATCH else "train"
+        want = (
+            "val" if authority.split_of_name(n) == authority.EVAL_IN_MATCH else "train"
+        )
         assert _split_dir_of(manifest, n) == want
     assert manifest["val_clips"] and manifest["train_clips"]
     assert manifest["split_authority"]["val"] == "eval_in_match"
@@ -108,7 +147,9 @@ def test_export_heldout_match_dropped_or_test(tmp_path) -> None:
     eval_dir = tmp_path / "eval"
     eval_dir.mkdir()
     store = FeatureStore.open(":memory:")
-    _seed_clip(store, tmp_path, "arsenal_nottinghamforest_seg012", images_dir, frames=(0, 1))
+    _seed_clip(
+        store, tmp_path, "arsenal_nottinghamforest_seg012", images_dir, frames=(0, 1)
+    )
     _seed_clip(store, tmp_path, "clip_a", images_dir, frames=(0,))
     kw = dict(video_dir=tmp_path, eval_dir=eval_dir, extra_exclude=set(), tag="t")
 
@@ -123,9 +164,12 @@ def test_export_heldout_match_dropped_or_test(tmp_path) -> None:
     assert m["test"]["images"] == 2
     dy = yaml.safe_load((tmp_path / "o2" / "data.yaml").read_text())
     assert dy["test"] == "images/test"
-    assert store.query(
-        "SELECT count(*) AS n FROM detection WHERE dataset_tag = 't:test'"
-    )["n"][0] == 2
+    assert (
+        store.query("SELECT count(*) AS n FROM detection WHERE dataset_tag = 't:test'")[
+            "n"
+        ][0]
+        == 2
+    )
 
 
 def test_export_fails_closed_without_clip_register(tmp_path, monkeypatch) -> None:
@@ -137,8 +181,14 @@ def test_export_fails_closed_without_clip_register(tmp_path, monkeypatch) -> Non
     (tmp_path / "m.json").write_text("{}")
     authority.clear_cache()
     with pytest.raises(RegisterError, match="clip split register"):
-        export(None, out_dir=tmp_path / "o", video_dir=tmp_path, eval_dir=tmp_path,
-               extra_exclude=set(), tag="t")
+        export(
+            None,
+            out_dir=tmp_path / "o",
+            video_dir=tmp_path,
+            eval_dir=tmp_path,
+            extra_exclude=set(),
+            tag="t",
+        )
     assert not (tmp_path / "o").exists()
 
 
@@ -312,9 +362,7 @@ def test_export_alias_free_store_splits_by_the_authority(tmp_path) -> None:
         extra_exclude=set(),
         tag="ball_v1",
     )
-    val = {
-        n for n in stems if authority.split_of_name(n) == authority.EVAL_IN_MATCH
-    }
+    val = {n for n in stems if authority.split_of_name(n) == authority.EVAL_IN_MATCH}
     assert set(manifest["train_clips"]) == set(stems) - val
     assert set(manifest["val_clips"]) == val
     assert manifest["clip_aliases"] == {}
@@ -326,7 +374,14 @@ def test_export_alias_free_store_splits_by_the_authority(tmp_path) -> None:
 
 
 def _seed_multiclass_clip(
-    store, tmp_path, images_dir, stem, frames_spec, *, source="hand_label"
+    store,
+    tmp_path,
+    images_dir,
+    stem,
+    frames_spec,
+    *,
+    source="hand_label",
+    complete=True,
 ):
     """Seed one clip with arbitrary-label detections via the labeller import
     path (top-left boxes stored verbatim), then point every frame_uri at a
@@ -359,6 +414,8 @@ def _seed_multiclass_clip(
             "UPDATE frame SET frame_uri = ? WHERE game_id = ? AND frame_index = ?",
             [str(img), stem, fi],
         )
+    if complete:
+        mark_complete(store, stem)
 
 
 def _labels_by_frame(out_dir, names):
@@ -418,9 +475,9 @@ def test_export_multiclass_mapping_and_label_lines(tmp_path) -> None:
     )
 
     dy = yaml.safe_load((out / "data.yaml").read_text())
-    assert dy["names"] == ["player", "referee"]  # sorted, deterministic
-    assert dy["nc"] == 2
-    assert manifest["classes"] == ["player", "referee"]
+    assert dy["names"] == list(FROZEN_CLASS_NAMES)  # frozen ids, not sorted-by-request
+    assert dy["nc"] == len(FROZEN_CLASS_NAMES)
+    assert manifest["classes"] == list(FROZEN_CLASS_NAMES)
 
     by_frame = _labels_by_frame(out, dy["names"])
     # clip_a frame 0: player + referee, in authored (detection_id) order
@@ -428,8 +485,9 @@ def test_export_multiclass_mapping_and_label_lines(tmp_path) -> None:
     assert [d[0] for d in f0] == ["player", "referee"]
     # centre conversion: player topleft (0.1,0.1,w0.2,h0.3) -> centre (0.2,0.25)
     assert abs(f0[0][1] - 0.2) < 1e-5 and abs(f0[0][2] - 0.25) < 1e-5
-    # clip_a frame 1: coach dropped, only the player line remains
-    assert [d[0] for d in by_frame["clip_a_000001"]] == ["player"]
+    # clip_a frame 1 carries an unrequested coach (an unlabelled object): skipped, not written short
+    assert "clip_a_000001" not in by_frame
+    assert manifest["frames"]["skipped_by_reason"]["unrequested_labels"] == 2
     # clip_a frame 2 (coach-only) must not be exported at all
     assert "clip_a_000002" not in by_frame
     for split in ("train", "val"):
@@ -464,7 +522,7 @@ def test_export_sources_filtering(tmp_path) -> None:
     eval_dir = tmp_path / "eval"
     eval_dir.mkdir()
 
-    # Default: both sources exported.
+    # "all": both sources exported (explicit; the default is hand_label + reviewed).
     m_all = export(
         store,
         out_dir=tmp_path / "all",
@@ -473,8 +531,9 @@ def test_export_sources_filtering(tmp_path) -> None:
         extra_exclude=set(),
         tag="all",
         classes=["player"],
+        sources=["all"],
     )
-    assert m_all["sources"] is None
+    assert m_all["sources"] == ["all"]
     assert set(m_all["train_clips"]) | set(m_all["val_clips"]) == {
         "clip_hand",
         "clip_vit",
@@ -554,6 +613,9 @@ def test_export_default_back_compat_unchanged(tmp_path) -> None:
         "clip_people",
         {0: [("player", 0.1, 0.1, 0.2, 0.3)]},
     )
+    mark_complete(
+        store, "clip_people", ball=LabelState.ABSENT
+    )  # players only: ball-absent negative
 
     eval_dir = tmp_path / "eval"
     eval_dir.mkdir()
@@ -568,9 +630,14 @@ def test_export_default_back_compat_unchanged(tmp_path) -> None:
     )
     dy = yaml.safe_load((out / "data.yaml").read_text())
     assert dy["names"] == ["ball"] and dy["nc"] == 1
-    # only the ball clip exported; player-only clip has no ball labels
-    assert set(manifest["train_clips"]) | set(manifest["val_clips"]) == {"clip_ball"}
-    for parsed in _labels_by_frame(out, dy["names"]).values():
+    # the player-only clip is ball-absent: exported as an empty-label negative, never with player boxes
+    assert set(manifest["train_clips"]) | set(manifest["val_clips"]) == {
+        "clip_ball",
+        "clip_people",
+    }
+    parsed_all = _labels_by_frame(out, dy["names"])
+    assert parsed_all["clip_people_000000"] == []
+    for parsed in parsed_all.values():
         assert all(d[0] == "ball" for d in parsed)
 
 
@@ -617,8 +684,8 @@ def test_cli_classes_all_and_sources(tmp_path) -> None:
     )
 
     dy = yaml.safe_load((out / "data.yaml").read_text())
-    assert dy["names"] == ["ball", "player", "referee"]
-    assert dy["nc"] == 3
+    assert dy["names"] == list(FROZEN_CLASS_NAMES)
+    assert dy["nc"] == len(FROZEN_CLASS_NAMES)
     manifest = yaml.safe_load((out / "manifest.yaml").read_text())
     assert manifest["sources"] == ["hand_label", "vittrack"]
     assert manifest["train"]["boxes"] + manifest["val"]["boxes"] == 3
@@ -682,3 +749,198 @@ def test_export_fails_closed_without_register(tmp_path, monkeypatch):
             tag="t",
         )
     assert not out.exists()
+
+
+# --------------------------------------------------------------------------- #
+# Complete-frame filter, negatives, frozen ids, default sources               #
+# --------------------------------------------------------------------------- #
+
+
+def test_frozen_class_ids_never_change() -> None:
+    """Class ids are baked into every trained model. Append-only: edit this test deliberately."""
+    assert FROZEN_CLASS_NAMES == (
+        "player", "ball", "referee", "coach", "player_sub", "person",
+        "in_play_ball", "out_of_play_ball",
+    )  # fmt: skip
+    assert FROZEN_CLASS_IDS["player"] == 0 and FROZEN_CLASS_IDS["ball"] == 1
+    assert FROZEN_CLASS_IDS["referee"] == 2
+
+
+def _states(store, game_id, frame_index, ball, player, *, method=LabelMethod.HAND_FRAME):
+    store.upsert_frame_label_states(
+        [
+            FrameLabelStateRow(
+                game_id=game_id,
+                frame_index=frame_index,
+                cls_group=g,
+                state=st,
+                method=method,
+            )
+            for g, st in ((ClsGroup.BALL, ball), (ClsGroup.PLAYER, player))
+            if st is not None
+        ]
+    )
+
+
+def _kw(tmp_path, **extra):
+    eval_dir = tmp_path / "eval"
+    eval_dir.mkdir(exist_ok=True)
+    return dict(
+        video_dir=tmp_path, eval_dir=eval_dir, extra_exclude=set(), tag="t", **extra
+    )
+
+
+def test_only_complete_frames_and_skip_reasons(tmp_path) -> None:
+    images_dir = tmp_path / "imgs"
+    images_dir.mkdir()
+    store = FeatureStore.open(":memory:")
+    L = LabelState
+    _seed_multiclass_clip(
+        store,
+        tmp_path,
+        images_dir,
+        "clip_a",
+        {i: [("ball", 0.5, 0.5, 0.02, 0.03)] for i in range(6)},
+        complete=False,
+    )
+    _states(store, "clip_a", 0, L.COMPLETE, L.COMPLETE)  # emitted
+    _states(store, "clip_a", 1, L.COMPLETE, L.ABSENT)  # emitted
+    _states(store, "clip_a", 2, L.COMPLETE, L.PARTIAL)  # partial
+    _states(store, "clip_a", 3, L.COMPLETE, None)  # player unreviewed
+    _states(store, "clip_a", 4, L.UNREVIEWED, L.COMPLETE)  # ball unreviewed
+    # frame 5: box but no state row at all
+    m = export(store, out_dir=tmp_path / "o", classes=["ball", "player"], **_kw(tmp_path))
+    assert m["frames"]["emitted"] == 2
+    assert m["frames"]["skipped_by_reason"] == {
+        "partial": 1,
+        "player_unreviewed": 1,
+        "ball_unreviewed": 1,
+        "no_state": 1,
+    }
+    assert m["frames"]["by_state"] == {
+        "ball:complete": 2,
+        "player:absent": 1,
+        "player:complete": 1,
+    }
+    written = sorted(p.stem for p in (tmp_path / "o" / "images").rglob("*.jpg"))
+    assert written == ["clip_a_000000", "clip_a_000001"]
+
+
+def test_ball_absent_frame_is_an_empty_label_negative(tmp_path) -> None:
+    images_dir = tmp_path / "imgs"
+    images_dir.mkdir()
+    store = FeatureStore.open(":memory:")
+    _seed_multiclass_clip(
+        store,
+        tmp_path,
+        images_dir,
+        "clip_a",
+        {0: [("player", 0.1, 0.1, 0.2, 0.3)], 1: [("player", 0.2, 0.2, 0.2, 0.3)]},
+        complete=False,
+    )
+    _states(store, "clip_a", 0, LabelState.ABSENT, LabelState.COMPLETE)
+    _states(store, "clip_a", 1, LabelState.ABSENT, LabelState.COMPLETE)
+    out = tmp_path / "o"
+    m = export(store, out_dir=out, **_kw(tmp_path))
+    labels = list((out / "labels").rglob("*.txt"))
+    assert len(labels) == 2 and all(p.read_text() == "" for p in labels)
+    assert sum(m[s]["empty_frames"] for s in ("train", "val")) == 2
+    assert m["frames"]["by_state"]["ball:absent"] == 2
+
+
+def test_not_ball_goes_to_hard_negatives_not_a_class(tmp_path) -> None:
+    images_dir = tmp_path / "imgs"
+    images_dir.mkdir()
+    store = FeatureStore.open(":memory:")
+    _seed_multiclass_clip(
+        store,
+        tmp_path,
+        images_dir,
+        "clip_a",
+        {0: [("ball", 0.5, 0.5, 0.02, 0.03)], 1: [("ball", 0.3, 0.3, 0.02, 0.03)]},
+    )
+    store.query(
+        "INSERT INTO detection_review (game_id, vsource, frame_index, box_index, verdict, label, "
+        "bbox_x, bbox_y, bbox_w, bbox_h) VALUES ('clip_a', 'cand', 1, 0, 'not_ball', 'ball', "
+        "0.7, 0.7, 0.02, 0.03)"
+    )
+    out = tmp_path / "o"
+    m = export(store, out_dir=out, **_kw(tmp_path))
+    hn = json.loads((out / "hard_negatives.json").read_text())["negatives"]
+    assert m["hard_negatives"] == 1 and len(hn) == 1
+    assert hn[0]["frame_index"] == 1 and hn[0]["bbox_xywh"] == [0.7, 0.7, 0.02, 0.03]
+    assert (out / hn[0]["image"]).is_file()
+    assert m["train"]["by_class"] | m["val"]["by_class"] == {"ball": 2}
+    assert yaml.safe_load((out / "data.yaml").read_text())["nc"] == 1
+
+
+def test_default_sources_are_hand_plus_reviewed(tmp_path) -> None:
+    images_dir = tmp_path / "imgs"
+    images_dir.mkdir()
+    store = FeatureStore.open(":memory:")
+    _seed_multiclass_clip(
+        store, tmp_path, images_dir, "clip_h", {0: [("player", 0.1, 0.1, 0.2, 0.3)]}
+    )
+    _seed_multiclass_clip(
+        store,
+        tmp_path,
+        images_dir,
+        "clip_m",
+        {0: [("player", 0.2, 0.2, 0.2, 0.3)]},
+        source="vittrack",
+    )
+    _seed_multiclass_clip(
+        store,
+        tmp_path,
+        images_dir,
+        "clip_r",
+        {0: [("player", 0.3, 0.3, 0.2, 0.3)]},
+        source="vittrack",
+    )
+    store.query("UPDATE detection SET reviewed = TRUE WHERE game_id = 'clip_r'")
+
+    def clips(**kw):
+        m = export(
+            store, out_dir=tmp_path / "o", classes=["player"], **_kw(tmp_path, **kw)
+        )
+        return set(m["train_clips"]) | set(m["val_clips"])
+
+    assert clips() == {"clip_h", "clip_r"}  # unreviewed machine boxes stay out
+    assert clips(sources=["all"]) == {"clip_h", "clip_m", "clip_r"}
+    assert clips(sources=["vittrack"]) == {"clip_m", "clip_r"}
+
+
+def test_unknown_class_label_rejected(tmp_path) -> None:
+    store = FeatureStore.open(":memory:")
+    with pytest.raises(ValueError, match="frozen class list"):
+        export(store, out_dir=tmp_path / "o", classes=["goalkeeper"], **_kw(tmp_path))
+
+
+def test_ball_only_needs_only_ball_state_multiclass_needs_both(tmp_path) -> None:
+    images_dir = tmp_path / "imgs"
+    images_dir.mkdir()
+    store = FeatureStore.open(":memory:")
+    L = LabelState
+    _seed_multiclass_clip(
+        store, tmp_path, images_dir, "clip_a",
+        {
+            0: [("ball", 0.5, 0.5, 0.02, 0.03)],
+            1: [("player", 0.1, 0.1, 0.2, 0.3)],
+            2: [("ball", 0.5, 0.5, 0.02, 0.03)],
+            3: [("ball", 0.5, 0.5, 0.02, 0.03)],
+        },
+        complete=False,
+    )
+    _states(store, "clip_a", 0, L.COMPLETE, None)  # ball only: no player state
+    _states(store, "clip_a", 1, L.ABSENT, None)  # ball absent, no player state
+    _states(store, "clip_a", 2, L.PARTIAL, None)
+    _states(store, "clip_a", 3, L.UNREVIEWED, L.COMPLETE)
+    m = export(store, out_dir=tmp_path / "o1", **_kw(tmp_path))
+    assert m["frames"]["emitted"] == 2
+    assert m["frames"]["skipped_by_reason"] == {"partial": 1, "ball_unreviewed": 1}
+    absent = next((tmp_path / "o1" / "labels").rglob("clip_a_000001.txt"))
+    assert absent.read_text() == ""
+
+    m = export(store, out_dir=tmp_path / "o2", classes=["player", "ball"], **_kw(tmp_path))
+    assert m["frames"]["emitted"] == 0  # player state missing/partial everywhere
+    assert m["frames"]["skipped_by_reason"]["player_unreviewed"] == 2

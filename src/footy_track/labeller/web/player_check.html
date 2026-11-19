@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Player Check</title>
+<style>
+  body { margin: 0; font: 15px system-ui, sans-serif; background: #111; color: #eee; }
+  header { padding: 8px 12px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; background: #1b1b1b; }
+  header a { color: #8cf; text-decoration: none; }
+  input, select, button { font: inherit; padding: 6px 10px; border-radius: 6px; border: 1px solid #444; background: #222; color: #eee; }
+  button { cursor: pointer; }
+  button.ok { background: #1c6b3a; } button.fix { background: #7a3a1a; } button.unsure { background: #444; }
+  #card { padding: 12px; max-width: 900px; margin: 0 auto; touch-action: pan-y; }
+  canvas { width: 100%; background: #000; border-radius: 6px; touch-action: none; }
+  .strip { display: flex; gap: 6px; overflow-x: auto; }
+  .strip canvas { width: 180px; flex: 0 0 auto; }
+  #timeline { display: flex; gap: 2px; margin: 8px 0; align-items: flex-end; height: 48px; }
+  #timeline div { flex: 1; min-width: 8px; background: #4a90d9; text-align: center; font-size: 10px; }
+  #timeline div.flicker { background: #d9534f; }
+  #msg { padding: 8px 12px; color: #fc6; }
+  .row { display: flex; gap: 8px; margin: 10px 0; flex-wrap: wrap; }
+</style>
+</head>
+<body>
+<header>
+  <a href="/">Labeller</a>
+  <input id="clip" placeholder="clip stem" size="22">
+  <select id="policy"><option value="audit_all">audit all</option><option value="permissive">permissive</option></select>
+  <label><input type="checkbox" id="eval"> eval clip</label>
+  <button id="load">Load</button>
+  <span id="count"></span>
+</header>
+<div id="msg"></div>
+<div id="card"></div>
+<script>
+// UNTESTED-FRONTEND: written against the /player-check API; not exercised in a browser.
+const COLORS = ['#e6194b','#3cb44b','#ffe119','#4363d8','#f58231','#911eb4','#46f0f0','#f032e6'];
+const $ = id => document.getElementById(id);
+let queue = null, cards = [], cur = 0, fixState = null;
+
+const msg = t => { $('msg').textContent = t || ''; };
+async function api(path, body) {
+  const r = await fetch(path, body ? {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)} : {});
+  if (!r.ok) { msg((await r.json().catch(() => ({}))).detail || r.statusText); return null; }
+  return r.json();
+}
+const q = () => `clip=${encodeURIComponent($('clip').value)}&policy=${$('policy').value}&eval=${$('eval').checked}`;
+
+async function load() {
+  queue = await api('/player-check/queue?' + q());
+  if (!queue) return;
+  cards = [...queue.clusters, ...queue.sweeps];
+  cur = 0; msg(`${queue.auto_ok.length} auto_ok, ${queue.audits.length} blind-audit frames (audit cards: not yet submittable)`);
+  show();
+}
+
+function frameImg(frame) {
+  return new Promise(res => { const i = new Image(); i.onload = () => res(i); i.onerror = () => res(null);
+    i.src = `/review/frame/${$('clip').value}/${frame}.jpg`; });
+}
+
+// Draw one frame, cropped to `crop` (normalised); boxes get numbers, distinct colours and a growing
+// offset so overlapping outlines stay individually visible.
+async function drawFrame(canvas, frame, boxes, crop) {
+  const img = await frameImg(frame);
+  const W = img ? img.naturalWidth : 640, H = img ? img.naturalHeight : 360;
+  const c = crop || {x: 0, y: 0, w: 1, h: 1};
+  canvas.width = Math.round(c.w * W); canvas.height = Math.round(c.h * H);
+  const g = canvas.getContext('2d');
+  if (img) g.drawImage(img, c.x * W, c.y * H, c.w * W, c.h * H, 0, 0, canvas.width, canvas.height);
+  boxes.forEach((b, k) => {
+    const o = k * 2, col = COLORS[k % COLORS.length];
+    g.strokeStyle = col; g.lineWidth = 2;
+    g.strokeRect((b.bbox.x - c.x) * W + o, (b.bbox.y - c.y) * H + o, b.bbox.w * W, b.bbox.h * H);
+    g.fillStyle = col; g.font = 'bold 14px sans-serif';
+    g.fillText(`${k + 1}${b.label === 'referee' ? ' ref' : ''}`, (b.bbox.x - c.x) * W + o + 2, (b.bbox.y - c.y) * H + o + 14);
+  });
+  return {W, H, c};
+}
+
+async function show() {
+  const card = $('card'); card.innerHTML = ''; fixState = null;
+  $('count').textContent = cards.length ? `${cur + 1} / ${cards.length}` : '';
+  if (!cards.length) { card.textContent = 'Nothing pending.'; return; }
+  const k = cards[cur];
+  if (k.type === 'cluster') {
+    card.innerHTML = `<h3>Cluster ${k.cluster_id} (${k.triage_reason}) - does each person have exactly one box?</h3>
+      <div id="timeline"></div><div class="strip" id="strip"></div>`;
+    const maxN = Math.max(...k.timeline.map(t => t.count), 1);
+    k.timeline.forEach(t => {
+      const d = document.createElement('div'); d.textContent = t.count; d.title = 'frame ' + t.frame_index;
+      d.style.height = (100 * t.count / maxN) + '%'; if (k.flicker_frames.includes(t.frame_index)) d.className = 'flicker';
+      $('timeline').appendChild(d);
+    });
+    for (const s of k.strip) {
+      const cv = document.createElement('canvas'); cv.title = 'frame ' + s.frame_index; $('strip').appendChild(cv);
+      await drawFrame(cv, s.frame_index, s.boxes, k.crop);
+    }
+    card.insertAdjacentHTML('beforeend', `<div class="row">
+      <button class="ok" id="bOk">Every person has one box</button>
+      <input id="cN" type="number" min="0" placeholder="N" style="width:70px"><button id="bCount">Count is N for these frames</button>
+      <button class="fix" id="bFix">Fix...</button><button class="unsure" id="bUnsure">Unsure</button></div>`);
+    const win = {cluster_id: k.cluster_id, start: k.frames[0], end: k.frames[k.frames.length - 1]};
+    $('bOk').onclick = () => submit({...win, verdict: 'ok'});
+    $('bCount').onclick = () => $('cN').value !== '' && submit({...win, verdict: 'count_is_' + $('cN').value});
+    $('bUnsure').onclick = () => submit({...win, verdict: 'unsure'});
+    $('bFix').onclick = () => startFix(k, win, k.strip[0]);
+  } else {
+    card.innerHTML = `<h3>Frame ${k.frame_index} - anyone unboxed?</h3><canvas id="cv"></canvas>
+      <div class="row"><button class="ok" id="bOk">Nobody missed</button><button class="fix" id="bFix">Add missing...</button>
+      <button class="unsure" id="bUnsure">Unsure</button></div>`;
+    await drawFrame($('cv'), k.frame_index, k.boxes, null);
+    $('bOk').onclick = () => submit({sweep: k.frame_index, verdict: 'ok'});
+    $('bUnsure').onclick = () => submit({sweep: k.frame_index, verdict: 'unsure'});
+    $('bFix').onclick = () => startFix(k, {sweep: k.frame_index}, {frame_index: k.frame_index, boxes: k.boxes});
+  }
+  // swipe right = ok, swipe left = fix
+  let x0 = null;
+  card.ontouchstart = e => { x0 = e.touches[0].clientX; };
+  card.ontouchend = e => { if (x0 === null || e.target.tagName === 'CANVAS' && fixState) return;
+    const dx = e.changedTouches[0].clientX - x0; x0 = null;
+    if (dx > 90) $('bOk').click(); else if (dx < -90) $('bFix').click(); };
+}
+
+// Fix mode on one frame: tap = add a 40x100 px-ish box centred on the tap; tap inside a box = delete it.
+async function startFix(card, base, frameInfo) {
+  const cv = document.createElement('canvas'); $('card').appendChild(cv);
+  const crop = card.crop || null;
+  const f = {frame_index: frameInfo.frame_index, del: new Set(), add: []};
+  fixState = {f, base};
+  const redraw = async () => {
+    const boxes = frameInfo.boxes.filter(b => !f.del.has(b.box_index)).concat(f.add.map(a => ({label: a.label, bbox: a.bbox, box_index: -1})));
+    fixState.geo = await drawFrame(cv, f.frame_index, boxes, crop);
+  };
+  await redraw();
+  msg('Fix mode: tap a box to delete it, tap empty ground to add a person, then Save fix.');
+  cv.onclick = async e => {
+    const r = cv.getBoundingClientRect(), {W, H, c} = fixState.geo;
+    const nx = c.x + (e.clientX - r.left) / r.width * c.w, ny = c.y + (e.clientY - r.top) / r.height * c.h;
+    const hit = frameInfo.boxes.find(b => !f.del.has(b.box_index) && nx >= b.bbox.x && nx <= b.bbox.x + b.bbox.w && ny >= b.bbox.y && ny <= b.bbox.y + b.bbox.h);
+    if (hit) f.del.add(hit.box_index);
+    else f.add.push({label: 'player', bbox: {x: Math.max(0, nx - 0.01), y: Math.max(0, ny - 0.04), w: 0.02, h: 0.08}});
+    await redraw();
+  };
+  const save = document.createElement('button'); save.className = 'ok'; save.textContent = 'Save fix';
+  save.onclick = () => submit({...base, verdict: 'fixed', fix: [{frame_index: f.frame_index, delete: [...f.del], add: f.add}]});
+  $('card').appendChild(save);
+}
+
+async function submit(body) {
+  const res = await api('/player-check/verdict', {clip: $('clip').value, eval: $('eval').checked, ...body});
+  if (!res) return;
+  msg(`complete frames: ${res.complete_frames.length}, partial: ${res.partial_frames.length}` +
+      (res.needs_fix.length ? `, count disagrees with boxes on ${res.needs_fix.length} frame(s) - fix needed` : ''));
+  cur++; if (cur >= cards.length) { await load(); } else { show(); }
+}
+$('load').onclick = load;
+</script>
+</body>
+</html>

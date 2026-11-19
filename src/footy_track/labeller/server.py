@@ -53,7 +53,9 @@ from footy_track.labeller.constants import (  # noqa: E402
 )
 from footy_track.labeller.ingest import router as ingest_router  # noqa: E402
 from footy_track.labeller.jobs_routes import router as jobs_router  # noqa: E402
+from footy_track.labeller.player_check import router as player_check_router  # noqa: E402
 from footy_track.labeller.review import router as review_router  # noqa: E402
+from footy_track.labeller.series_review import router as series_review_router  # noqa: E402
 from footy_track.labeller.tasks import router as tasks_router  # noqa: E402
 from footy_track.labeller.run_stream import stream_frames  # noqa: E402
 from footy_track.labeller.session import (  # noqa: E402
@@ -302,7 +304,7 @@ async def get_frame(idx: int) -> Response:
 
 @app.get("/marks")
 async def get_marks() -> dict:
-    """Return no_ball, not_broadcast, ball, and player frame sets for the current session."""
+    """Return no_ball, not_broadcast, players_complete, ball, and player frame sets for the current session."""
     session = _session()
     with session._tl_lock:
         ball_frames = []
@@ -319,6 +321,7 @@ async def get_marks() -> dict:
     return {
         "no_ball": sorted(session.no_ball_frames),
         "not_broadcast": sorted(session.not_broadcast_frames),
+        "players_complete": sorted(session.players_complete_frames),
         "ball": ball_frames,
         "player": player_frames,
     }
@@ -480,6 +483,27 @@ async def clear_not_broadcast(body: dict) -> dict:
     session.schedule_flush()
     _emit_mark(session, idx, "not_broadcast_cleared")
     return {"idx": idx, "not_broadcast": False}
+
+
+@app.post("/players-complete")
+async def mark_players_complete(body: dict) -> dict:
+    """Assert every visible person on the frame is boxed. Keeps the frame's boxes (unlike no_ball)."""
+    session = _session()
+    idx = int(body["idx"])
+    session.players_complete_frames.add(idx)
+    session.schedule_flush()
+    _emit_mark(session, idx, "players_complete")
+    return {"idx": idx, "players_complete": True}
+
+
+@app.post("/players-complete/clear")
+async def clear_players_complete(body: dict) -> dict:
+    session = _session()
+    idx = int(body["idx"])
+    session.players_complete_frames.discard(idx)
+    session.schedule_flush()
+    _emit_mark(session, idx, "players_complete_cleared")
+    return {"idx": idx, "players_complete": False}
 
 
 @app.post("/propagate")
@@ -714,7 +738,9 @@ async def ws(websocket: WebSocket) -> None:  # noqa: PLR0915 — one dispatch lo
 
 
 app.include_router(review_router)
+app.include_router(series_review_router)
 app.include_router(ball_check_router)
+app.include_router(player_check_router)
 app.include_router(calibration_router)
 app.include_router(calibration_proposals_router)
 app.include_router(calibration_match_router)

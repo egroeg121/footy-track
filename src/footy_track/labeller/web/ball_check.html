@@ -112,6 +112,10 @@
       <button class="small" id="btnReset">Reset</button>
       <button class="small" id="btnUndo">Undo</button>
     </div>
+    <div class="row">
+      <button class="small" id="btnFlash">Flash on</button>
+      <button class="small" id="btnAuto">Autoplay on</button>
+    </div>
     <div id="status">Swipe right = ball, left = not a ball.</div>
     <div id="tau" style="text-align:center;color:var(--muted);font-size:12px"></div>
   </footer>
@@ -121,6 +125,7 @@ const PADS = [6, 14, 30];      // context steps for the "Zoom out" button
 const REFILL_AT = 12;          // fetch more cards when the buffer runs low
 const RESAMPLE_EVERY = 15;     // re-fetch so the boundary estimate can steer
 const PREFETCH = 4;            // crops to warm ahead of the current card
+const FLASH_MS = 400;          // card sequence: flash the boxed frame, then play, then hold it
 const HANDLE = 22;             // corner hit radius in CSS px (fingers are fat)
 
 let queue = [];                // items not yet judged, current one at [0]
@@ -161,6 +166,22 @@ const clipUrl = (item, pad) =>
 const CLIP_PREFETCH = 3;       // each prefetch is its own server render (no de-dup): stay shallow
 const clipCache = new Map();   // url -> Promise<Blob|null>
 let clipTimer = null, clipObjUrl = null, clipToken = 0;
+let flashFrom = 0;             // when the boxed still became visible (flash starts here)
+
+// Per-viewer sequence settings (default ON); storage may be unavailable.
+const SEQ = { flash: true, auto: true };
+try {
+  for (const k of Object.keys(SEQ)) if (localStorage.getItem('ballCheck.' + k) === '0') SEQ[k] = false;
+} catch (e) {}
+function toggleSeq(k) {
+  SEQ[k] = !SEQ[k];
+  try { localStorage.setItem('ballCheck.' + k, SEQ[k] ? '1' : '0'); } catch (e) {}
+  syncSeqButtons();
+}
+function syncSeqButtons() {
+  $('btnFlash').textContent = SEQ.flash ? 'Flash on' : 'Flash off';
+  $('btnAuto').textContent = SEQ.auto ? 'Autoplay on' : 'Autoplay off';
+}
 
 // Fetch the whole clip as a blob (so prefetch really warms it and playback
 // starts instantly); the video element then plays a local object URL.
@@ -187,11 +208,19 @@ function stopClip() {
 
 // The `ended` event returns us to the still + draggable box; a timer is only
 // a safety net (autoplay blocked, decode error) so the card is never stuck.
-async function playClip(item) {
+// Sequence: boxed still (flash, FLASH_MS) -> clip plays (tap/space pauses) ->
+// on end, back to the boxed still, which stays. Verdicts work at any point.
+async function playClip(item, force = false) {
   stopClip();
+  if (!force && !SEQ.auto) return;
   const token = clipToken;
   const blob = await fetchClip(clipUrl(item, PADS[padIdx]));
   if (!blob || token !== clipToken || queue[0] !== item || offset !== 0) return;
+  const wait = SEQ.flash || force ? flashFrom + FLASH_MS - performance.now() : 0;
+  if (wait > 0) {
+    await new Promise((r) => { clipTimer = setTimeout(r, wait); });
+    if (token !== clipToken) return;
+  }
   clipObjUrl = URL.createObjectURL(blob);
   const v = $('clip');
   const done = () => { if (token === clipToken) stopClip(); };
@@ -203,12 +232,31 @@ async function playClip(item) {
     if (p && p.then) p.then(() => {
       if (token !== clipToken) return;
       $('stage').classList.add('playing');
-      clearTimeout(clipTimer);
-      clipTimer = setTimeout(done, ((v.duration || 3.5) + 1) * 1000);
+      armSafety(token, done);
     }, done);
   };
   v.src = clipObjUrl;
 }
+
+function armSafety(token, done) {
+  clearTimeout(clipTimer);
+  clipTimer = setTimeout(done, (($('clip').duration || 3.5) + 1) * 1000);
+}
+
+// Tap on the playing clip (or space) pauses / resumes; no safety timer while paused.
+function togglePause() {
+  const v = $('clip');
+  if (!$('stage').classList.contains('playing')) return false;
+  if (v.paused) {
+    v.play();
+    armSafety(clipToken, () => stopClip());
+  } else {
+    v.pause();
+    clearTimeout(clipTimer);
+  }
+  return true;
+}
+$('stage').addEventListener('click', togglePause);
 
 function prefetch() {
   for (const item of queue.slice(1, 1 + PREFETCH)) {
@@ -317,12 +365,13 @@ function render() {
       : `${item.label} · conf ${item.confidence.toFixed(2)}`;
   $('note').textContent = item.note || '';
   $('progress').textContent = `${judged} checked · ${remaining} left`;
+  flashFrom = performance.now();
   loadMeta(item);
   playClip(item);
   prefetch();
 }
 
-$('shot').addEventListener('load', drawBox);
+$('shot').addEventListener('load', () => { if (!offset) flashFrom = performance.now(); drawBox(); });
 window.addEventListener('resize', drawBox);
 
 // ---- queue ----------------------------------------------------------------
@@ -653,7 +702,10 @@ $('btnNo').onclick = () => judge('not_ball');
 $('btnBoxOff').onclick = () => judge('box_off');
 $('btnUnsure').onclick = () => judge('unsure');
 $('btnUndo').onclick = undo;
-$('btnReplay').onclick = () => { if (queue[0]) { if (offset) $('btnHome').onclick(); else playClip(queue[0]); } };
+$('btnReplay').onclick = () => { if (queue[0]) { if (offset) $('btnHome').onclick(); else playClip(queue[0], true); } };
+$('btnFlash').onclick = () => toggleSeq('flash');
+$('btnAuto').onclick = () => toggleSeq('auto');
+syncSeqButtons();
 $('btnReset').onclick = () => { if (queue[0]) loadMeta(queue[0]); $('status').textContent = ''; };
 $('btnZoom').onclick = () => {
   padIdx = (padIdx + 1) % PADS.length;
@@ -685,7 +737,8 @@ card.addEventListener('touchend', () => {
 
 // Keyboard, for the same queue on a desktop.
 window.addEventListener('keydown', (e) => {
-  if (e.key === 'ArrowRight' || e.key === 'y') judge('ball');
+  if (e.key === ' ') { if (togglePause()) e.preventDefault(); }
+  else if (e.key === 'ArrowRight' || e.key === 'y') judge('ball');
   else if (e.key === 'ArrowLeft' || e.key === 'n') judge('not_ball');
   else if (e.key === 'ArrowUp' || e.key === 'b') judge('box_off');
   else if (e.key === 'ArrowDown' || e.key === 'u') judge('unsure');
