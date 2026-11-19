@@ -1079,9 +1079,43 @@ def hidden_keys(item: dict) -> dict:
     return {k: v for k, v in item.items() if k not in _CARD_CORE}
 
 
+_WHY_WORDS = {"rtdetr": "detector", "motion": "motion", "tracker_gap": "tracker gap (interpolated)"}
+#: Why a training card was picked, by sampling bucket. A (audit) reads "random" because it is a uniform random sample
+#: within a score band, and that hides that it is high-score (which would bias George to accept); G (gold) reads
+#: "difficult" so a planted known answer looks like a U card. Never show the bucket itself.
+_REASON_WORDS = {
+    "U": "difficult", "M": "possible missed ball", "N": "look-alike", "R": "random", "A": "random", "G": "difficult",
+}  # fmt: skip
+
+
+def card_why(item: dict) -> str | None:
+    """One display string for a training card, ``"<reason> . <source>"``, from its hidden keys.
+
+    ``reason`` comes from ``sampling.bucket`` and ``source`` from ``sources`` (gold's ``["gold"]`` reads ``detector``).
+    ``p_real`` and the bucket letter never appear. ``None`` for cards with neither (the page then keeps its old text).
+    """
+    parts = []
+    bucket = (item.get("sampling") or {}).get("bucket") if isinstance(item.get("sampling"), dict) else None
+    if bucket in _REASON_WORDS:
+        parts.append(_REASON_WORDS[bucket])
+    srcs = item.get("sources")
+    if isinstance(srcs, (list, tuple)) and srcs:
+        words = []
+        for s in srcs:
+            w = _WHY_WORDS.get(s, "detector" if s == "gold" else str(s))
+            if w not in words:
+                words.append(w)
+        parts.append(" + ".join(words))
+    return " \u00b7 ".join(parts) or None
+
+
 def page_card(item: dict) -> dict:
     """What the phone gets for an inline card: geometry plus the few keys it prints or draws."""
-    return {k: item[k] for k in _CARD_CORE if k in item}
+    out = {k: item[k] for k in _CARD_CORE if k in item}
+    why = card_why(item)
+    if why:
+        out["why"] = why
+    return out
 
 
 def _inline_by_dataset() -> dict[str, dict[tuple, tuple[str, dict]]]:

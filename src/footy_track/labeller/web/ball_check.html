@@ -310,9 +310,11 @@ function render() {
   $('empty').style.display = 'none';
   $('shot').src = cropUrl(item, PADS[padIdx]);
   $('clipName').textContent = `${shortClip(item.clip)} · f${item.frame_index}`;
-  $('provName').textContent = item.confidence === null || item.confidence === undefined
-    ? `${item.label} · ${item.provenance}`
-    : `${item.label} · conf ${item.confidence.toFixed(2)}`;
+  $('provName').textContent = item.why
+    ? `${item.label} · ${item.why}`
+    : item.confidence === null || item.confidence === undefined
+      ? `${item.label} · ${item.provenance}`
+      : `${item.label} · conf ${item.confidence.toFixed(2)}`;
   $('note').textContent = item.note || '';
   $('progress').textContent = `${judged} checked · ${remaining} left`;
   loadMeta(item);

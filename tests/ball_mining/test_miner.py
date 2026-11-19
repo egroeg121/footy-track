@@ -612,7 +612,20 @@ def test_gold_cards_are_indistinguishable_from_the_others_in_what_the_phone_gets
         "box_index",
         "source",
         "bbox",
-    }  # no label / provenance / confidence / note / role
+        "why",
+    }  # no label / provenance / confidence / note / role (``why`` = proposing source in words)
+    # a gold card reads like a U/detector card, an audit card like a random one of the same source;
+    # nothing else (bucket letter, p_real, "gold", "audit") leaks through ``why``
+    whys = {b: {c["why"] for c in cs} for b, cs in seen.items()}
+    assert whys["G"] == {"difficult \u00b7 detector"}
+    assert {w.split(" \u00b7 ")[1] for w in whys["G"]} == {"detector"}
+    assert {w.split(" \u00b7 ")[0] for w in whys["A"]} == {"random"}
+    allowed_reason = {"difficult", "possible missed ball", "look-alike", "random"}
+    allowed_src = {"detector", "motion", "detector + motion", "tracker gap (interpolated)"}
+    for ws in whys.values():
+        for w in ws:
+            r, s_ = w.split(" \u00b7 ")
+            assert r in allowed_reason and s_ in allowed_src, w
     for cards in seen.values():
         assert all(
             set(c["bbox"]) == {"x", "y", "w", "h"} and c["source"] == "list"
@@ -646,3 +659,16 @@ def test_gold_only_matches_do_not_shrink_the_cap_of_the_only_pool_match(splitter
     )
     assert len(res) == 100 and res.report["per_match_cap"]["relaxed_to_equal_share"]
     assert Counter(c["match"] for c in res.cards)["m1"] >= 90
+
+
+def test_card_why_words():
+    def c(bucket, *srcs):
+        return {"sampling": {"bucket": bucket}, "sources": list(srcs)}
+
+    assert jobs.card_why(c("U", "rtdetr")) == "difficult \u00b7 detector"
+    assert jobs.card_why(c("G", "gold")) == jobs.card_why(c("U", "rtdetr"))
+    assert jobs.card_why(c("A", "rtdetr", "motion")) == jobs.card_why(c("R", "rtdetr", "motion"))
+    assert jobs.card_why(c("A", "rtdetr", "motion")) == "random \u00b7 detector + motion"
+    assert jobs.card_why(c("M", "tracker_gap")) == "possible missed ball \u00b7 tracker gap (interpolated)"
+    assert jobs.card_why(c("N", "motion")) == "look-alike \u00b7 motion"
+    assert jobs.card_why({}) is None and "why" not in jobs.page_card({"clip": "c"})
