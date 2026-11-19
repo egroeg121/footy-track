@@ -91,6 +91,7 @@
     <a href="#" id="refresh">refresh</a>
   </header>
   <div id="stages"><p class="muted">Loading...</p></div>
+  <section class="ds" id="labelling"><h2>Labelling coverage</h2><p class="muted">Loading...</p></section>
   <p class="foot" id="foot"></p>
   <details class="more" id="more">
     <summary>Details</summary>
@@ -428,7 +429,30 @@ function render() {
   if (new URLSearchParams(location.search).get("details") === "1") document.getElementById("more").open = true;
   document.getElementById("stamp").textContent = "updated " + new Date().toLocaleTimeString() + " (server cache ~60s)";
 }
+function renderLabelling(L) {
+  const el = document.getElementById("labelling");
+  if (!L || L.state !== "ok") {
+    const why = !L ? "failed to load" : L.state === "missing" ? "no feature store yet" : L.state === "busy" ? "store busy, retry shortly" : L.state === "error" ? esc(L.error) : "no frame labels in the store yet";
+    el.innerHTML = `<h2>Labelling coverage</h2><div class="empty">${why}</div>`;
+    return;
+  }
+  const n = v => Number(v).toLocaleString();
+  const rowOf = (name, r, cls) => `<tr class="${cls || ""}"><td class="l">${name}</td><td>${n(r.frames)}</td><td>${n(r.ball_labelled)}</td><td>${n(r.player_labelled)}</td><td><b>${n(r.fully_labelled)}</b></td><td>${n(r.partial)}</td></tr>`;
+  const splitRows = Object.entries(L.by_split).map(([s, r]) => rowOf("split: " + esc(s), r, "diag")).join("");
+  const clipRows = L.clips.map(c => rowOf(esc(c.clip) + ` <span class="muted">${esc(c.split)}</span>`, c)).join("");
+  const t = L.tiers, tv = Object.entries(t.silver.by_teacher_version).map(([k, v]) => `${esc(k)} ${n(v)}`).join(", ");
+  el.innerHTML = `<h2>Labelling coverage</h2><div class="wrap"><table><thead><tr><th class="l">Clip</th><th>Frames</th><th>Ball</th><th>Player</th><th>Fully</th><th>Partial</th></tr></thead><tbody>` +
+    rowOf("<b>All clips</b>", L.totals) + splitRows + clipRows + `</tbody></table></div>` +
+    `<p class="muted">Ordered by fewest fully-labelled frames. Gold (hand / verdict) ${n(t.gold)} · silver (audited teacher) ${n(t.silver.total)}${tv ? " (" + tv + ")" : ""} · other ${n(t.other)} labelled class-group rows.</p>`;
+}
+async function loadLabelling() {
+  try {
+    const r = await fetch("/progress/labelling");
+    renderLabelling(r.ok ? await r.json() : null);
+  } catch (e) { renderLabelling(null); }
+}
 async function load(refresh) {
+  loadLabelling();
   try {
     const r = await fetch("/api/progress" + (refresh ? "?refresh=true" : ""));
     if (!r.ok) throw new Error("HTTP " + r.status);
