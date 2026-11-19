@@ -15,6 +15,7 @@ marks directory on disk, which is where the labeller writes them.
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import json
 import os
 from collections.abc import Iterable
@@ -57,7 +58,8 @@ class RoundConfig:
     budget: int = 300
     quotas: dict = field(default_factory=lambda: dict(DEFAULT_QUOTAS))
     per_match_cap: float = 0.15
-    seed: int = 0
+    #: ``None`` (default): derived from the round key by :func:`seed_for_round`, so every round draws differently.
+    seed: int | None = None
     open_cards_max: int = OPEN_CARDS_MAX
     daily_cards_max: int = DAILY_CARDS_MAX
     data_root: str = field(
@@ -70,6 +72,13 @@ class RoundConfig:
     gold_datasets: tuple[str, ...] = ("calib",)
     #: Link every card's clip into the dataset's clips dir (and register ``ball_train_v1``) before submitting.
     link_clips: bool = True
+
+
+def seed_for_round(round_key: str | None) -> int:
+    """Deterministic per-round seed: the first 8 hex digits of ``sha1(round_key)`` (0 when there is no key)."""
+    if not round_key:
+        return 0
+    return int(hashlib.sha1(round_key.encode()).hexdigest()[:8], 16)
 
 
 def marks_dir(dataset: str, root: str | Path | None = None) -> Path:
@@ -204,10 +213,11 @@ def load_pool(
 
 
 def pending_frames(job_list: Iterable[dict], client) -> set[tuple[str, int]]:
-    """``(clip, frame)`` of every card of a live round job (not yet verdicted cards are not to be mined again)."""
+    """``(clip, frame)`` of every card of every non-cancelled round job: pending ones (not yet verdicted) and the skipped /
+    unanswered cards of finished rounds were all *shown* to the labeller, so their neighbourhood is not mined again either."""
     out: set[tuple[str, int]] = set()
     for j in job_list:
-        if _is_round(j) and j.get("status") in ("open", "in_progress", "preparing"):
+        if _is_round(j) and j.get("status") != "cancelled":
             full = client.get(j["id"])
             out.update(
                 (it["clip"], int(it["frame_index"])) for it in full.get("items") or []
@@ -251,8 +261,9 @@ def plan_round(
             gold_unresolved = sorted(set(gold.loc[~ok, "clip"]))
             gold = gold[ok].reset_index(drop=True)
     spans = load_clip_spans(cfg.data_root) if Path(cfg.data_root).is_dir() else {}
+    seed = cfg.seed if cfg.seed is not None else seed_for_round(round_key)
     res = mine_round(pool, budget=cfg.budget, quotas=cfg.quotas, per_match_cap=cfg.per_match_cap, already_labelled=labelled,
-                      seed=cfg.seed, cfg=cfg.bucket, gold=gold, clip_spans=spans, round_key=round_key)  # fmt: skip
+                      seed=seed, cfg=cfg.bucket, gold=gold, clip_spans=spans, round_key=round_key)  # fmt: skip
     if gold_unresolved:
         res.report["gold_unresolved_clips"] = gold_unresolved
     return res
@@ -342,7 +353,8 @@ def create_round(
         / (key.replace("/", "_") + ".json")
     )
     log.parent.mkdir(parents=True, exist_ok=True)
-    log.write_text(json.dumps({"key": key, "job": job.get("id"), "config": {"budget": cfg.budget, "quotas": cfg.quotas, "seed": cfg.seed},
+    log.write_text(json.dumps({"key": key, "job": job.get("id"), "config": {"budget": cfg.budget, "quotas": cfg.quotas, "seed": result.report.get("seed"),
+                                                                "exclude_s": cfg.bucket.exclude_s, "max_per_clip": cfg.bucket.max_per_clip},
                                "report": result.report}, indent=1, default=str))  # fmt: skip
     return {
         "created": bool(job.get("created", True)),

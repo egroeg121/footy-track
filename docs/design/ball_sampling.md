@@ -115,7 +115,7 @@ The quotas below are for a 300-card round, which is about one labelling day.
 
 | Bucket | What | Card | Share | Selection within bucket |
 |---|---|---|---|---|
-| **U: uncertain** | Signals disagree, c in 0.5–0.95, or det conf 0.3–0.7 | verify | 35% | Rank by uncertainty, then **one card per cluster** (k-means on embedding × match × 30 s time bucket) and at most 1 card per 2 s window |
+| **U: uncertain** | Signals disagree, c in 0.5–0.95, or det conf 0.3–0.7 | verify | 35% | Rank by uncertainty, then **one card per cluster** (k-means on embedding × match × 30 s time bucket) and at most 1 card per 2 s window. Across rounds: no card within +-3 s of any earlier card of the same clip (`exclude_s`), and at most 3 U/M/N/R cards per clip per round (`max_per_clip`); each round's seed derives from its key |
 | **M: missed** | Tracker gaps, plausible trajectory with no detection, ball-in-air candidates | **verify-or-place** (tap if the ball is elsewhere, or "no ball") | 20% | Longest and most plausible gaps first; diversity as in U |
 | **N: hard negatives** | High-conf detections off any plausible track, static near the hoardings, or on heads and feet | verify (expected not_ball) | 15% | Highest conf first, capped per location cluster so it isn't 30 cards of the same spare ball |
 | **R: random** | Uniform over the train-match population | verify-or-place | 15% | Uniform. This is the cold-start and robustness floor, and also an unbiased audit of the whole pipeline on train data |

@@ -66,7 +66,12 @@ class BucketConfig:
     g_shift_px: tuple[float, float] = (15.0, 30.0)
     # geometry / time
     frame_wh: tuple[int, int] = (1920, 1080)
-    window_s: float = 2.0  # at most one card per clip per window
+    window_s: float = 2.0  # sampling unit of R / A (pi is per window); at most one card per clip per window
+    #: True footage-time distance: no card within +-``exclude_s`` s of a verdicted / pending card of any round, nor of another
+    #: card of the same round, in the same clip (U, M, N, R, A; gold is exempt from the cross-round rule). 0 turns it off.
+    exclude_s: float = 3.0
+    #: At most this many U / M / N / R cards per clip per round (A and G are not capped). 0 = no cap.
+    max_per_clip: int = 3
     eval_buffer_s: float = 10.0  # exclusion around in-match eval clips
     # diversity (U, M)
     cluster_overshoot: float = (

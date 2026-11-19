@@ -142,3 +142,23 @@ def api():
 def _no_label_hooks(monkeypatch):
     """Completing a round job in a test must not start the hook worker (which would try to queue a Prefect run)."""
     monkeypatch.setenv("FOOTY_LABELLING_HOOKS", "0")
+
+
+@pytest.fixture(autouse=True)
+def legacy_spacing(request, monkeypatch):
+    """The synthetic pools are a few dense clips, which the per-clip cap and the +-``exclude_s`` spacing would starve. Tests of
+    the other rules run with both off by default; tests of the spacing rules pass the values explicitly or use the
+    ``spacing_rules`` marker to keep the real defaults."""
+    if request.node.get_closest_marker("spacing_rules"):
+        return
+    import dataclasses
+
+    from footy_track.ball_mining.buckets import BucketConfig
+
+    names = [f.name for f in dataclasses.fields(BucketConfig)]
+    defaults = list(BucketConfig.__init__.__defaults__)
+    off = {"exclude_s": 0.0, "max_per_clip": 0}
+    n_no_default = len(names) - len(defaults)
+    for k, v in off.items():
+        defaults[names.index(k) - n_no_default] = v
+    monkeypatch.setattr(BucketConfig.__init__, "__defaults__", tuple(defaults))

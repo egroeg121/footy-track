@@ -26,6 +26,7 @@ import json
 import os
 import sys
 import urllib.error
+from dataclasses import replace
 from pathlib import Path
 
 from footy_track.ball_mining import close as close_mod
@@ -37,7 +38,9 @@ from footy_track.labeller import jobs_client
 def _common(p: argparse.ArgumentParser) -> None:
     p.add_argument("--dataset", default=rnd.DEFAULT_DATASET)
     p.add_argument("--budget", type=int, default=300)
-    p.add_argument("--seed", type=int, default=0)
+    p.add_argument("--seed", type=int, default=None, help="default: derived from the round key")
+    p.add_argument("--exclude-s", type=float, default=None, help="no card within +-S s of an earlier or same-round card in a clip (default 3)")
+    p.add_argument("--max-per-clip", type=int, default=None, help="max U/M/N/R cards per clip per round (default 3)")
     p.add_argument("--per-match-cap", type=float, default=0.15)
     p.add_argument(
         "--data-root",
@@ -93,6 +96,10 @@ def _cfg(a: argparse.Namespace) -> rnd.RoundConfig:
         gold_datasets=tuple(x for x in a.gold_datasets.split(",") if x),
         link_clips=not a.no_link,
     )
+    if a.exclude_s is not None:
+        cfg.bucket = replace(cfg.bucket, exclude_s=a.exclude_s)
+    if a.max_per_clip is not None:
+        cfg.bucket = replace(cfg.bucket, max_per_clip=a.max_per_clip)
     if a.data_root:
         cfg.data_root = a.data_root
     if a.quotas:
@@ -120,6 +127,7 @@ def _print_report(rep: dict) -> None:
         print("REFUSED (not train):", json.dumps(rep["refused"]))
     if rep["excluded"]:
         print("excluded:", rep["excluded"])
+    print("diversity:", json.dumps(rep.get("diversity")), "seed", rep.get("seed"), "round", rep.get("round"))
     print("inclusion probabilities (R, A):", json.dumps(rep["inclusion_probabilities"]))
 
 
@@ -249,7 +257,15 @@ def main(argv: list[str] | None = None) -> int:
     pool = rnd.load_pool(a.pool, a.machine_labels, match=a.match, fps=a.fps)
     marks = Path(a.marks_dir) if a.marks_dir else None
     if a.cmd == "plan":
-        res = rnd.plan_round(pool, cfg, marks=marks)
+        job_list = client = None
+        try:  # read-only: pending cards of live rounds count as taken, and the round key seeds the draw
+            job_list = jobs_client.list_jobs(kind="ball_check", progress="true")
+            client = jobs_client
+            key = rnd.next_key(job_list, rnd.date_cls.today().isoformat())
+        except Exception as e:  # noqa: BLE001
+            print(f"warning: labeller unreachable ({e}); pending cards not excluded, seed from no key", file=sys.stderr)
+            key = None
+        res = rnd.plan_round(pool, cfg, marks=marks, job_list=job_list, client=client, round_key=key)
         _print_report(res.report)
         if a.out:
             Path(a.out).write_text(
