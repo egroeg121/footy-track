@@ -1401,6 +1401,11 @@ A *dataset* is a clips dir plus where its labels live. One server serves all of 
 
 ## 19. Labelling jobs: ask main for labels (LAB-14xx)
 
+### Job-mode page controls
+
+- **LAB-1442** (SHOULD) In job mode the page has a "Card frame (C)" button (key `C`; `R` is already Run/Restart) that returns to the current job card's clip and frame after the user stepped away. It reloads the clip if needed, saves a dirty edit like any frame change, never answers or advances, does nothing when already on the card frame, and is highlighted while off it.
+  - UNTESTED-FRONTEND (page markup: `tests/labeller/test_job_card_frame.py`)
+
 ### Submitting labelling jobs from another branch
 
 Do not start your own labeller or hand-edit the task board. POST a **job** to main's labeller

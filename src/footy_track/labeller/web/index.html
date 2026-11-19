@@ -121,6 +121,7 @@
       <span id="jobMeta" class="muted"></span>
       <span class="grow"></span>
       <label class="muted" title="Placing the ball or marking no-ball / not-broadcast jumps to the next unlabelled job frame"><input type="checkbox" id="jobAuto" checked> auto-advance</label>
+      <button id="jobCardBtn" title="Jump back to this card's frame, reloading its clip if you wandered off (C). Does not label or advance.">↩ Card frame (C)</button>
       <button id="jobPrevBtn" title="Previous job frame (K)">⏮ Prev job frame (K)</button>
       <button id="jobNextBtn" class="primary" title="Next job frame that is not labelled yet (J)">Next job frame (J) ⏭</button>
     </div>
@@ -623,6 +624,8 @@ window.addEventListener("keydown",(e)=>{
   }
   if (JOB_ID && (e.key === "j" || e.key === "J")) { e.preventDefault(); jobNext(); return; }
   if (JOB_ID && (e.key === "k" || e.key === "K")) { e.preventDefault(); jobPrev(); return; }
+  // C = back to the card frame (R is taken by Run/Restart)
+  if (JOB_ID && (e.key === "c" || e.key === "C") && !e.ctrlKey && !e.metaKey && !e.altKey) { e.preventDefault(); jobCard(); return; }
   if ((e.key === "q" || e.key === "Q") && !JOB_ID) { autodetect(viewFrame); return; }
   if (e.key === "r" || e.key === "R") {
     // r = Run (idle) or Restart (paused) — whichever control is active.
@@ -652,6 +655,8 @@ function jobRender() {
   const f = i >= 0 ? job.frames[i] : null;
   if (f) jobPos = i;
   const at = job.frames[jobPos];
+  // highlight the card-frame button while the view is off the card's frame
+  $("jobCardBtn").classList.toggle("primary", !f);
   $("jobTitle").textContent = `Job: ${job.title}`;
   if (f) {
     $("jobPos").textContent = `job frame ${i + 1} / ${job.total}${jobDone.has(jobKey(f.clip, f.frame)) ? " ✓ labelled" : ""}`;
@@ -720,6 +725,14 @@ async function jobPrev() {
   if (at <= 0) { setStatus("This is the first job frame"); return; }
   await jobGoto(at - 1);
 }
+// Return to the current card's clip + frame (never labels or advances). gotoFrame saves any dirty
+// edit first, exactly like a normal frame change; jobGoto reloads the clip if we left it.
+async function jobCard() {
+  if (!job || jobBusy) return;
+  if (jobIndexHere() >= 0) return;      // already on a job frame (the card): nothing to do
+  await jobGoto(jobPos);
+}
+$("jobCardBtn").onclick = jobCard;
 $("jobNextBtn").onclick = jobNext;
 $("jobPrevBtn").onclick = jobPrev;
 
