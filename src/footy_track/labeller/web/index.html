@@ -99,6 +99,7 @@
       <button id="autoBtn" title="Auto-detect objects on this frame (Q)">🤖 Auto-detect (Q)</button>
       <button id="nextDetBtn" title="Skip to next frame with detections (G)">⏭ Next detection (G)</button>
       <button id="noBallBtn" title="Mark frame as no-ball-visible (N)">🚫 No ball (N)</button>
+      <button id="playersCompleteBtn" title="Assert every visible person on this frame is boxed (P). Toggles; keeps the boxes.">✅ All players boxed (P)</button>
       <button id="notBroadcastBtn" title="Mark frame as not broadcast (B)">📺 Not broadcast (B)</button>
       <label class="muted" style="margin-left:8px;">res
         <select id="imgszSel" title="Inference resolution (unused by VitTrack — kept for future backends)">
@@ -181,6 +182,7 @@ let frameDirty = false;     // true only if user has edited the current frame
 let undoStack = [];         // stack of box snapshots for current frame
 const noBallFrames = new Set();
 const notBroadcastFrames = new Set();
+const playersCompleteFrames = new Set();
 // Job mode (/labeller?job=<id>): step through the job's own frames only. No auto-detect, no
 // forward propagation, so every mark on a job frame is a human one.
 const JOB_ID = new URLSearchParams(location.search).get("job");
@@ -416,6 +418,14 @@ function renderList(){
     x.onclick=(e)=>{e.stopPropagation(); markNoBall();};
     row.appendChild(icon); row.appendChild(lbl); row.appendChild(x); list.appendChild(row);
   }
+  if (viewFrame !== null && playersCompleteFrames.has(viewFrame)) {
+    const row = document.createElement("div"); row.className = "objrow"; row.style.color="#17c3b2";
+    const icon = document.createElement("span"); icon.textContent="✅"; icon.style.marginRight="4px";
+    const lbl = document.createElement("span"); lbl.textContent="All players boxed"; lbl.style.flex="1";
+    const x = document.createElement("span"); x.className="x"; x.textContent="✕";
+    x.onclick=(e)=>{e.stopPropagation(); markPlayersComplete();};
+    row.appendChild(icon); row.appendChild(lbl); row.appendChild(x); list.appendChild(row);
+  }
   if (viewFrame !== null && notBroadcastFrames.has(viewFrame)) {
     const row = document.createElement("div"); row.className = "objrow"; row.style.color="var(--accent)";
     const icon = document.createElement("span"); icon.textContent="📺"; icon.style.marginRight="4px";
@@ -490,6 +500,11 @@ function renderTimelineBar(){
       ctx.fillStyle = "#f85149";
       ctx.fillRect(Math.floor((idx / total) * W), 0, pw, 2);
     }
+  }
+  // "all players boxed" frames: teal strip along the bottom edge, on top of the ball/player colours
+  for (const idx of playersCompleteFrames) {
+    ctx.fillStyle = "#17c3b2";
+    ctx.fillRect(Math.floor((idx / total) * W), 9, pw, 3);
   }
   // current frame cursor
   ctx.fillStyle = "#fff";
@@ -598,6 +613,31 @@ async function markNotBroadcast() {
 }
 $("notBroadcastBtn").onclick = markNotBroadcast;
 
+// "all players boxed" assertion (sidecar marker players_complete). Toggles. Unlike no-ball it keeps the boxes, so
+// pending edits are saved first: the marker must describe the boxes on screen, not an older save.
+async function markPlayersComplete() {
+  if (mode === "running" || meta === null) return;
+  const post = (url) => fetch(url, {method:"POST", headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({idx: viewFrame})});
+  if (playersCompleteFrames.has(viewFrame)) {
+    playersCompleteFrames.delete(viewFrame);
+    await post("/players-complete/clear");
+    setStatus(`Frame ${viewFrame} all-players-boxed cleared`);
+  } else {
+    if (mode === "idle") {
+      await fetch("/edit", {method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({idx: viewFrame, objects: boxesNorm()})});
+    } else {
+      await saveCurrentEdits();
+    }
+    playersCompleteFrames.add(viewFrame);
+    await post("/players-complete");
+    setStatus(`✅ Frame ${viewFrame} marked all players boxed`);
+  }
+  renderList(); renderTimelineBar();
+}
+$("playersCompleteBtn").onclick = markPlayersComplete;
+
 // keyboard shortcuts
 window.addEventListener("keydown",(e)=>{
   // Ignore when typing in an input or select
@@ -646,6 +686,7 @@ window.addEventListener("keydown",(e)=>{
   if (e.key === "g" || e.key === "G") { gotoNextDetection(); return; }
   if (e.key === "n" || e.key === "N") { markNoBall(); return; }
   if (e.key === "b" || e.key === "B") { markNotBroadcast(); return; }
+  if ((e.key === "p" || e.key === "P") && !e.ctrlKey && !e.metaKey && !e.altKey) { markPlayersComplete(); return; }
   if (e.key === " ") {
     if (mode === "running") { e.preventDefault(); $("pauseBtn").click(); }
     return;
@@ -966,12 +1007,13 @@ $("loadBtn").onclick = async ()=>{
   $("runBtn").disabled=false; $("prevBtn").disabled=false; $("nextBtn").disabled=false;
   setStatus(`loaded · ${meta.total_frames} frames @ ${meta.fps.toFixed(1)}fps`);
   // Restore no-ball and not-broadcast marks from the server (loaded from JSONL sidecar).
-  noBallFrames.clear(); notBroadcastFrames.clear(); markedBallFrames.clear(); markedPlayerFrames.clear();
+  noBallFrames.clear(); notBroadcastFrames.clear(); playersCompleteFrames.clear(); markedBallFrames.clear(); markedPlayerFrames.clear();
   const marksRes = await fetch("/marks");
   if (marksRes.ok) {
     const marks = await marksRes.json();
     (marks.no_ball || []).forEach(i => noBallFrames.add(i));
     (marks.not_broadcast || []).forEach(i => notBroadcastFrames.add(i));
+    (marks.players_complete || []).forEach(i => playersCompleteFrames.add(i));
     (marks.ball || []).forEach(i => markedBallFrames.add(i));
     (marks.player || []).forEach(i => markedPlayerFrames.add(i));
   }
