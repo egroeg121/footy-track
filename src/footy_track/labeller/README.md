@@ -812,12 +812,29 @@ reads `<gt dir>/ball_checks/` (`--ball-checks-dir`) into the feature store's
   card follows the finger; vertical drags are ignored); buttons for
   unsure/zoom/undo; arrow keys and y/n/u/z on a desktop. The next crops are
   prefetched (stills and the next two clips) and the queue refills below 5
-  cards. When a card appears the page first plays its context clip (LAB-1009a,
-  a muted inline `<video>`), then on its `ended` event shows the still with the draggable box; the answer buttons work while it
-  plays, and Replay / `p` plays it again (stepping or Zoom also stop/restart it). A failed verdict POST puts
+  cards. When a card appears the page runs the card sequence (LAB-1016) over its
+  context clip (LAB-1009a, a muted inline `<video>`); the answer buttons work
+  throughout, and Replay / `p` runs it again (stepping or Zoom also stop/restart it). A failed verdict POST puts
   the card back rather than reporting a saved verdict.
   - Tests: UNTESTED-FRONTEND (`web/ball_check.html`; the server contract is
     LAB-1004..1009)
+- **LAB-1016** (SHOULD) Card sequence on load, per card: (1) FLASH the card's
+  own frame with its box overlaid (the still + SVG overlay; blind/no-box cards
+  flash the still alone) for `FLASH_MS` = 400 ms; (2) PLAY the context clip
+  (LAB-1009a; its box is burned in on the centre frame only, not tracked per
+  frame); a tap on the clip or Space pauses / resumes it; (3) on `ended` (or on
+  error / blocked autoplay) STAY on the paused boxed still with the draggable
+  box; no looping, no blanking. Verdicts (swipe, buttons, keys) work at any
+  point and the next card restarts the sequence; Replay / `p` re-runs it
+  (flash included). A token guard drops a stale sequence when the card changes.
+  - Tests: UNTESTED-FRONTEND (`web/ball_check.html`;
+    `test_ball_check.py::test_ball_check_page_has_flash_play_hold_sequence` only
+    checks the markers are present)
+- **LAB-1017** (MAY) Two per-viewer toggles, "Flash" and "Autoplay", default ON,
+  persisted in `localStorage` (`ballCheck.flash`, `ballCheck.auto`; reads and
+  writes wrapped in try/catch). Flash off skips the 400 ms hold before the clip;
+  Autoplay off shows the boxed still only until Replay is pressed.
+  - Tests: UNTESTED-FRONTEND
 - **LAB-1013a** (MUST) `POST /ball_check/save_box` on a candidate appends to
   the GT sidecar that already exists for that clip under any alias (candidate
   `arsenal_mancity_20250925_seg010` -> `arsenal_mancity_seg010.jsonl` or
@@ -2077,7 +2094,7 @@ count run `<cluster>:<a>-<b>`; `verified_by/at`). The frame sweep uses `cluster_
 | 8. Backend (LAB-7xx) | 11 | 8 | 3 | 0 |
 | 9. Labeller UI (LAB-8xx) | 11 | 0 | 0 | 11 |
 | 10. Review UI (LAB-9xx) | 7 | 0 | 0 | 7 |
-| 11. Ball Check (LAB-10xx) | 12 | 11 | 0 | 1 |
+| 11. Ball Check (LAB-10xx) | 14 | 11 | 0 | 3 |
 | 12. Confidence sampling (LAB-11xx) | 5 | 5 | 0 | 0 |
 | 16. Pitch calibration (LAB-12xx) | 23 | 18 | 0 | 5 |
 | 18. Datasets (LAB-13xx) | 6 | 5 | 0 | 1 |

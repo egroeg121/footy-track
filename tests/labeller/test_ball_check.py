@@ -357,6 +357,13 @@ def test_ball_check_page_served_and_linked_from_hub(client):
     assert 'href="/ball_check"' in client.get("/").text
 
 
+def test_ball_check_page_has_flash_play_hold_sequence(client):
+    # JS cannot run here; only check the sequence markers (LAB-1016/1017).
+    text = client.get("/ball_check").text
+    for marker in ("FLASH_MS", "togglePause", "btnFlash", "btnAuto", "ballCheck."):
+        assert marker in text
+
+
 def test_queue_candidates_source_and_namespaced_verdicts(
     client, clips_dir, gt_marks_dir, cand_dir
 ):
