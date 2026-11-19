@@ -1974,6 +1974,12 @@ Unlike the panel it keeps `ingest` on: the verdicts are training data, and `feat
   ingest), and it can never override a stronger row (a Player Check `partial`, a series `hand_series`). Re-ingest is idempotent.
   - Tests: `::test_removing_players_complete_marker_removes_state`, `::test_players_complete_reingest_idempotent`,
     `::test_players_complete_does_not_override_stronger_row`
+- **LAB-1451** (MUST) Legacy back-fill, opt-in only: `ingest_gt --legacy-complete-clips a,b` / `--legacy-complete-file path` (one stem
+  per line) name clips labelled before the marker existed. For those clips only, each frame with a hand-label (`labeller`) player-class
+  box gets player `complete` (`sidecar_marker`, verified_by `legacy_backfill`, run_id `gt_import_legacy_backfill`); frames without one
+  get nothing. Never defaulted; same precedence/replace semantics as LAB-1450, so removing a clip from the list removes its rows.
+  `GtImportReport.players_legacy_complete` and the CLI `legacy_backfill_complete=N` report it.
+  - Tests: `tests/feature_store/test_frame_label_state.py::test_legacy_backfill_*`
 
 ## 19i. Series review (LAB-1451..1459)
 

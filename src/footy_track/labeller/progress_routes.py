@@ -8,7 +8,7 @@ from pathlib import Path
 from fastapi import APIRouter
 from fastapi.responses import HTMLResponse
 
-from footy_track.labeller import progress
+from footy_track.labeller import labelling_progress, progress
 
 router = APIRouter()
 _PAGE = Path(__file__).parent / "web" / "progress.html"
@@ -23,3 +23,9 @@ async def progress_page() -> HTMLResponse:
 def progress_api(refresh: bool = False) -> dict:
     # plain def: reads manifests and a DuckDB file, so FastAPI runs it in a worker thread.
     return progress.get_progress(force=refresh)
+
+
+@router.get("/progress/labelling")
+def progress_labelling() -> dict:
+    """Ball / player / fully-labelled frame counts per clip, from the feature store."""
+    return labelling_progress.get_labelling()
