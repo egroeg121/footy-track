@@ -210,3 +210,14 @@ def test_suggester_interface_can_be_swapped(fd):  # noqa: F811
     r = PS.suggest_match(HELD, root=fd, suggester=Const(), log=lambda m: None)
     assert r["status"] == "created" and P.suggest_path(HELD, "const001", root=fd).is_file()
     assert r["n_with_suggestion"] == r["n_frames"]
+
+
+def test_suggest_meta_records_backend(fd, monkeypatch):  # noqa: F811
+    _, r, _ = _suggest(fd, monkeypatch)
+    assert r["detector"]["backend"] == "torch"
+    ov = fd / "ov_model"
+    ov.mkdir()
+    (ov / "best.xml").write_bytes(b"<net/>")
+    (ov / "best.bin").write_bytes(b"\0")
+    s = PS.RtDetrSuggester(ov, detector=FakeDet())
+    assert s.info["backend"] == "openvino" and s.ident == s.info["sha8"] and s.info["device"] == "cpu"

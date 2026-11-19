@@ -187,3 +187,55 @@ def test_failed_clip_is_reported_and_retried(tmp_path):
     d.boom = False
     st = C.run_match(segs, out, detector=d, weights=tmp_path / "w.pt")
     assert st["complete"] and st["skipped"] == ["m1_seg001"]
+
+
+def _ov_dir(tmp_path, xml=b"<net/>", binary=b"\0\1"):
+    d = tmp_path / "best_openvino_model"
+    d.mkdir(exist_ok=True)
+    (d / "best.xml").write_bytes(xml)
+    (d / "best.bin").write_bytes(binary)
+    (d / "metadata.yaml").write_text("date: x\n")
+    return d
+
+
+def test_openvino_dir_sha_covers_xml_and_bin_only_and_backend_is_reported(tmp_path):
+    d = _ov_dir(tmp_path)
+    s1 = C.sha256_file(d)
+    (d / "metadata.yaml").write_text("date: y\n")  # export timestamp must not change the identity
+    assert C.sha256_file(d) == s1
+    (d / "best.bin").write_bytes(b"\0\2")
+    assert C.sha256_file(d) != s1
+    assert C.backend_info(d) == {"backend": "openvino"}
+    (d / "footy_source.json").write_text(json.dumps({"sha256": "ab" * 32}))
+    assert C.backend_info(d) == {"backend": "openvino", "source_sha256": "ab" * 32}
+    pt = tmp_path / "w.pt"
+    pt.write_bytes(b"w")
+    assert C.backend_info(pt) == {"backend": "torch"}
+
+
+def test_openvino_dir_loads_with_rtdetr_on_cpu_fp32_batch1(tmp_path, monkeypatch):
+    from footy_track.detectors import ultralytics as U  # noqa: N812
+
+    calls = []
+
+    class FakeModel:
+        names = {0: "ball"}
+
+        def __init__(self, uri):
+            calls.append(("rtdetr", uri))
+
+        def predict(self, frames, **kw):
+            calls.append(("predict", 1 if not isinstance(frames, list) else len(frames), kw["device"], kw["half"]))
+            return [SimpleNamespace(orig_shape=(10, 20))]
+
+    monkeypatch.setattr(U, "RTDETR", FakeModel)
+    monkeypatch.setattr(U, "YOLO", lambda *a, **k: pytest.fail("YOLO must not load an OpenVINO dir"))
+    monkeypatch.setattr(U, "ultralytics_result_to_detections", lambda r, c: [])
+    monkeypatch.setenv("FOOTY_HALF", "1")  # even a forced half must not reach OpenVINO
+    d = _ov_dir(tmp_path)
+    det = U.UltralyticsObjectDetector(model_uri=str(d), device="cuda", use_model_names=True)
+    assert det.backend == "openvino" and det.device == "cpu"
+    out = det.predict_frames([np.zeros((10, 20, 3), np.uint8)] * 3)
+    assert len(out) == 3
+    assert calls[0] == ("rtdetr", str(d))
+    assert [c for c in calls if c[0] == "predict"] == [("predict", 1, "cpu", False)] * 3

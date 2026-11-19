@@ -70,7 +70,7 @@ class RtDetrSuggester(Suggester):
         sha256 = C.sha256_file(weights)
         self.ident = C.sha8(sha256)
         self.info = {"kind": "rtdetr-top1", "sha8": self.ident, "sha256": sha256, "weights": str(weights), "imgsz": imgsz,
-                     "conf_floor": C.CONF, "device": device, "threads": C.thread_cap()}
+                     "conf_floor": C.CONF, "device": device, "threads": C.thread_cap(), **C.backend_info(weights)}
         self.detector = detector if detector is not None else C.make_detector(weights, imgsz=imgsz, conf=C.CONF, device=device)
 
     def suggest(self, clip: str, video: Path, frames: list[int]) -> dict[int, dict | None]:

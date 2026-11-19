@@ -3,7 +3,7 @@ from pathlib import Path
 
 import numpy as np
 import torch
-from ultralytics import YOLO
+from ultralytics import RTDETR, YOLO
 from ultralytics.engine.results import Results as UltralyticsResults
 from ultralytics.models.sam import SAM3SemanticPredictor
 
@@ -148,6 +148,22 @@ class StubObjectDetector(ObjectDetector):
         )
 
 
+def is_openvino_dir(model_uri: str | Path) -> bool:
+    """True for an ultralytics ``format=openvino`` export directory (``<name>.xml`` + ``<name>.bin``)."""
+    p = Path(str(model_uri))
+    return p.is_dir() and any(p.glob("*.xml")) and any(p.glob("*.bin"))
+
+
+def load_ultralytics_model(model_uri: str | Path):
+    """``(model, backend)``; backend is ``"openvino"`` or ``"torch"``.
+
+    An OpenVINO export dir MUST be loaded with ``RTDETR`` (the RT-DETR postprocess): ``YOLO(dir)`` runs the YOLO
+    postprocess on RT-DETR output and returns garbage class ids (measured, merlin 2026-11-19)."""
+    if is_openvino_dir(model_uri):
+        return RTDETR(str(model_uri)), "openvino"
+    return YOLO(model_uri), "torch"
+
+
 class UltralyticsObjectDetector(ObjectDetector):
     """YOLO-based object detector returning Pydantic outputs.
 
@@ -172,7 +188,9 @@ class UltralyticsObjectDetector(ObjectDetector):
         # Pass ``device`` to override.
         dev = device or _available_device()
         self.device = dev.type if isinstance(dev, torch.device) else str(dev)
-        self.model = YOLO(model_uri)
+        self.model, self.backend = load_ultralytics_model(model_uri)
+        if self.backend == "openvino":
+            self.device = "cpu"  # OpenVINO runs on the CPU here (never the iGPU); fp32, static batch 1
         self.model_uri = model_uri
         # When True, `classes` reflects the checkpoint's own label set rather than
         # the COCO person/ball subset used for stock weights.
@@ -233,12 +251,13 @@ class UltralyticsObjectDetector(ObjectDetector):
 
         ``uri`` is a placeholder (``frame_<i>``): in-memory frames have no path.
         """
-        results = self.model.predict(
-            frames,
-            device=self.device,
-            half=use_half(self.device),
-            **self.predict_kwargs,
-        )
+        half = use_half(self.device) and self.backend != "openvino"
+        if self.backend == "openvino":  # exported with a static batch of 1
+            results = [
+                r for f in frames for r in self.model.predict(f, device=self.device, half=half, **self.predict_kwargs)
+            ]
+        else:
+            results = self.model.predict(frames, device=self.device, half=half, **self.predict_kwargs)
         out = []
         for i, result in enumerate(results):
             h, w = result.orig_shape[:2]
