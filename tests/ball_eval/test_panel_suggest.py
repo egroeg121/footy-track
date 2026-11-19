@@ -196,3 +196,17 @@ def test_no_suggest_file_means_every_label_is_blind_equivalent(fd):  # noqa: F81
     d = build(fd)
     human = _human(d, accept=False)
     assert set(S.window_groups(d, human, fd).values()) == {"blind", "blind_equiv"}
+
+
+def test_suggester_interface_can_be_swapped(fd):  # noqa: F811
+    class Const(PS.Suggester):
+        ident = "const001"
+        info = {"kind": "test"}  # noqa: RUF012
+
+        def suggest(self, clip, video, frames):
+            return {f: {"x": 0.1, "y": 0.2, "w": 0.01, "h": 0.01, "conf": 0.5} for f in frames}
+
+    P.write_panel(build(fd), root=fd)
+    r = PS.suggest_match(HELD, root=fd, suggester=Const(), log=lambda m: None)
+    assert r["status"] == "created" and P.suggest_path(HELD, "const001", root=fd).is_file()
+    assert r["n_with_suggestion"] == r["n_frames"]

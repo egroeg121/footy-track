@@ -19,13 +19,17 @@ when the detector found no ball candidate. Every non-QA frame of every panel win
 ``<match>.suggest-meta.<sha8>.json`` records the detector, timings and the panel frames that were already
 labelled when the file appeared (labels placed before suggestions existed are blind-equivalent).
 
+The model is behind the small :class:`Suggester` interface (``ident`` + ``suggest(clip, video, frames)``), so the
+RT-DETR top-1 can be swapped for e.g. the pooled pipeline (RT-DETR + motion + tracker, top scorer node) without
+touching the file format, the endpoint, the page or the scorer.
+
 Speed: 1280 px RT-DETR on CPU is ~2 s / frame, ~20 min / match. Resumable per clip (``.partial``).
 """
 
 from __future__ import annotations
 
 import json
-import os
+
 import time
 from collections.abc import Callable
 from pathlib import Path
@@ -34,6 +38,61 @@ from footy_track.ball_eval import panel as P  # noqa: N812
 
 IMGSZ = 1280
 BATCH = 4
+
+
+class Suggester:
+    """The swappable part: turns frames of one clip into top-1 boxes. ``suggest_match`` needs only this interface.
+
+    ``ident`` names the model in the suggest file name and in ``accepted_suggestion`` provenance (``suggest_det:<ident>``,
+    max 8 chars by convention); ``info`` goes into the meta file. A pooled suggester (RT-DETR + motion + tracker over the
+    window +-1 s, top node of the scorer) implements the same two methods."""
+
+    ident: str = "unset"
+    info: dict = {}  # noqa: RUF012
+
+    def suggest(self, clip: str, video: Path, frames: list[int]) -> dict[int, dict | None]:
+        """``{frame: {x,y,w,h,conf} | None}`` (normalised top-left xywh) for every requested frame of ``clip``."""
+        raise NotImplementedError
+
+
+class RtDetrSuggester(Suggester):
+    """Top-1 ball candidate of the production RT-DETR at 1280 px (``ball_mining.candidates`` helpers)."""
+
+    def __init__(self, weights: Path | None = None, *, device: str = "cpu", imgsz: int = IMGSZ, batch: int = BATCH, detector=None):
+        from footy_track.ball_mining import candidates as C  # noqa: N812, PLC0415
+
+        if weights is None:
+            from footy_track.detectors.ultralytics import current_best_detector_path  # noqa: PLC0415
+
+            weights = current_best_detector_path()
+        self._C = C
+        self.batch = batch
+        sha256 = C.sha256_file(weights)
+        self.ident = C.sha8(sha256)
+        self.info = {"kind": "rtdetr-top1", "sha8": self.ident, "sha256": sha256, "weights": str(weights), "imgsz": imgsz,
+                     "conf_floor": C.CONF, "device": device, "threads": C.thread_cap()}
+        self.detector = detector if detector is not None else C.make_detector(weights, imgsz=imgsz, conf=C.CONF, device=device)
+
+    def suggest(self, clip: str, video: Path, frames: list[int]) -> dict[int, dict | None]:
+        out: dict[int, dict | None] = {}
+        pending: list[tuple[int, object]] = []
+
+        def flush() -> None:
+            if not pending:
+                return
+            results = self.detector.predict_frames([b for _, b in pending])
+            self._C.limit_threads()  # ultralytics' first cpu predict() resets torch threads
+            for (f, _), res in zip(pending, results, strict=True):
+                balls, _ = self._C.rows_of(res.detections)
+                out[f] = top1(balls)
+            pending.clear()
+
+        for f, bgr in _read_frames(video, frames):
+            pending.append((f, bgr))
+            if len(pending) >= self.batch:
+                flush()
+        flush()
+        return out
 
 
 def frame_key(clip: str, frame: int) -> str:
@@ -82,6 +141,7 @@ def suggest_match(
     *,
     panel_version: str = P.PANEL_VERSION,
     root: Path | None = None,
+    suggester: Suggester | None = None,
     weights: Path | None = None,
     device: str = "cpu",
     imgsz: int = IMGSZ,
@@ -90,17 +150,13 @@ def suggest_match(
     labelled_keys: Callable[[], set[str]] | None = None,
     log: Callable[[str], None] = print,
 ) -> dict:
-    """Detect the top-1 ball on every panel frame of ``match`` and write the suggest file. Resumable; an
-    existing finished file for the same detector is left alone (status ``exists``)."""
-    from footy_track.ball_mining import candidates as C  # noqa: N812, PLC0415
-
+    """Suggest the top-1 ball of every panel frame of ``match`` with ``suggester`` (default: RT-DETR) and write the
+    suggest file. Resumable per clip; an existing finished file of the same ``suggester.ident`` is left alone."""
     P.require_heldout(match)
     doc = P.read_panel(P.panel_path(match, panel_version, root))
-    if weights is None:
-        from footy_track.detectors.ultralytics import current_best_detector_path  # noqa: PLC0415
-
-        weights = current_best_detector_path()
-    sha8 = C.sha8(C.sha256_file(weights))
+    if suggester is None:
+        suggester = RtDetrSuggester(weights, device=device, imgsz=imgsz, batch=batch, detector=detector)
+    sha8 = suggester.ident
     out = P.suggest_path(match, sha8, panel_version, root)
     if out.is_file():
         return {"match": match, "status": "exists", "path": str(out), "detector_sha8": sha8}
@@ -112,35 +168,16 @@ def suggest_match(
     files = {Path(s["file"]).stem: seg_dir / s["file"] for s in P.load_segments(Path(doc["segments_json"]))["segments"]}
     frames = panel_frames(doc)
     total = sum(len(v) for v in frames.values())
-    if detector is None:
-        detector = C.make_detector(weights, imgsz=imgsz, conf=C.CONF, device=device)
     t0 = time.monotonic()
     done_now = 0
     for clip, fl in frames.items():
         todo = [f for f in fl if frame_key(clip, f) not in sugg]
         if not todo:
             continue
-        pending: list[tuple[int, object]] = []
-
-        def flush(pending=pending, clip=clip) -> None:
-            nonlocal done_now
-            if not pending:
-                return
-            results = detector.predict_frames([b for _, b in pending])
-            C.limit_threads()  # ultralytics' first cpu predict() resets torch threads
-            for (f, _), res in zip(pending, results, strict=True):
-                balls, _ = C.rows_of(res.detections)
-                sugg[frame_key(clip, f)] = top1(balls)
-            done_now += len(pending)
-            pending.clear()
-
-        for f, bgr in _read_frames(files[clip], todo):
-            pending.append((f, bgr))
-            if len(pending) >= batch:
-                flush()
-        flush()
-        for f in todo:  # frames the decoder never reached (clip shorter than the panel says)
-            sugg.setdefault(frame_key(clip, f), None)
+        got = suggester.suggest(clip, files[clip], todo)
+        for f in todo:  # frames the decoder never reached (clip shorter than the panel says) -> None
+            sugg[frame_key(clip, f)] = got.get(f)
+        done_now += len(todo)
         P._atomic_write(partial, sugg, exclusive=False)  # noqa: SLF001
         el = time.monotonic() - t0
         log(f"[suggest] {match} {len(sugg)}/{total} frames, {el:.0f}s ({el / max(done_now, 1):.2f} s/frame)")
@@ -151,9 +188,7 @@ def suggest_match(
         "match": match,
         "panel_version": panel_version,
         "created_at": P.now_iso(),
-        "detector": {"sha8": sha8, "sha256": C.sha256_file(weights), "weights": str(weights), "imgsz": imgsz, "conf_floor": C.CONF},
-        "device": device,
-        "threads": C.thread_cap(),
+        "detector": suggester.info,
         "n_frames": total,
         "n_with_suggestion": sum(1 for v in sugg.values() if v),
         "seconds_this_run": round(elapsed, 1),
@@ -184,7 +219,3 @@ def labelled_panel_keys(doc: dict, root: Path | None = None) -> set[str]:
 
 def load_suggestions(path: Path) -> dict[str, dict | None]:
     return json.loads(Path(path).read_text())
-
-
-def thread_env() -> dict:
-    return {k: os.environ.get(k) for k in ("OMP_NUM_THREADS", "BALL_POOL_THREADS")}
