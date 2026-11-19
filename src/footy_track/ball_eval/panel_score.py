@@ -48,6 +48,7 @@ from pathlib import Path
 
 import numpy as np
 
+from footy_track.ball_eval import panel as P  # noqa: N812
 from footy_track.ball_eval.detection_replay import BALL_TAGS
 from footy_track.clip_id import canonical_clip_id
 
@@ -68,6 +69,9 @@ Key = tuple[str, int]  # (clip, frame)
 class Human:
     state: str  # ball | no_ball | not_broadcast
     centres: list[tuple[float, float]]  # normalised
+    #: the box was a detector suggestion accepted as-is (marker ``accepted_suggestion``). Audit only: it is an
+    #: ordinary tier-1 label everywhere, the flag feeds the "share accepted" stat and the blind-vs-shown check.
+    accepted: bool = False
 
 
 def _centre(row: dict) -> tuple[float, float] | None:
@@ -95,12 +99,14 @@ def _add_row(out: dict[Key, Human], clip: str, row: dict) -> None:
         c = _centre(row)
         if c is not None:
             h = out.get(key)
+            acc = P.SUGGEST_MARKER_TAG in tags
             if h is None or h.state != BALL:
                 out[key] = Human(
-                    BALL, [c]
+                    BALL, [c], acc
                 )  # a ball mark beats a marker on the same frame
             else:
                 h.centres.append(c)
+                h.accepted = h.accepted or acc
 
 
 def load_human_sidecars(marks_dir: Path, clips: Iterable[str]) -> dict[Key, Human]:
@@ -367,11 +373,30 @@ def score(
     seed: int = 0,
     include_partial: bool = False,
     model: str | None = None,
+    blind_only: bool = False,
+    root: Path | None = None,
 ) -> dict:
-    """The full score report (see the module docstring). Deterministic for a given ``seed``."""
+    """The full score report (see the module docstring). Deterministic for a given ``seed``.
+
+    ``blind_only`` scores the model on blind windows only (the random blind control and labels placed before
+    suggestions existed): the suggesting detector is the model most favoured by its own suggestions."""
+    groups = {p["match"]: window_groups(p, human, root) for p in panels}
+    scored = panels
+    if blind_only:
+        scored = [
+            {
+                **p,
+                "windows": [
+                    w
+                    for w in p["windows"]
+                    if groups[p["match"]][w["window_id"]] != "shown"
+                ],
+            }
+            for p in panels
+        ]
     tables = [
         match_table(p, human, preds, radii, include_partial=include_partial)
-        for p in panels
+        for p in scored
     ]
     rng = np.random.default_rng(seed)
 
@@ -455,11 +480,181 @@ def score(
         "seed": seed,
         "ci": "percentile 95%",
         "include_partial": include_partial,
+        "blind_only": blind_only,
         "panel_code_sha": sorted({p.get("code_sha") for p in panels}),
         "matches": report_matches,
         "pooled": pooled,
         "qa": qa_report(panels, human),
+        "suggestions": suggestion_report(
+            panels,
+            human,
+            preds,
+            groups,
+            radii=radii,
+            draws=draws,
+            seed=seed,
+            include_partial=include_partial,
+        ),
     }
+
+
+# --------------------------------------------------------------------------------------------
+# Suggestions: share accepted, and blind-vs-shown bias check
+# --------------------------------------------------------------------------------------------
+def suggest_pre_labelled(panel: dict, root: Path | None = None) -> set[str] | None:
+    """``clip:frame`` keys that were already labelled when the match's suggest file appeared (None = no suggest
+    file yet, so no label of this panel was ever made with a suggestion on offer)."""
+    sf = P.find_suggest_file(panel["match"], panel["panel_version"], root)
+    if sf is None:
+        return None
+    mp = P.suggest_meta_path(sf)
+    try:
+        return set(json.loads(mp.read_text()).get("pre_labelled") or [])
+    except (OSError, ValueError):
+        return set()  # unknown history: treat every label as made with the suggestion on offer
+
+
+def window_groups(
+    panel: dict, human: dict[Key, Human], root: Path | None = None
+) -> dict[str, str]:
+    """``{window_id: "blind" | "blind_equiv" | "shown"}``.
+
+    ``blind``: the random blind control (``panel.blind_windows``): never had a suggestion. ``blind_equiv``: a
+    ``shown`` window whose labels were all placed before suggestions existed (George's first Forest labels),
+    so also unsuggested. ``shown``: the rest. The comparison treats blind and blind_equiv together."""
+    blind = P.blind_windows(panel)
+    pre = suggest_pre_labelled(panel, root)
+    out: dict[str, str] = {}
+    for w in panel["windows"]:
+        wid = w["window_id"]
+        if wid in blind:
+            out[wid] = "blind"
+            continue
+        labelled = [f"{w['clip']}:{f}" for f in w["frames"] if (w["clip"], f) in human]
+        if pre is None or (labelled and all(k in pre for k in labelled)):
+            out[wid] = "blind_equiv"
+        else:
+            out[wid] = "shown"
+    return out
+
+
+def _group_cells(
+    tables: list[MatchTable], radii: tuple[float, ...], draws: int, rng
+) -> tuple[dict, dict]:
+    """Frame-weighted pooled metric cells of ``tables`` and the raw ``(est, draws)`` ratio arrays (for a difference)."""
+    ests, boots = [], []
+    for t in tables:
+        n = len(t.weights)
+        if n == 0:
+            continue
+        idx = rng.integers(0, n, size=(draws, n))
+        boots.append(np.einsum("dn,dnrk->drk", t.weights[idx], t.counts[idx]))
+        ests.append(_totals(t))
+    if not ests:
+        return {}, {}
+    e, d = ratios(sum(ests)), ratios(sum(boots))
+    cells = {
+        f"r{r:g}": {m: _cell(e[m][ri], d[m][:, ri]) for m in METRICS}
+        for ri, r in enumerate(radii)
+    }
+    return cells, {"est": e, "draws": d}
+
+
+def _compare(
+    blind: list[MatchTable],
+    shown: list[MatchTable],
+    radii: tuple[float, ...],
+    draws: int,
+    rng,
+) -> dict:
+    bc, braw = _group_cells(blind, radii, draws, rng)
+    sc, sraw = _group_cells(shown, radii, draws, rng)
+    out: dict = {
+        "n_windows_blind": int(sum(len(t.weights) for t in blind)),
+        "n_windows_shown": int(sum(len(t.weights) for t in shown)),
+        "blind": bc,
+        "shown": sc,
+        "diff_blind_minus_shown": {},
+    }
+    if braw and sraw:
+        for ri, r in enumerate(radii):
+            out["diff_blind_minus_shown"][f"r{r:g}"] = {
+                m: _cell(
+                    braw["est"][m][ri] - sraw["est"][m][ri],
+                    braw["draws"][m][:, ri] - sraw["draws"][m][:, ri],
+                )
+                for m in METRICS
+            }
+    return out
+
+
+def suggestion_report(
+    panels: list[dict],
+    human: dict[Key, Human],
+    preds: dict[Key, Pred],
+    groups: dict[str, dict[str, str]],
+    *,
+    radii: tuple[float, ...],
+    draws: int,
+    seed: int,
+    include_partial: bool,
+) -> dict:
+    """Per match and pooled: the share of labels that were accepted suggestions, and the model's metrics on the
+    blind vs the shown windows with the difference (blind - shown) and its 95 % CI. A large gap means the
+    suggestions shift the labels. Accepted boxes are ordinary tier-1 labels and stay in every estimate."""
+    rng = np.random.default_rng(seed + 7)
+    blind_t: list[MatchTable] = []
+    shown_t: list[MatchTable] = []
+    per_match: dict[str, dict] = {}
+    tot = {"labelled_balls": 0, "accepted": 0, "shown_balls": 0, "shown_accepted": 0}
+    for p in panels:
+        g = groups[p["match"]]
+
+        def sub(kinds: tuple[str, ...], p=p, g=g) -> dict:
+            return {**p, "windows": [w for w in p["windows"] if g[w["window_id"]] in kinds]}
+
+        bt = match_table(sub(("blind", "blind_equiv")), human, preds, radii, include_partial=include_partial)
+        st = match_table(sub(("shown",)), human, preds, radii, include_partial=include_partial)
+        blind_t.append(bt)
+        shown_t.append(st)
+        c = dict.fromkeys(tot, 0)
+        for w in p["windows"]:
+            for f in w["frames"]:
+                h = human.get((w["clip"], f))
+                if h is None or h.state != BALL:
+                    continue
+                c["labelled_balls"] += 1
+                c["accepted"] += h.accepted
+                if g[w["window_id"]] == "shown":
+                    c["shown_balls"] += 1
+                    c["shown_accepted"] += h.accepted
+        for k, v in c.items():
+            tot[k] += v
+        per_match[p["match"]] = {
+            "windows": {
+                k: sum(1 for v in g.values() if v == k)
+                for k in ("blind", "blind_equiv", "shown")
+            },
+            **c,
+            "share_accepted_of_ball_labels": _share(c["accepted"], c["labelled_balls"]),
+            "share_accepted_of_shown_ball_labels": _share(c["shown_accepted"], c["shown_balls"]),
+            "comparison": _compare([bt], [st], radii, draws, rng),
+        }
+    return {
+        "note": "blind = random 25% control + labels placed before suggestions existed (blind_equiv); shown = the rest. "
+        "Accepted suggestions are ordinary tier-1 labels; the marker is audit only.",
+        "pooled": {
+            **tot,
+            "share_accepted_of_ball_labels": _share(tot["accepted"], tot["labelled_balls"]),
+            "share_accepted_of_shown_ball_labels": _share(tot["shown_accepted"], tot["shown_balls"]),
+            "comparison": _compare(blind_t, shown_t, radii, draws, rng),
+        },
+        "matches": per_match,
+    }
+
+
+def _share(a: int, n: int) -> float | None:
+    return round(a / n, 4) if n else None
 
 
 # --------------------------------------------------------------------------------------------

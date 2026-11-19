@@ -26,6 +26,17 @@ KNOWN_BOX_LABELS = BALL_LABELS | PLAYER_LABELS
 NO_BALL_TAG = "no_ball"
 NOT_BROADCAST_TAG = "not_broadcast"
 
+#: Marker tags (written after the provenance) of a box accepted as-is from a detector suggestion (eval panel,
+#: ``ball_eval/panel_suggest.py``). Audit only: the box is ordinary tier-1 ``labeller`` GT.
+SUGGEST_MARKER_TAG = "accepted_suggestion"
+SUGGEST_DET_TAG_PREFIX = "suggest_det:"  # + detector sha8
+
+
+def is_suggest_marker(tag: object) -> bool:
+    """Marker tags the page may attach to a box it saves (``/edit`` drops any other client-supplied marker)."""
+    return isinstance(tag, str) and (tag == SUGGEST_MARKER_TAG or (tag.startswith(SUGGEST_DET_TAG_PREFIX) and len(tag) <= 40))
+
+
 #: All classes that can appear in the review picker.
 REVIEW_LABELS = [
     "player",

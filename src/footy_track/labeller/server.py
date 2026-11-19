@@ -49,6 +49,7 @@ from footy_track.labeller.constants import (  # noqa: E402
     PROV_SAM3,
     PROV_VITTRACK,
     PROV_YOLO,
+    is_suggest_marker,
 )
 from footy_track.labeller.ingest import router as ingest_router  # noqa: E402
 from footy_track.labeller.jobs_routes import router as jobs_router  # noqa: E402
@@ -60,6 +61,7 @@ from footy_track.labeller.session import (  # noqa: E402
     boxes_from_payload,
     _marker_key,
     boxes_payload,
+    markers_from_payload,
 )
 from footy_track.labeller.video_utils import yolo_seed_objects  # noqa: E402
 from footy_track.schema import ObjectDetection  # noqa: E402
@@ -393,7 +395,10 @@ async def get_timeline(idx: int) -> dict:
     for b, row in zip(frame, payload, strict=True):
         # Marker tags live beside the timeline; the page needs to know a machine
         # box was human-checked (job mode hides only unchecked machine boxes).
-        row["human_checked"] = HUMAN_CHECKED_TAG in session._box_markers.get(_marker_key(idx, b), ())
+        marks = session._box_markers.get(_marker_key(idx, b), ())
+        row["human_checked"] = HUMAN_CHECKED_TAG in marks
+        if sug := [t for t in marks if is_suggest_marker(t)]:
+            row["markers"] = sug
     return {"idx": idx, "boxes": payload}
 
 
@@ -421,7 +426,7 @@ async def edit_frame(body: dict) -> dict:
     session = _session()
     idx = int(body["idx"])
     boxes = boxes_from_payload(body.get("objects", []), PROV_LABELLER)
-    session.set_frame(idx, boxes)
+    session.set_frame(idx, boxes, markers_from_payload(body.get("objects", [])))
     if boxes:
         session.no_ball_frames.discard(idx)
         session.not_broadcast_frames.discard(idx)

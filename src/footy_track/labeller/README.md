@@ -1583,6 +1583,34 @@ restricted to the job's cards (progress and results are).
   dashed. A frame still counts as done only through a human ball box, no-ball or not-broadcast. Without `job=` nothing changes.
   - Tests: `tests/labeller/test_job_hide_machine.py` (server round trip; page wiring checked by string, rest UNTESTED-FRONTEND).
 
+- **LAB-1445** (MUST) A `ball_place` job card of the eval panel may show a precomputed detector suggestion, served by
+  `GET /api/jobs/<id>/suggestion?clip=&frame=` as `{suggestion: {x,y,w,h,conf,detector} | null, suggest: "blind"|"shown"}`
+  (normalised top-left box). The box comes from `<FD>/ball_eval_panel/<version>/<match>.suggest.<sha8>.json`
+  (`ball_eval_panel suggest`: top-1 RT-DETR ball candidate at 1280 px per panel frame; eval-only inference on heldout data).
+  It is `null` (the page draws nothing) for a blind card, a frame with no candidate, a missing suggest file, and any job whose items
+  carry no panel `sampling`. "No ball" is never suggested. A random 25% of windows (`panel.blind_windows`, seeded by
+  `sha1(panel_version + match)`) and every QA card (repeat, gold) are blind; the flag is `sampling.suggest` on the item and, for jobs
+  created before it existed, is derived from the panel file with the same rule at request time.
+  - Tests: `tests/ball_eval/test_panel_suggest.py::test_blind_windows_are_a_seeded_quarter_and_differ_per_match`,
+    `::test_job_items_carry_the_suggest_flag_and_qa_is_always_blind`, `::test_suggest_writes_top1_per_panel_frame_next_to_the_panel`,
+    `::test_endpoint_logic_shows_only_on_shown_cards_and_never_for_blind_or_qa`, `::test_live_jobs_without_the_flag_derive_blind_from_the_seed`,
+    `::test_non_panel_jobs_and_missing_suggest_file_answer_null`
+- **LAB-1446** (MUST) In job mode the page draws the suggestion as a dashed yellow box and ring labelled `suggestion NN%` on a separate
+  canvas layer (never a box, never saved). `Y` or the job-bar button `Accept suggestion (Y)` saves it through `/edit` as an ordinary
+  human box `[in_play_ball, labeller, accepted_suggestion, suggest_det:<sha8>]` and advances like a placement; drawing a box replaces
+  the suggestion; `N` / `B` work as before. `/edit` keeps only these two marker tags from a client; they survive flush, reload and
+  unrelated edits (the marker is keyed to the box's label/model/geometry, so moving the box drops it, LAB-101) and `/timeline`
+  returns them as `markers`. `feature_store/ingest_gt` treats them as markers (never the class). An accepted box is tier-1
+  `labeller` GT everywhere (job done rule, scoring, export, ingest): the marker is audit only.
+  - Tests: `tests/labeller/test_suggestion_accept.py` (server half); the page itself is UNTESTED-FRONTEND (wiring checked by string).
+- **LAB-1447** (MUST) `panel_score` reports, per match and pooled, the share of ball labels that were accepted suggestions and the
+  model's recall / precision / false-ball on blind vs shown windows with the difference (blind - shown) and its bootstrap CI.
+  Labels placed before a match's suggest file existed count as blind-equivalent (`<match>.suggest-meta.<sha8>.json` lists them).
+  `score --blind-only` scores only blind and blind-equivalent windows (the suggesting detector is otherwise favoured by its own
+  suggestions). Accepted labels are never excluded or down-weighted.
+  - Tests: `tests/ball_eval/test_panel_suggest.py::test_blind_vs_shown_comparison_and_blind_only`,
+    `::test_labels_placed_before_suggestions_existed_are_blind_equivalent`, `::test_accepted_marker_is_read_and_is_still_a_tier1_label`
+
 ### Prepared Ball Check jobs: inline cards, disk renders, bounds (LAB-1409..1416)
 
 `labelling_jobs submit --kind ball_check --items cards.json --prepare` submits a job **and** queues the
@@ -1938,6 +1966,7 @@ Unlike the panel it keeps `ingest` on: the verdicts are training data, and `feat
 | 19d. Review fixes (LAB-1427..1434) | 8 | 7 | 1 | 0 |
 | 19e. Ball evaluation panel (LAB-1435..1438) | 4 | 4 | 0 | 0 |
 | 17b. Task board filters (LAB-1443) | 1 | 0 | 0 | 1 |
+| 19g. Eval panel suggestions (LAB-1445..1447) | 3 | 3 | 0 | 0 |
 | **Total** | **161** | **120** | **9** | **32** |
 
 Open items: 4 (OPEN-1..4) + 1 fixed on main (undo provenance, `95b60cc`).
