@@ -182,3 +182,74 @@ def test_migrates_existing_store_file(tmp_path) -> None:
     _ingest(store, tmp_path)
     assert (1, "ball") in _states(store)
     assert store.query("SELECT * FROM frame_complete").empty
+
+
+# --- players_complete marker -> player state ("all players boxed", full_frame_labelling.md section 1) ---
+
+
+def _player_records():
+    return [
+        {"frame_index": 0, "bbox": BOX, "tags": ["player", "labeller"]},
+        {"frame_index": 0, "bbox": BOX, "tags": ["referee", "vittrack", "human_checked"]},
+        {"frame_index": 0, "bbox": None, "tags": ["players_complete"]},
+        {"frame_index": 1, "bbox": None, "tags": ["players_complete"]},  # zero-person frame
+        {"frame_index": 2, "bbox": BOX, "tags": ["player", "labeller"]},  # boxed but NOT asserted
+        {"frame_index": 3, "bbox": BOX, "tags": ["in_play_ball", "labeller"]},  # ball only
+        {"frame_index": 3, "bbox": None, "tags": ["players_complete"]},  # marker, no person box -> absent
+    ]
+
+
+def test_players_complete_marker_gives_player_complete_or_absent(tmp_path) -> None:
+    store = FeatureStore.open(":memory:")
+    rep = _ingest(store, tmp_path, _player_records())
+    assert _states(store, "player") == {
+        (0, "player"): ("complete", "sidecar_marker"),
+        (1, "player"): ("absent", "sidecar_marker"),
+        (3, "player"): ("absent", "sidecar_marker"),
+    }  # frame 2: boxes but no marker -> no state (no back-fill)
+    assert (rep.players_complete, rep.players_absent) == (1, 2)
+    # the marker line is not a detection and not an object class
+    n = store.query("SELECT count(*) AS n FROM detection").n[0]
+    assert n == 4
+
+
+def test_removing_players_complete_marker_removes_state(tmp_path) -> None:
+    store = FeatureStore.open(":memory:")
+    _ingest(store, tmp_path, _player_records())
+    kept = [r for r in _player_records() if not (r["frame_index"] == 0 and r["tags"] == ["players_complete"])]
+    _ingest(store, tmp_path, kept)
+    assert (0, "player") not in _states(store, "player")
+    assert (1, "player") in _states(store, "player")
+    _ingest(store, tmp_path, [r for r in kept if r["tags"] != ["players_complete"]])
+    assert _states(store, "player") == {}
+
+
+def test_players_complete_reingest_idempotent(tmp_path) -> None:
+    store = FeatureStore.open(":memory:")
+    _ingest(store, tmp_path, _player_records())
+    first = store.read_frame_label_states().to_dict("records")
+    _ingest(store, tmp_path, _player_records())
+    assert store.read_frame_label_states().to_dict("records") == first
+
+
+def test_players_complete_does_not_override_stronger_row(tmp_path) -> None:
+    store = FeatureStore.open(":memory:")
+    _ingest(store, tmp_path, _player_records())
+    store.upsert_frame_label_states([_row(0, ClsGroup.PLAYER, LabelState.PARTIAL, LabelMethod.HAND_FRAME)])
+    _ingest(store, tmp_path, _player_records())
+    assert _states(store, "player")[(0, "player")] == ("partial", "hand_frame")
+    # and dropping the marker leaves the stronger row alone
+    _ingest(store, tmp_path, [r for r in _player_records() if r["tags"] != ["players_complete"]])
+    assert _states(store, "player") == {(0, "player"): ("partial", "hand_frame")}
+
+
+def test_players_complete_feeds_frame_complete_view(tmp_path) -> None:
+    store = FeatureStore.open(":memory:")
+    recs = [
+        *_records(),
+        {"frame_index": 0, "bbox": None, "tags": ["players_complete"]},  # ball complete + player complete
+        {"frame_index": 1, "bbox": None, "tags": ["players_complete"]},  # ball absent + player absent
+    ]
+    _ingest(store, tmp_path, recs)
+    df = store.query("SELECT frame_index FROM frame_complete")
+    assert sorted(df.frame_index) == [0, 1]

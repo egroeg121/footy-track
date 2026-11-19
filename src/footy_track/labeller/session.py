@@ -23,6 +23,7 @@ from footy_track.labeller.constants import (
     KNOWN_BOX_LABELS,
     NO_BALL_TAG,
     NOT_BROADCAST_TAG,
+    PLAYERS_COMPLETE_TAG,
     PROV_LABELLER,
     PROVENANCE_TAGS,
     is_suggest_marker,
@@ -57,6 +58,7 @@ class Session:
         # no-ball frame set: frames explicitly marked as no-ball-visible
         self.no_ball_frames: set[int] = set()
         self.not_broadcast_frames: set[int] = set()
+        self.players_complete_frames: set[int] = set()
         self._box_markers: dict[tuple, tuple[str, ...]] = {}
         # debounced JSONL flush
         self._flush_timer: threading.Timer | None = None
@@ -89,6 +91,7 @@ class Session:
             self.timeline = [None] * self.total_frames
         self.no_ball_frames = set()
         self.not_broadcast_frames = set()
+        self.players_complete_frames = set()
         self._box_markers = {}
         self._load_existing_marks()
         return {
@@ -126,6 +129,10 @@ class Session:
                     dropped += 1
                     continue
                 tags = d.get("tags") or []
+                if PLAYERS_COMPLETE_TAG in tags:
+                    # Its own bbox-less line; a frame may also carry box lines, so no early exit on the frame.
+                    self.players_complete_frames.add(idx)
+                    continue
                 if NOT_BROADCAST_TAG in tags:
                     self.not_broadcast_frames.add(idx)
                     continue
@@ -292,8 +299,11 @@ class Session:
                 timeline_snapshot = list(self.timeline)
             no_ball_snapshot = set(self.no_ball_frames)
             not_broadcast_snapshot = set(self.not_broadcast_frames)
+            players_complete_snapshot = set(self.players_complete_frames)
             lines: list[str] = []
             for idx, boxes in enumerate(timeline_snapshot):
+                if idx in players_complete_snapshot:
+                    lines.append(_skip_marker_line(idx, PLAYERS_COMPLETE_TAG))
                 if idx in not_broadcast_snapshot:
                     lines.append(_skip_marker_line(idx, NOT_BROADCAST_TAG))
                     continue

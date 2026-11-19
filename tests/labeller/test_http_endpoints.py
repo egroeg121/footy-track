@@ -175,6 +175,7 @@ def test_marks_reports_ball_player_and_skip_sets(client, fresh_session):
         "not_broadcast": [5],
         "ball": [0, 2],
         "player": [1, 2],
+        "players_complete": [],
     }
 
 
@@ -298,6 +299,23 @@ def test_no_ball_and_not_broadcast_clear_roundtrip(client, fresh_session, monkey
     client.post("/no-ball", json={"idx": 0})
     client.post("/no-ball/clear", json={"idx": 0})
     assert fresh_session.no_ball_frames == set()
+
+
+def test_players_complete_toggle_marks_and_keeps_boxes(client, fresh_session, monkeypatch):
+    fresh_session.total_frames = 3
+    fresh_session.timeline = [None, [make_box("player")], None]
+    monkeypatch.setattr(fresh_session, "schedule_flush", lambda: None)
+
+    assert client.post("/players-complete", json={"idx": 1}).json() == {"idx": 1, "players_complete": True}
+    assert client.post("/players-complete", json={"idx": 2}).status_code == 200
+    assert fresh_session.players_complete_frames == {1, 2}
+    assert [b.label for b in fresh_session.timeline[1]] == ["player"]  # unlike no_ball, boxes stay
+    assert client.get("/marks").json()["players_complete"] == [1, 2]
+
+    r = client.post("/players-complete/clear", json={"idx": 1})
+    assert r.json() == {"idx": 1, "players_complete": False}
+    assert fresh_session.players_complete_frames == {2}
+    assert client.get("/marks").json()["players_complete"] == [2]
 
 
 # ---------------------------------------------------------------------------

@@ -60,6 +60,7 @@ def _make_session(video_stem: str, total_frames: int) -> Session:
     session.timeline = [None] * total_frames
     session.no_ball_frames = set()
     session.not_broadcast_frames = set()
+    session.players_complete_frames = set()
     return session
 
 
@@ -308,3 +309,50 @@ def test_marker_tags_survive_load_edit_flush(gt_marks_dir):
     assert tags[2] == ["player", PROV_YOLO]  # unchanged behaviour
     assert tags[3] == ["player", PROV_LABELLER]  # user-corrected: not a marker carrier
     assert tags[4] == ["player", PROV_LABELLER]
+
+
+# ---------------------------------------------------------------------------
+# 4. players_complete ("all players boxed") marker
+# ---------------------------------------------------------------------------
+
+
+def test_players_complete_marker_survives_load_flush_and_keeps_boxes(gt_marks_dir):
+    """The marker is its own bbox-less line next to the frame's box lines; a load -> flush cycle keeps both."""
+    session = _make_session("clip_pc", total_frames=5)
+    session.timeline[1] = [_box("player", PROV_LABELLER, 1.0, x=0.1), _box("referee", PROV_YOLO, 0.9, x=0.4)]
+    session.players_complete_frames = {1, 3}  # frame 3: zero-person frame, marker only
+    session.no_ball_frames = {0, 3}  # skip markers on other frames, and a no_ball + marker frame, coexist
+    session._do_flush()
+
+    out = gt_marks_dir / "clip_pc.jsonl"
+    recs = [json.loads(x) for x in out.read_text().splitlines() if x.strip()]
+    markers = [r for r in recs if r["tags"] == ["players_complete"]]
+    assert sorted(r["frame_index"] for r in markers) == [1, 3]
+    assert all(r["bbox"] is None for r in markers)
+
+    restored = _make_session("clip_pc", total_frames=5)
+    restored._load_existing_marks()
+    assert restored.players_complete_frames == {1, 3}
+    assert restored.no_ball_frames == {0, 3}
+    assert [b.label for b in restored.timeline[1]] == ["player", "referee"]
+    assert restored.timeline[3] is None
+
+    # second cycle: flush the restored session and reload -> unchanged (nothing rewrites the marker away)
+    before = out.read_text()
+    restored._do_flush()
+    assert out.read_text() == before
+    again = _make_session("clip_pc", total_frames=5)
+    again._load_existing_marks()
+    assert again.players_complete_frames == {1, 3}
+
+
+def test_players_complete_cleared_marker_is_not_written(gt_marks_dir):
+    session = _make_session("clip_pc2", total_frames=3)
+    session.timeline[0] = [_box("player", PROV_LABELLER, 1.0, x=0.1)]
+    session.players_complete_frames = {0}
+    session._do_flush()
+    session.players_complete_frames.discard(0)
+    session._do_flush()
+    recs = [json.loads(x) for x in (gt_marks_dir / "clip_pc2.jsonl").read_text().splitlines() if x.strip()]
+    assert all("players_complete" not in r["tags"] for r in recs)
+    assert len(recs) == 1
