@@ -1981,7 +1981,7 @@ Unlike the panel it keeps `ingest` on: the verdicts are training data, and `feat
   `GtImportReport.players_legacy_complete` and the CLI `legacy_backfill_complete=N` report it.
   - Tests: `tests/feature_store/test_frame_label_state.py::test_legacy_backfill_*`
 
-## 19i. Series review (LAB-1460..1459)
+## 19i. Series review (LAB-1460..1468)
 
 A human accepts a proposed auto-label window (`autolabel/windows.py` + `autolabel/propose.py`, design `docs/design/full_frame_labelling.md`
 section 4 stages 4-5) in one go: accept-all plus per-frame exceptions. Code: `labeller/series_review.py` (router), `web/series.html` (card page at
@@ -2053,7 +2053,7 @@ section 4 stages 4-5) in one go: accept-all plus per-frame exceptions. Code: `la
 | 19g. Eval panel suggestions (LAB-1445..1447) | 3 | 3 | 0 | 0 |
 | 2b. players_complete marker (LAB-109, LAB-310) | 2 | 2 | 0 | 0 |
 | 19h. Players-complete marker (LAB-1448..1450) | 3 | 2 | 0 | 1 |
-| 19i. Series review (LAB-1460..1459) | 9 | 8 | 0 | 1 |
+| 19i. Series review (LAB-1460..1468) | 9 | 8 | 0 | 1 |
 | **Total** | **175** | **132** | **9** | **34** |
 
 Open items: 4 (OPEN-1..4) + 1 fixed on main (undo provenance, `95b60cc`).
