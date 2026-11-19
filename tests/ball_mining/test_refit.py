@@ -222,8 +222,8 @@ def test_gold_accepted_too_often_flags_the_round(api, ds):
     _, state = run_refit(api, job["id"], reorder=False)
     assert state["gold"] == {
         "n": 7,
-        "accepted_wrong": 4,
-        "accept_rate": 0.5714,
+        "accepted_wrong": 3,  # the three plain "ball"s; "corrected" fixed the planted box, which is right
+        "accept_rate": 0.4286,
         "flagged": True,
     }
 
@@ -445,3 +445,13 @@ def test_cli_refit_prints_one_json_line_and_exits_2_on_an_api_error(
     monkeypatch.setattr(refit.jobs_client, "results", down)
     assert ball_round.main(["refit", "--job", round_job["id"]]) == 2
     assert json.loads(capsys.readouterr().out)["status"] == "error"
+
+
+def test_gold_check_counts_only_a_plain_ball_as_accepting_the_planted_error():
+    from footy_track.ball_mining.refit import gold_check
+
+    rows = [{"bucket": "G", "verdict": v} for v in ("corrected", "corrected", "box_off", "box_off", "box_off")]
+    out = gold_check(rows)
+    assert out["accepted_wrong"] == 0 and not out["flagged"]  # fixing or rejecting a shifted gold box is the right answer
+    out = gold_check(rows + [{"bucket": "G", "verdict": "ball"}])
+    assert out["accepted_wrong"] == 1 and out["flagged"]  # 1/6 > 10 %
