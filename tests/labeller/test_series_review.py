@@ -1,4 +1,4 @@
-"""Series review API (LAB-1451..1459): accept-all + exceptions, reject/re-propose, heldout refusal.
+"""Series review API (LAB-1460..1468): accept-all + exceptions, reject/re-propose, heldout refusal.
 
 No video, no GPU: the proposal is fabricated straight into a tmp feature store and ``proposals/*.npz``.
 """
