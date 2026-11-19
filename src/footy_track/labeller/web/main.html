@@ -37,6 +37,17 @@
   details.donebox { margin-top:14px; }
   details.donebox > summary { cursor:pointer; color:var(--muted); font-size:13px; margin-bottom:8px; }
 
+  /* todo filters */
+  .filters { margin:0 0 12px; }
+  .frow { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:8px; }
+  .fbtn { min-height:44px; padding:0 14px; border:1px solid var(--border); border-radius:999px;
+          background:var(--panel); color:var(--ink); font:inherit; font-size:14px; cursor:pointer;
+          -webkit-appearance:none; appearance:none; touch-action:manipulation;
+          -webkit-tap-highlight-color:transparent; }
+  .fbtn .n { color:var(--muted); margin-left:4px; }
+  .fbtn.on { background:var(--accent); border-color:var(--accent); color:#fff; font-weight:600; }
+  .fbtn.on .n { color:#fff; }
+
   /* tool cards */
   .cards { display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:10px; }
   .card { display:flex; flex-direction:column; align-items:center; gap:6px;
@@ -60,26 +71,30 @@
   code { font-family:ui-monospace,Menlo,monospace; }
 
   /* dataset picker */
-  .dsbar { display:flex; flex-wrap:wrap; gap:6px 10px; align-items:center; margin:0 0 4px; font-size:13px; }
+  .dsbar { display:flex; flex-wrap:wrap; gap:6px 10px; align-items:center; margin:0 0 12px; font-size:13px; }
   .dsbar[hidden] { display:none; }
   .dsbar select { background:var(--panel); color:var(--ink); border:1px solid var(--border);
-                  border-radius:8px; padding:6px 10px; font-size:14px; }
+                  border-radius:8px; padding:10px 12px; min-height:44px; font-size:16px; }
 </style>
 </head>
 <body>
 <main>
   <h1>&#9917; Footy Track</h1>
 
+  <h2>To do now</h2>
+  <div class="filters" id="filters" hidden>
+    <div class="frow" id="frow-device" role="group" aria-label="Device"></div>
+    <div class="frow" id="frow-kind" role="group" aria-label="Task type"></div>
+  </div>
+  <div id="tasks"><div class="empty">Loading&hellip;</div></div>
+
+  <h2>Tools</h2>
   <div class="dsbar" id="dsbar" hidden>
     <label for="dataset" class="muted">Dataset</label>
     <select id="dataset"></select>
     <span class="muted" id="dsinfo"></span>
   </div>
 
-  <h2>To do now</h2>
-  <div id="tasks"><div class="empty">Loading&hellip;</div></div>
-
-  <h2>Tools</h2>
   <div class="cards">
     <a class="card" href="/labeller">
       <div class="icon">🏷️</div>
@@ -197,6 +212,86 @@ function renderTask(t) {
   return a;
 }
 
+// ---- todo filters: Device x Task type, client-side over /api/tasks ----
+const KIND_LABEL = { ball_check: "Ball check", ball_place: "Ball placement", broadcast_review: "Broadcast review",
+  calibration: "Calibration", frame_type: "Frame type", identity: "Identity" };
+const KIND_ORDER = Object.keys(KIND_LABEL).concat(["other"]);
+const DEVICE_OPTS = [["all", "All"], ["phone", "Phone"], ["laptop", "Laptop"]];
+let ALL_TASKS = [], FILTER = { device: null, kind: "all" };
+
+function kindOf(t) { return t.kind && KIND_LABEL[t.kind] ? t.kind : "other"; }
+function kindLabel(k) { return KIND_LABEL[k] || (k === "other" ? "Other" : k.replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase())); }
+// "either" (or no device) shows under both Phone and Laptop.
+function matchesDevice(t, device) {
+  if (device === "all") return true;
+  const d = t.device;
+  return d === device || d === "either" || !d;
+}
+function matchesFilter(t, device, kind) { return matchesDevice(t, device) && (kind === "all" || kindOf(t) === kind); }
+function defaultDevice() {
+  let touch = false, narrow = false;
+  try { touch = !!(window.matchMedia && matchMedia("(pointer: coarse)").matches) || navigator.maxTouchPoints > 0; } catch (e) {}
+  try { narrow = window.innerWidth < 700; } catch (e) {}
+  return touch || narrow ? "phone" : "laptop";
+}
+function loadFilter() {
+  let dev = null, kind = null;
+  const q = new URLSearchParams(location.search);
+  if (q.has("device")) dev = q.get("device");
+  if (q.has("kind")) kind = q.get("kind");
+  try {
+    if (dev == null) dev = localStorage.getItem("todo.device");
+    if (kind == null) kind = localStorage.getItem("todo.kind");
+  } catch (e) {}
+  if (!DEVICE_OPTS.some((o) => o[0] === dev)) dev = defaultDevice();   // default only when nothing saved
+  FILTER = { device: dev, kind: kind || "all" };
+}
+function saveFilter() {
+  try { localStorage.setItem("todo.device", FILTER.device); localStorage.setItem("todo.kind", FILTER.kind); } catch (e) {}
+  try {
+    const u = new URL(location.href);
+    u.searchParams.set("device", FILTER.device);
+    if (FILTER.kind === "all") u.searchParams.delete("kind"); else u.searchParams.set("kind", FILTER.kind);
+    history.replaceState(null, "", u);
+  } catch (e) {}
+}
+function filterBtn(label, count, on, onclick) {
+  const b = el("button", "fbtn" + (on ? " on" : ""), label);
+  b.type = "button";
+  b.setAttribute("aria-pressed", on ? "true" : "false");
+  if (count != null) b.append(el("span", "n", String(count)));
+  b.addEventListener("click", onclick);
+  return b;
+}
+function renderTaskList() {
+  const box = document.getElementById("tasks");
+  box.replaceChildren();
+  const active = ALL_TASKS.filter((t) => !t.done);
+  const done = ALL_TASKS.filter((t) => t.done);
+  // Type counts respect the Device row, so a button's number is what you get on tapping it.
+  const byDev = active.filter((t) => matchesDevice(t, FILTER.device));
+  const counts = {};
+  for (const t of byDev) counts[kindOf(t)] = (counts[kindOf(t)] || 0) + 1;
+  if (FILTER.kind !== "all" && !counts[FILTER.kind]) FILTER.kind = "all";   // stale saved kind
+  const frd = document.getElementById("frow-device"), frk = document.getElementById("frow-kind");
+  frd.replaceChildren(...DEVICE_OPTS.map(([v, l]) => filterBtn(l, active.filter((t) => matchesDevice(t, v)).length,
+    FILTER.device === v, () => { FILTER.device = v; saveFilter(); renderTaskList(); })));
+  frk.replaceChildren(filterBtn("All", byDev.length, FILTER.kind === "all", () => { FILTER.kind = "all"; saveFilter(); renderTaskList(); }),
+    ...KIND_ORDER.filter((k) => counts[k]).concat(Object.keys(counts).filter((k) => !KIND_ORDER.includes(k)))
+      .map((k) => filterBtn(kindLabel(k), counts[k], FILTER.kind === k, () => { FILTER.kind = k; saveFilter(); renderTaskList(); })));
+  document.getElementById("filters").hidden = false;
+  const shown = active.filter((t) => matchesFilter(t, FILTER.device, FILTER.kind));
+  if (ALL_TASKS.error) box.append(el("div", "err", "Tasks file problem: " + ALL_TASKS.error));
+  if (!shown.length && !ALL_TASKS.error) box.append(el("div", "empty", active.length ? "Nothing matches this filter." : "Nothing to do right now."));
+  for (const t of shown) box.append(renderTask(t));
+  if (done.length) {  // finished by themselves (done_when); kept for 2 days, collapsed; not filtered
+    const d = el("details", "donebox");
+    d.append(el("summary", null, "Done (" + done.length + ")"));
+    for (const t of done) d.append(renderTask(t));
+    box.append(d);
+  }
+}
+
 async function loadTasks() {
   const box = document.getElementById("tasks");
   box.replaceChildren(el("div", "empty", "Loading tasks\u2026"));
@@ -208,17 +303,9 @@ async function loadTasks() {
       try { j = await getJSON("/api/tasks", 20000); }
       catch (e2) { throw new Error(e2.name === "AbortError" ? "server too slow (timed out after 20 s)" : e2.message); }
     }
-    box.replaceChildren();
-    if (j.error) box.append(el("div", "err", "Tasks file problem: " + j.error));
-    const active = j.tasks.filter((t) => !t.done), done = j.tasks.filter((t) => t.done);
-    if (!active.length && !j.error) box.append(el("div", "empty", "Nothing to do right now."));
-    for (const t of active) box.append(renderTask(t));
-    if (done.length) {  // finished by themselves (done_when); kept for 2 days, collapsed
-      const d = el("details", "donebox");
-      d.append(el("summary", null, "Done (" + done.length + ")"));
-      for (const t of done) d.append(renderTask(t));
-      box.append(d);
-    }
+    ALL_TASKS = j.tasks; ALL_TASKS.error = j.error;
+    loadFilter(); saveFilter();
+    renderTaskList();
   } catch (e) {
     const err = el("div", "err", "Could not load tasks: " + e.message + " ");
     const retry = el("a", null, "Retry");

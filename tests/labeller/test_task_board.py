@@ -356,3 +356,11 @@ def test_cli_add_done_when_flags(client, tasks_file, capsys):
 def test_home_page_has_a_collapsed_done_section(client):
     html = client.get("/").text
     assert "donebox" in html and "t.done" in html
+
+
+def test_home_page_has_todo_filters(client):
+    html = client.get("/").text
+    for needle in ("frow-device", "frow-kind", "matchesFilter", "todo.device", "searchParams", "Broadcast review", "Ball placement"):
+        assert needle in html
+    # the dataset picker is no longer above the task list
+    assert html.index('id="dsbar"') > html.index('id="tasks"')
