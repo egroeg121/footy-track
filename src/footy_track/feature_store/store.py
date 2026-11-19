@@ -45,6 +45,7 @@ from footy_track.feature_store.schema import (
     GameRow,
     PitchKeypointRow,
     RunRow,
+    SeriesRow,
     TrackMetaRow,
 )
 
@@ -164,6 +165,7 @@ _COLUMNS: dict[str, tuple[str, ...]] = {
         "verified_by",
         "verified_at",
     ),
+    "series": ("game_id", "start_frame", "end_frame", "run_id", "verified_at"),
     "calibration": (
         "game_id",
         "source",
@@ -219,6 +221,7 @@ _PK: dict[str, tuple[str, ...]] = {
     "track_meta": ("game_id", "source", "run_id", "track_id"),
     "detection_review": ("game_id", "vsource", "frame_index", "box_index"),
     "frame_label_state": ("game_id", "frame_index", "cls_group"),
+    "series": ("game_id", "start_frame", "end_frame"),
     "calibration": ("game_id", "source", "run_id", "frame_index"),
     "pitch_keypoint": ("game_id", "source", "run_id", "frame_index", "point_idx"),
 }
@@ -341,6 +344,17 @@ class FeatureStore:
 
     def upsert_pitch_keypoints(self, rows: Sequence[PitchKeypointRow]) -> int:
         return self._upsert("pitch_keypoint", rows)
+
+    def register_series(self, rows: Sequence[SeriesRow]) -> int:
+        """Register fully-complete windows (idempotent on game/start/end)."""
+        return self._upsert("series", rows)
+
+    def read_series(self, game_id: str | None = None) -> pd.DataFrame:
+        sql, params = "SELECT * FROM series WHERE TRUE", []
+        if game_id is not None:
+            sql += " AND game_id = ?"
+            params.append(game_id)
+        return self.query(sql + " ORDER BY game_id, start_frame", params)
 
     def upsert_frame_label_states(self, rows: Sequence[FrameLabelStateRow]) -> int:
         """Upsert ``frame_label_state`` rows with method precedence.

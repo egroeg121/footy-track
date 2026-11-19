@@ -201,6 +201,20 @@ class FrameLabelStateRow(_Row):
     verified_at: datetime | None = None
 
 
+class SeriesRow(_Row):
+    """A fully-complete window of contiguous frames (docs/design/full_frame_labelling.md section 4).
+
+    ``end_frame`` is exclusive (same as ``autolabel.windows``). Registered by the series review
+    only when every frame of ``[start_frame, end_frame)`` is ``frame_complete``.
+    """
+
+    game_id: str
+    start_frame: int = Field(..., ge=0)
+    end_frame: int = Field(..., ge=1)
+    run_id: str | None = None  # the proposing run
+    verified_at: datetime | None = None
+
+
 class FrameRow(_Row):
     """The per-frame spine: one row per (game, frame), broadcast or not."""
 
@@ -567,6 +581,18 @@ DDL: tuple[str, ...] = (
                           'sidecar_marker', 'offline_audited'))
     );
     """,
+    # Fully-complete windows (series review). end_frame is exclusive.
+    """
+    CREATE TABLE IF NOT EXISTS series (
+        game_id       VARCHAR,
+        start_frame   INTEGER,
+        end_frame     INTEGER,
+        run_id        VARCHAR,
+        verified_at   TIMESTAMP,
+        PRIMARY KEY (game_id, start_frame, end_frame),
+        CHECK (end_frame > start_frame)
+    );
+    """,
     # Human Ball Check verdicts (see feature_store/ball_checks.py). Additive:
     # nothing in the detection table changes, and re-running the importer
     # rewrites a clip's rows wholesale. ``vsource`` is the Ball Check card
@@ -816,6 +842,7 @@ TABLES: tuple[str, ...] = (
     "track_meta",
     "detection_review",
     "frame_label_state",
+    "series",
     "calibration",
     "pitch_keypoint",
 )
