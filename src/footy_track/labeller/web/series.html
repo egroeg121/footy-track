@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Series Review</title>
+<style>
+:root { --bg:#fff; --fg:#111; --muted:#667; --accent:#0a6cff; --bad:#d6291f; --ok:#12805c; --card:#f3f4f6; --flag:#c26a00; }
+@media (prefers-color-scheme: dark) {
+  :root { --bg:#14161a; --fg:#eceef2; --muted:#9aa3b2; --accent:#5aa0ff; --bad:#ff6b5e; --ok:#3ccf9a; --card:#20242b; --flag:#ffae42; }
+}
+* { box-sizing:border-box; }
+body { margin:0; padding:12px 16px 90px; background:var(--bg); color:var(--fg); font:15px/1.4 system-ui,sans-serif; }
+a { color:var(--accent); }
+h1 { font-size:18px; margin:0 0 8px; }
+.row { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin:8px 0; }
+button { font:inherit; padding:10px 14px; border-radius:8px; border:1px solid var(--muted); background:var(--card); color:var(--fg); }
+button.primary { background:var(--ok); color:#fff; border-color:var(--ok); }
+button.danger { background:var(--bad); color:#fff; border-color:var(--bad); }
+.win { display:block; padding:10px; margin:6px 0; background:var(--card); border-radius:8px; color:inherit; text-decoration:none; }
+.strip { display:grid; grid-template-columns:repeat(auto-fill,minmax(130px,1fr)); gap:6px; }
+.fr { position:relative; background:var(--card); border:3px solid transparent; border-radius:6px; overflow:hidden; cursor:pointer; }
+.fr.flagged { border-color:var(--flag); }
+.fr.audit { border-color:var(--accent); }
+.fr.exc { border-color:var(--bad); }
+.fr img { width:100%; display:block; }
+.fr .box { position:absolute; border:2px solid #ffe600; pointer-events:none; }
+.fr .box.ball { border-color:#ff3df2; }
+.fr .tag { position:absolute; left:2px; top:2px; font-size:11px; background:rgba(0,0,0,.65); color:#fff; padding:1px 5px; border-radius:4px; }
+.bar { position:fixed; left:0; right:0; bottom:0; padding:10px 16px; background:var(--card); display:flex; gap:10px; align-items:center; flex-wrap:wrap; border-top:1px solid var(--muted); }
+.count.over { color:var(--bad); font-weight:700; }
+dialog { border-radius:12px; border:1px solid var(--muted); background:var(--bg); color:var(--fg); max-width:94vw; }
+dialog button { display:block; width:100%; margin:6px 0; }
+.muted { color:var(--muted); font-size:13px; }
+</style>
+</head>
+<body>
+<div class="row"><a href="/">&larr; Home</a><h1>Series review</h1></div>
+<div id="list"></div>
+<div id="win" hidden>
+  <div class="row"><a href="#" id="back">&larr; Windows</a><b id="title"></b></div>
+  <p class="muted">Flagged frames (orange) come first. Blue frames are a blind audit: boxes are hidden, mark each one OK
+     if you would box it the same way as the machine would have (tap it, then choose). Tap any other frame to add an exception.</p>
+  <div class="row"><label>Show every <select id="k"><option>1</option><option>5</option><option selected>10</option><option>25</option></select>th frame</label></div>
+  <div class="strip" id="strip"></div>
+</div>
+<div class="bar" id="bar" hidden>
+  <span class="count" id="count"></span>
+  <span class="muted" id="auditcount"></span>
+  <button class="primary" id="accept">Accept all</button>
+</div>
+<dialog id="dlg">
+  <div id="dlgTitle"></div>
+  <div id="dlgBtns"></div>
+  <button id="dlgCancel">Cancel</button>
+</dialog>
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const EXC = {fix_box:"Fix box (use Object Review)", ball_not_ball:"Ball is not a ball",
+             ball_absent:"No ball visible", players_incomplete:"Players incomplete"};
+let W = null;            // current window payload
+const exceptions = {};   // frame_index -> kind
+const audit = {};        // frame_index -> true (ok) | false (machine wrong)
+
+async function api(path, opts) {
+  const r = await fetch(path, opts);
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.detail || r.statusText);
+  return j;
+}
+
+async function loadList() {
+  $("win").hidden = true; $("bar").hidden = true; $("list").hidden = false;
+  const j = await api("/series/windows");
+  $("list").innerHTML = j.windows.map((w) =>
+    `<a class="win" href="#${w.window_id}"><b>${w.window_id}</b> &middot; frames ${w.start_frame}-${w.end_frame}
+     &middot; <i>${w.status}</i></a>`).join("") || "<p>No windows (run autolabel/windows.py).</p>";
+}
+
+function render() {
+  const nExc = Object.keys(exceptions).length, lim = W.exception_limit;
+  $("count").textContent = `Exceptions ${nExc} / ${lim}`;
+  $("count").className = "count" + (nExc > lim ? " over" : "");
+  const done = Object.keys(audit).length;
+  $("auditcount").textContent = `Audit ${done} / ${W.audit_frames.length}`;
+  $("strip").innerHTML = "";
+  const K = +$("k").value;  // contact strip: every K-th frame, plus flagged / audit / exception frames
+  for (const f of W.frames) {
+    if (K > 1 && !f.flagged && !f.audit && !exceptions[f.frame_index] && (f.frame_index - W.start_frame) % K) continue;
+    const d = document.createElement("div");
+    d.className = "fr" + (f.flagged ? " flagged" : "") + (f.audit ? " audit" : "") +
+      (exceptions[f.frame_index] || audit[f.frame_index] === false ? " exc" : "");
+    const img = `<img loading="lazy" src="${f.image}">`;
+    const boxes = f.boxes.map((b) =>
+      `<div class="box ${/ball/.test(b.label) ? "ball" : ""}" style="left:${b.x*100}%;top:${b.y*100}%;width:${b.w*100}%;height:${b.h*100}%"></div>`).join("");
+    let tag = "#" + f.frame_index;
+    if (f.audit) tag += audit[f.frame_index] === undefined ? " AUDIT" : audit[f.frame_index] ? " audit ok" : " audit FAIL";
+    if (exceptions[f.frame_index]) tag += " " + exceptions[f.frame_index];
+    d.innerHTML = img + boxes + `<span class="tag">${tag}</span>`;
+    d.onclick = () => choose(f);
+    $("strip").appendChild(d);
+  }
+}
+
+function choose(f) {
+  const btns = $("dlgBtns"); btns.innerHTML = "";
+  const add = (label, fn) => { const b = document.createElement("button"); b.textContent = label;
+    b.onclick = () => { $("dlg").close(); fn(); render(); }; btns.appendChild(b); };
+  $("dlgTitle").textContent = "Frame " + f.frame_index;
+  if (f.audit) {
+    add("Machine boxes would have matched (OK)", () => { audit[f.frame_index] = true; });
+    add("Machine would have been wrong (FAIL)", () => { audit[f.frame_index] = false; });
+  } else {
+    for (const [k, label] of Object.entries(EXC)) {
+      if (k === "fix_box") continue;  // needs a drawn box: fix it in Object Review, then re-open the window
+      add(label, () => { exceptions[f.frame_index] = k; });
+    }
+    if (exceptions[f.frame_index]) add("Clear exception", () => { delete exceptions[f.frame_index]; });
+  }
+  $("dlgCancel").onclick = () => $("dlg").close();
+  $("dlg").showModal();
+}
+
+async function openWindow(id) {
+  W = await api("/series/window/" + encodeURIComponent(id));
+  for (const k of Object.keys(exceptions)) delete exceptions[k];
+  for (const k of Object.keys(audit)) delete audit[k];
+  $("list").hidden = true; $("win").hidden = false; $("bar").hidden = false;
+  $("title").textContent = `${W.window_id} (${W.status})`;
+  render();
+}
+
+$("accept").onclick = async () => {
+  if (Object.keys(audit).length < W.audit_frames.length) { alert("Finish the blind audit frames first."); return; }
+  const body = {
+    exceptions: Object.entries(exceptions).map(([f, kind]) => ({frame_index: +f, kind})),
+    audit_results: W.audit_frames.map((f) => ({frame_index: f, ok: audit[f] === true})),
+  };
+  try {
+    const r = await api(`/series/window/${encodeURIComponent(W.window_id)}/accept`,
+      {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)});
+    alert(r.status === "accepted" ? "Accepted." : "Rejected and queued for re-propose: " + r.reason);
+    location.hash = ""; loadList();
+  } catch (e) { alert(e.message); }
+};
+$("k").onchange = () => render();
+$("back").onclick = (e) => { e.preventDefault(); location.hash = ""; loadList(); };
+window.onhashchange = () => { const id = location.hash.slice(1); id ? openWindow(id) : loadList(); };
+location.hash ? openWindow(location.hash.slice(1)) : loadList();
+</script>
+</body>
+</html>

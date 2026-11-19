@@ -1981,6 +1981,52 @@ Unlike the panel it keeps `ingest` on: the verdicts are training data, and `feat
   `GtImportReport.players_legacy_complete` and the CLI `legacy_backfill_complete=N` report it.
   - Tests: `tests/feature_store/test_frame_label_state.py::test_legacy_backfill_*`
 
+## 19i. Series review (LAB-1460..1468)
+
+A human accepts a proposed auto-label window (`autolabel/windows.py` + `autolabel/propose.py`, design `docs/design/full_frame_labelling.md`
+section 4 stages 4-5) in one go: accept-all plus per-frame exceptions. Code: `labeller/series_review.py` (router), `web/series.html` (card page at
+`/series`, linked from the index header and the home page). Inputs under `$FOOTY_AUTOLABEL_DIR` (default `$FOOTY_DATA/autolabel`):
+`windows.json`, `proposals/<window>.npz`; detections come from the feature store (`$FOOTY_FEATURE_STORE`). Outputs: `series_review/<window>.json`
+(status sidecar), `reproposals.json` (rejected windows + corrected anchors for re-track seeds).
+
+- **LAB-1460** (MUST) `GET /series/windows` lists train-split windows with status `unproposed | proposed | accepted | rejected`.
+  `GET /series/window/{id}` returns every frame with its boxes, disagreement score and `flagged`, flagged frames first (descending score, then
+  frame order). Flagged = score >= 0.3, or a person/ball disagreement flag in the npz.
+  - Tests: `tests/labeller/test_series_review.py::test_get_window_flagged_first_and_audit_boxes_hidden`
+- **LAB-1461** (MUST) 10% of the window's frames (rounded up), drawn from the unflagged ones with a seed derived from the window id only, are
+  blind-audit frames (`audit=true`): their boxes are not sent. The same window always yields the same audit frames. `audit_results` on accept
+  must cover exactly those frames (422 otherwise); an exception on an audit frame is refused (422).
+  - Tests: `::test_get_window_flagged_first_and_audit_boxes_hidden`, `::test_audit_results_must_cover_audit_frames`
+- **LAB-1462** (MUST) `POST /series/window/{id}/accept` with no exceptions marks every proposed box of the window `reviewed=true` and writes
+  `frame_label_state` rows `method=hand_series`, `run_id=autolabel:<window_id>`, for ball and player on every frame: `complete`, or `absent`
+  when the frame has no box of that group.
+  - Tests: `::test_accept_all_writes_complete_hand_series_for_both_groups`, `::test_no_ball_or_players_gives_absent`
+- **LAB-1463** (MUST) Exceptions (method `hand_frame`, only that frame/group changes): `ball_not_ball` leaves the ball box unreviewed, records it in
+  `detection_review` (`vsource=series`, verdict `not_ball`, matched to the box) and the ball state `unreviewed`; `ball_absent` -> ball `absent`
+  (box unreviewed + rejected); `players_incomplete` -> player `partial`; `fix_box` (label + bbox) writes the box to the clip's GT sidecar as
+  `labeller` provenance (the `/review/correct` path when `box_index` is given, else a new sidecar line), so it ingests as a `hand_label`; the
+  frame's group is `complete` for a ball fix and `partial` for a player fix, and the superseded machine boxes of that group stay unreviewed.
+  - Tests: `::test_one_exception_demotes_only_that_frame`, `::test_ball_not_ball_unreviews_ball_and_records_rejection`,
+    `::test_ball_absent_marks_ball_absent`, `::test_fix_box_goes_to_sidecar_as_hand_label`
+- **LAB-1464** (MUST) A window is REJECTED (status `rejected`, no `frame_label_state` or `reviewed` change, no sidecar GT write) when exceptions exceed
+  10% of its frames (`floor(0.1 * n)` allowed) or any audit result has `ok=false`. The rejection is queued in `reproposals.json` with the corrected
+  anchors (fix boxes, ball-absent frames, the reviewer's ball box on failed audit frames). A rejected window cannot be accepted until
+  `POST /series/window/{id}/reopen` (after re-propose).
+  - Tests: `::test_too_many_exceptions_rejects_without_state_and_requeues`, `::test_exactly_the_limit_is_accepted`, `::test_audit_failure_rejects_and_keeps_human_anchor`
+- **LAB-1465** (MUST) A window whose every frame is `frame_complete` after the commit is registered in `series(game_id, start_frame, end_frame
+  (exclusive), run_id, verified_at)` (`FeatureStore.register_series` / `read_series`, idempotent on game/start/end).
+  - Tests: `tests/feature_store/test_series.py`, `tests/labeller/test_series_review.py::test_full_window_registers_series_and_reaccept_is_idempotent`
+- **LAB-1466** (MUST) Windows of a heldout or in-match-eval clip, or of an unregistered match, are refused with 403 on every endpoint (re-checked with
+  `splits.split_of` via `windows.eligible_match_key`, not trusted from `windows.json`); a missing split register is 503 (fail closed); they are
+  hidden from the list.
+  - Tests: `::test_heldout_window_refused_everywhere`
+- **LAB-1467** (MUST) Re-accepting an accepted window returns the stored result (`idempotent: true`) and changes nothing in the store.
+  - Tests: `::test_full_window_registers_series_and_reaccept_is_idempotent`
+- **LAB-1468** (MUST) `/series` page: a contact strip of every k-th frame (default 10) plus all flagged, audit and exception frames, with boxes
+  overlaid (hidden on audit cards); "Accept all"; tap a frame to add/clear an exception; a visible `Exceptions n / limit` counter. `fix_box` is
+  not offered by the card (use Object Review, then reopen the window).
+  - Tests: UNTESTED-FRONTEND (page served: `::test_page_is_served`).
+
 ## 15. Traceability summary
 
 | Section | Requirements | Tested | UNTESTED | UNTESTED-FRONTEND |
@@ -2007,7 +2053,8 @@ Unlike the panel it keeps `ingest` on: the verdicts are training data, and `feat
 | 19g. Eval panel suggestions (LAB-1445..1447) | 3 | 3 | 0 | 0 |
 | 2b. players_complete marker (LAB-109, LAB-310) | 2 | 2 | 0 | 0 |
 | 19h. Players-complete marker (LAB-1448..1450) | 3 | 2 | 0 | 1 |
-| **Total** | **166** | **124** | **9** | **33** |
+| 19i. Series review (LAB-1460..1468) | 9 | 8 | 0 | 1 |
+| **Total** | **175** | **132** | **9** | **34** |
 
 Open items: 4 (OPEN-1..4) + 1 fixed on main (undo provenance, `95b60cc`).
 Test suite: 138 tests in `tests/labeller/` (all green), plus the
