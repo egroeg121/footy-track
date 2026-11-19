@@ -109,6 +109,7 @@ class Source(StrEnum):
     YOLO = "yolo"
     SAM3 = "sam3"
     VITTRACK = "vittrack"
+    DETECTOR_TRACK = "detector_track"  # detection-based fwd+bwd ball track (no ViTTrack ran)
     BYTETRACK = "bytetrack"
     BOTSORT = "botsort"
     # calibration sources (``calibration.source``)
