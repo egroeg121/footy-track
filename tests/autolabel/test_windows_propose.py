@@ -223,7 +223,8 @@ def test_propose_ingests_unreviewed_and_scores(tmp_path):
             out_dir=tmp_path,
         )
         df = st.query("SELECT * FROM detection")
-        assert set(df["source"]) == {"yolo", "vittrack", "sam3"}
+        assert set(df["source"]) == {"yolo", "detector_track", "sam3"}
+        assert "vittrack" not in set(df["source"])
         assert not df["reviewed"].any() and df["needs_review"].all()
         assert set(df["run_id"]) == set(res.run_ids.values())
         runs = set(st.query("SELECT run_id FROM run")["run_id"])

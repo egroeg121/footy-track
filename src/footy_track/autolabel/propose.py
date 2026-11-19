@@ -6,8 +6,8 @@ For a window from :mod:`footy_track.autolabel.windows` run, over its frames:
    candidates -> store rows ``source='yolo'``;
 2. the **ball tracker forward AND backward** over the detector's ball candidates, using the
    existing ``ball_trackers`` functions (``run_online``, ``run_reversed``, ``merge_passes``);
-   the merged track -> rows ``source='vittrack'`` (the store's name for tracked-ball machine
-   boxes; ``ball_source`` overrides it). The two passes are kept apart for the disagreement score;
+   the merged track -> rows ``source=detector_track`` (true origin: detection-based, no ViTTrack ran;
+   ``vittrack`` is reserved for a real ViTTrack adapter behind ``TrackerPasses``, via ``ball_source``). The two passes are kept apart for the disagreement score;
 3. **SAM3**, only on frames where the detector's person count differs from the median of its
    neighbours (radius ``neighbour_radius``), to add person boxes the detector missed (a SAM3
    box is added only when it does not overlap a detector box, IoU < ``dup_iou``) -> rows
@@ -356,7 +356,7 @@ def propose_window(  # noqa: PLR0913, PLR0914, PLR0915
     person_filler: PersonFiller | None = None,
     store=None,
     out_dir: Path | None = None,
-    ball_source: str = Source.VITTRACK.value,
+    ball_source: str = Source.DETECTOR_TRACK.value,
     batch_size: int = 8,
     neighbour_radius: int = 5,
     dup_iou: float = 0.5,
