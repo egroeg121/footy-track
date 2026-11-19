@@ -33,9 +33,9 @@ if ! "$PY" -c "import ultralytics,sys; sys.exit(0 if ultralytics.__version__=='$
   uv pip install --python "$PY" --no-deps "ultralytics==$ULTRA"
 fi
 # 3 the rest, from PyPI (torch is already satisfied, so nothing replaces it)
-uv pip install --python "$PY" numpy opencv-python-headless pillow pyyaml requests scipy matplotlib polars psutil ultralytics-thop
+uv pip install --python "$PY" numpy opencv-python-headless pillow pyyaml requests scipy matplotlib polars psutil ultralytics-thop pydantic pandas pyarrow duckdb
 # 4 whatever footy_track.ball_mining.candidates / scripts.ball_pool import that is still missing
-for i in 1 2 3 4 5 6; do
+for i in $(seq 1 20); do
   miss=$(PYTHONPATH="$REPO/src" "$PY" - <<'PYEOF' 2>&1 || true
 import importlib, sys
 try:
@@ -49,14 +49,14 @@ PYEOF
   [[ -z "$miss" ]] && break
   echo "missing module $miss: installing from PyPI"
   case "$miss" in cv2) miss=opencv-python-headless;; PIL) miss=pillow;; yaml) miss=pyyaml;; sklearn) miss=scikit-learn;; esac
-  uv pip install --python "$PY" --no-deps "$miss" || uv pip install --python "$PY" "$miss"
+  uv pip install --python "$PY" "$miss"
 done
 PYTHONPATH="$REPO/src" "$PY" -c "import footy_track.ball_mining.candidates, footy_track.scripts.ball_pool, footy_track.datasets.detector_run" \
   || { echo "footy_track imports still fail" >&2; exit 1; }
 "$PY" -c "import torch; print('torch', torch.__version__, 'hip', torch.version.hip)"
 if [[ "$SELFTEST" == 1 ]]; then
   W="${FOOTY_SELFTEST_WEIGHTS:-/mnt/storage/models/rtdetr_1920_v11/best.pt}"
-  if journalctl -k --since "-10 min" 2>/dev/null | grep -qi "gpu reset"; then echo "GPU reset in the last 10 min: skipping self-test, retry later" >&2; exit 3; fi
+  if [[ -n "$(journalctl -k --since "-10 min" 2>/dev/null | grep -i "gpu reset" || true)" ]]; then echo "GPU reset in the last 10 min: skipping self-test, retry later" >&2; exit 3; fi
   echo "self-test: torch sees the GPU, then ONE RT-DETR fp16 frame (timeout 120; no retry on failure)"
   HSA_OVERRIDE_GFX_VERSION="${HSA_OVERRIDE_GFX_VERSION:-11.0.2}" FOOTY_HALF=1 PYTHONPATH="$REPO/src" timeout 120 "$PY" - "$W" <<'PYEOF'
 import sys, time, numpy as np, torch
