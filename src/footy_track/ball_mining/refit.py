@@ -95,7 +95,8 @@ def is_round_job(job: dict) -> bool:
 
 def rows_from_results(doc: dict) -> list[dict]:
     """One row per live verdict on a training card of a ``labelling-job-results/v1`` document: ``bucket, band, match,
-    p_real, pi, scorer_version, verdict, clip, frame, job, gold_kind``."""
+    p_real, pi, scorer_version, verdict, clip, frame, job, gold_kind`` (``clip`` is the pool's clip name: ``pool_clip`` when the
+    card was linked under a safe name)."""
     rows = []
     for lab in doc.get("labels") or []:
         meta = lab.get("meta") or {}
@@ -105,7 +106,7 @@ def rows_from_results(doc: dict) -> list[dict]:
         rows.append({
             "bucket": s.get("bucket"), "band": s.get("band"), "match": meta.get("match") or s.get("match"),
             "p_real": meta.get("p_real"), "pi": s.get("pi"), "scorer_version": meta.get("scorer_version") or s.get("scorer_version"),
-            "verdict": lab.get("verdict"), "clip": lab.get("clip"), "frame": lab.get("frame_index"), "job": doc["job"]["id"],
+            "verdict": lab.get("verdict"), "clip": meta.get("pool_clip") or lab.get("clip"), "frame": lab.get("frame_index"), "job": doc["job"]["id"],
             "gold_kind": (s.get("gold") or {}).get("kind"),
         })  # fmt: skip
     return rows

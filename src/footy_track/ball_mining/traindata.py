@@ -11,7 +11,12 @@ of its own, laid out like the ball evaluation panel's (``ball_eval.panel.link_cl
 Unlike the panel's, the dataset keeps ``ingest`` on: the verdicts are training data, and ``feature_store.ingest_all`` reads
 every registered marks dir that does not say ``"ingest": false`` (sidecars, ``ball_checks/`` via ``import_ball_checks``).
 
-Clip names. A pool card keeps its pool clip name (``<match>_segNNN``: unique per match, and the file name it already has).
+Clip names. A pool card keeps its pool clip name (``<match>_segNNN``: unique per match, and the file name it already has)
+when that is a valid labeller clip name (``[A-Za-z0-9._-]+``, the ``jobs._clip`` rule). Seed matches have segments with
+spaces (``Arsenal - Aston Villa_seg123``): those are linked under ``link_name`` (the canonical id, else the sanitised stem:
+``arsenal_astonvilla_seg123``) and the card keeps the original as the hidden key ``pool_clip``. ``canonical_clip_id`` maps the
+safe name and the original to one id, so every verdict / exclusion join (all keyed by canonical id) still lands on the
+footage clip.
 A gold card is renamed to ``clip_id.canonical_clip_id(clip)``, so the several aliases of one physical GT clip (detector stems
 ``arsenal_mancity_20250925_segNNN``, sidecar stems ``mancity_segNNN`` / ``arsenal_mancity_segNNN``) all verdict into one
 ``ball_checks/<canonical>.jsonl``; the original sidecar stem rides along as the hidden card key ``source_clip``.
@@ -24,7 +29,7 @@ import os
 from collections.abc import Iterable, Sequence
 from pathlib import Path
 
-from footy_track.clip_id import canonical_clip_id
+from footy_track.clip_id import canonical_clip_id, safe_clip_name
 from footy_track.labeller import datasets
 
 LOGGER = logging.getLogger(__name__)
@@ -142,6 +147,14 @@ def gold_dataset_dirs(names: Iterable[str]) -> list[Path]:
 # ---------------------------------------------------------------------------
 
 
+def link_name(clip: str) -> str:
+    """The name a pool clip is linked (and verdicted) under: unchanged when already a valid labeller clip name, else its
+    canonical id (``Arsenal - Aston Villa_seg123`` -> ``arsenal_astonvilla_seg123``), else the sanitised stem."""
+    if safe_clip_name(clip) == clip:
+        return clip
+    return safe_clip_name(canonical_clip_id(clip))
+
+
 def _link(src: Path, dst: Path) -> bool:
     """Symlink ``dst`` -> ``src``. True when created; False when it is already there (idempotent). Raises on a conflict."""
     if src == dst:
@@ -195,7 +208,7 @@ def link_cards(
             )
         else:
             src = pool_video(data_root, c.get("match", ""), clip) or (resolver.find(clip) if resolver else None)
-            name = clip
+            name = link_name(clip)
         if src is None:
             missing.append(f"{clip} ({'gold' if gold else c.get('match')})")
             continue
@@ -206,6 +219,9 @@ def link_cards(
         if gold:
             n_gold += 1
             card["source_clip"] = clip
+            card["clip"] = Path(name).stem
+        elif name != clip + src.suffix.lower():
+            card["pool_clip"] = clip  # the pool's (unsafe) clip name; ``clip`` is the linked, labeller-safe one
             card["clip"] = Path(name).stem
         out.append(card)
     if missing:
