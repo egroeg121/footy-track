@@ -53,6 +53,7 @@ from footy_track.labeller.constants import (  # noqa: E402
 )
 from footy_track.labeller.ingest import router as ingest_router  # noqa: E402
 from footy_track.labeller.jobs_routes import router as jobs_router  # noqa: E402
+from footy_track.labeller.player_check import router as player_check_router  # noqa: E402
 from footy_track.labeller.review import router as review_router  # noqa: E402
 from footy_track.labeller.series_review import router as series_review_router  # noqa: E402
 from footy_track.labeller.tasks import router as tasks_router  # noqa: E402
@@ -739,6 +740,7 @@ async def ws(websocket: WebSocket) -> None:  # noqa: PLR0915 — one dispatch lo
 app.include_router(review_router)
 app.include_router(series_review_router)
 app.include_router(ball_check_router)
+app.include_router(player_check_router)
 app.include_router(calibration_router)
 app.include_router(calibration_proposals_router)
 app.include_router(calibration_match_router)
