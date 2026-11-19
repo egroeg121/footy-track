@@ -307,3 +307,100 @@ def test_two_alias_files_of_one_gold_clip_share_one_link_across_cards_and_rounds
     # a later round meets the other alias first: it keeps the link an earlier round made
     out2, rep2 = traindata.link_cards(cards[::-1], dst, data_root=env, resolver=resolver)
     assert rep2["linked_new"] == 0 and os.path.realpath(dst / "arsenal_mancity_seg010.mp4") == target
+
+
+# ------------------------------------------------------------------ spaced pool clip names (jobs._clip rule)
+
+SPACED = {
+    "arsenal_astonvilla": ("Arsenal - Aston Villa_seg123", "arsenal_astonvilla_seg123"),
+    "arsenal_bournmouth_1st_half": ("Bournemouth vs Arsenal 1_seg096", "arsenal_bournemouth_1st_seg096"),
+}
+
+
+def spaced_env(env):
+    for match, (clip, _) in SPACED.items():
+        touch(env / match / traindata.SEGMENTS_DIR / f"{clip}.mp4")
+    return env
+
+
+def spaced_pool():
+    from tests.ball_mining.conftest import make_pool
+
+    rows = [{"match": m, "clip": c, "frame": 50 * i + k, "p_real": 0.3 + 0.1 * k} for m, (c, _) in SPACED.items() for i in range(40) for k in range(3)]
+    rows += [{"match": "m1", "clip": "m1_seg001", "frame": 50 * i, "p_real": 0.5} for i in range(40)]
+    return make_pool(rows)
+
+
+def test_link_name_keeps_safe_clips_and_slugs_unsafe_ones_deterministically():
+    assert traindata.link_name("m1_seg001") == "m1_seg001"
+    assert traindata.link_name("arsenal_nottinghamforest_seg003") == "arsenal_nottinghamforest_seg003"
+    assert traindata.link_name("Arsenal - Aston Villa_seg123") == "arsenal_astonvilla_seg123"
+    assert traindata.link_name("Bournemouth vs Arsenal 1_seg096") == "arsenal_bournemouth_1st_seg096"
+    assert traindata.link_name("Some Other  Match (2)_seg005") == "Some_Other_Match_2_seg005"  # no rule: sanitised, collapsed
+
+
+def test_spaced_pool_clips_link_under_a_safe_name_and_keep_pool_clip(env, tmp_path):
+    spaced_env(env)
+    dst = tmp_path / "clips"
+    cards = [pool_card(c, 10) | {"match": m} for m, (c, _) in SPACED.items()] + [pool_card("m1_seg001")]
+    out, rep = traindata.link_cards(cards, dst, data_root=env)
+    for card, (m, (clip, safe)) in zip(out, SPACED.items(), strict=False):
+        assert card["clip"] == safe and card["pool_clip"] == clip
+        jobs._clip(card, 0)  # the labeller job API's rule
+        assert (dst / f"{safe}.mp4").resolve() == (env / m / traindata.SEGMENTS_DIR / f"{clip}.mp4").resolve()
+    assert out[2]["clip"] == "m1_seg001" and "pool_clip" not in out[2]  # safe clips keep their name
+    again, rep2 = traindata.link_cards(cards, dst, data_root=env)
+    assert again == out and rep2["linked_new"] == 0
+
+
+def test_two_sources_for_one_safe_name_are_refused(env, tmp_path):
+    spaced_env(env)
+    touch(env / "arsenal_astonvilla" / traindata.SEGMENTS_DIR / "arsenal_astonvilla_seg123.mp4", b"another video")
+    cards = [pool_card("Arsenal - Aston Villa_seg123") | {"match": "arsenal_astonvilla"}]
+    cards.append(pool_card("arsenal_astonvilla_seg123") | {"match": "arsenal_astonvilla"})
+    with pytest.raises(traindata.ClipLinkError, match="two different videos"):
+        traindata.link_cards(cards, tmp_path / "clips", data_root=env)
+
+
+def test_a_verdict_under_the_safe_name_joins_the_pool_clip(env, tmp_path):
+    """Exclusion / auto-accept / eval-buffer joins are keyed by canonical clip id: safe name and pool clip are one id."""
+    from footy_track.clip_id import canonical_clip_id
+
+    for _, (clip, safe) in SPACED.items():
+        assert canonical_clip_id(safe) == canonical_clip_id(clip)
+    assert canonical_clip_id("Some Other Match_seg005") == canonical_clip_id("Some_Other_Match_seg005")
+    marks = tmp_path / "marks"
+    (marks / "ball_checks").mkdir(parents=True)
+    rec = {"clip": "arsenal_astonvilla_seg123", "frame_index": 100, "box_index": 1, "source": "list", "verdict": "not_ball", "bbox": BOX, "ts": 1.0}
+    (marks / "ball_checks" / "arsenal_astonvilla_seg123.jsonl").write_text(json.dumps(rec) + "\n")
+    assert (canonical_clip_id("Arsenal - Aston Villa_seg123"), 100) in read_verdict_frames(marks)
+
+
+def test_refit_rows_report_the_pool_clip():
+    doc = {"job": {"id": "j"}, "labels": [{"clip": "arsenal_astonvilla_seg123", "frame_index": 5, "verdict": "ball",
+           "meta": {"pool_clip": "Arsenal - Aston Villa_seg123", "match": "arsenal_astonvilla", "p_real": 0.4, "sampling": {"regime": "train", "bucket": "R"}}}]}  # fmt: skip
+    (row,) = refit.rows_from_results(doc)
+    assert row["clip"] == "Arsenal - Aston Villa_seg123" and row["bucket"] == "R"
+
+
+def test_create_round_submits_valid_clip_names_for_a_spaced_pool_and_excludes_by_verdict(env, splits_patched):
+    spaced_env(env)
+    client = FakeClient()
+    pool = spaced_pool()
+    out = rnd.create_round(pool, cfg(env, budget=60, use_gold=False), client=client, today=DAY, dry_run=True)
+    cards = out["cards"]
+    assert any("pool_clip" in c for c in cards)
+    ds = datasets.get(NAME)
+    for c in cards:
+        jobs._clip(c, 0)
+        assert (ds.clips_dir / f"{c['clip']}.mp4").is_file()
+        if "pool_clip" in c:
+            assert c["pool_clip"] in {v[0] for v in SPACED.values()}
+    # a verdict filed under the safe name keeps that frame out of the next plan
+    first = next(c for c in cards if "pool_clip" in c)
+    marks = ds.marks_dir / "ball_checks"
+    marks.mkdir(parents=True, exist_ok=True)
+    rec = {"clip": first["clip"], "frame_index": first["frame_index"], "box_index": 1, "source": "list", "verdict": "not_ball", "bbox": BOX, "ts": 1.0}
+    (marks / f"{first['clip']}.jsonl").write_text(json.dumps(rec) + "\n")
+    out2 = rnd.create_round(pool, cfg(env, budget=60, use_gold=False), client=client, today=DAY, dry_run=True)
+    assert not any(c["pool_clip" if "pool_clip" in c else "clip"] == first["pool_clip"] and c["frame_index"] == first["frame_index"] for c in out2["cards"])

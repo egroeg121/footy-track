@@ -33,7 +33,7 @@ Canonical form: ``<match>_<kind><NNN>`` where ``match`` is ``arsenal_<opponent>`
 segments) or ``part`` (the 10 s ``split_video_10s`` cut, a *different* video
 from ``seg`` with the same number, so they are never merged), and ``NNN`` is
 the zero-padded segment number. The date infix is dropped. Names matching no
-rule are returned unchanged (minus directory and extension), so unknown clips
+rule are returned unchanged (minus directory and extension; characters outside ``[A-Za-z0-9._-]`` become ``_``, see ``safe_clip_name``), so unknown clips
 keep their own identity instead of being guessed into another.
 
 ``bournemouth_segNNN`` and ``bournemouth_broadcast_segNNN`` say nothing about the
@@ -97,6 +97,17 @@ _RULES: tuple[tuple[re.Pattern[str], str], ...] = (
 )
 
 
+_UNSAFE = re.compile(r"[^A-Za-z0-9._-]+")
+
+
+def safe_clip_name(stem: str) -> str:
+    """``stem`` with every run of characters outside ``[A-Za-z0-9._-]`` (the labeller job API's clip-name rule) replaced by one
+    ``_`` (and ``_`` runs collapsed); safe stems are returned unchanged. Idempotent."""
+    if re.fullmatch(r"[A-Za-z0-9._-]+", stem):
+        return stem
+    return re.sub(r"_+", "_", _UNSAFE.sub("_", stem)).strip("_") or "clip"
+
+
 def _stem(name: str) -> str:
     p = PurePath(name)
     return p.stem if p.suffix.lower() in _VIDEO_OR_DATA_SUFFIXES else p.name
@@ -111,7 +122,9 @@ def canonical_clip_id(name: str) -> str:
             groups = m.groupdict()
             n = f"{int(groups['n']):03d}" if groups.get("n") else ""
             return template.format(kind=groups.get("kind") or "", n=n)
-    return stem
+    # Names matching no rule keep their identity, but in the labeller-safe spelling: a clip with spaces is linked into a
+    # dataset (and verdicted) under ``safe_clip_name``, which must be an alias of the original, not another clip.
+    return safe_clip_name(stem)
 
 
 def same_clip(a: str, b: str) -> bool:
