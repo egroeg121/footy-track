@@ -934,6 +934,21 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="2.2 Card: blind placement (Ball Check &#34;blind mode&#34; = the ball_place job kind)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#221-update-2026-11-19-detector-suggestions-with-a-random-blind-control-lab-14451447" class="md-nav__link">
+    <span class="md-ellipsis">
+      2.2.1 Update 2026-11-19: detector suggestions with a random blind control (LAB-1445..1447)
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
         
           <li class="md-nav__item">
@@ -1157,6 +1172,15 @@
 <li>5% <strong>repeats</strong> of earlier panel frames, in a different session. The spread between repeats gives the label-noise floor; if it is about 5 px, hit@10 is meaningful.</li>
 <li>3% <strong>gold</strong> frames from existing tier-1 GT.</li>
 <li>Both are excluded from the estimates.</li>
+</ul>
+<h4 id="221-update-2026-11-19-detector-suggestions-with-a-random-blind-control-lab-14451447">2.2.1 Update 2026-11-19: detector suggestions with a random blind control (LAB-1445..1447)<a class="headerlink" href="#221-update-2026-11-19-detector-suggestions-with-a-random-blind-control-lab-14451447" title="Permanent link">&para;</a></h4>
+<ul>
+<li><strong>Why.</strong> Placing a ball from scratch is slow (the 4-6 s per frame assumed above, 5 panels about 630 cards), and George asked to be able to accept a detector box straight away or draw over it. Speed is the reason; the cost is that a shown box can pull the label towards the detector (automation bias), and the suggesting detector then looks better than it is.</li>
+<li><strong>What.</strong> <code>ball_eval_panel suggest</code> (the model sits behind a small <code>Suggester</code> interface, so the pooled RT-DETR + motion + tracker top node can replace RT-DETR top-1) precomputes, per panel frame, the top-1 RT-DETR ball candidate (production weights, 1280 px, CPU about 2.1 s per frame, 120 frames per match, one process at a time) into <code>&lt;FD&gt;/ball_eval_panel/&lt;version&gt;/&lt;match&gt;.suggest.&lt;detector_sha8&gt;.json</code>. Frames with no candidate get <code>null</code>: <strong>"no ball" is never suggested</strong>, George must look for himself. This is eval-only inference on heldout footage; nothing is trained, mined or cached into a training pool, so rule zero still holds.</li>
+<li><strong>Page.</strong> The suggestion is a dashed yellow overlay (not a box, never saved). <code>Y</code> / button accepts it: it is saved as an ordinary human box <code>[in_play_ball, labeller, accepted_suggestion, suggest_det:&lt;sha8&gt;]</code>. Drawing a box replaces it. Accepted boxes are <strong>ordinary tier-1 labels everywhere</strong> (scoring, ingest, export, job done rule); the marker is audit only and never excludes or down-weights a label.</li>
+<li><strong>Bias control.</strong> A random 25% of each panel's windows (<code>sampling.suggest = "blind"</code>, seeded by <code>sha1(panel_version + match)</code>, reproducible from the panel file) and all QA cards (repeats and gold) never show a suggestion. Because the blind subset is random, blind-vs-shown labels are comparable: <code>panel_score</code> reports, per match and pooled, the share of labels that were accepted suggestions and the model's hit@r / recall / false-ball rate (HT estimate) on blind vs shown with the difference and its CI. A big gap means the suggestions move the labels. <code>score --blind-only</code> scores the suggesting detector on blind windows only (the model most favoured by its own suggestions).</li>
+<li><strong>Labels placed before suggestions existed</strong> (George's first Forest cards) are unsuggested: the suggest meta file records them and the scorer counts them as blind-equivalent.</li>
+<li><strong>Live jobs</strong> keep their items. The flag is also derived from the panel file at request time (same seeded rule), so no job mutation is needed; new panels get it in <code>sampling.suggest</code>.</li>
 </ul>
 <h3 id="23-design-stratified-two-stage-sample-with-logged">2.3 Design: stratified two-stage sample with logged π<a class="headerlink" href="#23-design-stratified-two-stage-sample-with-logged" title="Permanent link">&para;</a></h3>
 <ul>
