@@ -138,7 +138,7 @@ build_start_cmd() {
   port="$(port_of "$svc")"
   local -a envs=("PYTHONPATH=src" "OMP_NUM_THREADS=2" "FOOTY_SERVICE_NAME=$svc" "FOOTY_SERVICE_PORT=$port"
                  "FOOTY_CLASSIFIER_WEIGHTS=$(production_weights)")
-  while IFS= read -r line; do [[ -n "$line" ]] && envs+=("$line"); done <<<"${SVC_ENV[$svc]}"
+  while IFS= read -r line; do [[ -n "$line" ]] && envs+=("$line"); done <<<"${SVC_ENV[$svc]:-}"
   local log="$LOG_DIR/$svc.log"
   printf 'cd %q && exec env' "$SERVE_DIR"
   printf ' %q' "${envs[@]}"
