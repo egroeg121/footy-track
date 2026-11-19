@@ -61,3 +61,13 @@ def test_rocm_780m_warning(monkeypatch, caplog):
     with caplog.at_level(logging.WARNING, logger="footy_track.device"):
         dev.pick_device()
     assert not caplog.text
+
+
+def test_fp32_on_rocm_is_refused(monkeypatch):
+    monkeypatch.setattr(torch.version, "hip", "7.2", raising=False)
+    monkeypatch.setenv("FOOTY_HALF", "0")
+    with pytest.raises(RuntimeError, match="fp32"):
+        dev.use_half("cuda")
+    assert dev.use_half("cpu") is False
+    monkeypatch.setattr(torch.version, "hip", None, raising=False)
+    assert dev.use_half("cuda") is False  # real CUDA may still opt out

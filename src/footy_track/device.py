@@ -54,7 +54,20 @@ def pick_device(prefer: str | None = None) -> str:
 def use_half(device: object) -> bool:
     """fp16 inference only on cuda/ROCm; ``FOOTY_HALF=0/1`` overrides."""
     env = os.environ.get("FOOTY_HALF")
+    d = str(getattr(device, "type", device)).lower()
+    on_gpu = d.startswith("cuda") or d.isdigit()
+    if env == "0" and on_gpu and _is_rocm():
+        # fp32 convs on the merlin iGPU crashed in conv2d and caused GPU resets (MODE2): never run it
+        raise RuntimeError("fp32 (FOOTY_HALF=0) on a ROCm GPU is refused: it crashes/resets the iGPU; use fp16")
     if env in ("0", "1"):
         return env == "1"
-    d = str(getattr(device, "type", device)).lower()
-    return d.startswith("cuda") or d.isdigit()
+    return on_gpu
+
+
+def _is_rocm() -> bool:
+    try:
+        import torch  # noqa: PLC0415
+
+        return bool(getattr(torch.version, "hip", None))
+    except ImportError:
+        return False

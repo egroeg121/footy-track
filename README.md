@@ -106,6 +106,23 @@ uv run mkdocs serve
 
 If you prefer pinning versions, create a small requirements file (for example `requirements-ml.txt`) and install from that.
 
+## merlin iGPU (ROCm)
+
+merlin's Radeon 780M (gfx1103) runs RT-DETR candidates (`ball_pool candidates`) at ~5.5 fps at imgsz 1280, fp16 only (the desktop 2070 is ~22 fps).
+fp32 crashed conv2d and reset the GPU, so `FOOTY_HALF=0` on ROCm is refused. No system ROCm, sudo or apt is needed.
+
+```bash
+scripts/setup_rocm_venv.sh [--rocm 7.2] [--dest ~/.cache/footy_rocm_venv]   # idempotent, ~17 GB, ends with a 1-frame self-test
+scripts/rocm_run.sh -m footy_track.scripts.ball_pool --root R --pool-root P candidates --match M --weights W
+```
+
+`rocm_run.sh` exports `HSA_OVERRIDE_GFX_VERSION=11.0.2` and `FOOTY_HALF=1`, sets `PYTHONPATH=<repo>/src` (override `FOOTY_SRC`) and runs the venv python
+under `timeout` (default 6 h, `FOOTY_ROCM_TIMEOUT` seconds). `footy_track.device.pick_device()` treats ROCm as `cuda`, so no flags are needed.
+Venv rules: torch only from the ROCm index (PyPI as an extra index pulls CUDA torch), then `ultralytics --no-deps`; never under `/tmp`. The venv pins
+ultralytics 8.4.215 (verified with torch 2.14.1+rocm7.2), not the lock's 8.3.241, so box counts can differ slightly from the desktop's.
+Always run GPU work under `timeout` and do not chain GPU runs after a failure (check `journalctl -k` for a GPU reset first).
+In Prefect this is the `ball-candidates-merlin` deployment (queue `merlin-gpu`, jobs repo).
+
 ## Running
 
 - The project exposes a simple script entry point (configured in `pyproject.toml`). Run the package's main entry point to verify the install:

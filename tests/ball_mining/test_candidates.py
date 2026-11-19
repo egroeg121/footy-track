@@ -187,3 +187,41 @@ def test_failed_clip_is_reported_and_retried(tmp_path):
     d.boom = False
     st = C.run_match(segs, out, detector=d, weights=tmp_path / "w.pt")
     assert st["complete"] and st["skipped"] == ["m1_seg001"]
+
+
+# ---------------------------------------------------------------------------------------------- device (merlin iGPU / ROCm)
+def test_make_detector_follows_pick_device_and_runs_fp16_on_rocm_cuda(monkeypatch):
+    """ROCm torch reports as cuda: with no flags the detector must land on ``cuda`` and predict with ``half=True``."""
+    import numpy as np
+    import torch
+
+    from footy_track.detectors import ultralytics as ud
+
+    for k in ("FOOTY_DEVICE", "FOOTY_HALF"):
+        monkeypatch.delenv(k, raising=False)
+    monkeypatch.setenv("HSA_OVERRIDE_GFX_VERSION", "11.0.2")
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
+    monkeypatch.setattr(torch.version, "hip", "7.2", raising=False)
+    calls = []
+
+    class FakeYOLO:
+        names = {0: "ball"}
+
+        def __init__(self, uri):
+            pass
+
+        def predict(self, frames, **kw):
+            calls.append(kw)
+            return []
+
+    monkeypatch.setattr(ud, "YOLO", FakeYOLO)
+    det = C.make_detector("w.pt")
+    assert det.device == "cuda"
+    det.predict_frames([np.zeros((8, 8, 3), np.uint8)])
+    assert calls[0]["device"] == "cuda" and calls[0]["half"] is True and calls[0]["imgsz"] == C.IMGSZ
+
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: False)
+    monkeypatch.setattr(torch.backends.mps, "is_available", lambda: False)
+    det = C.make_detector("w.pt")
+    det.predict_frames([np.zeros((8, 8, 3), np.uint8)])
+    assert det.device == "cpu" and calls[1]["half"] is False
