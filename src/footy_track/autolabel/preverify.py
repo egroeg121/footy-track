@@ -171,12 +171,14 @@ class PreverifyResult:
     audit: list[int]
     params: dict
     verifier: dict = field(default_factory=dict)
+    teacher_version: str | None = None
 
     def to_json(self) -> dict:
         auto = sum(f.verdict == AUTO_OK for f in self.frames)
         return {
             "version": PREVERIFY_VERSION,
             "window_id": self.window_id,
+            "teacher_version": self.teacher_version,
             "verifier": self.verifier,
             "params": self.params,
             "frames": [f.__dict__ for f in self.frames],
@@ -225,12 +227,13 @@ def _player_reasons(scores: Mapping[str, np.ndarray], i: int, policy: str) -> li
     return [] if stable else ["player_count_unstable"]
 
 
-def preverify_window(  # noqa: PLR0914
+def preverify_window(  # noqa: PLR0914, PLR0917
     window_id: str,
     scores: Mapping[str, np.ndarray],
     proposals: Sequence[BallProposal | None],
     verifier: BallVerifier,
     config: PreverifyConfig | None = None,
+    teacher_version: str | None = None,
 ) -> PreverifyResult:
     """``proposals``: one entry per frame in ``scores['frame_index']`` order (None = no ball)."""
     cfg = config or PreverifyConfig()
@@ -304,7 +307,7 @@ def preverify_window(  # noqa: PLR0914
         "player_auto_ok_policy": cfg.player_auto_ok_policy,
     }
     prov = {"model": verifier.model, "prompt_version": verifier.prompt_version}
-    return PreverifyResult(window_id, frames, order, audit, params, prov)
+    return PreverifyResult(window_id, frames, order, audit, params, prov, teacher_version)
 
 
 def write_preverify(result: PreverifyResult, out_dir: Path) -> Path:

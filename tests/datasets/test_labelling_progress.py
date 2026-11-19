@@ -150,3 +150,10 @@ def test_partial_definition(env):
     ])
     t = labelling_progress.get_labelling(clips_dir=env, marks_dir=env)["totals"]
     assert (t["frames"], t["partial"], t["fully_labelled"]) == (3, 2, 0)
+
+
+def test_teacher_versions_block(env):
+    seed(env, [row("t1_seg002", 0, B, C, method=LabelMethod.OFFLINE_AUDITED, tv="offline_v1")])
+    rates = {"offline_v1": {"n": 10, "passed": 9, "pass_rate": 0.9}}
+    out = labelling_progress.get_labelling(audit_rates=rates)
+    assert out["teacher_versions"] == {"offline_v1": {"silver": 1, "audit": rates["offline_v1"]}}

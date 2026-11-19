@@ -154,6 +154,7 @@ def _empty(state: str, error: str | None = None) -> dict[str, Any]:
         "by_method": {},
         "by_split": {},
         "tiers": {"gold": 0, "silver": {"total": 0, "by_teacher_version": {}}, "other": 0},
+        "teacher_versions": {},
     }
 
 
@@ -185,7 +186,8 @@ def _read_store(db: Path) -> tuple[list[tuple], list[tuple], str, str | None]:
 
 
 def get_labelling(
-    db: Path | None = None, *, clips_dir: Path | None = None, marks_dir: Path | None = None
+    db: Path | None = None, *, clips_dir: Path | None = None, marks_dir: Path | None = None,
+    audit_rates: dict[str, dict] | None = None,
 ) -> dict[str, Any]:
     db = Path(db) if db else default_db_path()
     if clips_dir is None and marks_dir is None:
@@ -232,4 +234,10 @@ def get_labelling(
         else:
             tiers["other"] += n
     out["by_method"] = dict(sorted(by_method.items()))
+    # per teacher version: silver count + blind-audit pass rate (None when no audit is on record)
+    rates = audit_rates or {}
+    tvs = tiers["silver"]["by_teacher_version"]
+    out["teacher_versions"] = {
+        tv: {"silver": tvs.get(tv, 0), "audit": rates.get(tv)} for tv in sorted(set(tvs) | set(rates))
+    }
     return out

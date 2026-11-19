@@ -316,6 +316,7 @@ class ProposeResult:
     frames: int = 0
     sam3_frames: list[int] = field(default_factory=list)
     scores_path: Path | None = None
+    teacher_version: str | None = None
 
 
 def _iou(a: ObjectDetection, b: ObjectDetection) -> float:
@@ -360,6 +361,7 @@ def propose_window(  # noqa: PLR0913, PLR0914, PLR0915
     batch_size: int = 8,
     neighbour_radius: int = 5,
     dup_iou: float = 0.5,
+    teacher_version: str | None = None,
 ) -> ProposeResult:
     """Run the proposers over ``window``; write rows to ``store`` and scores to ``out_dir``."""
     # Rule zero (ball_sampling.md): never propose for anything but a train-split segment clip,
@@ -454,7 +456,8 @@ def propose_window(  # noqa: PLR0913, PLR0914, PLR0915
     )  # fmt: skip
 
     result = ProposeResult(
-        window.window_id, base, frames=len(indices), sam3_frames=sam3_frames
+        window.window_id, base, frames=len(indices), sam3_frames=sam3_frames,
+        teacher_version=teacher_version,
     )
     if out_dir is not None:
         out_dir = Path(out_dir)
@@ -512,7 +515,8 @@ def _write_store(  # noqa: PLR0917
             )
     params = json.dumps(
         {"window_id": window.window_id, "start_frame": window.start_frame,
-         "end_frame": window.end_frame, "runs": result.run_ids}, sort_keys=True,
+         "end_frame": window.end_frame, "runs": result.run_ids,
+         "teacher_version": result.teacher_version}, sort_keys=True,
     )  # fmt: skip
     with store.transaction():
         store.delete_run_rows(gid, base + ":")
@@ -560,8 +564,15 @@ def main(argv: list[str] | None = None) -> int:
     )
     ap.add_argument("--out-dir", type=Path, default=Path("proposals"))
     ap.add_argument("--no-sam3", action="store_true")
+    ap.add_argument("--teacher-config", type=Path, help="TeacherConfig JSON; registers/records its offline_vN")
+    ap.add_argument("--teacher-registry", type=Path, help="teachers.json (default $FOOTY_AUTOLABEL_DIR)")
     args = ap.parse_args(argv)
 
+    teacher_version = None
+    if args.teacher_config:
+        from footy_track.autolabel import teacher  # noqa: PLC0415
+
+        teacher_version = teacher.register(teacher.load_config(args.teacher_config), args.teacher_registry)
     windows = read_windows(args.window_file)
     if args.window_id:
         windows = [w for w in windows if w.window_id == args.window_id]
@@ -578,10 +589,12 @@ def main(argv: list[str] | None = None) -> int:
     with store_lock(db, exclusive=True), FeatureStore.open(db) as store:
         for w in windows:
             r = propose_window(w, reader=Cv2FrameReader(), detector=detector,
-                               person_filler=filler, store=store, out_dir=args.out_dir)  # fmt: skip
+                               person_filler=filler, store=store, out_dir=args.out_dir,
+                               teacher_version=teacher_version)  # fmt: skip
             print(json.dumps({"window_id": r.window_id, "run_id": r.run_id,
                               "rows": r.rows_by_source, "sam3_frames": len(r.sam3_frames),
-                              "scores": str(r.scores_path)}))  # fmt: skip
+                              "scores": str(r.scores_path),
+                              "teacher_version": r.teacher_version}))  # fmt: skip
     return 0
 
 

@@ -28,4 +28,20 @@ def progress_api(refresh: bool = False) -> dict:
 @router.get("/progress/labelling")
 def progress_labelling() -> dict:
     """Ball / player / fully-labelled frame counts per clip, from the feature store."""
-    return labelling_progress.get_labelling()
+    return labelling_progress.get_labelling(audit_rates=_audit_rates())
+
+
+def _audit_rates() -> dict[str, dict]:
+    """Blind-audit pass rate per teacher version from series-review status docs (best effort)."""
+    import json  # noqa: PLC0415
+
+    from footy_track.autolabel.teacher import audit_pass_rates  # noqa: PLC0415
+    from footy_track.labeller.series_review import autolabel_dir  # noqa: PLC0415
+
+    docs = []
+    try:
+        for p in sorted((autolabel_dir() / "series_review").glob("*.json")):
+            docs.append(json.loads(p.read_text()))
+    except (OSError, ValueError):
+        return {}
+    return audit_pass_rates(docs)
