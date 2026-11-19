@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 
 import duckdb
+import pytest
 
 from footy_track.feature_store import FeatureStore
 from footy_track.feature_store.ball_checks import import_ball_checks
@@ -14,6 +15,8 @@ from footy_track.feature_store.schema import (
     FrameLabelStateRow,
     LabelMethod,
     LabelState,
+    PlayerCheckRow,
+    PlayerCheckVerdict,
 )
 
 CLIP = "clip_a"
@@ -253,3 +256,18 @@ def test_players_complete_feeds_frame_complete_view(tmp_path) -> None:
     _ingest(store, tmp_path, recs)
     df = store.query("SELECT frame_index FROM frame_complete")
     assert sorted(df.frame_index) == [0, 1]
+
+
+def test_player_check_table_upserts_and_validates_verdict() -> None:
+    store = FeatureStore.open(":memory:")
+    ok = PlayerCheckVerdict.OK
+    cn = PlayerCheckVerdict.COUNT_N
+    store.upsert_player_checks([
+        PlayerCheckRow(game_id=CLIP, frame_index=1, cluster_id="c0", verdict=ok),
+        PlayerCheckRow(game_id=CLIP, frame_index=1, cluster_id="c0", verdict=cn, count=3, run_id="c0:0-1"),
+    ])
+    df = store.read_player_checks(CLIP)
+    assert len(df) == 1 and df.iloc[0]["verdict"] == "count_n" and df.iloc[0]["count"] == 3
+    assert len(store.read_player_checks(CLIP, [])) == 0
+    with pytest.raises(duckdb.ConstraintException):
+        store._conn.execute("INSERT INTO player_check (game_id, frame_index, cluster_id, verdict) VALUES (\x27g\x27, 0, \x27c\x27, \x27bogus\x27)")

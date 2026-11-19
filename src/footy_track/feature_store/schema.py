@@ -146,6 +146,19 @@ class LabelMethod(StrEnum):
     OFFLINE_AUDITED = "offline_audited"  # teacher output that passed auto_ok rules + blind audit (silver)
 
 
+class PlayerCheckVerdict(StrEnum):
+    """Outcome of one Player Check card (docs/design/full_frame_labelling.md section 4c)."""
+
+    OK = "ok"  # every person has exactly one box
+    COUNT_N = "count_n"  # reviewer asserted the person count (``count``) for a run of frames
+    FIXED = "fixed"  # reviewer corrected the boxes (hand_label boxes written to the sidecar)
+    UNSURE = "unsure"  # never completes a frame
+
+
+#: ``player_check.cluster_id`` of the whole-frame "anyone unboxed?" sweep row.
+SWEEP_CLUSTER_ID = "__sweep__"
+
+
 #: Precedence of the writer of a ``frame_label_state`` row; higher wins. A write
 #: replaces an existing row only when its rank is >= the existing row's rank
 #: (equal rank: last write wins), so re-ingesting a sidecar can never downgrade
@@ -197,6 +210,19 @@ class FrameLabelStateRow(_Row):
     method: LabelMethod
     run_id: str | None = None  # the proposing / writing run
     teacher_version: str | None = None  # offline_vN, for offline_audited rows
+    verified_by: str | None = None
+    verified_at: datetime | None = None
+
+
+class PlayerCheckRow(_Row):
+    """One Player Check decision on one cluster (or the frame sweep) of one frame."""
+
+    game_id: str
+    frame_index: int = Field(..., ge=0)
+    cluster_id: str  # window-local track id (``c0``...) or SWEEP_CLUSTER_ID
+    verdict: PlayerCheckVerdict
+    count: int | None = Field(None, ge=0)  # asserted person count (count_n), else NULL
+    run_id: str | None = None  # the count run ``<cluster>:<a>-<b>`` a count_n verdict resolved
     verified_by: str | None = None
     verified_at: datetime | None = None
 
@@ -567,6 +593,22 @@ DDL: tuple[str, ...] = (
                           'sidecar_marker', 'offline_audited'))
     );
     """,
+    # Player Check decisions per (frame, cluster); the frame sweep uses cluster_id '__sweep__'.
+    # A frame's player frame_label_state is derived from these by labeller/player_check.py.
+    """
+    CREATE TABLE IF NOT EXISTS player_check (
+        game_id      VARCHAR,
+        frame_index  INTEGER,
+        cluster_id   VARCHAR,
+        verdict      VARCHAR,
+        count        INTEGER,
+        run_id       VARCHAR,
+        verified_by  VARCHAR,
+        verified_at  TIMESTAMP,
+        PRIMARY KEY (game_id, frame_index, cluster_id),
+        CHECK (verdict IN ('ok', 'count_n', 'fixed', 'unsure'))
+    );
+    """,
     # Human Ball Check verdicts (see feature_store/ball_checks.py). Additive:
     # nothing in the detection table changes, and re-running the importer
     # rewrites a clip's rows wholesale. ``vsource`` is the Ball Check card
@@ -816,6 +858,7 @@ TABLES: tuple[str, ...] = (
     "track_meta",
     "detection_review",
     "frame_label_state",
+    "player_check",
     "calibration",
     "pitch_keypoint",
 )

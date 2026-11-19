@@ -44,6 +44,7 @@ from footy_track.feature_store.schema import (
     FrameRow,
     GameRow,
     PitchKeypointRow,
+    PlayerCheckRow,
     RunRow,
     TrackMetaRow,
 )
@@ -164,6 +165,16 @@ _COLUMNS: dict[str, tuple[str, ...]] = {
         "verified_by",
         "verified_at",
     ),
+    "player_check": (
+        "game_id",
+        "frame_index",
+        "cluster_id",
+        "verdict",
+        "count",
+        "run_id",
+        "verified_by",
+        "verified_at",
+    ),
     "calibration": (
         "game_id",
         "source",
@@ -219,6 +230,7 @@ _PK: dict[str, tuple[str, ...]] = {
     "track_meta": ("game_id", "source", "run_id", "track_id"),
     "detection_review": ("game_id", "vsource", "frame_index", "box_index"),
     "frame_label_state": ("game_id", "frame_index", "cls_group"),
+    "player_check": ("game_id", "frame_index", "cluster_id"),
     "calibration": ("game_id", "source", "run_id", "frame_index"),
     "pitch_keypoint": ("game_id", "source", "run_id", "frame_index", "point_idx"),
 }
@@ -397,6 +409,23 @@ class FeatureStore:
             sql += " AND cls_group = ?"
             params.append(cls_group)
         return self.query(sql + " ORDER BY game_id, frame_index, cls_group", params)
+
+    def upsert_player_checks(self, rows: Sequence[PlayerCheckRow]) -> int:
+        """Upsert Player Check decisions (last write per (game, frame, cluster) wins)."""
+        return self._upsert("player_check", rows)
+
+    def read_player_checks(
+        self, game_id: str, frames: Sequence[int] | None = None
+    ) -> pd.DataFrame:
+        """Player Check rows of one game, optionally restricted to *frames*."""
+        sql = "SELECT * FROM player_check WHERE game_id = ?"
+        params: list[object] = [game_id]
+        if frames is not None:
+            if not frames:
+                return self.query(sql + " AND FALSE", params)
+            sql += f" AND frame_index IN ({', '.join('?' for _ in frames)})"
+            params.extend(int(f) for f in frames)
+        return self.query(sql + " ORDER BY frame_index, cluster_id", params)
 
     def delete_frame_label_states(
         self, game_id: str, cls_group: str, method: str

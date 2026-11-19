@@ -11,9 +11,10 @@ normalised coordinates scaled to a common aspect ratio, so IoU and distances are
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from itertools import combinations
+from typing import Literal
 
 Box = tuple[float, float, float, float]
 
@@ -107,3 +108,197 @@ def crowd_score(boxes: Sequence[Box]) -> CrowdScore:
     return CrowdScore(
         largest + 0.25 * in_crowds + mean_iou, largest, in_crowds, mean_iou, len(boxes)
     )
+
+
+# --------------------------------------------------------------------------------------------- #
+# Player Check (design section 4c steps 1-2): clusters over time, count timeline, flicker, triage.
+# --------------------------------------------------------------------------------------------- #
+
+#: A frame cluster joins an existing track when the overlap coefficient of their union boxes
+#: (intersection / smaller area, robust to a cluster growing by one person) is at least this.
+TRACK_LINK_OVERLAP = 0.5
+#: ... and the track was last seen at most this many frames earlier.
+TRACK_MAX_GAP = 5
+#: A run of equal counts at most this long, between two runs of the same count, is a flicker.
+FLICKER_MAX_RUN = 2
+
+#: Triage policies. Per design 6b nothing is auto-accepted for players on detector confidence, so
+#: the default audits everything; ``permissive`` is opt-in per match once blind audits justify it.
+POLICY_AUDIT_ALL = "audit_all"
+POLICY_PERMISSIVE = "permissive"
+Policy = Literal["audit_all", "permissive"]
+
+
+@dataclass(frozen=True)
+class ClusterObs:
+    """One cluster seen on one frame: box indices (into that frame's box list) and union box."""
+
+    frame: int
+    indices: tuple[int, ...]
+    bbox: Box
+    mean_iou: float
+
+    @property
+    def count(self) -> int:
+        return len(self.indices)
+
+
+@dataclass(frozen=True)
+class ClusterTrack:
+    """A cluster followed through a window (``c0``, ``c1``, ... in order of first appearance)."""
+
+    track_id: str
+    obs: tuple[ClusterObs, ...]  # ascending frame
+
+    @property
+    def frames(self) -> tuple[int, ...]:
+        return tuple(o.frame for o in self.obs)
+
+
+@dataclass(frozen=True)
+class CountRun:
+    """Consecutive observations of a cluster with the same person count."""
+
+    start: int
+    end: int
+    count: int
+
+
+def union_box(boxes: Sequence[Box]) -> Box:
+    x0 = min(b[0] for b in boxes)
+    y0 = min(b[1] for b in boxes)
+    x1 = max(b[0] + b[2] for b in boxes)
+    y1 = max(b[1] + b[3] for b in boxes)
+    return (x0, y0, x1 - x0, y1 - y0)
+
+
+def _overlap_coeff(a: Box, b: Box) -> float:
+    ix = max(0.0, min(a[0] + a[2], b[0] + b[2]) - max(a[0], b[0]))
+    iy = max(0.0, min(a[1] + a[3], b[1] + b[3]) - max(a[1], b[1]))
+    smaller = min(a[2] * a[3], b[2] * b[3])
+    return ix * iy / smaller if smaller > 0 else 0.0
+
+
+def track_clusters(
+    frames: Mapping[int, Sequence[Box]],
+    *,
+    link_overlap: float = TRACK_LINK_OVERLAP,
+    max_gap: int = TRACK_MAX_GAP,
+) -> list[ClusterTrack]:
+    """Cluster every frame, then link clusters across frames by union-box overlap.
+
+    Matching is greedy one-to-one, best overlap first, against tracks last seen within
+    ``max_gap`` frames. Unmatched clusters start new tracks. Deterministic.
+    """
+    tracks: list[list[ClusterObs]] = []
+    for fi in sorted(frames):
+        boxes = frames[fi]
+        obs = [
+            ClusterObs(
+                fi, c.indices, union_box([boxes[i] for i in c.indices]), c.mean_iou
+            )
+            for c in cluster_boxes(boxes)
+        ]
+        pairs = []
+        for oi, o in enumerate(obs):
+            for ti, t in enumerate(tracks):
+                last = t[-1]
+                if 0 < fi - last.frame <= max_gap:
+                    ov = _overlap_coeff(o.bbox, last.bbox)
+                    if ov >= link_overlap:
+                        pairs.append((-ov, ti, oi))
+        pairs.sort()
+        used_t: set[int] = set()
+        used_o: set[int] = set()
+        for _, ti, oi in pairs:
+            if ti in used_t or oi in used_o:
+                continue
+            used_t.add(ti)
+            used_o.add(oi)
+            tracks[ti].append(obs[oi])
+        for oi, o in enumerate(obs):
+            if oi not in used_o:
+                tracks.append([o])
+    return [ClusterTrack(f"c{i}", tuple(t)) for i, t in enumerate(tracks)]
+
+
+def count_timeline(track: ClusterTrack) -> list[tuple[int, int]]:
+    """``[(frame, n_people), ...]`` for one cluster track."""
+    return [(o.frame, o.count) for o in track.obs]
+
+
+def count_runs(timeline: Sequence[tuple[int, int]]) -> list[CountRun]:
+    runs: list[CountRun] = []
+    for fi, n in timeline:
+        if runs and runs[-1].count == n:
+            runs[-1] = CountRun(runs[-1].start, fi, n)
+        else:
+            runs.append(CountRun(fi, fi, n))
+    return runs
+
+
+def change_points(timeline: Sequence[tuple[int, int]]) -> list[int]:
+    """Frames where the count differs from the previous observation."""
+    return [b[0] for a, b in zip(timeline, timeline[1:], strict=False) if a[1] != b[1]]
+
+
+def flicker_frames(
+    timeline: Sequence[tuple[int, int]], max_run: int = FLICKER_MAX_RUN
+) -> list[int]:
+    """Frames of a short count run squeezed between two runs of the *same* count (3,3,2,3).
+
+    A count that changes and stays changed (3,3,4,4) is someone arriving, not a flicker.
+    Observations are counted (not frame indices), so sparse windows behave the same.
+    """
+    frames_by_run: list[list[int]] = []
+    counts: list[int] = []
+    for fi, n in timeline:
+        if counts and counts[-1] == n:
+            frames_by_run[-1].append(fi)
+        else:
+            counts.append(n)
+            frames_by_run.append([fi])
+    out: list[int] = []
+    for i in range(1, len(counts) - 1):
+        if counts[i - 1] == counts[i + 1] and len(frames_by_run[i]) <= max_run:
+            out.extend(frames_by_run[i])
+    return out
+
+
+def track_severity(track: ClusterTrack) -> float:
+    """Queue ranking key (higher first): flicker dominates, then size, then overlap."""
+    tl = count_timeline(track)
+    biggest = max((o.count for o in track.obs), default=0)
+    iou_ = max((o.mean_iou for o in track.obs), default=0.0)
+    return 10.0 * len(flicker_frames(tl)) + biggest + iou_
+
+
+@dataclass(frozen=True)
+class TrackTriage:
+    track_id: str
+    decision: Literal["auto_ok", "review"]
+    reason: str
+
+
+def triage_track(
+    track: ClusterTrack,
+    *,
+    policy: str = POLICY_AUDIT_ALL,
+    confidences: Mapping[tuple[int, int], float] | None = None,
+    min_len: int = 3,
+    min_conf: float = 0.5,
+) -> TrackTriage:
+    """``auto_ok`` only for an isolated, stable, confident track AND only under the permissive policy.
+
+    ``confidences`` maps ``(frame, box_index)`` to detector confidence (missing = 0).
+    """
+    if policy != POLICY_PERMISSIVE:
+        return TrackTriage(track.track_id, "review", "audit_all")
+    if any(o.count > 1 for o in track.obs):
+        return TrackTriage(track.track_id, "review", "cluster")
+    if len(track.obs) < min_len:
+        return TrackTriage(track.track_id, "review", "unstable_short_track")
+    conf = confidences or {}
+    if any(conf.get((o.frame, o.indices[0]), 0.0) < min_conf for o in track.obs):
+        return TrackTriage(track.track_id, "review", "low_confidence")
+    return TrackTriage(track.track_id, "auto_ok", "isolated_stable")

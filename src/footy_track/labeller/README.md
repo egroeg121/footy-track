@@ -1975,6 +1975,42 @@ Unlike the panel it keeps `ingest` on: the verdicts are training data, and `feat
   - Tests: `::test_removing_players_complete_marker_removes_state`, `::test_players_complete_reingest_idempotent`,
     `::test_players_complete_does_not_override_stronger_row`
 
+## 19i. Player Check: cluster verification of player boxes (LAB-1451..1458)
+
+Design: `docs/design/full_frame_labelling.md` 4c / 6b (Task 10). Page `/player-check` (`web/player_check.html`, linked from the
+labeller home), API in `labeller/player_check.py`, geometry in `autolabel/clusters.py`, state in the feature-store
+`player_check` table (PK `game_id, frame_index, cluster_id`; `verdict` in ok / count_n / fixed / unsure; `count`; `run_id` = the
+count run `<cluster>:<a>-<b>`; `verified_by/at`). The frame sweep uses `cluster_id = '__sweep__'`.
+
+- **LAB-1451** (MUST) `autolabel/clusters.py` links frame clusters over a window (`track_clusters`, union-box overlap), gives each a count
+  timeline, change points and flicker frames (a short count run between two runs of the same count, e.g. 3,3,2,3; a persistent change is
+  not a flicker), and `triage_track`. Overlapping boxes form one cluster. The pre-existing `cluster_boxes` / `crowd_score` API is unchanged.
+  - Tests: `tests/autolabel/test_player_check_clusters.py`
+- **LAB-1452** (MUST) Triage policy defaults to `audit_all` (design 6b: no auto-accept on detector confidence). Only under the opt-in
+  `permissive` policy is an isolated, stable (>= 3 observations), confident track `auto_ok` and dropped from the queue.
+  - Tests: `::test_isolated_stable_box_is_auto_ok_only_under_permissive_policy`, `tests/labeller/test_player_check.py::test_permissive_policy_drops_isolated_stable_track`
+- **LAB-1453** (MUST) `GET /player-check/queue?clip=..&start&end&policy&eval`: cluster cards (worst flicker / size / overlap first, with strip
+  frames, count timeline, runs, crop), frame-sweep cards, and a deterministic 1-in-10 blind-audit frame list (no boxes). Verified clusters drop out.
+  - Tests: `tests/labeller/test_player_check.py::test_queue_flags_flicker_first_and_audits_everything_by_default`
+- **LAB-1454** (MUST) `POST /player-check/verdict`: `ok`, `count_is_N` with `start`/`end` (resolves that run; frames whose box count differs
+  from N are returned in `needs_fix` and stay uncompleted), `fixed` with `fix` = `[{frame_index, delete:[box_index], add:[{label,bbox}]}]`
+  (added boxes are `labeller` provenance = hand_label GT, written with `/review/correct`'s file, numbering and atomic write), `unsure`.
+  - Tests: `::test_count_is_n_resolves_a_run`, `::test_fixed_writes_hand_label_boxes`, `::test_fixed_without_boxes_is_rejected`
+- **LAB-1455** (MUST) A frame's player `frame_label_state` is `complete` (method `hand_frame`) only when ALL its clusters are verified AND its
+  sweep is verified; otherwise `partial`. `unsure` never completes.
+  - Tests: `::test_frame_complete_only_when_all_clusters_and_sweep_verified`, `::test_unsure_never_completes`
+- **LAB-1456** (MUST) Heldout / eval-in-match clips (per `footy_track.splits.split_of`) are refused with 403 unless the request sets `eval`;
+  such windows feed the player eval panel, never training.
+  - Tests: `::test_heldout_refused_unless_eval_flag`
+- **LAB-1457** (MUST) `player_check` store table + `FeatureStore.upsert_player_checks` / `read_player_checks`; verdict CHECK enforced.
+  - Tests: `tests/feature_store/test_frame_label_state.py::test_player_check_table_upserts_and_validates_verdict`
+- **LAB-1458** (SHOULD) Page: zoomed cluster strip, numbered distinct-colour boxes with offset outlines, count timeline, swipe/button ok vs fix,
+  sweep card, tap-to-add / tap-to-delete fix mode.
+  - Tests: UNTESTED-FRONTEND
+- Limits: cluster ids (`c0`...) are window-local and recomputed from the sidecar per call, so completeness is judged at write time against the
+  pre-fix boxes. Not built: audit-card submission (blind relabel), the independent second-model count (4c step 3), the Claude-assisted check
+  (step 5), split / merge-by-line fix tools, per-bucket miss-rate reporting.
+
 ## 15. Traceability summary
 
 | Section | Requirements | Tested | UNTESTED | UNTESTED-FRONTEND |
@@ -2001,6 +2037,7 @@ Unlike the panel it keeps `ingest` on: the verdicts are training data, and `feat
 | 19g. Eval panel suggestions (LAB-1445..1447) | 3 | 3 | 0 | 0 |
 | 2b. players_complete marker (LAB-109, LAB-310) | 2 | 2 | 0 | 0 |
 | 19h. Players-complete marker (LAB-1448..1450) | 3 | 2 | 0 | 1 |
+| 19i. Player Check (LAB-1451..1458) | 8 | 7 | 0 | 1 |
 | **Total** | **166** | **124** | **9** | **33** |
 
 Open items: 4 (OPEN-1..4) + 1 fixed on main (undo provenance, `95b60cc`).
