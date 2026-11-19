@@ -117,6 +117,49 @@ class Source(StrEnum):
     CALIB_MODEL = "model"
 
 
+class ClsGroup(StrEnum):
+    """Class group a ``frame_label_state`` row speaks for."""
+
+    BALL = "ball"
+    PLAYER = "player"  # player, player_sub, referee, coach, person
+
+
+class LabelState(StrEnum):
+    """Completeness of one class group on one frame. No row == ``unreviewed``."""
+
+    COMPLETE = "complete"  # every visible object of the group is labelled (ball: a verified box exists)
+    ABSENT = (
+        "absent"  # explicitly none visible (ball: no_ball; player: zero-person frame)
+    )
+    PARTIAL = "partial"  # a human demoted the frame: some labels exist but not all
+    UNREVIEWED = "unreviewed"
+
+
+class LabelMethod(StrEnum):
+    """How a ``frame_label_state`` row was established (see ``METHOD_RANK``)."""
+
+    HAND_SERIES = "hand_series"  # accept-all in a window/series review
+    HAND_FRAME = "hand_frame"  # per-frame human decision
+    VERDICT = "verdict"  # Ball Check verdict
+    SIDECAR_MARKER = "sidecar_marker"  # derived from the labeller sidecar (no_ball tag / human ball box)
+    OFFLINE_AUDITED = "offline_audited"  # teacher output that passed auto_ok rules + blind audit (silver)
+
+
+#: Precedence of the writer of a ``frame_label_state`` row; higher wins. A write
+#: replaces an existing row only when its rank is >= the existing row's rank
+#: (equal rank: last write wins), so re-ingesting a sidecar can never downgrade
+#: a state set by a stronger method. Explicit human decisions (``hand_*``) are
+#: top; Ball Check verdicts next; the audited machine tier next; the sidecar
+#: markers are lowest because they are re-derived (and replaced) on every flush.
+METHOD_RANK: dict[str, int] = {
+    LabelMethod.HAND_SERIES: 4,
+    LabelMethod.HAND_FRAME: 4,
+    LabelMethod.VERDICT: 3,
+    LabelMethod.OFFLINE_AUDITED: 2,
+    LabelMethod.SIDECAR_MARKER: 1,
+}
+
+
 class Point(BaseModel):
     """A normalised 2D point (pitch polygon vertex)."""
 
@@ -141,6 +184,20 @@ class GameRow(_Row):
     half2_start_continuous_s: float | None = None
     game_start_wallclock: datetime | None = None
     schema_version: str = SCHEMA_VERSION
+
+
+class FrameLabelStateRow(_Row):
+    """Per (game, frame, class group) completeness state (docs/design/full_frame_labelling.md §1)."""
+
+    game_id: str
+    frame_index: int = Field(..., ge=0)
+    cls_group: ClsGroup
+    state: LabelState
+    method: LabelMethod
+    run_id: str | None = None  # the proposing / writing run
+    teacher_version: str | None = None  # offline_vN, for offline_audited rows
+    verified_by: str | None = None
+    verified_at: datetime | None = None
 
 
 class FrameRow(_Row):
@@ -219,7 +276,15 @@ CALIBRATION_SOURCES = ("hand_label", "claude", "classical", "model")
 #: one such row for a (game, frame) removes the frame from ``frame_calibration_best``.
 #: ``too_few_points``: too few identifiable pitch features for >= 4 point pairs (PTZ-solver
 #: candidate); the row has no usable H and never wins ``frame_calibration_best``.
-CALIBRATION_STATUSES = ("hand", "proposed", "accepted", "rejected", "failed", "not_broadcast", "too_few_points")
+CALIBRATION_STATUSES = (
+    "hand",
+    "proposed",
+    "accepted",
+    "rejected",
+    "failed",
+    "not_broadcast",
+    "too_few_points",
+)
 #: The only H convention the SQL views understand.
 H_CONVENTION = "normalised_image_to_pitch_m"
 
@@ -481,6 +546,26 @@ DDL: tuple[str, ...] = (
         PRIMARY KEY (game_id, source, run_id, frame_index, point_idx)
     );
     """,
+    # Frame completeness per class group (docs/design/full_frame_labelling.md). No row ==
+    # unreviewed. Written with method precedence (store.upsert_frame_label_states).
+    """
+    CREATE TABLE IF NOT EXISTS frame_label_state (
+        game_id          VARCHAR,
+        frame_index      INTEGER,
+        cls_group        VARCHAR,
+        state            VARCHAR,
+        method           VARCHAR,
+        run_id           VARCHAR,
+        teacher_version  VARCHAR,
+        verified_by      VARCHAR,
+        verified_at      TIMESTAMP,
+        PRIMARY KEY (game_id, frame_index, cls_group),
+        CHECK (cls_group IN ('ball', 'player')),
+        CHECK (state IN ('complete', 'absent', 'partial', 'unreviewed')),
+        CHECK (method IN ('hand_series', 'hand_frame', 'verdict',
+                          'sidecar_marker', 'offline_audited'))
+    );
+    """,
     # Human Ball Check verdicts (see feature_store/ball_checks.py). Additive:
     # nothing in the detection table changes, and re-running the importer
     # rewrites a clip's rows wholesale. ``vsource`` is the Ball Check card
@@ -575,6 +660,14 @@ VIEWS: tuple[str, ...] = (
         JOIN frame f USING (game_id, frame_index)
         LEFT JOIN run r USING (run_id)
         JOIN group_rank gr USING (game_id, frame_index, run_group);
+    """,
+    """
+    CREATE OR REPLACE VIEW frame_complete AS
+        SELECT game_id, frame_index
+        FROM frame_label_state
+        WHERE state IN ('complete', 'absent')
+        GROUP BY game_id, frame_index
+        HAVING count(DISTINCT cls_group) = 2;
     """,
     """
     CREATE OR REPLACE VIEW tracks_enriched AS
@@ -721,6 +814,7 @@ TABLES: tuple[str, ...] = (
     "detection",
     "track_meta",
     "detection_review",
+    "frame_label_state",
     "calibration",
     "pitch_keypoint",
 )
