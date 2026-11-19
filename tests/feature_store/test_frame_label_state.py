@@ -253,3 +253,72 @@ def test_players_complete_feeds_frame_complete_view(tmp_path) -> None:
     _ingest(store, tmp_path, recs)
     df = store.query("SELECT frame_index FROM frame_complete")
     assert sorted(df.frame_index) == [0, 1]
+
+
+# --- legacy back-fill (--legacy-complete-clips): named clips only ---
+
+
+def _legacy(store, tmp_path, clips, records=None):
+    from footy_track.feature_store.ingest_gt import ingest_gt_dir  # noqa: PLC0415
+
+    (tmp_path / f"{CLIP}.jsonl").write_text("\n".join(json.dumps(r) for r in (records or _records())) + "\n")
+    return ingest_gt_dir(store, tmp_path, video_dir=tmp_path, legacy_complete_clips=set(clips))
+
+
+def test_legacy_backfill_named_clip_only_labeller_player_frames(tmp_path) -> None:
+    store = FeatureStore.open(":memory:")
+    rep = _legacy(store, tmp_path, [CLIP])
+    # frames 0 and 3 have a hand-label player box; 1 (no_ball) and 2 (vittrack ball) get no player state
+    assert _states(store, "player") == {
+        (0, "player"): ("complete", "sidecar_marker"),
+        (3, "player"): ("complete", "sidecar_marker"),
+    }
+    assert rep.players_legacy_complete == 2
+    row = store.read_frame_label_states(CLIP, "player").iloc[0]
+    assert (row.verified_by, row.run_id) == ("legacy_backfill", "gt_import_legacy_backfill")
+
+
+def test_legacy_backfill_ignores_machine_player_boxes(tmp_path) -> None:
+    store = FeatureStore.open(":memory:")
+    _legacy(store, tmp_path, [CLIP], [{"frame_index": 5, "bbox": BOX, "tags": ["player", "yolo"]}])
+    assert _states(store, "player") == {}
+
+
+def test_legacy_backfill_unnamed_clip_untouched(tmp_path) -> None:
+    store = FeatureStore.open(":memory:")
+    rep = _legacy(store, tmp_path, ["some_other_clip"])
+    assert _states(store, "player") == {}
+    assert rep.players_legacy_complete == 0
+
+
+def test_legacy_backfill_idempotent_and_removal_removes(tmp_path) -> None:
+    store = FeatureStore.open(":memory:")
+    _legacy(store, tmp_path, [CLIP])
+    first = store.read_frame_label_states().to_dict("records")
+    _legacy(store, tmp_path, [CLIP])
+    assert store.read_frame_label_states().to_dict("records") == first
+    _legacy(store, tmp_path, [])
+    assert _states(store, "player") == {}
+    assert _states(store, "ball")  # ball rows untouched
+
+
+def test_legacy_backfill_does_not_override_stronger_rows(tmp_path) -> None:
+    store = FeatureStore.open(":memory:")
+    store.upsert_frame_label_states(
+        [
+            _row(0, ClsGroup.PLAYER, LabelState.PARTIAL, LabelMethod.HAND_FRAME),
+            _row(3, ClsGroup.PLAYER, LabelState.PARTIAL, LabelMethod.HAND_SERIES),
+        ]
+    )
+    _legacy(store, tmp_path, [CLIP])
+    assert _states(store, "player") == {
+        (0, "player"): ("partial", "hand_frame"),
+        (3, "player"): ("partial", "hand_series"),
+    }
+
+
+def test_legacy_backfill_feeds_frame_complete_view(tmp_path) -> None:
+    store = FeatureStore.open(":memory:")
+    _legacy(store, tmp_path, [CLIP])
+    # frame 0: ball complete + backfilled player; frame 3: backfilled player but no ball state
+    assert sorted(store.query("SELECT frame_index FROM frame_complete").frame_index) == [0]
