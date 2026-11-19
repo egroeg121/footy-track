@@ -6,6 +6,8 @@ sidecar format) for the contract these encode.
 
 from __future__ import annotations
 
+from footy_track.constants import FROZEN_CLASS_IDS, FROZEN_CLASS_NAMES  # noqa: F401  (frozen training class ids)
+
 # Provenance tags stored in each box's ObjectDetection.model field.
 PROV_LABELLER = "labeller"  # manual edit — ground truth, never auto-overwritten
 PROV_YOLO = "yolo"
