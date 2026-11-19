@@ -224,6 +224,17 @@ class PlayerCheckRow(_Row):
     count: int | None = Field(None, ge=0)  # asserted person count (count_n), else NULL
     run_id: str | None = None  # the count run ``<cluster>:<a>-<b>`` a count_n verdict resolved
     verified_by: str | None = None
+class SeriesRow(_Row):
+    """A fully-complete window of contiguous frames (docs/design/full_frame_labelling.md section 4).
+
+    ``end_frame`` is exclusive (same as ``autolabel.windows``). Registered by the series review
+    only when every frame of ``[start_frame, end_frame)`` is ``frame_complete``.
+    """
+
+    game_id: str
+    start_frame: int = Field(..., ge=0)
+    end_frame: int = Field(..., ge=1)
+    run_id: str | None = None  # the proposing run
     verified_at: datetime | None = None
 
 
@@ -607,6 +618,16 @@ DDL: tuple[str, ...] = (
         verified_at  TIMESTAMP,
         PRIMARY KEY (game_id, frame_index, cluster_id),
         CHECK (verdict IN ('ok', 'count_n', 'fixed', 'unsure'))
+    # Fully-complete windows (series review). end_frame is exclusive.
+    """
+    CREATE TABLE IF NOT EXISTS series (
+        game_id       VARCHAR,
+        start_frame   INTEGER,
+        end_frame     INTEGER,
+        run_id        VARCHAR,
+        verified_at   TIMESTAMP,
+        PRIMARY KEY (game_id, start_frame, end_frame),
+        CHECK (end_frame > start_frame)
     );
     """,
     # Human Ball Check verdicts (see feature_store/ball_checks.py). Additive:
@@ -859,6 +880,7 @@ TABLES: tuple[str, ...] = (
     "detection_review",
     "frame_label_state",
     "player_check",
+    "series",
     "calibration",
     "pitch_keypoint",
 )
