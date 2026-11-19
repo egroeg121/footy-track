@@ -1338,9 +1338,9 @@ that runs after a restart, for the `nottinghamforest` dataset of `calib` (`WARM_
 `scripts/labeller_deploy.sh`; keep the `SERVICES` list in `web/main.html` in step with it. Feature branches are tested in
 their own worktree on another port, never in the serving checkout.
 
-### 17b. Task board filters (LAB-1439)
+### 17b. Task board filters (LAB-1443)
 
-- **LAB-1439** (SHOULD) The "To do now" list has a Device row (`All`, `Phone`, `Laptop`; `either` or no device shows under both)
+- **LAB-1443** (SHOULD) The "To do now" list has a Device row (`All`, `Phone`, `Laptop`; `either` or no device shows under both)
   and a Task type row (`All` plus one button per `kind` present, with counts; kinds with no tasks are hidden, no kind is
   "Other"). The rows combine (AND) and filter client-side over `/api/tasks`. The default Device is Phone on a touch or
   narrow screen, else Laptop, only when nothing is saved; the choice is kept in `localStorage` and in `?device=&kind=`.
@@ -1895,7 +1895,7 @@ confidence intervals. Per match (the only stratum in v1):
 | 19c. Labelling hooks (LAB-1417..1426) | 10 | 8 | 0 | 2 |
 | 19d. Review fixes (LAB-1427..1434) | 8 | 7 | 1 | 0 |
 | 19e. Ball evaluation panel (LAB-1435..1438) | 4 | 4 | 0 | 0 |
-| 17b. Task board filters (LAB-1439) | 1 | 0 | 0 | 1 |
+| 17b. Task board filters (LAB-1443) | 1 | 0 | 0 | 1 |
 | **Total** | **161** | **120** | **9** | **32** |
 
 Open items: 4 (OPEN-1..4) + 1 fixed on main (undo provenance, `95b60cc`).
