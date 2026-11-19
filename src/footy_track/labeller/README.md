@@ -1575,6 +1575,13 @@ restricted to the job's cards (progress and results are).
   - Tests (server half): `::test_ball_place_url_opens_job_mode_and_other_kinds_do_not`,
     `::test_frames_endpoint_expands_items_in_job_order_with_the_progress_rule`; the page itself is UNTESTED-FRONTEND
     (driven by hand in headless Chromium).
+- **LAB-1444** (MUST) In job mode (`?job=<id>`) the page draws only human boxes: tag `labeller`, or a machine box carrying
+  `human_checked` (`/timeline/<idx>` reports `human_checked` per box). Pre-existing machine boxes (vittrack, yolo, sam3
+  without that marker) are not drawn, so a held-out match is not labelled by accepting proposals. This is display only:
+  the hidden boxes are kept client-side and sent back unchanged with every `/edit`, so saving a frame never deletes or
+  alters their sidecar rows. The job bar checkbox `Show machine boxes (M)` (key `M`, off by default) draws them dimmed and
+  dashed. A frame still counts as done only through a human ball box, no-ball or not-broadcast. Without `job=` nothing changes.
+  - Tests: `tests/labeller/test_job_hide_machine.py` (server round trip; page wiring checked by string, rest UNTESTED-FRONTEND).
 
 ### Prepared Ball Check jobs: inline cards, disk renders, bounds (LAB-1409..1416)
 

@@ -58,10 +58,13 @@ from footy_track.labeller.run_stream import stream_frames  # noqa: E402
 from footy_track.labeller.session import (  # noqa: E402
     Session,
     boxes_from_payload,
+    _marker_key,
     boxes_payload,
 )
 from footy_track.labeller.video_utils import yolo_seed_objects  # noqa: E402
 from footy_track.schema import ObjectDetection  # noqa: E402
+
+HUMAN_CHECKED_TAG = "human_checked"
 
 __all__ = [
     "PROV_LABELLER",
@@ -385,7 +388,13 @@ async def autodetect(body: dict) -> dict:
 async def get_timeline(idx: int) -> dict:
     """Return the authoritative boxes (with provenance) for a frame."""
     session = _session()
-    return {"idx": idx, "boxes": boxes_payload(session.get_frame(idx))}
+    frame = session.get_frame(idx)
+    payload = boxes_payload(frame)
+    for b, row in zip(frame, payload, strict=True):
+        # Marker tags live beside the timeline; the page needs to know a machine
+        # box was human-checked (job mode hides only unchecked machine boxes).
+        row["human_checked"] = HUMAN_CHECKED_TAG in session._box_markers.get(_marker_key(idx, b), ())
+    return {"idx": idx, "boxes": payload}
 
 
 @app.get("/next-detection/{from_idx}")

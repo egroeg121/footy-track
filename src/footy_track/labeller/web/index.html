@@ -121,6 +121,7 @@
       <span id="jobMeta" class="muted"></span>
       <span class="grow"></span>
       <label class="muted" title="Placing the ball or marking no-ball / not-broadcast jumps to the next unlabelled job frame"><input type="checkbox" id="jobAuto" checked> auto-advance</label>
+      <label class="muted" title="Pre-existing machine boxes (vittrack/yolo/...) are hidden in job mode so they cannot bias placement. Shown dimmed and dashed. Hidden boxes are never deleted or changed by saving."><input type="checkbox" id="jobShowMachine"> Show machine boxes (M)</label>
       <button id="jobCardBtn" title="Jump back to this card's frame, reloading its clip if you wandered off (C). Does not label or advance.">↩ Card frame (C)</button>
       <button id="jobPrevBtn" title="Previous job frame (K)">⏮ Prev job frame (K)</button>
       <button id="jobNextBtn" class="primary" title="Next job frame that is not labelled yet (J)">Next job frame (J) ⏭</button>
@@ -237,18 +238,29 @@ classSel.value = "in_play_ball";
 function $(id){ return document.getElementById(id); }
 function setStatus(s){ $("status").textContent = s; }
 
-function boxesNorm() {
+function boxesNorm(visibleOnly) {
   // Only our labelled boxes (name="box") — NOT the Transformer's handle rects.
   // Each box carries its model tag so saves promote ONLY hand-touched boxes to
   // labeller GT; untouched machine boxes keep vittrack/yolo/sam3.
-  return boxLayer.find(".box").map(r => ({
+  // Job mode hides machine boxes (hiddenMachine): they are appended UNCHANGED so a
+  // save never deletes them. visibleOnly=true is for the undo stack, which restores
+  // by re-drawing and must not resurrect hidden boxes.
+  const vis = boxLayer.find(".box").map(r => ({
     label: r.getAttr("label"),
     model: r.getAttr("source") || "labeller",
     conf: r.getAttr("conf") !== undefined ? r.getAttr("conf") : 1.0,
     x: r.x()/dispW, y: r.y()/dispH,
     w: (r.width()*r.scaleX())/dispW, h: (r.height()*r.scaleY())/dispH,
   }));
+  // A no_ball / not_broadcast frame holds no boxes in the sidecar (flush skips them), and a non-empty /edit
+  // would make the server drop that mark: never send hidden machine boxes for such a frame.
+  const skipMarked = viewFrame != null && (noBallFrames.has(viewFrame) || notBroadcastFrames.has(viewFrame));
+  return (visibleOnly || skipMarked) ? vis : vis.concat(hiddenMachine);
 }
+// Job mode: machine proposals (anything not human-drawn / human_checked) are not drawn by default.
+let hiddenMachine = [];
+const showMachineOn = () => !JOB_ID || $("jobShowMachine").checked;
+const isHumanBox = o => o.source === "labeller" || o.human_checked === true;
 
 // Threshold sliders (right panel). Changes persist and apply on the next run.
 (function buildThreshSliders(){
@@ -332,6 +344,15 @@ $("clearAllBtn").onclick = () => {
 
 function drawBoxes(objs, editable){
   clearBoxes();
+  hiddenMachine = [];
+  if (!showMachineOn()) {
+    const keep = [];
+    objs.forEach(o => {
+      if (isHumanBox(o)) keep.push(o);
+      else hiddenMachine.push({label:o.label, model:o.source, conf:o.conf !== undefined ? o.conf : 1.0, x:o.x, y:o.y, w:o.w, h:o.h});
+    });
+    objs = keep;
+  }
   // Canvas z-order follows the hierarchy: draw lower-tier (machine) boxes
   // first, GT last, so hand marks always sit on top visually. Stable sort
   // preserves relative order within a tier (server payload order).
@@ -341,6 +362,7 @@ function drawBoxes(objs, editable){
   ordered.forEach(o => {
     const r = addRect(o.label, o.x*dispW, o.y*dispH, o.w*dispW, o.h*dispH, editable, o.source);
     if (o.conf !== undefined) r.setAttr("conf", o.conf);
+    if (JOB_ID && !isHumanBox(o)) { r.strokeOpacity(0.35); r.dash([3,5]); }   // shown machine proposal: clearly not a label
   });
   refreshNumbers(); boxLayer.draw(); renderList();
 }
@@ -622,6 +644,7 @@ window.addEventListener("keydown",(e)=>{
     if (mode === "running") { e.preventDefault(); $("pauseBtn").click(); }
     return;
   }
+  if (JOB_ID && (e.key === "m" || e.key === "M")) { e.preventDefault(); const c = $("jobShowMachine"); c.checked = !c.checked; c.onchange({target: c}); return; }
   if (JOB_ID && (e.key === "j" || e.key === "J")) { e.preventDefault(); jobNext(); return; }
   if (JOB_ID && (e.key === "k" || e.key === "K")) { e.preventDefault(); jobPrev(); return; }
   // C = back to the card frame (R is taken by Run/Restart)
@@ -641,7 +664,13 @@ window.addEventListener("keydown",(e)=>{
 const jobKey = (clip, frame) => `${clip}\t${frame}`;
 const stemOf = p => p.split("/").pop().replace(/\.[^.]+$/, "");
 const jobAutoOn = () => $("jobAuto").checked;
-$("jobAuto").onchange = (e) => e.target.blur();   // a focused checkbox would swallow the J/K keys
+$("jobAuto").onchange = (e) => e.target.blur();
+$("jobShowMachine").onchange = async (e) => {
+  e.target.blur();
+  if (meta === null || viewFrame == null) return;
+  await saveCurrentEdits();             // keep edits; the redraw below re-reads the server timeline
+  await loadTimelineFrame(viewFrame, mode !== "running");
+};   // a focused checkbox would swallow the J/K keys
 
 function jobIndexHere() {
   if (!job || meta === null) return -1;
@@ -674,6 +703,7 @@ function jobRender() {
 function jobSyncCurrent() {
   if (!job || meta === null) return;
   const humanBall = boxLayer.find(".box").some(r => r.getAttr("source") === "labeller" && BALL_LABELS.has(r.getAttr("label")));
+  // only boxes the user can see clear a skip mark: hidden machine boxes must not undo N / B
   if (boxLayer.find(".box").length) { noBallFrames.delete(viewFrame); notBroadcastFrames.delete(viewFrame); }
   const key = jobKey(stemOf(loadedPath), viewFrame);
   if (humanBall || noBallFrames.has(viewFrame) || notBroadcastFrames.has(viewFrame)) jobDone.add(key);
@@ -934,7 +964,7 @@ function navigateDelta(delta){
   if (meta === null) return;
   gotoFrame(Math.max(0, Math.min(meta.total_frames-1, viewFrame+delta)));
 }
-function pushUndo(){ undoStack.push(boxesNorm()); if(undoStack.length>20) undoStack.shift(); }
+function pushUndo(){ undoStack.push(boxesNorm(true)); if(undoStack.length>20) undoStack.shift(); }
 function undoLast(){
   if(!undoStack.length){ setStatus("Nothing to undo"); return; }
   const snapshot = undoStack.pop();
