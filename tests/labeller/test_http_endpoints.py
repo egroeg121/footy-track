@@ -194,6 +194,7 @@ def test_timeline_returns_boxes_with_source(client, fresh_session):
             "h": 0.08,
             "conf": 0.7,
             "source": PROV_YOLO,
+            "human_checked": False,
         }
     ]
     # Unpopulated / out-of-range frames -> empty list, not an error.
