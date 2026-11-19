@@ -51,6 +51,16 @@ def _common(p: argparse.ArgumentParser) -> None:
     )
     p.add_argument("--no-gold", action="store_true")
     p.add_argument(
+        "--gold-datasets",
+        default=",".join(rnd.RoundConfig().gold_datasets),
+        help="registry datasets the gold GT and the gold cards' videos come from (comma separated; default %(default)s)",
+    )
+    p.add_argument(
+        "--no-link",
+        action="store_true",
+        help="do not register the dataset / link the cards' clips into its clips dir (tests; cards then will not render)",
+    )
+    p.add_argument(
         "--quotas",
         default=None,
         help='JSON, e.g. \'{"U":.35,"M":.2,"N":.15,"R":.15,"A":.1,"G":.05}\'',
@@ -80,6 +90,8 @@ def _cfg(a: argparse.Namespace) -> rnd.RoundConfig:
         seed=a.seed,
         per_match_cap=a.per_match_cap,
         use_gold=not a.no_gold,
+        gold_datasets=tuple(x for x in a.gold_datasets.split(",") if x),
+        link_clips=not a.no_link,
     )
     if a.data_root:
         cfg.data_root = a.data_root
@@ -102,6 +114,8 @@ def _print_report(rep: dict) -> None:
     print("per match x bucket:")
     for m, row in rep["by_match_bucket"].items():
         print(f"  {m}: {dict(sorted(row.items()))}  total {sum(row.values())}")
+    if rep.get("gold_unresolved_clips"):
+        print("gold clips with no video (left out):", rep["gold_unresolved_clips"])
     if rep["refused"]:
         print("REFUSED (not train):", json.dumps(rep["refused"]))
     if rep["excluded"]:
@@ -172,7 +186,12 @@ def main(argv: list[str] | None = None) -> int:
     _common(p)
     _pool_args(p)
     p.add_argument("--force", action="store_true", help="ignore the tick rule")
-    p.add_argument("--dry-run", action="store_true")
+    p.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="mine and prepare but submit nothing (the dataset is still registered and the clips linked: both idempotent)",
+    )
+    p.add_argument("--out", help="write the cards of a --dry-run here as JSON")
     p.add_argument(
         "--prepare",
         action="store_true",
@@ -243,9 +262,11 @@ def main(argv: list[str] | None = None) -> int:
     out = rnd.create_round(
         pool, cfg, force=a.force, dry_run=a.dry_run, prepare=a.prepare, marks=marks
     )
+    if a.out and out.get("cards"):
+        Path(a.out).write_text(json.dumps(out["cards"], indent=1, default=str))
     print(
         json.dumps(
-            {k: v for k, v in out.items() if k != "report"}, indent=1, default=str
+            {k: v for k, v in out.items() if k not in ("report", "cards")}, indent=1, default=str
         )
     )
     if out.get("report"):

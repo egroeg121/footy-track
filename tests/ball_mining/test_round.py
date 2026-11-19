@@ -92,7 +92,7 @@ class FakeClient:
 
 def cfg(**kw):
     return rnd.RoundConfig(
-        dataset="train", data_root="/nonexistent", use_gold=False, **kw
+        dataset="train", data_root="/nonexistent", use_gold=False, link_clips=False, **kw
     )
 
 
@@ -238,7 +238,7 @@ def test_cli_plan_prints_counts_and_writes_the_cards(tmp_path, splits_patched, c
         )
     out = tmp_path / "plan.json"
     rc = ball_round.main(["plan", "--machine-labels", str(d), "--match", "m1", "--dataset", "train", "--marks-dir", str(tmp_path / "marks"), "--data-root", "/nonexistent",
-                          "--budget", "40", "--no-gold", "--out", str(out)])  # fmt: skip
+                          "--budget", "40", "--no-gold", "--no-link", "--out", str(out)])  # fmt: skip
     assert rc == 0
     txt = capsys.readouterr().out
     assert (
@@ -281,6 +281,7 @@ def test_cli_create_dry_run_and_tick_block(
         "--data-root",
         "/nonexistent",
         "--no-gold",
+        "--no-link",
         "--budget",
         "20",
     ]

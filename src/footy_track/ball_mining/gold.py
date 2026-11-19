@@ -13,6 +13,7 @@ with a stored ``bbox``). The result is a frame in the same shape as the pool plu
 from __future__ import annotations
 
 import json
+from collections.abc import Iterable
 from pathlib import Path
 
 import pandas as pd
@@ -111,3 +112,15 @@ def load_gold(marks_dir: str | Path, *, match_of, fps: float = 25.0) -> pd.DataF
     df["_cid"] = df["clip"].map(canonical_clip_id)
     df = df.drop_duplicates(["_cid", "frame", "kind"]).drop(columns="_cid")
     return df[list(GOLD_COLUMNS)].reset_index(drop=True)
+
+
+def load_gold_multi(marks_dirs: Iterable[str | Path], *, match_of, fps: float = 25.0) -> pd.DataFrame:
+    """:func:`load_gold` over several marks dirs (the round dataset's own, then the datasets the GT lives in), one row per
+    ``(canonical clip, frame, kind)``; the first dir listing it wins (so its sidecar stem is the one kept)."""
+    frames = [load_gold(d, match_of=match_of, fps=fps) for d in dict.fromkeys(Path(d) for d in marks_dirs)]
+    frames = [f for f in frames if len(f)]
+    if not frames:
+        return pd.DataFrame(columns=list(GOLD_COLUMNS))
+    df = pd.concat(frames, ignore_index=True)
+    df["_cid"] = df["clip"].map(canonical_clip_id)
+    return df.drop_duplicates(["_cid", "frame", "kind"]).drop(columns="_cid").reset_index(drop=True)[list(GOLD_COLUMNS)]
