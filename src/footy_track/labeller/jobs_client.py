@@ -4,7 +4,7 @@
 Single file, no footy_track imports: copy it anywhere, or fetch it from the server,
 for a branch / worktree / Prefect flow that has not merged main::
 
-    curl -O http://mac-mini-i7:8011/api/jobs_client.py
+    curl -O http://merlin:8011/api/jobs_client.py
 
     from jobs_client import submit, wait, results
     job = submit("Nottingham Forest windows r1", "ball_place", [
@@ -30,7 +30,7 @@ ceiling of 2000). ``--prepare`` also queues a Prefect run that renders every car
 so the phone only downloads finished files; the job shows as ``preparing`` until it is done.
 
 REF is a job id or an exact (unique) job title. The server is ``$FOOTY_LABELLER_URL``
-(default ``http://mac-mini-i7:8011``). ``requester.branch`` and ``commit`` are filled in
+(default ``http://merlin:8011``). ``requester.branch`` and ``commit`` are filled in
 from git, ``host`` from the hostname, unless you pass ``requester`` yourself.
 """
 
@@ -48,7 +48,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-DEFAULT_URL = "http://mac-mini-i7:8011"
+DEFAULT_URL = "http://merlin:8011"
 TERMINAL = ("done", "cancelled")
 #: Mirrors ``jobs.MAX_CARDS_DEFAULT`` / ``MAX_CARDS_HARD`` so the CLI can refuse before posting.
 DEFAULT_MAX_CARDS = 500
@@ -297,7 +297,7 @@ def _print(obj: object) -> None:
 
 def main(argv: list[str] | None = None) -> int:  # noqa: PLR0912, PLR0915
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--url", help="labeller base URL (default $FOOTY_LABELLER_URL or http://mac-mini-i7:8011)")
+    ap.add_argument("--url", help="labeller base URL (default $FOOTY_LABELLER_URL or http://merlin:8011)")
     sub = ap.add_subparsers(dest="cmd", required=True)
 
     s = sub.add_parser("submit", help="create a job (prints id, url, status)")

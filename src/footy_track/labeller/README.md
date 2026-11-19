@@ -1255,7 +1255,7 @@ becomes GT without a human accepting it; accepted GT carries
 
 ## 17. Labelling site (informative)
 
-**One site, always main.** Open `http://mac-mini-i7:8011/` on the tailnet. It serves
+**One site, always main.** Open `http://merlin:8011/` on the tailnet. It serves
 every dataset (calib, Nottingham Forest held-out, ...) from one process: pick one with the
 dataset picker on the home page, or add `?dataset=nottinghamforest` to any page URL (section 18).
 The home page is a **task board**: a "To do now" list
@@ -1269,9 +1269,9 @@ redeploy is needed. It is created from a built-in seed the first time it is read
 Edit it only through the CLI (atomic write, stable ids):
 
 ```bash
-python -m footy_track.scripts.labelling_tasks add "Recheck X" --url http://mac-mini-i7:8011/ball_check \
+python -m footy_track.scripts.labelling_tasks add "Recheck X" --url http://merlin:8011/ball_check \
     --why "one line" --device phone --priority 1 \
-    --count-url 'http://mac-mini-i7:8011/ball_check/queue?source=list&limit=1' --count-label left
+    --count-url 'http://merlin:8011/ball_check/queue?source=list&limit=1' --count-label left
 python -m footy_track.scripts.labelling_tasks list
 python -m footy_track.scripts.labelling_tasks done <id>      # remove it by hand
 ```
@@ -1419,30 +1419,30 @@ A *dataset* is a clips dir plus where its labels live. One server serves all of 
 ### Submitting labelling jobs from another branch
 
 Do not start your own labeller or hand-edit the task board. POST a **job** to main's labeller
-(`http://mac-mini-i7:8011`, override with `$FOOTY_LABELLER_URL`); it shows up on the home page
+(`http://merlin:8011`, override with `$FOOTY_LABELLER_URL`); it shows up on the home page
 task board with a deep link into the right page and dataset, and you fetch the labels later by
 job id or title.
 
 ```bash
 # 1. submit (re-running with the same "key" returns the same job, never a duplicate)
-curl -s -X POST http://mac-mini-i7:8011/api/jobs -H 'Content-Type: application/json' -d '{
+curl -s -X POST http://merlin:8011/api/jobs -H 'Content-Type: application/json' -d '{
   "title": "Nottingham Forest windows r1",
   "kind": "ball_place", "dataset": "nottinghamforest",
   "items": [{"clip": "arsenal_nottinghamforest_seg003", "frame_start": 10, "frame_end": 259, "step": 10}],
   "why": "held-out ball placement", "device": "laptop", "priority": 2,
   "requester": {"branch": "exp/my-branch", "commit": "abc1234", "host": "desktop"},
   "key": "exp/my-branch/nottinghamforest-windows-r1"}'
-# -> {"id":"j-56098a576c24","url":"http://mac-mini-i7:8011/labeller?dataset=nottinghamforest&clip=...&frame=10","status":"open","created":true,...}
+# -> {"id":"j-56098a576c24","url":"http://merlin:8011/labeller?dataset=nottinghamforest&clip=...&frame=10","status":"open","created":true,...}
 
 # 2. progress (computed from the real label files) -- by id or exact title
-curl -s 'http://mac-mini-i7:8011/api/jobs/Nottingham%20Forest%20windows%20r1' | jq '.status, .progress'
+curl -s 'http://merlin:8011/api/jobs/Nottingham%20Forest%20windows%20r1' | jq '.status, .progress'
 
 # 3. the labels, once done (or any time: partial results)
-curl -s 'http://mac-mini-i7:8011/api/jobs/j-56098a576c24/results' > labels.json
+curl -s 'http://merlin:8011/api/jobs/j-56098a576c24/results' > labels.json
 ```
 
 From Python / a Prefect flow, with no dependencies (`urllib` only; copy the single file, or fetch
-it from the server if your branch has not merged main: `curl -O http://mac-mini-i7:8011/api/jobs_client.py`):
+it from the server if your branch has not merged main: `curl -O http://merlin:8011/api/jobs_client.py`):
 
 ```python
 from jobs_client import submit, wait, results   # or footy_track.labeller.jobs_client

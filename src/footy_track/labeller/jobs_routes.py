@@ -92,7 +92,7 @@ async def jobs_gc(dry_run: bool = False) -> dict:
 @router.get("/api/jobs_client.py")
 async def jobs_client_source() -> PlainTextResponse:
     """The dependency-free client, for a branch that has not merged main:
-    ``curl -O http://mac-mini-i7:8011/api/jobs_client.py``."""
+    ``curl -O http://merlin:8011/api/jobs_client.py``."""
     return PlainTextResponse(Path(__file__).with_name("jobs_client.py").read_text())
 
 
