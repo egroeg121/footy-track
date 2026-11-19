@@ -809,7 +809,7 @@ def test_only_complete_frames_and_skip_reasons(tmp_path) -> None:
     _states(store, "clip_a", 3, L.COMPLETE, None)  # player unreviewed
     _states(store, "clip_a", 4, L.UNREVIEWED, L.COMPLETE)  # ball unreviewed
     # frame 5: box but no state row at all
-    m = export(store, out_dir=tmp_path / "o", **_kw(tmp_path))
+    m = export(store, out_dir=tmp_path / "o", classes=["ball", "player"], **_kw(tmp_path))
     assert m["frames"]["emitted"] == 2
     assert m["frames"]["skipped_by_reason"] == {
         "partial": 1,
@@ -914,3 +914,33 @@ def test_unknown_class_label_rejected(tmp_path) -> None:
     store = FeatureStore.open(":memory:")
     with pytest.raises(ValueError, match="frozen class list"):
         export(store, out_dir=tmp_path / "o", classes=["goalkeeper"], **_kw(tmp_path))
+
+
+def test_ball_only_needs_only_ball_state_multiclass_needs_both(tmp_path) -> None:
+    images_dir = tmp_path / "imgs"
+    images_dir.mkdir()
+    store = FeatureStore.open(":memory:")
+    L = LabelState
+    _seed_multiclass_clip(
+        store, tmp_path, images_dir, "clip_a",
+        {
+            0: [("ball", 0.5, 0.5, 0.02, 0.03)],
+            1: [("player", 0.1, 0.1, 0.2, 0.3)],
+            2: [("ball", 0.5, 0.5, 0.02, 0.03)],
+            3: [("ball", 0.5, 0.5, 0.02, 0.03)],
+        },
+        complete=False,
+    )
+    _states(store, "clip_a", 0, L.COMPLETE, None)  # ball only: no player state
+    _states(store, "clip_a", 1, L.ABSENT, None)  # ball absent, no player state
+    _states(store, "clip_a", 2, L.PARTIAL, None)
+    _states(store, "clip_a", 3, L.UNREVIEWED, L.COMPLETE)
+    m = export(store, out_dir=tmp_path / "o1", **_kw(tmp_path))
+    assert m["frames"]["emitted"] == 2
+    assert m["frames"]["skipped_by_reason"] == {"partial": 1, "ball_unreviewed": 1}
+    absent = next((tmp_path / "o1" / "labels").rglob("clip_a_000001.txt"))
+    assert absent.read_text() == ""
+
+    m = export(store, out_dir=tmp_path / "o2", classes=["player", "ball"], **_kw(tmp_path))
+    assert m["frames"]["emitted"] == 0  # player state missing/partial everywhere
+    assert m["frames"]["skipped_by_reason"]["player_unreviewed"] == 2

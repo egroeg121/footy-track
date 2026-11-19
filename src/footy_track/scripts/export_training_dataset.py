@@ -1,12 +1,15 @@
 """Export a leakage-free YOLO training dataset from the feature store (ft-n2o.1).
 
-Complete frames only (docs/design/full_frame_labelling.md sections 1-2). A frame reaches the export iff it
-is in the ``frame_complete`` view: every class group (``ball``, ``player``) has state ``complete`` or
+Complete frames only (docs/design/full_frame_labelling.md sections 1-2). In multi-class mode
+(``--classes``) a frame reaches the export iff it is in the ``frame_complete`` view; in the default
+ball-only mode only the BALL group must be ``complete``/``absent`` (player state is not required, since
+nothing writes it yet), so ball frames with partial/unreviewed ball state are skipped. ``frame_complete`` means every class group (``ball``, ``player``) has state ``complete`` or
 ``absent`` in ``frame_label_state``. A missing label never implies background. Frames that are partial or
 unreviewed are skipped, and the manifest counts them by reason (``frames.skipped_by_reason``).
 
 NOTE: nothing writes *player* completeness yet (series review and the legacy backfill are Tasks 3 and 8).
-Until they land, real data yields few or no exported frames. That is expected, not a bug.
+Until they land, multi-class (``--classes``) exports yield few or no frames; the default ball-only export is
+unaffected. That is expected, not a bug.
 
 Negatives:
 
@@ -499,7 +502,7 @@ def _export_clip(
         c["boxes"] += len(frows)
         c["empty_frames"] += not frows
         c["by_state"][f"ball:{fr['ball_state']}"] += 1
-        c["by_state"][f"player:{fr['player_state']}"] += 1
+        c["by_state"][f"player:{fr['player_state'] or 'unreviewed'}"] += 1
         for r in frows:
             c["by_source"][r.source] += 1
             c["by_class"][class_names[class_id_for_label[r.label]]] += 1
@@ -751,8 +754,15 @@ def export(  # noqa: PLR0912, PLR0915
         if clip in heldout_clips or canonical_clip_id(clip) in excluded_ids:
             continue
         key = (clip, int(r.frame_index))
-        if not r.is_complete:
-            skipped[_frame_skip_reason(r.ball_state, r.player_state)] += 1
+        if ball_only:
+            # ball-only: the ball group alone qualifies (player state is not required)
+            qualifies = r.ball_state in ("complete", "absent")
+            reason = _frame_skip_reason(r.ball_state, "complete")
+        else:
+            qualifies = bool(r.is_complete)
+            reason = _frame_skip_reason(r.ball_state, r.player_state)
+        if not qualifies:
+            skipped[reason] += 1
         elif key in unrequested:
             skipped["unrequested_labels"] += 1
         elif key in out_of_scope and key not in dets:
