@@ -34,8 +34,26 @@ declare -A SVC_ENV
 # No FOOTY_*_DIR here: per-dataset dirs come from the registry. (Setting FOOTY_CLIPS_DIR /
 # FOOTY_GT_MARKS_DIR / ... would override the DEFAULT dataset's fields and hide registry edits.)
 # Broadcast-view classifier the labeller pre-classifies with (classifier.default_classifier_path).
-SVC_ENV[calib]="FOOTY_CLASSIFIER_WEIGHTS=/mnt/storage/models/broadcast_cls_20261118_v2dcef14/last.pt"
+# Production = whatever the jobs repo last promoted: its promotion step mirrors the Prefect Variable
+# `broadcast-classifier-production` into $PRODUCTION_MIRROR ({"run", "sha256", "path", ...}); production_weights()
+# reads it at every (re)start. FALLBACK_WEIGHTS is used only while the mirror does not exist / points at a missing file.
+PRODUCTION_MIRROR="${PRODUCTION_MIRROR:-/mnt/storage/models/production_classifier.json}"
+FALLBACK_WEIGHTS=/mnt/storage/models/broadcast_cls_20261118_v2dcef14/last.pt
 # -----------------------------------------------------------------------------
+
+# Path of the production broadcast classifier's last.pt: the promotion mirror's file if it exists, else the fallback.
+production_weights() {
+  local p=""
+  if [[ -r "$PRODUCTION_MIRROR" ]]; then
+    p="$(python3 -c "import sys,json; print(json.load(open(sys.argv[1])).get('path') or '')" "$PRODUCTION_MIRROR" 2>/dev/null || true)"
+  fi
+  if [[ -n "$p" && -f "$p" ]]; then
+    echo "$p"
+  else
+    [[ -z "$p" ]] || echo "warning: $PRODUCTION_MIRROR points at missing $p; using $FALLBACK_WEIGHTS" >&2
+    echo "$FALLBACK_WEIGHTS"
+  fi
+}
 
 # service -> datasets whose Ball Check crop/clip caches are warmed after a restart (they
 # serve a ball_check_list; a restart empties the in-memory caches).
@@ -118,7 +136,8 @@ cmd_status() {
 build_start_cmd() {
   local svc="$1" port line
   port="$(port_of "$svc")"
-  local -a envs=("PYTHONPATH=src" "OMP_NUM_THREADS=2" "FOOTY_SERVICE_NAME=$svc" "FOOTY_SERVICE_PORT=$port")
+  local -a envs=("PYTHONPATH=src" "OMP_NUM_THREADS=2" "FOOTY_SERVICE_NAME=$svc" "FOOTY_SERVICE_PORT=$port"
+                 "FOOTY_CLASSIFIER_WEIGHTS=$(production_weights)")
   while IFS= read -r line; do [[ -n "$line" ]] && envs+=("$line"); done <<<"${SVC_ENV[$svc]}"
   local log="$LOG_DIR/$svc.log"
   printf 'cd %q && exec env' "$SERVE_DIR"
