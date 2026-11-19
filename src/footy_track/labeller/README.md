@@ -1640,7 +1640,7 @@ restricted to the job's cards (progress and results are).
   - Tests: `tests/ball_eval/test_panel_suggest.py::test_blind_vs_shown_comparison_and_blind_only`,
     `::test_labels_placed_before_suggestions_existed_are_blind_equivalent`, `::test_accepted_marker_is_read_and_is_still_a_tier1_label`
 
-### Prepared Ball Check jobs: inline cards, disk renders, bounds (LAB-1409..1416)
+### Prepared Ball Check jobs: inline cards, disk renders, bounds (LAB-1409..1416, LAB-1478)
 
 `labelling_jobs submit --kind ball_check --items cards.json --prepare` submits a job **and** queues the
 Prefect flow `ballcheck-prepare` (`~/code/jobs/footy_ballcheck.py`), which renders every card's still and
@@ -1704,6 +1704,16 @@ housekeeping (it also runs hourly inside the server, `FOOTY_JOBS_GC_INTERVAL_S`)
   requested) a fresh `ballcheck-prepare` run is queued for its remaining unlabelled cards (judged ones are skipped); the
   phone is served by on-demand rendering meanwhile. A failed attempt backs off for 10 minutes.
   - Tests: `::test_labelling_resuming_on_an_evicted_job_reprepares_only_the_remaining_cards`, `::test_first_card_request_of_an_evicted_job_also_reprepares`
+- **LAB-1478** (MUST) A training-round card (one with hidden `sampling.bucket` / `sources`) shows *why it was picked and where the box came
+  from* in its footer, `<reason> · <source>` (e.g. `in_play_ball · difficult · detector`), replacing `list`; cards without those keys keep `list`.
+  The server computes one display field `why` in `jobs.page_card` (the page never derives it, and the bucket, `p_real`, `sources`
+  and every other hidden key stay off the phone). Reason by bucket: U "difficult", M "possible missed ball", N "look-alike",
+  R "random", **A "random"**, **G "difficult"**. Source: `rtdetr` "detector", `motion` "motion", both "detector + motion",
+  `tracker_gap` "tracker gap (interpolated)", `gold` "detector". The A/G mapping is deliberate disguise: audit cards are a uniform
+  random sample within a score band, so "random" is true but hides that they are high-score (which would bias accepting), and gold
+  cards are planted known answers that measure over-acceptance, so they must read exactly like a U/detector card.
+  - Tests: `tests/ball_mining/test_miner.py::test_gold_cards_are_indistinguishable_from_the_others_in_what_the_phone_gets`, `::test_card_why_words`
+    (the page text itself is UNTESTED-FRONTEND).
 
 ## 19b. Broadcast review (job kind `broadcast_review`)
 
@@ -2109,7 +2119,8 @@ count run `<cluster>:<a>-<b>`; `verified_by/at`). The frame sweep uses `cluster_
 | 19j. Player Check (LAB-1470..1477) | 8 | 7 | 0 | 1 |
 | **Total** | **166** | **124** | **9** | **33** |
 | 19i. Series review (LAB-1460..1468) | 9 | 8 | 0 | 1 |
-| **Total** | **175** | **132** | **9** | **34** |
+| 19g. Ball Check card reason (LAB-1478) | 1 | 1 | 0 | 0 |
+| **Total** | **176** | **133** | **9** | **34** |
 
 Open items: 4 (OPEN-1..4) + 1 fixed on main (undo provenance, `95b60cc`).
 Test suite: 138 tests in `tests/labeller/` (all green), plus the
