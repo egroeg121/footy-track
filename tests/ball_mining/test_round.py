@@ -132,6 +132,7 @@ def test_create_submits_once_then_the_tick_rule_blocks_the_next_round(
         and sub["kind"] == "ball_check"
         and len(sub["items"]) == 60
     )
+    assert sub["device"] == "phone"  # Ball Check cards are a phone task on the todo board
     assert [h["action"]["deployment"] for h in sub["hooks"]] == [
         "ball-refit/ball-refit",
         "ball-round-close/ball-round-close",

@@ -334,7 +334,7 @@ def create_round(
             "cards": result.cards,
         }
     job = client.submit(body["title"], "ball_check", body["items"], dataset=cfg.dataset, why=body["why"], key=key, hooks=body["hooks"],
-                        max_cards=body.get("max_cards"), prepare=prepare, requester=None)  # fmt: skip
+                        max_cards=body.get("max_cards"), prepare=prepare, requester=None, device="phone")  # fmt: skip
     log = (
         (marks or marks_dir(cfg.dataset, cfg.data_root))
         / "ball_mining"
