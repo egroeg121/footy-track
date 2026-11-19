@@ -60,7 +60,7 @@ def runs_root() -> Path:
 
 def prefect_api() -> str:
     return os.environ.get(
-        "MATCHES_PREFECT_API", "http://100.72.126.53:4200/api"
+        "MATCHES_PREFECT_API", "http://100.99.17.97:4200/api"
     ).rstrip("/")
 
 

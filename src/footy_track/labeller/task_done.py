@@ -48,7 +48,9 @@ from footy_track.labeller import datasets
 from footy_track.labeller.review import _gt_marks_dir
 
 CACHE_TTL = 5.0
-CALIB = "http://mac-mini-i7:8011"  # the one site; tasks.CALIB is this
+CALIB = "http://merlin:8011"  # the one site; tasks.CALIB is this
+#: Netlocs this site used to be reachable at (stored task urls); still treated as "this server".
+LEGACY_NETLOCS = ("mac-mini-i7:8011", "100.72.126.53:8011")
 DONE_TTL_DAYS = 2
 COUNT_TIMEOUT_S = 2.0
 #: Frame-type marks that settle a frame without GT. ``too_few_points`` is not written
@@ -134,10 +136,10 @@ def fetch_json(url: str):  # patched in tests
 
 
 def resolve_url(url: str, base: str | None) -> str:
-    """Count URLs are written for browsers (``http://mac-mini-i7:8011/...`` or relative). Anything on
+    """Count URLs are written for browsers (``http://merlin:8011/...`` or relative). Anything on
     this server's own path space is fetched through the request's own base url instead."""
     u = urlparse(url)
-    if base and (not u.netloc or u.netloc == urlparse(CALIB).netloc):
+    if base and (not u.netloc or u.netloc in (urlparse(CALIB).netloc, *LEGACY_NETLOCS)):
         return base.rstrip("/") + u.path + (f"?{u.query}" if u.query else "")
     return url
 
