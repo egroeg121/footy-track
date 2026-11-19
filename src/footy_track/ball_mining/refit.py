@@ -166,14 +166,16 @@ def hit_rates(rows: list[dict]) -> dict[str, dict]:
 
 
 def gold_check(rows: list[dict]) -> dict:
-    """Planted-wrong cards accepted as ball / corrected (an over-accepting labeller). Flags a round above 10 %."""
+    """Planted-wrong cards accepted as they were shown, i.e. a plain ``ball`` (an over-accepting labeller). Flags a round
+    above 10 %. ``corrected`` is the RIGHT answer to a shifted gold box (the labeller moved it onto the ball), and ``box_off`` /
+    ``not_ball`` reject it, so only ``ball`` counts as accepting the planted error."""
     g = [
         r
         for r in rows
         if r.get("bucket") == "G"
         and (r.get("verdict") in CORRECT or r.get("verdict") in WRONG)
     ]
-    accepted = sum(1 for r in g if r["verdict"] in CORRECT)
+    accepted = sum(1 for r in g if r["verdict"] == "ball")
     rate = accepted / len(g) if g else None
     return {"n": len(g), "accepted_wrong": accepted, "accept_rate": None if rate is None else round(rate, 4),
             "flagged": bool(g) and len(g) >= 5 and rate > GOLD_ACCEPT_FLAG}  # fmt: skip
