@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import contextlib
 import contextvars
+import fcntl
 import json
 import logging
 import os
@@ -372,12 +373,43 @@ def write_registry(path: Path, default: str, entries: dict[str, dict]) -> None:
             f.write("\n")
             f.flush()
             os.fsync(f.fileno())
+        # mkstemp creates 0600; keep the registry readable by the other users / hosts that serve it
+        try:
+            mode = path.stat().st_mode & 0o777
+        except OSError:
+            mode = 0o664
+        os.chmod(tmp, mode)
         os.replace(tmp, path)
     except BaseException:
         with contextlib.suppress(OSError):
             os.unlink(tmp)
         raise
     invalidate()
+
+
+def register(name: str, spec: dict, *, path: Path | None = None) -> bool:
+    """Add dataset ``name`` to the registry file unless it is already listed. Returns True when the file changed.
+
+    Read-modify-write under an exclusive ``flock`` on ``<registry>.lock`` (the lock the ball evaluation panel's own
+    registration takes too), then an atomic replace via :func:`write_registry`, so two registrations cannot lose each
+    other's entry. An existing entry is never overwritten. The running labeller notices the new mtime and needs no
+    restart. A missing registry file is an error: creating one would silently drop the legacy env-built ``calib``.
+    """
+    entry = dict(spec)
+    _parse_entry(name, entry, is_default=False)  # validate before touching the file
+    reg = Path(path) if path else registry_path()
+    with open(reg.with_name(reg.name + ".lock"), "a") as lf:
+        fcntl.flock(lf, fcntl.LOCK_EX)
+        try:
+            doc = json.loads(reg.read_text())
+            entries = doc["datasets"]
+            if name in entries:
+                return False
+            entries[name] = entry
+            write_registry(reg, str(doc.get("default") or next(iter(entries))), entries)
+            return True
+        finally:
+            fcntl.flock(lf, fcntl.LOCK_UN)
 
 
 # ---------------------------------------------------------------------------

@@ -1338,6 +1338,16 @@ that runs after a restart, for the `nottinghamforest` dataset of `calib` (`WARM_
 `scripts/labeller_deploy.sh`; keep the `SERVICES` list in `web/main.html` in step with it. Feature branches are tested in
 their own worktree on another port, never in the serving checkout.
 
+### 17b. Task board filters (LAB-1443)
+
+- **LAB-1443** (SHOULD) The "To do now" list has a Device row (`All`, `Phone`, `Laptop`; `either` or no device shows under both)
+  and a Task type row (`All` plus one button per `kind` present, with counts; kinds with no tasks are hidden, no kind is
+  "Other"). The rows combine (AND) and filter client-side over `/api/tasks`. The default Device is Phone on a touch or
+  narrow screen, else Laptop, only when nothing is saved; the choice is kept in `localStorage` and in `?device=&kind=`.
+  The dataset picker sits above Tools, not at the top of the list. Done tasks stay in their collapsed section, unfiltered.
+  - Tests (page half): `tests/labeller/test_task_board.py::test_home_page_has_todo_filters`
+  - UNTESTED-FRONTEND (behaviour)
+
 ## 18. Datasets: one server, many bodies of clips (LAB-13xx)
 
 A *dataset* is a clips dir plus where its labels live. One server serves all of them;
@@ -1400,6 +1410,11 @@ A *dataset* is a clips dir plus where its labels live. One server serves all of 
   - UNTESTED-FRONTEND (server contract: `::test_pages_carry_the_dataset_shim`)
 
 ## 19. Labelling jobs: ask main for labels (LAB-14xx)
+
+### Job-mode page controls
+
+- **LAB-1442** (SHOULD) In job mode the page has a "Card frame (C)" button (key `C`; `R` is already Run/Restart) that returns to the current job card's clip and frame after the user stepped away. It reloads the clip if needed, saves a dirty edit like any frame change, never answers or advances, does nothing when already on the card frame, and is highlighted while off it.
+  - UNTESTED-FRONTEND (page markup: `tests/labeller/test_job_card_frame.py`)
 
 ### Submitting labelling jobs from another branch
 
@@ -1870,6 +1885,36 @@ confidence intervals. Per match (the only stratum in v1):
     `::test_score_pooled_frame_weighted_is_unbiased_end_to_end`, `::test_cluster_bootstrap_ci_has_roughly_nominal_coverage`,
     `::test_qa_cards_never_enter_the_estimate_and_are_reported_separately`, `::test_score_matches_a_hand_computation_and_reports_the_radius_effect`
 
+## 19f. Training miner dataset `ball_train_v1` (LAB-1439..1441)
+
+Code: `ball_mining/traindata.py`, `ball_mining/round.py` (`create_round`), `labeller/datasets.register`. Tests: `tests/ball_mining/test_traindata.py`.
+
+The training miner's Ball Check rounds (section 19c, `ball_round create`) run on their own dataset, laid out like `ball_eval_v1`:
+`clips_dir` `<FD>/ball_train/clips` (symlinks), `marks_dir` `<FD>/ball_gt_marks_ball_train_v1` (`ball_checks/<clip>.jsonl`, `ball_mining/{state,closed,rounds}`).
+Unlike the panel it keeps `ingest` on: the verdicts are training data, and `feature_store.ingest_all` reads the marks dir (sidecars, and
+`ball_checks/` through `import_ball_checks`, matched to detections by box IoU; verdicts on boxes with no stored detection are kept in `detection_review`).
+
+- **Registration.** `create_round` (also under `--dry-run`) registers the dataset through `datasets.register` (exclusive `flock` on
+  `<registry>.lock`, atomic replace, an existing entry is never touched) before it submits: the labeller re-reads the registry on mtime and 404s an unknown dataset.
+- **Linking.** Before the submit every card's clip is linked into the clips dir. A pool card keeps its pool clip name and links to
+  `<FD>/<match>/split_video_broadcast_frames/<clip>.mp4`. A gold card is renamed to `clip_id.canonical_clip_id(clip)` and links to the video found in the
+  dataset its GT came from (`--gold-datasets`, default `calib`: clips dir, then extra clips dirs); the sidecar stem is kept as the hidden card key
+  `source_clip`. All aliases of one physical clip share one link and one `ball_checks/<canonical>.jsonl`. Linking is idempotent, a conflicting existing file is
+  an error, and nothing is linked if any card's video cannot be found. Gold GT whose video cannot be found is left out of the plan. Ball Check renders from these
+  symlinks to 250-frame-GOP segment mp4s without a re-encode (0.8 s per card).
+- **Joins.** Gold truth is read from the round dataset's marks plus the gold datasets' marks. Refit / close read verdicts through the labeller API (`results`) by
+  the job's dataset and write `state/vNNN.json` into the dataset's marks dir; the gold check joins on the card's `sampling` (bucket G), not on clip names. A card is not
+  asked again if a live verdict exists for the same canonical clip and frame in **any** registered dataset's marks (calib, nottinghamforest*, ...), or in a live round job.
+
+- **LAB-1439** (MUST) `datasets.register` adds a dataset once, under the registry lock, keeps every other entry and the file mode, and never overwrites an entry.
+  - Tests: `test_traindata.py::test_register_adds_the_dataset_once_and_keeps_the_rest_of_the_registry`, `::test_register_never_overwrites_an_existing_entry_and_needs_a_registry`
+- **LAB-1440** (MUST) `create_round` links every card's clip (gold renamed canonically, aliases sharing one link) before it submits, idempotently.
+  - Tests: `::test_pool_cards_link_to_their_segment_mp4s_and_it_is_idempotent`, `::test_gold_cards_resolve_from_the_gt_dataset_and_are_named_canonically`,
+    `::test_two_alias_files_of_one_gold_clip_share_one_link_across_cards_and_rounds`, `::test_create_registers_links_and_submits_cards_that_resolve`
+- **LAB-1441** (MUST) Verdicts of other datasets on the same canonical clip exclude a card; refit and the gold check work from the new marks dir; `ingest_all` reads it.
+  - Tests: `::test_verdicts_in_other_datasets_on_the_same_canonical_clip_are_not_asked_again`, `::test_refit_and_the_gold_check_join_verdicts_in_the_new_marks_dir`,
+    `::test_ingest_all_reads_the_training_dataset_marks_and_its_verdicts`
+
 ## 15. Traceability summary
 
 | Section | Requirements | Tested | UNTESTED | UNTESTED-FRONTEND |
@@ -1892,7 +1937,8 @@ confidence intervals. Per match (the only stratum in v1):
 | 19c. Labelling hooks (LAB-1417..1426) | 10 | 8 | 0 | 2 |
 | 19d. Review fixes (LAB-1427..1434) | 8 | 7 | 1 | 0 |
 | 19e. Ball evaluation panel (LAB-1435..1438) | 4 | 4 | 0 | 0 |
-| **Total** | **160** | **120** | **9** | **31** |
+| 17b. Task board filters (LAB-1443) | 1 | 0 | 0 | 1 |
+| **Total** | **161** | **120** | **9** | **32** |
 
 Open items: 4 (OPEN-1..4) + 1 fixed on main (undo provenance, `95b60cc`).
 Test suite: 138 tests in `tests/labeller/` (all green), plus the

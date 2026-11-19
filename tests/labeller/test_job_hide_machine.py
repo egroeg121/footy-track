@@ -80,3 +80,13 @@ def test_page_merges_hidden_boxes_on_save_and_has_toggle():
     assert 'id="jobShowMachine"' in html
     assert "vis.concat(hiddenMachine)" in html
     assert '(e.key === "m" || e.key === "M")' in html
+
+
+def test_hidden_machine_boxes_never_undo_no_ball_or_not_broadcast():
+    """A no_ball / not_broadcast frame keeps no boxes in the sidecar, and a non-empty /edit would make the server
+    drop the mark: hidden machine boxes are not sent for a skip-marked frame, and they do not clear the job's mark."""
+    from pathlib import Path
+
+    html = (Path(__file__).resolve().parents[2] / "src/footy_track/labeller/web/index.html").read_text()
+    assert "skipMarked" in html and "(visibleOnly || skipMarked) ? vis : vis.concat(hiddenMachine)" in html
+    assert 'if (boxLayer.find(".box").length || hiddenMachine.length)' not in html
