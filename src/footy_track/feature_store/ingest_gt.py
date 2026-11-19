@@ -80,6 +80,11 @@ _PROVENANCE_TAGS = {"labeller", "vittrack", "yolo", "sam3"}
 #: 15,377 sidecar lines already carry it, and before this was recognised
 #: ``_split_tags`` returned it *as the object class*, destroying the real one.
 CHECKED_TAG = "human_checked"
+#: Audit markers of a box accepted as-is from a detector suggestion (eval panel). Like ``human_checked`` they are
+#: neither a provenance nor an object class. The box itself is an ordinary tier-1 ``labeller`` hand label: the
+#: marker changes nothing about its source / reviewed flag.
+SUGGEST_MARKER_TAG = "accepted_suggestion"
+SUGGEST_DET_TAG_PREFIX = "suggest_det:"
 _PROVENANCE_TO_SOURCE = {
     "labeller": "hand_label",
     "vittrack": "vittrack",
@@ -144,6 +149,8 @@ def _split_tags(tags: list[str]) -> tuple[str | None, str | None, bool]:
             prov_tag = t
         elif t == CHECKED_TAG:
             checked = True
+        elif t == SUGGEST_MARKER_TAG or t.startswith(SUGGEST_DET_TAG_PREFIX):
+            continue  # audit-only marker: never the object class
         elif t not in _SKIP_TAGS and obj_tag is None:
             obj_tag = t
     return obj_tag, prov_tag, checked

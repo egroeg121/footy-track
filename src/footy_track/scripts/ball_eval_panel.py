@@ -3,8 +3,9 @@
     python -m footy_track.scripts.ball_eval_panel build  --match M [--n-windows 24] [--dry-run] [--force]
     python -m footy_track.scripts.ball_eval_panel build  --all-heldout           # every segmented heldout match
     python -m footy_track.scripts.ball_eval_panel job    --match M [--dry-run]   # blind ball_place job, key ball-eval-panel/<ver>/<M>
+    python -m footy_track.scripts.ball_eval_panel suggest --match M [--device cpu] [--weights W]  # detector suggestions for the page
     python -m footy_track.scripts.ball_eval_panel render [--match M | --all-heldout] [--force]  # keyframe-dense clips (kf10)
-    python -m footy_track.scripts.ball_eval_panel score  --pred preds.jsonl --model NAME [--out report.json]
+    python -m footy_track.scripts.ball_eval_panel score  --pred preds.jsonl --model NAME [--blind-only] [--out report.json]
     python -m footy_track.scripts.ball_eval_panel status [--labeller-url URL]
 
 Design and estimator: ``docs/design/ball_sampling.md`` section 2, ``footy_track/ball_eval/panel.py`` (sampler),
@@ -82,6 +83,36 @@ def cmd_build(args: argparse.Namespace) -> int:
                 json.dumps({"match": match, "status": "error", "error": str(e)}),
                 flush=True,
             )
+            rc = 1
+    return rc
+
+
+def cmd_suggest(args: argparse.Namespace) -> int:
+    """Precompute the top-1 RT-DETR ball box of every panel frame (``<match>.suggest.<sha8>.json``).
+
+    One match at a time, threads capped (``$BALL_POOL_THREADS`` / ``$OMP_NUM_THREADS``, default 4): merlin is shared.
+    Heldout data, eval-only inference (see ``ball_eval/panel_suggest.py``). Never touches the panel files or marks."""
+    from footy_track.ball_eval import panel_suggest as PS  # noqa: N812, PLC0415
+
+    out_root = Path(args.out_dir) if args.out_dir else args.root
+    rc = 0
+    for match in _matches(args):
+        try:
+            doc = P.read_panel(P.panel_path(match, args.panel_version, out_root))
+            r = PS.suggest_match(
+                match,
+                panel_version=args.panel_version,
+                root=out_root,
+                weights=Path(args.weights) if args.weights else None,
+                device=args.device,
+                imgsz=args.imgsz,
+                batch=args.batch,
+                labelled_keys=lambda d=doc: PS.labelled_panel_keys(d, args.root),
+                log=lambda m: print(m, file=sys.stderr, flush=True),
+            )
+            print(json.dumps({k: v for k, v in r.items() if k not in ("blind_windows", "pre_labelled")} | {"n_pre_labelled": len(r.get("pre_labelled", []))}, sort_keys=True), flush=True)
+        except (P.PanelError, OSError, ValueError) as e:
+            print(json.dumps({"match": match, "status": "error", "error": str(e)}), flush=True)
             rc = 1
     return rc
 
@@ -288,6 +319,8 @@ def cmd_score(args: argparse.Namespace) -> int:
         seed=args.seed,
         include_partial=args.include_partial,
         model=args.model,
+        blind_only=args.blind_only,
+        root=args.root,
     )
     text = json.dumps(report, indent=1, sort_keys=True)
     if args.out:
@@ -314,6 +347,20 @@ def _pretty(rep: dict) -> str:
                 f"{scope:<42} {r:<5} recall {fmt(cells['recall'])}  precision {fmt(cells['precision'])}  false_ball {fmt(cells['false_ball'])}"
             )
     lines.append("QA " + json.dumps(rep["qa"], sort_keys=True))
+    sg = rep.get("suggestions") or {}
+    for scope, blk in [("pooled", sg.get("pooled")), *sorted((sg.get("matches") or {}).items())]:
+        if not blk:
+            continue
+        cmp_ = blk["comparison"]
+        lines.append(
+            f"suggestions {scope}: accepted {blk['accepted']}/{blk['labelled_balls']} ball labels "
+            f"(shown windows {blk['shown_accepted']}/{blk['shown_balls']}); windows blind {cmp_['n_windows_blind']} "
+            f"shown {cmp_['n_windows_shown']}"
+        )
+        for r, cells in cmp_["diff_blind_minus_shown"].items():
+            lines.append(
+                f"   blind-shown {r:<5} recall {fmt(cells['recall'])}  false_ball {fmt(cells['false_ball'])}"
+            )
     return "\n".join(lines)
 
 
@@ -431,6 +478,17 @@ def main(argv: list[str] | None = None) -> int:  # noqa: PLR0915
     )
     j.set_defaults(fn=cmd_job)
 
+    g = sub.add_parser(
+        "suggest",
+        help="precompute detector (top-1 RT-DETR ball box) suggestions for the panel frames",
+    )
+    common(g)
+    g.add_argument("--weights", default=None, help="detector weights (default: the current best)")
+    g.add_argument("--device", default="cpu")
+    g.add_argument("--imgsz", type=int, default=1280)
+    g.add_argument("--batch", type=int, default=4)
+    g.set_defaults(fn=cmd_suggest)
+
     r = sub.add_parser(
         "render",
         help="re-encode the panel's clips with a keyframe every 10 frames (same frames, same names)",
@@ -493,6 +551,12 @@ def main(argv: list[str] | None = None) -> int:  # noqa: PLR0915
         help="score windows with unlabelled frames too",
     )
     s.add_argument("--model", default=None)
+    s.add_argument(
+        "--blind-only",
+        action="store_true",
+        help="score only blind windows (random 25% control + labels placed before suggestions existed): the "
+        "suggesting detector is otherwise the model most favoured by its own suggestions",
+    )
     s.add_argument("--out", help="write the JSON report here")
     s.add_argument(
         "--pretty", action="store_true", help="human-readable summary instead of JSON"

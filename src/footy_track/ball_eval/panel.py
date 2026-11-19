@@ -49,7 +49,11 @@ from pathlib import Path
 
 from footy_track import match_splits, splits
 from footy_track.clip_id import canonical_clip_id
-from footy_track.labeller.constants import BALL_LABELS
+from footy_track.labeller.constants import (  # noqa: F401
+    BALL_LABELS,
+    SUGGEST_DET_TAG_PREFIX,
+    SUGGEST_MARKER_TAG,
+)
 
 PANEL_VERSION = "ball-eval-v1"
 SCHEMA = "ball-eval-panel/v1"
@@ -59,6 +63,9 @@ WINDOW_GAP_S = 0.2  # target spacing of the frames in a window
 N_WINDOWS_DEFAULT = 24
 QA_REPEAT_FRAC = 0.05
 QA_GOLD_FRAC = 0.03
+BLIND_FRAC = 0.25  # share of the panel's windows that never get a detector suggestion (random control)
+SUGGEST_BLIND = "blind"
+SUGGEST_SHOWN = "shown"
 QA_SUFFIX = (
     "__b"  # alias clip for QA cards (neutral on purpose: the labeller sees clip names)
 )
@@ -124,6 +131,53 @@ def job_key(match: str, version: str = PANEL_VERSION) -> str:
 def seed_for(panel_version: str, match: str) -> int:
     """``sha1(panel_version + match)`` as an int (first 60 bits, so it is a plain Python/JSON integer)."""
     return int(hashlib.sha1((panel_version + match).encode()).hexdigest()[:15], 16)  # noqa: S324 (not security)
+
+
+def suggest_path(
+    match: str,
+    sha8: str,
+    version: str = PANEL_VERSION,
+    root: Path | None = None,
+) -> Path:
+    """``<panel_dir>/<match>.suggest.<detector_sha8>.json``: ``{"<clip>:<frame>": {x,y,w,h,conf} | null}``."""
+    return panel_dir(version, root) / f"{match}.suggest.{sha8}.json"
+
+
+def suggest_meta_path(path: Path) -> Path:
+    """Sidecar of a suggest file (detector, timings, labels that pre-date it). Named so ``*.suggest.*.json`` skips it."""
+    return path.with_name(path.name.replace(".suggest.", ".suggest-meta."))
+
+
+def find_suggest_file(
+    match: str, version: str = PANEL_VERSION, root: Path | None = None
+) -> Path | None:
+    """The newest ``<match>.suggest.<sha8>.json`` of a panel (None when none was computed)."""
+    found = sorted(
+        panel_dir(version, root).glob(f"{match}.suggest.*.json"),
+        key=lambda p: p.stat().st_mtime,
+    )
+    return found[-1] if found else None
+
+
+def blind_windows(doc: dict) -> set[str]:
+    """Window ids of the random blind control: ``round(BLIND_FRAC * n)`` windows, drawn with a PRNG seeded by
+    ``sha1(panel_version + match)`` (+4), so the flag is reproducible from the panel file alone (no stored state)."""
+    ids = [w["window_id"] for w in doc["windows"]]
+    n = _round_count(BLIND_FRAC, len(ids))
+    rng = random.Random(seed_for(doc["panel_version"], doc["match"]) + 4)
+    return {ids[i] for i in rng.sample(range(len(ids)), min(n, len(ids)))}
+
+
+def suggest_flag(sampling: dict, blind: set[str] | None) -> str:
+    """``blind`` | ``shown`` of one job item's ``sampling``: QA cards are always blind; an explicit
+    ``sampling.suggest`` wins; otherwise derived from ``blind`` (:func:`blind_windows`)."""
+    if sampling.get("qa"):
+        return SUGGEST_BLIND
+    if sampling.get("suggest") in (SUGGEST_BLIND, SUGGEST_SHOWN):
+        return sampling["suggest"]
+    if blind is None:
+        return SUGGEST_BLIND  # cannot tell: show nothing rather than guess
+    return SUGGEST_BLIND if sampling.get("window_id") in blind else SUGGEST_SHOWN
 
 
 def qa_clip(clip: str) -> str:
@@ -632,8 +686,11 @@ def job_items(doc: dict) -> list[dict]:
     """Blind ``ball_place`` items: panel windows in time order, then the QA cards (shuffled).
 
     Items carry ``sampling`` (see ``docs/design/ball_sampling.md`` 2.3) and nothing else a labeller could read
-    as a hint: no model box, no candidate, no score, and gold positions stay in the panel file.
+    as a hint: no model box, no candidate, no score, and gold positions stay in the panel file. The suggestion
+    itself lives in the ``<match>.suggest.<sha8>.json`` file; ``sampling.suggest`` only says whether this card
+    may show one (``blind`` = never, the random control; QA cards are always ``blind``).
     """
+    blind = blind_windows(doc)
     items = [
         {
             "clip": w["clip"],
@@ -647,6 +704,7 @@ def job_items(doc: dict) -> list[dict]:
                 pi_window=w["pi_window"],
                 pi_frame=w["pi_frame"],
                 qa=None,
+                suggest=SUGGEST_BLIND if w["window_id"] in blind else SUGGEST_SHOWN,
             ),
         }
         for w in doc["windows"]
@@ -664,6 +722,7 @@ def job_items(doc: dict) -> list[dict]:
                     pi_frame=None,
                     qa=q["qa"],
                     of=q["of"],
+                    suggest=SUGGEST_BLIND,  # repeat / gold QA cards are always blind
                 ),
             }
         )
@@ -678,8 +737,10 @@ def job_body(doc: dict) -> dict:
         "dataset": dataset_name(doc["panel_version"]),
         "items": job_items(doc),
         "why": (
-            f"Blind ball placement on {n} frames ({doc['n_windows']} random 1 s windows, {len(doc['qa'])} QA "
-            "repeats): tap the ball centre, N = no ball, B = not main camera. No model boxes are shown on purpose."
+            f"Ball placement on {n} frames ({doc['n_windows']} random 1 s windows, {len(doc['qa'])} QA "
+            "repeats): tap the ball centre, N = no ball, B = not main camera. Most cards may show a dashed yellow "
+            "detector suggestion: Y accepts it, or draw your own box; a random 25% of cards and all QA cards "
+            "show none (blind control)."
         ),
         "device": "laptop",
         "priority": 2,

@@ -8,7 +8,7 @@ from pathlib import Path
 from fastapi import APIRouter, Query, Request
 from fastapi.responses import JSONResponse, PlainTextResponse
 
-from footy_track.labeller import ball_check, datasets, hooks, job_edit, jobs
+from footy_track.labeller import ball_check, datasets, hooks, job_edit, jobs, suggestions
 
 router = APIRouter()
 
@@ -272,6 +272,20 @@ async def job_frames(ref: str):
         if job["kind"] == "ball_place":
             return jobs.frame_list(job)
         raise jobs.JobError(422, f"job kind {job['kind']!r} has no labeller frame list")
+
+    try:
+        return await asyncio.to_thread(work)
+    except jobs.JobError as e:
+        return _err(e)
+
+
+@router.get("/api/jobs/{ref:path}/suggestion")
+async def job_suggestion(ref: str, clip: str, frame: int):
+    """The detector suggestion (``{x,y,w,h,conf,detector}``, normalised) for one frame of a ``ball_place`` job, or
+    ``suggestion: null`` (blind card, no candidate, nothing precomputed). Never a label: see ``suggestions.py``."""
+
+    def work():
+        return suggestions.suggestion_for(jobs.resolve(ref), clip, frame)
 
     try:
         return await asyncio.to_thread(work)

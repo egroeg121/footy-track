@@ -25,6 +25,7 @@ from footy_track.labeller.constants import (
     NOT_BROADCAST_TAG,
     PROV_LABELLER,
     PROVENANCE_TAGS,
+    is_suggest_marker,
 )
 from footy_track.labeller.video_utils import BackgroundLabeller, LabelledObject
 from footy_track.schema import ObjectDetection
@@ -192,11 +193,22 @@ class Session:
                 return list(self.timeline[idx])
             return []
 
-    def set_frame(self, idx: int, boxes: list[ObjectDetection]) -> None:
-        """Overwrite a frame entirely (used by user edits / autodetect)."""
+    def set_frame(
+        self,
+        idx: int,
+        boxes: list[ObjectDetection],
+        markers: list[tuple[str, ...]] | None = None,
+    ) -> None:
+        """Overwrite a frame entirely (used by user edits / autodetect).
+
+        ``markers`` (parallel to ``boxes``) registers marker tags for the new boxes, keyed like the ones restored
+        from the sidecar, so they survive flush and reload (T-01)."""
         with self._tl_lock:
             if 0 <= idx < len(self.timeline):
                 self.timeline[idx] = list(boxes)
+                for b, m in zip(boxes, markers or [], strict=False):
+                    if m:
+                        self._box_markers[_marker_key(idx, b)] = m
 
     def merge_propagated(self, idx: int, boxes: list[ObjectDetection]) -> bool:
         """Write propagated (vittrack/yolo) boxes, KEEPING any labeller ground truth.
@@ -338,6 +350,11 @@ def _box_line(idx: int, b: ObjectDetection, markers: tuple[str, ...] = ()) -> st
 # ---------------------------------------------------------------------------
 # Serialization helpers (normalized boxes over the wire; pixels server-side)
 # ---------------------------------------------------------------------------
+
+
+def markers_from_payload(items: list[dict]) -> list[tuple[str, ...]]:
+    """Per payload item, the whitelisted marker tags (suggestion audit markers only) the client attached."""
+    return [tuple(t for t in (it.get("markers") or []) if is_suggest_marker(t)) for it in items]
 
 
 def boxes_from_payload(items: list[dict], provenance: str) -> list[ObjectDetection]:

@@ -122,6 +122,7 @@
       <span class="grow"></span>
       <label class="muted" title="Placing the ball or marking no-ball / not-broadcast jumps to the next unlabelled job frame"><input type="checkbox" id="jobAuto" checked> auto-advance</label>
       <label class="muted" title="Pre-existing machine boxes (vittrack/yolo/...) are hidden in job mode so they cannot bias placement. Shown dimmed and dashed. Hidden boxes are never deleted or changed by saving."><input type="checkbox" id="jobShowMachine"> Show machine boxes (M)</label>
+      <button id="jobAcceptBtn" class="primary" style="display:none" title="Save the dashed yellow detector suggestion as your box for this frame (Y). It is a human label tagged accepted_suggestion; draw your own box instead to replace it. Never offered for 'no ball'.">Accept suggestion (Y)</button>
       <button id="jobCardBtn" title="Jump back to this card's frame, reloading its clip if you wandered off (C). Does not label or advance.">↩ Card frame (C)</button>
       <button id="jobPrevBtn" title="Previous job frame (K)">⏮ Prev job frame (K)</button>
       <button id="jobNextBtn" class="primary" title="Next job frame that is not labelled yet (J)">Next job frame (J) ⏭</button>
@@ -224,7 +225,8 @@ function keptSummary(){
 const stage = new Konva.Stage({ container: "stageWrap", width: 100, height: 100 });
 const bgLayer = new Konva.Layer();
 const boxLayer = new Konva.Layer();
-stage.add(bgLayer); stage.add(boxLayer);
+const sugLayer = new Konva.Layer({ listening: false });   // detector suggestion overlay: never a label, never saved
+stage.add(bgLayer); stage.add(boxLayer); stage.add(sugLayer);
 const tr = new Konva.Transformer({ rotateEnabled:false, borderStroke:"#fff" });
 boxLayer.add(tr);
 let bgImage = null;
@@ -249,6 +251,7 @@ function boxesNorm(visibleOnly) {
     label: r.getAttr("label"),
     model: r.getAttr("source") || "labeller",
     conf: r.getAttr("conf") !== undefined ? r.getAttr("conf") : 1.0,
+    markers: r.getAttr("markers") || [],     // audit markers (accepted_suggestion): the server whitelists them
     x: r.x()/dispW, y: r.y()/dispH,
     w: (r.width()*r.scaleX())/dispW, h: (r.height()*r.scaleY())/dispH,
   }));
@@ -311,7 +314,8 @@ function addRect(label, x, y, w, h, editable, source) {
   r.setAttr("label", label);
   r.setAttr("source", source);
   r.on("click", () => selectRect(r));
-  r.on("transformend dragend", () => { normalizeScale(r); promoteToGT(r); pushUndo(); frameDirty=true; renderList(); scheduleEditSave(); });
+  // an edited box is no longer "as suggested": markers are cleared
+  r.on("transformend dragend", () => { normalizeScale(r); r.setAttr("markers", []); promoteToGT(r); pushUndo(); frameDirty=true; renderList(); scheduleEditSave(); });
   boxLayer.add(r);
   // number label
   const t = new Konva.Text({ x:x+2, y:Math.max(0,y-16), text:"", fontSize:13,
@@ -362,6 +366,7 @@ function drawBoxes(objs, editable){
   ordered.forEach(o => {
     const r = addRect(o.label, o.x*dispW, o.y*dispH, o.w*dispW, o.h*dispH, editable, o.source);
     if (o.conf !== undefined) r.setAttr("conf", o.conf);
+    if (o.markers && o.markers.length) r.setAttr("markers", o.markers);
     if (JOB_ID && !isHumanBox(o)) { r.strokeOpacity(0.35); r.dash([3,5]); }   // shown machine proposal: clearly not a label
   });
   refreshNumbers(); boxLayer.draw(); renderList();
@@ -399,6 +404,7 @@ function refreshNumbers(){
 
 function renderList(){
   refreshNumbers();
+  updateSuggestionOverlay();
   const rects = orderedBoxRects();
   $("objHdr").textContent = `Detected objects (${rects.length})`;
   const list = $("objList"); list.innerHTML = "";
@@ -644,6 +650,7 @@ window.addEventListener("keydown",(e)=>{
     if (mode === "running") { e.preventDefault(); $("pauseBtn").click(); }
     return;
   }
+  if (JOB_ID && (e.key === "y" || e.key === "Y") && !e.ctrlKey && !e.metaKey && !e.altKey) { e.preventDefault(); acceptSuggestion(); return; }
   if (JOB_ID && (e.key === "m" || e.key === "M")) { e.preventDefault(); const c = $("jobShowMachine"); c.checked = !c.checked; c.onchange({target: c}); return; }
   if (JOB_ID && (e.key === "j" || e.key === "J")) { e.preventDefault(); jobNext(); return; }
   if (JOB_ID && (e.key === "k" || e.key === "K")) { e.preventDefault(); jobPrev(); return; }
@@ -717,6 +724,53 @@ async function jobPlaced() {            // a ball box was just drawn
   jobSyncCurrent();
   if (jobAutoOn()) await jobNext();
 }
+
+// ---- detector suggestion (job mode, eval panel): dashed yellow overlay, accepted explicitly with Y ----
+// Not a label: it lives on sugLayer, outside boxLayer (so boxesNorm / saves never see it). Only an accept creates
+// a real box, tagged accepted_suggestion (+ the detector sha8). No candidate / blind card => nothing is drawn.
+let curSuggestion = null;
+const SUG_TAG = "accepted_suggestion", SUG_DET_PREFIX = "suggest_det:";
+function clearSuggestion() { curSuggestion = null; updateSuggestionOverlay(); }
+async function loadSuggestion() {
+  curSuggestion = null;
+  if (!JOB_ID || !job || meta === null || viewFrame == null || jobIndexHere() < 0) { updateSuggestionOverlay(); return; }
+  const idx = viewFrame, clip = stemOf(loadedPath);
+  try {
+    const r = await fetch(`/api/jobs/${encodeURIComponent(JOB_ID)}/suggestion?clip=${encodeURIComponent(clip)}&frame=${idx}`);
+    if (r.ok) { const d = await r.json(); if (idx === viewFrame) curSuggestion = d.suggestion || null; }
+  } catch (err) { /* no suggestion: the page works as before */ }
+  updateSuggestionOverlay();
+}
+function updateSuggestionOverlay() {
+  if (typeof sugLayer === "undefined") return;
+  sugLayer.destroyChildren();
+  const skip = viewFrame != null && (noBallFrames.has(viewFrame) || notBroadcastFrames.has(viewFrame));
+  const show = !!curSuggestion && !skip && boxLayer.find(".box").length === 0 && mode !== "running";
+  const btn = $("jobAcceptBtn");
+  if (btn) btn.style.display = show ? "" : "none";
+  if (show) {
+    const s = curSuggestion, x = s.x * dispW, y = s.y * dispH, w = s.w * dispW, h = s.h * dispH;
+    const cx = x + w / 2, cy = y + h / 2, rad = Math.max(w, h) / 2 + 14;
+    sugLayer.add(new Konva.Rect({ x, y, width: w, height: h, stroke: "#ffd400", strokeWidth: 2, dash: [5, 3], listening: false }));
+    sugLayer.add(new Konva.Circle({ x: cx, y: cy, radius: rad, stroke: "#ffd400", strokeWidth: 1.5, dash: [6, 4], opacity: 0.8, listening: false }));
+    sugLayer.add(new Konva.Text({ x: cx + rad + 3, y: cy - 8, text: `suggestion ${Math.round((s.conf || 0) * 100)}%`, fontSize: 13, fontStyle: "bold", fill: "#ffd400", listening: false }));
+  }
+  sugLayer.draw();
+}
+async function acceptSuggestion() {
+  if (!JOB_ID || !curSuggestion || mode === "running" || jobBusy) return;
+  if (boxLayer.find(".box").length) return;             // a box is already there: drawing replaces the suggestion
+  const s = curSuggestion;
+  pushUndo();
+  const r = addRect("in_play_ball", s.x * dispW, s.y * dispH, s.w * dispW, s.h * dispH, tool === "edit", "labeller");
+  r.setAttr("conf", 1.0);
+  r.setAttr("markers", [SUG_TAG, SUG_DET_PREFIX + (s.detector || "")]);
+  frameDirty = true;
+  curSuggestion = null;
+  syncTimelineSets(); renderList(); boxLayer.draw();
+  await jobPlaced();                                    // save now, mark done, auto-advance like a placement
+}
+$("jobAcceptBtn").onclick = (e) => { e.target.blur(); acceptSuggestion(); };
 
 async function jobGoto(i) {
   if (!job || jobBusy || i < 0 || i >= job.frames.length) return;
@@ -1033,10 +1087,12 @@ async function saveCurrentEdits(){
 async function loadTimelineFrame(idx, editable){
   const res = await fetch(`/timeline/${idx}`); const data = await res.json();
   drawBoxes(data.boxes, editable);
+  if (JOB_ID) loadSuggestion();
 }
 
 async function gotoFrame(idx){
   await saveCurrentEdits();     // persist edits on the frame we're leaving
+  clearSuggestion();
   frameDirty = false;
   undoStack = [];
   clearBoxes();
