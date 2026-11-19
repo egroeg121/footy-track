@@ -646,3 +646,107 @@ def test_gold_only_matches_do_not_shrink_the_cap_of_the_only_pool_match(splitter
     )
     assert len(res) == 100 and res.report["per_match_cap"]["relaxed_to_equal_share"]
     assert Counter(c["match"] for c in res.cards)["m1"] >= 90
+
+
+# ------------------------------------------------------------------ round diversity: spacing, per-clip cap, seed
+
+SPACED = BucketConfig(exclude_s=3.0, max_per_clip=3)
+
+
+def _times(cards, clip):
+    return sorted(c["frame_index"] / 25.0 for c in cards if c["clip"] == clip)
+
+
+@pytest.mark.spacing_rules
+def test_neighbourhood_of_labelled_and_pending_cards_is_excluded_by_true_distance(splitter):
+    # nodes every 0.5 s (12.5 frames ~ 12/13) of one clip; labelled frame 250 (10.0 s) blocks 7.0..13.0 s inclusive
+    pool = make_pool([{"frame": f, "p_real": 0.5} for f in range(0, 600, 5)])
+    res = mine_round(pool, budget=60, quotas={"U": 1.0}, split_of=splitter, per_match_cap=1.0,
+                     already_labelled=[("m1_seg001", 250)], cfg=BucketConfig(exclude_s=3.0, max_per_clip=0))  # fmt: skip
+    t = [c["frame_index"] / 25.0 for c in res.cards]
+    assert t and all(abs(x - 10.0) > 3.0 for x in t)
+    assert res.report["excluded"]["already_labelled_neighbourhood"] > 0
+    # across a 2 s window boundary: 0.1 s apart is no longer allowed
+    close = mine_round(make_pool([{"frame": f, "p_real": 0.5} for f in (99, 101)]), budget=2, quotas={"U": 1.0}, split_of=splitter,
+                       per_match_cap=1.0, already_labelled=[("m1_seg001", 100)], cfg=SPACED)  # fmt: skip
+    assert close.cards == []
+
+
+@pytest.mark.spacing_rules
+def test_cards_of_one_round_are_spaced_and_a_clip_holds_at_most_max_per_clip(splitter):
+    pool = make_pool([{"frame": f, "p_real": 0.5} for f in range(0, 5000, 7)])
+    res = mine_round(pool, budget=40, split_of=splitter, per_match_cap=1.0, cfg=SPACED, seed=2,
+                     quotas={"U": 0.5, "N": 0.0, "M": 0.0, "A": 0.0, "G": 0.0, "R": 0.5})  # fmt: skip
+    capped = [c for c in res.cards if c["sampling"]["bucket"] in "UMNR"]
+    assert len(capped) == 3  # one clip: capped at 3, the rest of the quota cannot be filled
+    t = _times(res.cards, "m1_seg001")
+    assert all(b - a > 3.0 for a, b in zip(t, t[1:], strict=False))
+    assert res.report["diversity"]["max_cards_per_clip"] == 3
+    # more clips: the cap binds per clip, not in total
+    rows = [{"clip": f"m1_seg{c:03d}", "frame": f, "p_real": 0.5} for c in range(10) for f in range(0, 5000, 7)]
+    res2 = mine_round(make_pool(rows), budget=20, quotas={"U": 1.0}, split_of=splitter, per_match_cap=1.0, cfg=SPACED, seed=2)
+    per_clip = Counter(c["clip"] for c in res2.cards)
+    assert len(res2) == 20 and max(per_clip.values()) <= 3
+    for clip in per_clip:
+        t = _times(res2.cards, clip)
+        assert all(b - a > 3.0 for a, b in zip(t, t[1:], strict=False))
+
+
+@pytest.mark.spacing_rules
+def test_a_bucket_pi_is_exact_over_the_frame_left_after_exclusion(splitter):
+    # one clip, a p=0.55 node every 8 s (frame 200): 40 nodes. Labelled frames at 2000 (80 s) and 2400 (96 s) exclude
+    # their own node and nothing else (neighbours are 8 s away), so 38 units are left in the frame.
+    rows = u_rows("m1", "m1_seg001", n=40, p=0.55)
+    res = mine_round(make_pool(rows), budget=6, quotas={"A": 1.0}, split_of=splitter, per_match_cap=1.0, seed=3, cfg=SPACED,
+                     already_labelled=[("m1_seg001", 2000), ("m1_seg001", 2400)])  # fmt: skip
+    cards = only(res, "A")
+    assert len(cards) == 6
+    assert not {2000, 2400} & {c["frame_index"] for c in cards}
+    for c in cards:
+        s = c["sampling"]
+        assert s["frame_units"] == 38 and s["pi"] == pytest.approx(6 / 38)
+    assert res.report["inclusion_probabilities"]["A"]["m1|0.50-0.70"]["frame_units"] == 38
+    # a labelled frame 1 s from a node removes that node too (distance, not window)
+    res2 = mine_round(make_pool(rows), budget=6, quotas={"A": 1.0}, split_of=splitter, per_match_cap=1.0, seed=3, cfg=SPACED,
+                      already_labelled=[("m1_seg001", 2025)])  # fmt: skip
+    assert 2000 not in {c["frame_index"] for c in only(res2, "A")}
+    assert {c["sampling"]["frame_units"] for c in only(res2, "A")} == {39}
+
+
+@pytest.mark.spacing_rules
+def test_a_is_uniform_over_its_post_exclusion_population(splitter):
+    rows = u_rows("m1", "m1_seg001", n=40, p=0.55)
+    labelled = [("m1_seg001", 200 * i) for i in range(0, 40, 2)]  # every other node: 20 left
+    hits: Counter = Counter()
+    for seed in range(300):
+        res = mine_round(make_pool(rows), budget=4, quotas={"A": 1.0}, split_of=splitter, per_match_cap=1.0, seed=seed,
+                         cfg=BucketConfig(exclude_s=3.0, max_per_clip=0), already_labelled=labelled)  # fmt: skip
+        hits.update(c["frame_index"] for c in only(res, "A"))
+    assert set(hits) == {200 * i for i in range(1, 40, 2)}
+    assert all(abs(n / 300 - 4 / 20) < 0.08 for n in hits.values())
+
+
+def test_round_seed_comes_from_the_round_key_and_is_recorded(splitter):
+    from footy_track.ball_mining import round as rnd
+
+    assert rnd.seed_for_round("ball-round/2026-11-19/1") != rnd.seed_for_round("ball-round/2026-11-19/2")
+    assert rnd.seed_for_round("ball-round/2026-11-19/2") == rnd.seed_for_round("ball-round/2026-11-19/2")
+    pool = make_pool([{"clip": f"m1_seg{c:03d}", "frame": f, "p_real": 0.5} for c in range(20) for f in range(0, 2000, 40)])
+    picks = []
+    for key in ("ball-round/d/1", "ball-round/d/2"):
+        res = mine_round(pool, budget=20, quotas={"R": 1.0}, split_of=splitter, per_match_cap=1.0, round_key=key,
+                         seed=rnd.seed_for_round(key))  # fmt: skip
+        assert {c["sampling"]["seed"] for c in res.cards} == {rnd.seed_for_round(key)} == {res.report["seed"]}
+        picks.append({(c["clip"], c["frame_index"]) for c in res.cards})
+    assert picks[0] != picks[1]
+
+
+@pytest.mark.spacing_rules
+def test_gold_rows_do_not_overwrite_the_real_fps_of_a_pool_clip(splitter):
+    # a 50 fps clip; a gold row of the same clip carries the default 25 fps. Frame 1000 is labelled (20 s at 50 fps), so the
+    # node at frame 1100 (22 s) must be blocked by the +-3 s rule; with the wrong 25 fps it would sit 4 s away and slip through.
+    pool = make_pool([{"frame": 1100, "p_real": 0.5, "fps": 50.0}, {"frame": 3000, "p_real": 0.5, "fps": 50.0}])
+    gold = pd.DataFrame([{"match": "m1", "clip": "m1_seg001", "frame": 5000, "fps": 25.0, "x": 0.5, "y": 0.5, "w": 0.01, "h": 0.02, "kind": "not_ball"}])
+    res = mine_round(pool, budget=4, quotas={"U": 1.0}, split_of=splitter, per_match_cap=1.0, gold=gold,
+                     already_labelled=[("m1_seg001", 1000)], cfg=BucketConfig(exclude_s=3.0, max_per_clip=0))  # fmt: skip
+    assert [c["frame_index"] for c in res.cards] == [3000]

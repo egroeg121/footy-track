@@ -9,6 +9,12 @@ Rules enforced in code, not by convention:
 * **Dedupe.** At most one card per clip per ``window_s`` (2 s) window, across all buckets and across rounds: a window
   that already holds a *live* verdict (``already_labelled``; tombstones do not count) or a pending card is not
   mined again.
+* **Spacing and per-clip cap** (``BucketConfig.exclude_s`` = 3, ``max_per_clip`` = 3). No card lies within +-``exclude_s``
+  s (``frame / fps``, a true distance, not a window) of a verdicted / pending / already-issued card of any round in the
+  same clip (U, M, N, R, A; gold is exempt), nor of another card of this round. At most ``max_per_clip`` U / M / N / R cards
+  per clip per round. The R / A frame is the set of units left after these rules and after the earlier buckets, so ``pi``
+  is exact over that frame; two draws of one bucket that land within ``exclude_s`` of each other are dropped
+  (``report["diversity"]["spacing_rejects"]``), which makes ``pi`` nominal for those few.
 * **Per-match cap** (default 15 % of the budget). When fewer than ``1 / cap`` matches have anything to mine, the cap
   relaxes to an equal share (reported), otherwise a one-match pool could never fill a round.
 * **U and M are diverse**: top-ranked nodes per match are clustered (k-means on the appearance embedding if the pool
@@ -201,6 +207,7 @@ class _Gate:
         self.eval_spans: dict[str, list[tuple[float, float]]] = defaultdict(list)
         self.eval_clips: dict[str, set[str]] = defaultdict(set)
         self.blocked: set[int] = set()
+        self.lab_t: dict[str, list[float]] = defaultdict(list)  # clip-local seconds of every labelled / pending card
         self.report: dict = {"refused": {}, "excluded": Counter()}
 
     def split(self, match: str, clip: str) -> str:
@@ -241,6 +248,7 @@ class _Gate:
             fps = fps_of.get(cid)
             if fps:
                 self.blocked.add(self.wid(cid, int(frame // fps // self.cfg.window_s)))
+                self.lab_t[cid].append(frame / fps)
 
     def apply(self, df: pd.DataFrame, what: str) -> pd.DataFrame:
         """Refuse / exclude rows; return the clean frame with ``_cid _win _wid _t`` columns."""
@@ -312,12 +320,35 @@ class _Gate:
         df = df[~df["_wid"].isin(self.blocked)]
         if before - len(df):
             self.report["excluded"]["already_labelled_window"] += before - len(df)
+        if what == "pool" and self.cfg.exclude_s > 0 and self.lab_t and len(df):
+            before = len(df)
+            df = df[~self._near_labelled(df)]
+            if before - len(df):
+                self.report["excluded"]["already_labelled_neighbourhood"] += before - len(df)
         return df
+
+    def _near_labelled(self, df: pd.DataFrame) -> np.ndarray:
+        """Rows within ``exclude_s`` (clip-local seconds, ``frame / fps``) of a labelled or pending card of the same clip."""
+        out = np.zeros(len(df), bool)
+        cids = df["_cid"].to_numpy()
+        t = df["frame"].to_numpy(dtype=float) / df["fps"].to_numpy(dtype=float)
+        for cid in set(cids.tolist()) & set(self.lab_t):
+            pos = np.flatnonzero(cids == cid)
+            out[pos] = _within(t[pos], np.sort(np.asarray(self.lab_t[cid])), self.cfg.exclude_s)
+        return out
 
 
 # ---------------------------------------------------------------------------
 # The miner
 # ---------------------------------------------------------------------------
+
+
+def _within(t: np.ndarray, ref_sorted: np.ndarray, dist: float) -> np.ndarray:
+    """``True`` where ``t`` is within ``dist`` (inclusive) of any value of the sorted ``ref_sorted``."""
+    i = np.searchsorted(ref_sorted, t)
+    lo = np.abs(t - ref_sorted[np.clip(i - 1, 0, len(ref_sorted) - 1)])
+    hi = np.abs(t - ref_sorted[np.clip(i, 0, len(ref_sorted) - 1)])
+    return np.minimum(lo, hi) <= dist + 1e-9
 
 
 def _reason(bucket: str, row, extra: str = "") -> str:
@@ -401,19 +432,14 @@ def mine_round(  # noqa: PLR0912, PLR0913, PLR0915
         known += list(zip(gold["match"], gold["clip"], strict=True))
     known += list(eval_clips or [])
     gate.register_known_clips(set(known))
-    fps_of = dict(
-        zip(pool["clip"].map(canonical_clip_id), pool["fps"].astype(float), strict=True)
-    )
+    # Pool fps wins: gold rows of a pool clip (a not_ball verdict of an earlier round) carry a default 25 fps, which used to
+    # overwrite the clip's real rate (50 fps broadcast) and put its labelled frames in the wrong window.
+    fps_of: dict[str, float] = {}
     if gold is not None and len(gold):
-        fps_of.update(
-            dict(
-                zip(
-                    gold["clip"].map(canonical_clip_id),
-                    gold["fps"].astype(float),
-                    strict=True,
-                )
-            )
-        )
+        fps_of.update(zip(gold["clip"].map(canonical_clip_id), gold["fps"].astype(float), strict=True))
+    fps_of.update(zip(pool["clip"].map(canonical_clip_id), pool["fps"].astype(float), strict=True))
+    if gold is not None and len(gold):
+        gold = gold.assign(fps=gold["clip"].map(canonical_clip_id).map(fps_of).astype(np.float32))
     gate.block_labelled(already_labelled, fps_of)
     n_in = len(pool)
     df = gate.apply(pool, "pool").reset_index(drop=True)
@@ -446,11 +472,47 @@ def mine_round(  # noqa: PLR0912, PLR0913, PLR0915
     def room(m: str) -> int:
         return cap_n - used[m]
 
+    capped_buckets = ("U", "M", "N", "R")
+    clip_used: Counter = Counter()  # U / M / N / R cards per clip this round
+    taken_t: dict[str, list[float]] = defaultdict(list)  # clip-local seconds of every card taken this round
+    spacing_rejects: Counter = Counter()
+
+    def clip_ok(row, bucket: str) -> bool:
+        """Within-round rules for one more card: <= ``max_per_clip`` (U/M/N/R) and > ``exclude_s`` from every card taken."""
+        cid = row["_cid"]
+        if bucket in capped_buckets and cfg.max_per_clip > 0 and clip_used[cid] >= cfg.max_per_clip:
+            return False
+        if cfg.exclude_s > 0 and cid in taken_t:
+            t = np.array([float(row["frame"]) / float(row["fps"])])
+            if _within(t, np.sort(np.asarray(taken_t[cid])), cfg.exclude_s)[0]:
+                return False
+        return True
+
+    def free_mask(d: pd.DataFrame, bucket: str) -> np.ndarray:
+        """Rows of ``d`` still allowed given the cards taken so far (window, spacing, per-clip cap): the frame of a
+        probability bucket is this set, so its pi is exact conditional on the earlier buckets."""
+        ok = ~d["_wid"].isin(taken).to_numpy()
+        if d.empty or not taken_t:
+            return ok
+        cids = d["_cid"].to_numpy()
+        t = d["frame"].to_numpy(dtype=float) / d["fps"].to_numpy(dtype=float)
+        for cid in set(cids.tolist()) & set(taken_t):
+            pos = np.flatnonzero(cids == cid)
+            if bucket in capped_buckets and cfg.max_per_clip > 0 and clip_used[cid] >= cfg.max_per_clip:
+                ok[pos] = False
+            elif cfg.exclude_s > 0:
+                ok[pos] &= ~_within(t[pos], np.sort(np.asarray(taken_t[cid])), cfg.exclude_s)
+        return ok
+
     def take(
         row, bucket: str, sampling: dict, *, gold_card: dict | None = None
     ) -> None:
         taken.add(int(row["_wid"]))
         used[row["match"]] += 1
+        cid = row["_cid"]
+        taken_t[cid].append(float(row["frame"]) / float(row["fps"]))
+        if bucket in capped_buckets:
+            clip_used[cid] += 1
         if gold_card is not None:
             cx, cy, w, h = (
                 gold_card["cx"],
@@ -495,7 +557,7 @@ def mine_round(  # noqa: PLR0912, PLR0913, PLR0915
     def pick_ranked(bucket: str, target: int, rank_col: str, ascending: bool) -> int:
         if target <= 0 or df.empty:
             return 0
-        sel = df[flags[bucket].to_numpy() & ~df["_wid"].isin(taken).to_numpy()]
+        sel = df[flags[bucket].to_numpy() & free_mask(df, bucket)]
         sel = sel.assign(_rank=flags.loc[sel.index, rank_col])
         per_match: dict[str, list] = {}
         elig = {m: int((sel["match"] == m).sum()) for m in matches}
@@ -524,7 +586,7 @@ def mine_round(  # noqa: PLR0912, PLR0913, PLR0915
                 if pos >= len(lst) or room(m) <= 0:
                     continue
                 row, cluster = lst[pos]
-                if int(row["_wid"]) in taken:
+                if int(row["_wid"]) in taken or not clip_ok(row, bucket):
                     continue
                 take(row, bucket, {"stratum": f"{m}|cluster{cluster}", "reason": _reason(bucket, row, f"cluster {cluster}"),
                                    "pi": None, "rank": float(row["_rank"])})  # fmt: skip
@@ -536,7 +598,7 @@ def mine_round(  # noqa: PLR0912, PLR0913, PLR0915
     def pick_n(target: int) -> int:
         if target <= 0 or df.empty:
             return 0
-        sel = df[flags["N"].to_numpy() & ~df["_wid"].isin(taken).to_numpy()]
+        sel = df[flags["N"].to_numpy() & free_mask(df, "N")]
         sel = sel.assign(_rank=flags.loc[sel.index, "n_rank"])
         cell = cfg.n_cell
         sel = sel.assign(
@@ -571,6 +633,7 @@ def mine_round(  # noqa: PLR0912, PLR0913, PLR0915
                     if (
                         int(row["_wid"]) in taken
                         or loc_count[row["_loc"]] >= cfg.n_per_location
+                        or not clip_ok(row, "N")
                     ):
                         continue
                     loc_count[row["_loc"]] += 1
@@ -605,7 +668,7 @@ def mine_round(  # noqa: PLR0912, PLR0913, PLR0915
     def pick_a(target: int) -> int:
         if target <= 0 or df.empty:
             return 0
-        sel = df[flags["A"].to_numpy() & ~df["_wid"].isin(taken).to_numpy()]
+        sel = df[flags["A"].to_numpy() & free_mask(df, "A")]
         sel = sel.assign(_band=flags.loc[sel.index, "a_band"])
         n_units_m = {
             m: int(sel.loc[sel["match"] == m, "_wid"].nunique()) for m in matches
@@ -639,6 +702,9 @@ def mine_round(  # noqa: PLR0912, PLR0913, PLR0915
                 for row, pi, n_units in draw_units(db, n_b[b], rngs["A"]):
                     if room(m) <= 0 or int(row["_wid"]) in taken:
                         continue
+                    if not clip_ok(row, "A"):  # two draws of this bucket within exclude_s of each other
+                        spacing_rejects["A"] += 1
+                        continue
                     n_drawn = n_b[b]
                     take(row, "A", {"stratum": f"{m}|band{cfg.band_label(int(b))}", "band": cfg.band_label(int(b)), "pi": round(pi, 8),
                                     "frame_units": n_units, "n_drawn": n_drawn, "reason": _reason("A", row)})  # fmt: skip
@@ -657,7 +723,7 @@ def mine_round(  # noqa: PLR0912, PLR0913, PLR0915
     def pick_r(target: int) -> int:
         if target <= 0 or df.empty:
             return 0
-        sel = df[~df["_wid"].isin(taken).to_numpy()]
+        sel = df[free_mask(df, "R")]
         n_units_m = {
             m: int(sel.loc[sel["match"] == m, "_wid"].nunique()) for m in matches
         }
@@ -670,6 +736,9 @@ def mine_round(  # noqa: PLR0912, PLR0913, PLR0915
         for m in matches:
             dm = sel[sel["match"] == m]
             for row, pi, n_units in draw_units(dm, per_m[m], rngs["R"]):
+                if room(m) <= 0 or not clip_ok(row, "R"):
+                    spacing_rejects["R"] += 1
+                    continue
                 take(
                     row,
                     "R",
@@ -698,7 +767,7 @@ def mine_round(  # noqa: PLR0912, PLR0913, PLR0915
             if got >= target:
                 break
             row = gdf.iloc[int(i)]
-            if int(row["_wid"]) in taken or room(row["match"]) <= 0:
+            if int(row["_wid"]) in taken or room(row["match"]) <= 0 or not clip_ok(row, "G"):
                 continue
             cx, cy = float(row["x"]), float(row["y"])
             shift = None
@@ -759,6 +828,9 @@ def mine_round(  # noqa: PLR0912, PLR0913, PLR0915
         "per_match_cap": {"fraction": per_match_cap, "cards": cap_n, "relaxed_to_equal_share": cap_relaxed},
         "by_match_bucket": {m: dict(v) for m, v in sorted(by_match_bucket.items())},
         "refused": gate.report["refused"], "excluded": dict(gate.report["excluded"]),
+        "diversity": {"exclude_s": cfg.exclude_s, "max_per_clip": cfg.max_per_clip, "spacing_rejects": dict(spacing_rejects),
+                      "distinct_clips": len({c["clip"] for c in cards}),
+                      "max_cards_per_clip": max(Counter(c["clip"] for c in cards).values(), default=0)},
         "inclusion_probabilities": inclusion,
     }  # fmt: skip
     LOGGER.info(
