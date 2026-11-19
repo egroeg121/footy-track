@@ -27,6 +27,10 @@ What this module does with the latest live verdict per box:
   drew that box, the verdict was about a different detector box) -- counted
   as a conflict instead;
 * ``unsure`` / ``box_off`` change nothing in ``detection``.
+* ``ball`` / ``corrected`` verdicts matched to a stored box also write ball ``complete``
+  (``frame_label_state``, method ``verdict``, run_id ``ball_check``). ``not_ball``, ``unsure``
+  and ``box_off`` write no state (a rejected box does not prove the ball is absent), so those
+  frames stay unreviewed. A clip's ``verdict`` rows are replaced on each run.
 
 Idempotent: a clip's ``detection_review`` rows are replaced on each run.
 Note ``ingest_gt`` re-upserts ``reviewed`` from the sidecar, so run this
@@ -41,6 +45,12 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from footy_track.feature_store.schema import (
+    ClsGroup,
+    FrameLabelStateRow,
+    LabelMethod,
+    LabelState,
+)
 from footy_track.feature_store.store import FeatureStore
 from footy_track.splits import split_label
 
@@ -200,10 +210,29 @@ def _write_clip(
                 "AND frame_index = ? AND source = ? AND run_id = ? AND detection_id = ?",
                 [clip, fi, src, run, did],
             )
+        conn.execute(
+            "DELETE FROM frame_label_state WHERE game_id = ? AND cls_group = 'ball' "
+            "AND method = 'verdict'",
+            [clip],
+        )
         conn.execute("COMMIT")
     except Exception:
         conn.execute("ROLLBACK")
         raise
+    store.upsert_frame_label_states(
+        [
+            FrameLabelStateRow(
+                game_id=clip,
+                frame_index=fi,
+                cls_group=ClsGroup.BALL,
+                state=LabelState.COMPLETE,
+                method=LabelMethod.VERDICT,
+                run_id="ball_check",
+                verified_by="ball_check",
+            )
+            for fi in sorted({fi for *_, fi in reviewed})
+        ]
+    )
 
 
 def _import_clip(

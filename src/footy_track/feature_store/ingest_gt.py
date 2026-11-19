@@ -24,6 +24,12 @@ Provenance tags and their tier mapping (default, per-tag tiering):
     yolo     -> source=yolo,       reviewed=False
     sam3     -> source=sam3,       reviewed=False
 
+Frame label state (``frame_label_state``, method ``sidecar_marker``): a ``no_ball`` tag gives ball
+``absent``; a ``labeller`` ball box gives ball ``complete``. Player state is never written here (no
+back-fill). Method precedence is ``schema.METHOD_RANK`` (hand_* > verdict > offline_audited >
+sidecar_marker): a flush never overwrites a state set by a stronger method, and replaces only its own
+stale ``sidecar_marker`` rows.
+
 Lines whose tags carry no recognized provenance tag are dropped (no
 detection emitted) — same fallback as before this change, now documented
 here explicitly.
@@ -54,9 +60,13 @@ from pathlib import Path
 from footy_track.feature_store.ball_checks import import_ball_checks
 from footy_track.feature_store.importers import import_roboflow
 from footy_track.feature_store.schema import (
+    ClsGroup,
     DetectionRow,
+    FrameLabelStateRow,
     FrameRow,
     GameRow,
+    LabelMethod,
+    LabelState,
     RunRow,
     Stage,
 )
@@ -99,6 +109,8 @@ _PROVENANCE_TO_REVIEWED = {
     "yolo": False,
     "sam3": False,
 }
+_BALL_LABELS = {"ball", "in_play_ball", "out_of_play_ball"}
+_LABELLER_USER = "labeller"
 _VIDEO_SUFFIXES = (".mp4", ".mov", ".avi", ".mkv")
 
 
@@ -110,6 +122,11 @@ class GtImportReport:
     by_source: dict[str, int] = field(default_factory=lambda: defaultdict(int))
     clips_missing_video: set[str] = field(default_factory=set)
     detections_deleted: int = 0
+    ball_absent: int = 0
+    ball_complete: int = 0
+    ball_state_conflicts: int = (
+        0  # frames with both a no_ball marker and a human ball box: left unreviewed
+    )
 
 
 def _find_video(video_dir: Path, stem: str) -> Path | None:
@@ -156,7 +173,43 @@ def _split_tags(tags: list[str]) -> tuple[str | None, str | None, bool]:
     return obj_tag, prov_tag, checked
 
 
-def ingest_gt_jsonl(
+def _ball_state_rows(
+    stem: str,
+    no_ball_frames: set[int],
+    human_ball_frames: set[int],
+    report: GtImportReport,
+) -> list[FrameLabelStateRow]:
+    """Ball ``frame_label_state`` rows derived from a sidecar (docs/design/full_frame_labelling.md section 1).
+
+    Only the ball group is derived; player state is never inferred from existing GT (no
+    back-fill). A frame carrying both a ``no_ball`` marker and a human ball box is
+    contradictory: neither state is written.
+    """
+    conflicts = no_ball_frames & human_ball_frames
+    absent = sorted(no_ball_frames - conflicts)
+    complete = sorted(human_ball_frames - conflicts)
+    report.ball_absent = len(absent)
+    report.ball_complete = len(complete)
+    report.ball_state_conflicts = len(conflicts)
+    return [
+        FrameLabelStateRow(
+            game_id=stem,
+            frame_index=fi,
+            cls_group=ClsGroup.BALL,
+            state=state,
+            method=LabelMethod.SIDECAR_MARKER,
+            run_id=f"{GT_RUN_PREFIX}{_LABELLER_USER}",
+            verified_by=_LABELLER_USER,
+        )
+        for frames, state in (
+            (absent, LabelState.ABSENT),
+            (complete, LabelState.COMPLETE),
+        )
+        for fi in frames
+    ]
+
+
+def ingest_gt_jsonl(  # noqa: PLR0912, PLR0915 - one parse-then-write pass; state derivation lives in _ball_state_rows
     store: FeatureStore,
     jsonl_path: Path,
     *,
@@ -188,6 +241,8 @@ def ingest_gt_jsonl(
     # sequential detection_id.
     frame_indices: set[int] = set()
     dets_by_frame_source: dict[tuple[int, str], list[DetectionRow]] = defaultdict(list)
+    no_ball_frames: set[int] = set()
+    human_ball_frames: set[int] = set()
 
     for raw_line in jsonl_path.read_text().splitlines():
         line = raw_line.strip()
@@ -198,6 +253,8 @@ def ingest_gt_jsonl(
         frame_indices.add(frame_index)
 
         tags = rec.get("tags", [])
+        if "no_ball" in tags:
+            no_ball_frames.add(frame_index)
         if any(t in _SKIP_TAGS for t in tags):
             continue  # frame recorded on the spine, no detection
 
@@ -206,6 +263,8 @@ def ingest_gt_jsonl(
         if obj_tag is None or prov_tag is None or bbox is None:
             continue
 
+        if prov_tag == "labeller" and obj_tag in _BALL_LABELS:
+            human_ball_frames.add(frame_index)
         source = _PROVENANCE_TO_SOURCE[prov_tag]
         # A human-checked machine box is TIER 2: the machine drew the geometry
         # (source stays vittrack/yolo) but a human confirmed it, so it counts
@@ -237,6 +296,8 @@ def ingest_gt_jsonl(
                 dataset_tag=DATASET_TAG,
             )
         )
+
+    state_rows = _ball_state_rows(stem, no_ball_frames, human_ball_frames, report)
 
     if dry_run:
         report.games.add(stem)
@@ -290,6 +351,15 @@ def ingest_gt_jsonl(
             report.detections_written += len(rows)
             report.by_source[source] += len(rows)
 
+        # The sidecar is the source of truth for its own markers: drop this writer's stale
+        # rows (a no_ball the user since removed), then upsert. Rows set by stronger methods
+        # (hand_series, verdict, ...) are never deleted and never overwritten (METHOD_RANK).
+        if replace:
+            store.delete_frame_label_states(
+                stem, ClsGroup.BALL.value, LabelMethod.SIDECAR_MARKER.value
+            )
+        store.upsert_frame_label_states(state_rows)
+
     return report
 
 
@@ -317,6 +387,9 @@ def ingest_gt_dir(
             replace=replace,
         )
         total.detections_deleted += r.detections_deleted
+        total.ball_absent += r.ball_absent
+        total.ball_complete += r.ball_complete
+        total.ball_state_conflicts += r.ball_state_conflicts
         total.games |= r.games
         total.frames_written += r.frames_written
         total.detections_written += r.detections_written
@@ -401,6 +474,10 @@ def main(argv: list[str] | None = None) -> None:
     print(f"gt-marks games by split={split_counts(gt_report.games)}")
     print(
         f"gt-marks detections={gt_report.detections_written} by_source={dict(gt_report.by_source)}"
+    )
+    print(
+        f"ball state: absent={gt_report.ball_absent} complete={gt_report.ball_complete} "
+        f"conflicts(left unreviewed)={gt_report.ball_state_conflicts}"
     )
     if gt_report.detections_deleted:
         print(
