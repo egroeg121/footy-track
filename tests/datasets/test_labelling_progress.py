@@ -37,6 +37,7 @@ def env(tmp_path, monkeypatch):
         "version": 1, "rule": {"modulus": 5, "eval_remainder": 0},
         "clips": {"t1_seg001": {"split": "eval"}, "t1_seg002": {"split": "train"}},
     }))
+    monkeypatch.setattr(labelling_progress, "_default_dirs", lambda: (None, None))
     match_splits.clear_cache()
     splits.clear_cache()
     return root
@@ -113,3 +114,39 @@ def test_counts_ball_only_clip_and_splits(env, client):
 def test_direct_call_matches_route(env):
     seed(env, [row("t1_seg002", 0, B, C), row("t1_seg002", 0, P, C)])
     assert labelling_progress.get_labelling()["totals"]["fully_labelled"] == 1
+
+
+def test_denominator_unlabelled_clips_and_sidecar_player_marks(env, tmp_path, monkeypatch):
+    clips, marks = tmp_path / "clips", tmp_path / "marks"
+    clips.mkdir()
+    marks.mkdir()
+    (clips / "t1_seg002.mp4").write_bytes(b"x")
+    (clips / "t1_seg003.mp4").write_bytes(b"y")  # no state rows at all
+    box = {"x": 0.5, "y": 0.5, "w": 0.1, "h": 0.1}
+    lines = [
+        {"frame_index": 0, "bbox": box, "tags": ["player"]},
+        {"frame_index": 0, "bbox": box, "tags": ["referee"]},  # same frame: counted once
+        {"frame_index": 4, "bbox": box, "tags": ["player_sub"]},
+        {"frame_index": 5, "bbox": box, "tags": ["in_play_ball"]},  # ball: not a player box
+        {"frame_index": 6, "bbox": None, "tags": ["no_ball"]},
+    ]
+    (marks / "t1_seg002.jsonl").write_text("\n".join(json.dumps(x) for x in lines) + "\n")
+    monkeypatch.setattr(labelling_progress, "_video_frames", lambda p: 100 if p.stem == "t1_seg002" else None)
+    seed(env, [row("t1_seg002", 0, B, C), row("t1_seg002", 0, P, C), row("t1_seg002", 1, B, C)])
+    j = labelling_progress.get_labelling(clips_dir=clips, marks_dir=marks)
+    by = {c["clip"]: c for c in j["clips"]}
+    a = by["t1_seg002"]
+    assert (a["clip_frames"], a["frames"], a["fully_labelled"], a["partial"]) == (100, 2, 1, 1)
+    assert a["player_marked_sidecar"] == 2 and a["player_labelled"] == 1  # store stays authoritative
+    b = by["t1_seg003"]
+    assert (b["clip_frames"], b["frames"], b["fully_labelled"], b["player_marked_sidecar"]) == (None, 0, 0, 0)
+
+
+def test_partial_definition(env):
+    seed(env, [
+        row("t1_seg002", 0, B, LabelState.UNREVIEWED),  # nothing labelled: not partial
+        row("t1_seg002", 1, P, C),  # player only: partial
+        row("t1_seg002", 2, B, PART), row("t1_seg002", 2, P, LabelState.UNREVIEWED),  # explicit partial
+    ])
+    t = labelling_progress.get_labelling(clips_dir=env, marks_dir=env)["totals"]
+    assert (t["frames"], t["partial"], t["fully_labelled"]) == (3, 2, 0)

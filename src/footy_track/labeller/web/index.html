@@ -885,15 +885,16 @@ async function loadClipList() {
   });
   // Per-clip labelled-frame badge from the feature store (ball / player / fully labelled).
   fetch("/progress/labelling").then(r => r.ok ? r.json() : null).then(L => {
-    if (!L || L.state !== "ok") return;
+    if (!L) return;
     L.clips.forEach(c => {
       const el = elMap[c.clip + ".mp4"] || Object.entries(elMap).find(([n]) => n.replace(/\.[^.]+$/, "") === c.clip)?.[1];
       if (!el) return;
       const b = document.createElement("span");
       b.className = "no-ball-badge";
       b.style.background = c.fully_labelled ? "#1f6f3d" : "#555";
-      b.textContent = `ball ${c.ball_labelled} / player ${c.player_labelled} / full ${c.fully_labelled}`;
-      b.title = `${c.frames} frames with a label state; ${c.partial} not fully labelled`;
+      const t = c.clip_frames ? "/" + c.clip_frames : "";
+      b.textContent = `ball ${c.ball_labelled}${t} / player ${c.player_labelled}${t} / full ${c.fully_labelled}${t}`;
+      b.title = `${c.frames} frames with a label state; ${c.partial} partial; ${c.player_marked_sidecar} frames with player boxes drawn (not verified complete)`;
       el.appendChild(b);
     });
   }).catch(() => {});

@@ -431,19 +431,20 @@ function render() {
 }
 function renderLabelling(L) {
   const el = document.getElementById("labelling");
-  if (!L || L.state !== "ok") {
+  if (!L || (L.state !== "ok" && !L.clips.length)) {
     const why = !L ? "failed to load" : L.state === "missing" ? "no feature store yet" : L.state === "busy" ? "store busy, retry shortly" : L.state === "error" ? esc(L.error) : "no frame labels in the store yet";
     el.innerHTML = `<h2>Labelling coverage</h2><div class="empty">${why}</div>`;
     return;
   }
   const n = v => Number(v).toLocaleString();
-  const rowOf = (name, r, cls) => `<tr class="${cls || ""}"><td class="l">${name}</td><td>${n(r.frames)}</td><td>${n(r.ball_labelled)}</td><td>${n(r.player_labelled)}</td><td><b>${n(r.fully_labelled)}</b></td><td>${n(r.partial)}</td></tr>`;
+  const of = (v, tot) => tot ? `${n(v)} / ${n(tot)} <span class="muted">(${Math.round(100 * v / tot)}%)</span>` : n(v);
+  const rowOf = (name, r, cls) => `<tr class="${cls || ""}"><td class="l">${name}</td><td>${r.clip_frames ? n(r.frames) + " / " + n(r.clip_frames) : n(r.frames)}</td><td>${of(r.ball_labelled, r.clip_frames)}</td><td>${of(r.player_labelled, r.clip_frames)}</td><td><b>${of(r.fully_labelled, r.clip_frames)}</b></td><td>${n(r.partial)}</td><td title="player boxes drawn (not verified complete)">${n(r.player_marked_sidecar || 0)}</td></tr>`;
   const splitRows = Object.entries(L.by_split).map(([s, r]) => rowOf("split: " + esc(s), r, "diag")).join("");
   const clipRows = L.clips.map(c => rowOf(esc(c.clip) + ` <span class="muted">${esc(c.split)}</span>`, c)).join("");
   const t = L.tiers, tv = Object.entries(t.silver.by_teacher_version).map(([k, v]) => `${esc(k)} ${n(v)}`).join(", ");
-  el.innerHTML = `<h2>Labelling coverage</h2><div class="wrap"><table><thead><tr><th class="l">Clip</th><th>Frames</th><th>Ball</th><th>Player</th><th>Fully</th><th>Partial</th></tr></thead><tbody>` +
-    rowOf("<b>All clips</b>", L.totals) + splitRows + clipRows + `</tbody></table></div>` +
-    `<p class="muted">Ordered by fewest fully-labelled frames. Gold (hand / verdict) ${n(t.gold)} · silver (audited teacher) ${n(t.silver.total)}${tv ? " (" + tv + ")" : ""} · other ${n(t.other)} labelled class-group rows.</p>`;
+  el.innerHTML = `<h2>Labelling coverage</h2><div class="wrap"><table><thead><tr><th class="l">Clip</th><th>Frames</th><th>Ball</th><th>Player</th><th>Fully</th><th>Partial</th><th title="player boxes drawn (not verified complete)">Player boxes drawn*</th></tr></thead><tbody>` +
+    rowOf("<b>All clips</b>", {...L.totals, clip_frames: L.clips.some(c => c.clip_frames == null) ? null : L.clips.reduce((a, c) => a + c.clip_frames, 0), player_marked_sidecar: L.clips.reduce((a, c) => a + c.player_marked_sidecar, 0)}) + splitRows + clipRows + `</tbody></table></div>` +
+    `<p class="muted">Ordered by fewest fully-labelled frames. Partial = a group marked partial, or only one of ball/player labelled. *Player boxes drawn = frames with a hand-drawn player box in the sidecar, not verified complete (the Player column is the authoritative count). Gold (hand / verdict) ${n(t.gold)} · silver (audited teacher) ${n(t.silver.total)}${tv ? " (" + tv + ")" : ""} · other ${n(t.other)} labelled class-group rows.</p>`;
 }
 async function loadLabelling() {
   try {
