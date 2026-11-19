@@ -151,6 +151,7 @@ def test_labels_saved_in_one_dataset_never_appear_in_the_other(web, two, fake_cv
     assert web.get("/marks").json() == {
         "no_ball": [],
         "not_broadcast": [],
+        "players_complete": [],
         "ball": [],
         "player": [],
     }

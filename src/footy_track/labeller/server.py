@@ -302,7 +302,7 @@ async def get_frame(idx: int) -> Response:
 
 @app.get("/marks")
 async def get_marks() -> dict:
-    """Return no_ball, not_broadcast, ball, and player frame sets for the current session."""
+    """Return no_ball, not_broadcast, players_complete, ball, and player frame sets for the current session."""
     session = _session()
     with session._tl_lock:
         ball_frames = []
@@ -319,6 +319,7 @@ async def get_marks() -> dict:
     return {
         "no_ball": sorted(session.no_ball_frames),
         "not_broadcast": sorted(session.not_broadcast_frames),
+        "players_complete": sorted(session.players_complete_frames),
         "ball": ball_frames,
         "player": player_frames,
     }
@@ -480,6 +481,27 @@ async def clear_not_broadcast(body: dict) -> dict:
     session.schedule_flush()
     _emit_mark(session, idx, "not_broadcast_cleared")
     return {"idx": idx, "not_broadcast": False}
+
+
+@app.post("/players-complete")
+async def mark_players_complete(body: dict) -> dict:
+    """Assert every visible person on the frame is boxed. Keeps the frame's boxes (unlike no_ball)."""
+    session = _session()
+    idx = int(body["idx"])
+    session.players_complete_frames.add(idx)
+    session.schedule_flush()
+    _emit_mark(session, idx, "players_complete")
+    return {"idx": idx, "players_complete": True}
+
+
+@app.post("/players-complete/clear")
+async def clear_players_complete(body: dict) -> dict:
+    session = _session()
+    idx = int(body["idx"])
+    session.players_complete_frames.discard(idx)
+    session.schedule_flush()
+    _emit_mark(session, idx, "players_complete_cleared")
+    return {"idx": idx, "players_complete": False}
 
 
 @app.post("/propagate")

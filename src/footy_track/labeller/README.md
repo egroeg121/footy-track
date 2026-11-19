@@ -140,6 +140,14 @@ One JSON object per line:
   no box). Frames with neither boxes nor markers are not written at all.
   - Tests: `test_session_roundtrip.py::test_flush_writes_skip_markers_with_null_bbox`,
     `test_session_roundtrip.py::test_roundtrip_no_ball_and_not_broadcast_sets`
+- **LAB-109** (MUST) `players_complete` frame marker ("all players boxed"): a bbox-less line `{frame_index, bbox: null,
+  center: null, tags: ["players_complete"]}` (`constants.PLAYERS_COMPLETE_TAG`). Unlike the skip markers it COEXISTS with the
+  frame's box lines (flush writes it in addition to boxes, and it does not suppress or replace them), loads into
+  `Session.players_complete_frames`, and survives every load -> flush cycle (it was the T-01 class of loss for marker
+  tags: anything not restored on load is erased by the next whole-file flush). Readers that skip `bbox: null` lines
+  (review, ball_check, jobs, scorer_data, detection_replay, ingest_all) ignore it.
+  - Tests: `test_session_roundtrip.py::test_players_complete_marker_survives_load_flush_and_keeps_boxes`,
+    `::test_players_complete_cleared_marker_is_not_written`
 - **LAB-103** (MUST) Round-trip fidelity: everything the UI shows survives
   save → reload with identical `model` tags, labels, and geometry (see also
   `tests/feature_store/test_roundtrip_fidelity.py` for the feature-store leg).
@@ -246,10 +254,14 @@ All request/response bodies are JSON unless noted.
 - **LAB-307** (MUST) `GET /next-detection/{from_idx}` → `{idx}` of the next
   frame strictly after `from_idx` with ≥1 box, else `{idx: null}`.
   - Tests: `test_http_endpoints.py::test_next_detection_finds_next_populated_frame`
-- **LAB-308** (MUST) `GET /marks` → `{no_ball, not_broadcast, ball, player}`
+- **LAB-308** (MUST) `GET /marks` → `{no_ball, not_broadcast, players_complete, ball, player}`
   frame-index lists; `ball`/`player` = frames whose boxes contain at least one
   ball-class / player-class label.
   - Tests: `test_http_endpoints.py::test_marks_reports_ball_player_and_skip_sets`
+- **LAB-310** (MUST) `POST /players-complete {idx}` adds the frame to `players_complete_frames` (boxes kept, unlike
+  `/no-ball`) and `POST /players-complete/clear {idx}` removes it; both schedule a flush and emit a `ball_place`-kind hook
+  event (`players_complete` / `players_complete_cleared`).
+  - Tests: `test_http_endpoints.py::test_players_complete_toggle_marks_and_keeps_boxes`
 - **LAB-309** (MUST) `POST /edit` `{idx, objects}` overwrites the frame with
   the client boxes (provenance per LAB-003, default `labeller`); a payload
   with ≥1 box removes the frame from both skip sets (an empty payload leaves
@@ -1943,6 +1955,26 @@ Unlike the panel it keeps `ingest` on: the verdicts are training data, and `feat
   - Tests: `::test_verdicts_in_other_datasets_on_the_same_canonical_clip_are_not_asked_again`, `::test_refit_and_the_gold_check_join_verdicts_in_the_new_marks_dir`,
     `::test_ingest_all_reads_the_training_dataset_marks_and_its_verdicts`
 
+## 19h. Players-complete marker (LAB-1448..1450)
+
+- **LAB-1448** (MUST) Labeller page: button `All players boxed (P)` and hotkey `P` toggle the `players_complete` marker on the
+  current frame (pending edits are saved first so the marker describes the boxes on screen; boxes are kept). A teal strip along
+  the bottom of the timeline bar marks every such frame; the object list shows an `All players boxed` row (click the x to clear);
+  `/marks.players_complete` restores it on load.
+  - Tests: UNTESTED-FRONTEND (server half under LAB-310).
+- **LAB-1449** (MUST) `feature_store/ingest_gt` writes `frame_label_state` player rows, method `sidecar_marker`, only for frames
+  carrying the marker: `complete` when the frame has >= 1 player-class box (player, player_sub, referee, coach, person; any
+  provenance), `absent` when it has none. Frames without the marker get no player state (no back-fill). The marker line is never a
+  detection or an object class. `GtImportReport.players_complete` / `players_absent` and the CLI line `player state: complete=N absent=N`
+  report it.
+  - Tests: `tests/feature_store/test_frame_label_state.py::test_players_complete_marker_gives_player_complete_or_absent`,
+    `::test_players_complete_feeds_frame_complete_view`
+- **LAB-1450** (MUST) Method is `sidecar_marker` (rank 1), not `hand_frame`, deliberately: ingest replaces only its own stale
+  `sidecar_marker` rows per (game, group), so removing the marker removes the state (a `hand_frame` row is never deleted by
+  ingest), and it can never override a stronger row (a Player Check `partial`, a series `hand_series`). Re-ingest is idempotent.
+  - Tests: `::test_removing_players_complete_marker_removes_state`, `::test_players_complete_reingest_idempotent`,
+    `::test_players_complete_does_not_override_stronger_row`
+
 ## 15. Traceability summary
 
 | Section | Requirements | Tested | UNTESTED | UNTESTED-FRONTEND |
@@ -1967,7 +1999,9 @@ Unlike the panel it keeps `ingest` on: the verdicts are training data, and `feat
 | 19e. Ball evaluation panel (LAB-1435..1438) | 4 | 4 | 0 | 0 |
 | 17b. Task board filters (LAB-1443) | 1 | 0 | 0 | 1 |
 | 19g. Eval panel suggestions (LAB-1445..1447) | 3 | 3 | 0 | 0 |
-| **Total** | **161** | **120** | **9** | **32** |
+| 2b. players_complete marker (LAB-109, LAB-310) | 2 | 2 | 0 | 0 |
+| 19h. Players-complete marker (LAB-1448..1450) | 3 | 2 | 0 | 1 |
+| **Total** | **166** | **124** | **9** | **33** |
 
 Open items: 4 (OPEN-1..4) + 1 fixed on main (undo provenance, `95b60cc`).
 Test suite: 138 tests in `tests/labeller/` (all green), plus the
