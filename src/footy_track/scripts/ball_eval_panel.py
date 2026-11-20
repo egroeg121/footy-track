@@ -107,6 +107,7 @@ def cmd_suggest(args: argparse.Namespace) -> int:
                 device=args.device,
                 imgsz=args.imgsz,
                 batch=args.batch,
+                tag=getattr(args, "tag", "") or "",
                 labelled_keys=lambda d=doc: PS.labelled_panel_keys(d, args.root),
                 log=lambda m: print(m, file=sys.stderr, flush=True),
             )
@@ -487,6 +488,7 @@ def main(argv: list[str] | None = None) -> int:  # noqa: PLR0915
     g.add_argument("--device", default="cpu")
     g.add_argument("--imgsz", type=int, default=1280)
     g.add_argument("--batch", type=int, default=4)
+    g.add_argument("--tag", default="", help="write <match>.suggest.<sha8><tag>.json beside the existing file (top-k recompute; the old file and its blind-equivalent set are kept)")
     g.set_defaults(fn=cmd_suggest)
 
     r = sub.add_parser(

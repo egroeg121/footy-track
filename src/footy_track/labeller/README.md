@@ -1632,6 +1632,23 @@ restricted to the job's cards (progress and results are).
   returns them as `markers`. `feature_store/ingest_gt` treats them as markers (never the class). An accepted box is tier-1
   `labeller` GT everywhere (job done rule, scoring, export, ingest): the marker is audit only.
   - Tests: `tests/labeller/test_suggestion_accept.py` (server half); the page itself is UNTESTED-FRONTEND (wiring checked by string).
+- **LAB-1479** (MUST) Suggestions for ANY `ball_place` job (not only eval panels), rolling forward from George's own boxes, instant in the
+  browser. `python -m footy_track.scripts.job_suggest suggest --job <id>` runs the production RT-DETR (heldout clips only, CPU) over every
+  frame of the job's items and writes `<FD>/job_suggestions/<job_id>.suggest.<sha8>.json` (top-5 candidates per frame with conf >= 0.1,
+  the top-1 first, offline tracklet ids per window from a nearest-neighbour + 65 px/frame speed-gated linker, `pre_labelled` = frames
+  already labelled when it was written, which are never offered). No blind control for these jobs (George's call); the eval-panel path
+  keeps its 25% blind rule. `GET /api/jobs/<id>/suggestions` ships all of a job's candidates in ONE request (panel items honour their
+  blind flag); the per-frame `/suggestion` endpoint is unchanged. In the browser, with no per-frame fetch: #1 is the candidate on the
+  same tracklet as the candidate under George's nearest previous human box of the same item (<= 30 frames, accepted boxes count; a later
+  box only when there is no previous one), else the nearest candidate within `max(40 px, 12 px x frame gap)`, else the top-1; the
+  others are ordered by distance to that box, else by conf. The page draws #1 (bright yellow) and #2-#3 (dimmer, numbered) and records
+  frame-change -> overlay time in `window.sugLatencyMs` (`performance.measure("sug-latency")`). `Y` accepts #1; in job mode on a
+  `ball_place` job `1`/`2`/`3` accept that candidate (`4`-`6` stay class keys; outside job mode all of `1`-`6` stay class keys). An
+  accept saves as today plus `suggest_rank:N`; drawing replaces all. A VitTrack hop was deliberately NOT added (snapping + tracklets
+  cover it, and a server tracker cannot be instant). `job_suggest report --job <id>` prints per stratum coverage, accept share,
+  rank-1 vs rank-2..5 accepts and agreement with RT-DETR.
+  - Tests: `tests/ball_eval/test_job_suggest.py`, `tests/labeller/test_suggestion_accept.py` (page wiring by string:
+    UNTESTED-FRONTEND for the anchoring logic itself).
 - **LAB-1447** (MUST) `panel_score` reports, per match and pooled, the share of ball labels that were accepted suggestions and the
   model's recall / precision / false-ball on blind vs shown windows with the difference (blind - shown) and its bootstrap CI.
   Labels placed before a match's suggest file existed count as blind-equivalent (`<match>.suggest-meta.<sha8>.json` lists them).
@@ -2120,7 +2137,8 @@ count run `<cluster>:<a>-<b>`; `verified_by/at`). The frame sweep uses `cluster_
 | **Total** | **166** | **124** | **9** | **33** |
 | 19i. Series review (LAB-1460..1468) | 9 | 8 | 0 | 1 |
 | 19g. Ball Check card reason (LAB-1478) | 1 | 1 | 0 | 0 |
-| **Total** | **176** | **133** | **9** | **34** |
+| 19k. Job suggestions (LAB-1479) | 1 | 1 | 0 | 0 |
+| **Total** | **177** | **134** | **9** | **34** |
 
 Open items: 4 (OPEN-1..4) + 1 fixed on main (undo provenance, `95b60cc`).
 Test suite: 138 tests in `tests/labeller/` (all green), plus the

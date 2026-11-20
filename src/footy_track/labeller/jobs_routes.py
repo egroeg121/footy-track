@@ -293,6 +293,20 @@ async def job_suggestion(ref: str, clip: str, frame: int):
         return _err(e)
 
 
+@router.get("/api/jobs/{ref:path}/suggestions")
+async def job_suggestions(ref: str):
+    """All candidates (top-5 per frame, tracklet ids, clip sizes) of a ``ball_place`` job in one payload so the page rolls
+    suggestions forward in the browser with no per-frame request. Never labels: see ``suggestions.py``."""
+
+    def work():
+        return suggestions.candidates_for_job(jobs.resolve(ref))
+
+    try:
+        return await asyncio.to_thread(work)
+    except jobs.JobError as e:
+        return _err(e)
+
+
 async def _close(request: Request, ref: str, new: str):
     def work():
         job = jobs.close(jobs.resolve(ref)["id"], new)

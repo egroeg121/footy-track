@@ -88,10 +88,35 @@ def test_page_wiring():
         "Accept suggestion (Y)",
         '(e.key === "y" || e.key === "Y")',
         "const sugLayer = new Konva.Layer",
-        "/suggestion?clip=",
+        "/suggestions`",
         'const SUG_TAG = "accepted_suggestion"',
         "markers: r.getAttr(\"markers\") || []",
     ):
         assert needle in html, needle
     # the overlay lives outside boxLayer, so a save can never turn it into a label
     assert "sugLayer.add(" in html and 'boxLayer.add(new Konva.Rect({ x, y, width: w' not in html
+
+
+def test_accept_on_a_non_panel_job_frame_writes_marker_and_survives_reload(client, fresh_session, gt_marks_dir):
+    """LAB-1479: the marker path does not depend on the job being an eval panel."""
+    s = _session(fresh_session)
+    tags = ["accepted_suggestion", "suggest_det:cafef00d"]
+    assert client.post("/edit", json={"idx": 3, "objects": [_obj(tags)]}).status_code == 200
+    s._do_flush()
+    s2 = _session(Session(), n=10)
+    s2.dataset = s.dataset
+    s2._load_existing_marks()
+    s2.set_frame(5, [])
+    s2._do_flush()
+    assert _rows(gt_marks_dir)[0]["tags"] == ["in_play_ball", "labeller", *tags]
+
+
+def test_rank_marker_survives_and_numbered_key_wiring():
+    from footy_track.labeller.constants import is_suggest_marker
+
+    assert is_suggest_marker("suggest_rank:2") and not is_suggest_marker("suggest_rank:9") and not is_suggest_marker("suggest_rank:")
+    assert _split_tags(["in_play_ball", "labeller", "accepted_suggestion", "suggest_rank:2"]) == ("in_play_ball", "labeller", False)
+    html = INDEX_HTML.read_text()
+    for needle in ("const SUG_SHOW = 3", "/^[1-3]$/.test(e.key)", '"suggest_rank:" + rank', 'job.kind === "ball_place"', "performance.measure(\"sug-latency\""):
+        assert needle in html, needle
+    assert html.index("/^[1-3]$/.test(e.key)") < html.index('const classKeys = {"1"')  # job-mode rebind wins; 4-6 stay class keys

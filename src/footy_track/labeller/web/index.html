@@ -123,7 +123,7 @@
       <span class="grow"></span>
       <label class="muted" title="Placing the ball or marking no-ball / not-broadcast jumps to the next unlabelled job frame"><input type="checkbox" id="jobAuto" checked> auto-advance</label>
       <label class="muted" title="Pre-existing machine boxes (vittrack/yolo/...) are hidden in job mode so they cannot bias placement. Shown dimmed and dashed. Hidden boxes are never deleted or changed by saving."><input type="checkbox" id="jobShowMachine"> Show machine boxes (M)</label>
-      <button id="jobAcceptBtn" class="primary" style="display:none" title="Save the dashed yellow detector suggestion as your box for this frame (Y). It is a human label tagged accepted_suggestion; draw your own box instead to replace it. Never offered for 'no ball'.">Accept suggestion (Y)</button>
+      <button id="jobAcceptBtn" class="primary" style="display:none" title="Save the dashed yellow detector suggestion (#1) as your box for this frame (Y); the dimmer numbered ones with 1-3. It is a human label tagged accepted_suggestion; draw your own box instead to replace it. Never offered for 'no ball'.">Accept suggestion (Y)</button>
       <button id="jobCardBtn" title="Jump back to this card's frame, reloading its clip if you wandered off (C). Does not label or advance.">↩ Card frame (C)</button>
       <button id="jobPrevBtn" title="Previous job frame (K)">⏮ Prev job frame (K)</button>
       <button id="jobNextBtn" class="primary" title="Next job frame that is not labelled yet (J)">Next job frame (J) ⏭</button>
@@ -680,6 +680,8 @@ window.addEventListener("keydown",(e)=>{
 
   if (e.key === "e" || e.key === "E") { setTool("edit"); return; }
   if (e.key === "w" || e.key === "W") { setTool("draw"); return; }
+  // job mode on a ball_place job: 1-3 accept that numbered suggestion (outside job mode they stay the draw-class keys)
+  if (JOB_ID && job && job.kind === "ball_place" && /^[1-3]$/.test(e.key) && !e.ctrlKey && !e.metaKey && !e.altKey) { e.preventDefault(); acceptSuggestion(+e.key); return; }
   const classKeys = {"1":"in_play_ball","2":"ball","3":"referee","4":"player","5":"person","6":"coach"};
   if (classKeys[e.key]) { classSel.value = classKeys[e.key]; setTool("draw"); return; }
   if ((e.key === "z" || e.key === "Z") && !e.shiftKey) { undoLast(); return; }
@@ -770,16 +772,73 @@ async function jobPlaced() {            // a ball box was just drawn
 // Not a label: it lives on sugLayer, outside boxLayer (so boxesNorm / saves never see it). Only an accept creates
 // a real box, tagged accepted_suggestion (+ the detector sha8). No candidate / blind card => nothing is drawn.
 let curSuggestion = null;
+let curSugList = [];               // ranked candidates (#1 = curSuggestion), up to SUG_SHOW
+const SUG_SHOW = 3;                 // candidates drawn (the file keeps top-5 so this can widen without recomputing)
 const SUG_TAG = "accepted_suggestion", SUG_DET_PREFIX = "suggest_det:";
-function clearSuggestion() { curSuggestion = null; updateSuggestionOverlay(); }
-async function loadSuggestion() {
-  curSuggestion = null;
-  if (!JOB_ID || !job || meta === null || viewFrame == null || jobIndexHere() < 0) { updateSuggestionOverlay(); return; }
-  const idx = viewFrame, clip = stemOf(loadedPath);
+// Roll-forward (LAB-1479): the job's candidates (top-5 per frame + offline tracklet ids) come in ONE request at job
+// start; every anchoring decision below is local JS (no fetch per frame), so the overlay is up in a few ms.
+let sugData = null;                   // {frames: {"clip:frame": [[x,y,w,h,conf,tid]...]}, size: {clip:[w,h]}, detector: {clip:sha8}}
+const humanAt = new Map();            // "clip:frame" -> {cx, cy}: this session's human ball boxes (saved, accepted or loaded)
+window.sugLatencyMs = [];             // frame change -> overlay drawn, per frame (performance.measure "sug-latency")
+async function loadSugData() {
   try {
-    const r = await fetch(`/api/jobs/${encodeURIComponent(JOB_ID)}/suggestion?clip=${encodeURIComponent(clip)}&frame=${idx}`);
-    if (r.ok) { const d = await r.json(); if (idx === viewFrame) curSuggestion = d.suggestion || null; }
-  } catch (err) { /* no suggestion: the page works as before */ }
+    const r = await fetch(`/api/jobs/${encodeURIComponent(JOB_ID)}/suggestions`);
+    if (!r.ok) return;
+    const txt = await r.text();
+    sugData = JSON.parse(txt);
+    console.info(`[suggest] ${Object.keys(sugData.frames || {}).length} frames, payload ${txt.length} bytes`);
+  } catch (err) { /* no suggestions: the page works as before */ }
+  if (sugData) loadSuggestion();
+}
+function noteHuman(clip, frame, boxes) {   // boxes: normalised {label, source|model, x, y, w, h}
+  const hb = (boxes || []).find(b => (b.source || b.model) === "labeller" && BALL_LABELS.has(b.label));
+  const k = jobKey(clip, frame);
+  if (hb) humanAt.set(k, { cx: hb.x + hb.w / 2, cy: hb.y + hb.h / 2 }); else humanAt.delete(k);
+}
+function sugAnchor(clip, frame, item) {   // nearest PREVIOUS human box of the same item (<= 30 frames), else a later one
+  let prev = null, next = null;
+  for (const f of job.frames) {
+    if (f.clip !== clip || f.item !== item || f.frame === frame || Math.abs(f.frame - frame) > 30) continue;
+    const a = humanAt.get(jobKey(clip, f.frame)); if (!a) continue;
+    if (f.frame < frame) { if (!prev || f.frame > prev.f) prev = { f: f.frame, ...a }; }
+    else if (!next || f.frame < next.f) next = { f: f.frame, ...a };
+  }
+  return prev || next;
+}
+function sugPick(clip, frame, item) {
+  const rows = sugData && sugData.frames[`${clip}:${frame}`];
+  if (!rows || !rows.length) return null;
+  const sz = (sugData.size && sugData.size[clip]) || [1920, 1080];
+  const dist = (r, a) => Math.hypot((r[0] + r[2] / 2 - a.cx) * sz[0], (r[1] + r[3] / 2 - a.cy) * sz[1]);
+  let row = rows[0], source = "detector", ranked = null;
+  const an = sugAnchor(clip, frame, item);
+  if (an) {
+    const prows = sugData.frames[`${clip}:${an.f}`] || [];
+    let a0 = null, d0 = 40;                                  // the candidate George's box sits on (same tracklet)
+    for (const r of prows) { const d = dist(r, an); if (d <= d0) { d0 = d; a0 = r; } }
+    const follow = a0 && a0[5] ? rows.find(r => r[5] === a0[5]) : null;
+    if (follow) { row = follow; source = "followed"; }
+    else {
+      const rad = Math.max(40, 12 * Math.abs(frame - an.f));
+      let best = null, bd = rad;
+      for (const r of rows) { const d = dist(r, an); if (d <= bd) { bd = d; best = r; } }
+      if (best) { row = best; source = row === rows[0] ? "detector" : "near you"; }
+    }
+  }
+  const det = (sugData.detector || {})[clip] || "";
+  const mk = (r, src) => ({ x: r[0], y: r[1], w: r[2], h: r[3], conf: r[4], detector: det, source: src });
+  const rest = rows.filter(r => r !== row);
+  if (an) rest.sort((p, q) => dist(p, an) - dist(q, an));        // others: by distance to your last box, else by conf (file order)
+  return [mk(row, source), ...rest.map(r => mk(r, "candidate"))].slice(0, SUG_SHOW);
+}
+function clearSuggestion() { curSuggestion = null; curSugList = []; updateSuggestionOverlay(); }
+function loadSuggestion() {
+  curSuggestion = null; curSugList = [];
+  if (!JOB_ID || !job || meta === null || viewFrame == null || !sugData) { updateSuggestionOverlay(); return; }
+  const i = jobIndexHere();
+  if (i < 0) { updateSuggestionOverlay(); return; }
+  curSugList = sugPick(job.frames[i].clip, viewFrame, job.frames[i].item) || [];
+  curSuggestion = curSugList[0] || null;
   updateSuggestionOverlay();
 }
 function updateSuggestionOverlay() {
@@ -790,24 +849,33 @@ function updateSuggestionOverlay() {
   const btn = $("jobAcceptBtn");
   if (btn) btn.style.display = show ? "" : "none";
   if (show) {
-    const s = curSuggestion, x = s.x * dispW, y = s.y * dispH, w = s.w * dispW, h = s.h * dispH;
-    const cx = x + w / 2, cy = y + h / 2, rad = Math.max(w, h) / 2 + 14;
-    sugLayer.add(new Konva.Rect({ x, y, width: w, height: h, stroke: "#ffd400", strokeWidth: 2, dash: [5, 3], listening: false }));
-    sugLayer.add(new Konva.Circle({ x: cx, y: cy, radius: rad, stroke: "#ffd400", strokeWidth: 1.5, dash: [6, 4], opacity: 0.8, listening: false }));
-    sugLayer.add(new Konva.Text({ x: cx + rad + 3, y: cy - 8, text: `suggestion ${Math.round((s.conf || 0) * 100)}%`, fontSize: 13, fontStyle: "bold", fill: "#ffd400", listening: false }));
+    curSugList.forEach((s, k) => {
+      const x = s.x * dispW, y = s.y * dispH, w = Math.max(s.w * dispW, 6), h = Math.max(s.h * dispH, 6);
+      const cx = x + w / 2, cy = y + h / 2, top = k === 0, col = top ? "#ffd400" : "#5fd7ff";
+      sugLayer.add(new Konva.Rect({ x, y, width: w, height: h, stroke: col, strokeWidth: top ? 2 : 1.5, dash: [5, 3], opacity: top ? 1 : 0.75, listening: false }));
+      if (top) sugLayer.add(new Konva.Circle({ x: cx, y: cy, radius: Math.max(w, h) / 2 + 14, stroke: col, strokeWidth: 1.5, dash: [6, 4], opacity: 0.8, listening: false }));
+      const lx = cx + Math.max(w, h) / 2 + (top ? 18 : 4), ly = cy - Math.max(w, h) / 2 - (top ? 6 : 14);   // offset: never on the ball
+      const txt = top ? `${k + 1} ${s.source && s.source !== "detector" ? s.source : "suggestion"} ${Math.round((s.conf || 0) * 100)}%` : `${k + 1}`;
+      sugLayer.add(new Konva.Text({ x: lx, y: ly, text: txt, fontSize: top ? 14 : 12, fontStyle: "bold", fill: col, stroke: "#000", strokeWidth: 0.4, opacity: top ? 1 : 0.85, listening: false }));
+    });
   }
   sugLayer.draw();
+  if (show && performance.getEntriesByName("sug-frame-change").length) {
+    try { const m = performance.measure("sug-latency", "sug-frame-change"); window.sugLatencyMs.push(+m.duration.toFixed(1)); } catch (e) { /* no mark */ }
+    performance.clearMarks("sug-frame-change");
+  }
 }
-async function acceptSuggestion() {
+async function acceptSuggestion(rank = 1) {          // Y = #1, 1-3 = that numbered candidate
   if (!JOB_ID || !curSuggestion || mode === "running" || jobBusy) return;
   if (boxLayer.find(".box").length) return;             // a box is already there: drawing replaces the suggestion
-  const s = curSuggestion;
+  const s = curSugList[rank - 1];
+  if (!s) return;
   pushUndo();
   const r = addRect("in_play_ball", s.x * dispW, s.y * dispH, s.w * dispW, s.h * dispH, tool === "edit", "labeller");
   r.setAttr("conf", 1.0);
-  r.setAttr("markers", [SUG_TAG, SUG_DET_PREFIX + (s.detector || "")]);
+  r.setAttr("markers", [SUG_TAG, SUG_DET_PREFIX + (s.detector || ""), "suggest_rank:" + rank]);
   frameDirty = true;
-  curSuggestion = null;
+  curSuggestion = null; curSugList = [];
   syncTimelineSets(); renderList(); boxLayer.draw();
   await jobPlaced();                                    // save now, mark done, auto-advance like a placement
 }
@@ -890,6 +958,7 @@ async function jobStart() {
   } catch (err) { why = String(err); }
   if (!job || !job.frames.length) { setStatus(`job ${JOB_ID}: ${why || "no frames"} (job mode, no auto-detect)`); job = null; return; }
   job.frames.forEach(f => { if (f.done) jobDone.add(jobKey(f.clip, f.frame)); });
+  loadSugData();                                         // one request: every candidate of the job (roll-forward suggestions)
   $("jobBar").style.display = "flex";
   const q = new URLSearchParams(location.search), clip = q.get("clip"), frame = parseInt(q.get("frame"), 10);
   let i = clip && !Number.isNaN(frame) ? job.frames.findIndex(f => f.clip === clip && f.frame === frame) : -1;
@@ -1120,6 +1189,7 @@ async function saveCurrentEdits(){
       body:JSON.stringify({idx:viewFrame, objects:boxesNorm()})});
     if (res.ok) {
       const data = await res.json();
+      if (JOB_ID && job) noteHuman(stemOf(loadedPath), viewFrame, data.boxes);   // the roll-forward anchor, instantly
       // Propagate each labeller box forward
       let totalPropagated = 0;
       for (let i = 0; i < data.boxes.length && !JOB_ID; i++) {
@@ -1144,10 +1214,11 @@ async function saveCurrentEdits(){
 async function loadTimelineFrame(idx, editable){
   const res = await fetch(`/timeline/${idx}`); const data = await res.json();
   drawBoxes(data.boxes, editable);
-  if (JOB_ID) loadSuggestion();
+  if (JOB_ID) { noteHuman(stemOf(loadedPath), idx, data.boxes); loadSuggestion(); }
 }
 
 async function gotoFrame(idx){
+  performance.mark("sug-frame-change");
   await saveCurrentEdits();     // persist edits on the frame we're leaving
   clearSuggestion();
   frameDirty = false;

@@ -36,11 +36,16 @@ PLAYERS_COMPLETE_TAG = "players_complete"
 #: ``ball_eval/panel_suggest.py``). Audit only: the box is ordinary tier-1 ``labeller`` GT.
 SUGGEST_MARKER_TAG = "accepted_suggestion"
 SUGGEST_DET_TAG_PREFIX = "suggest_det:"  # + detector sha8
+SUGGEST_RANK_TAG_PREFIX = "suggest_rank:"  # + 1..5: which numbered candidate was accepted (LAB-1479)
 
 
 def is_suggest_marker(tag: object) -> bool:
     """Marker tags the page may attach to a box it saves (``/edit`` drops any other client-supplied marker)."""
-    return isinstance(tag, str) and (tag == SUGGEST_MARKER_TAG or (tag.startswith(SUGGEST_DET_TAG_PREFIX) and len(tag) <= 40))
+    return isinstance(tag, str) and (
+        tag == SUGGEST_MARKER_TAG
+        or (tag.startswith(SUGGEST_DET_TAG_PREFIX) and len(tag) <= 40)
+        or (tag.startswith(SUGGEST_RANK_TAG_PREFIX) and tag[len(SUGGEST_RANK_TAG_PREFIX):] in ("1", "2", "3", "4", "5"))
+    )
 
 
 #: All classes that can appear in the review picker.
