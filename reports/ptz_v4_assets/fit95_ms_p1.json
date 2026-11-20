@@ -1,0 +1,22 @@
+{
+ "C": [
+  -0.20677015854560152,
+  -67.03260624193115,
+  15.97693355228322
+ ],
+ "roll": -0.0014406526841387354,
+ "k1": 0.031518427985129514,
+ "sigma_C": [
+  1.0,
+  3.0,
+  1.0
+ ],
+ "pitch": [
+  105.0,
+  68.0
+ ],
+ "info": {
+  "ground": "fit95_ms_p1",
+  "source": "existing fit_shared multi-start, 95 anchored frames from 162 Man City segments, k1 free (ms_mancity_ms_p1.json); start was GT-rig + (2,5,-2) m => start-contaminated, result not GT-fitted"
+ }
+}

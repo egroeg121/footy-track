@@ -1,0 +1,22 @@
+{
+ "C": [
+  0.0,
+  -60.0,
+  12.0
+ ],
+ "roll": 0.0,
+ "k1": 0.03,
+ "sigma_C": [
+  5.0,
+  10.0,
+  4.0
+ ],
+ "pitch": [
+  105.0,
+  68.0
+ ],
+ "info": {
+  "ground": "generic_gantry_prior_v1",
+  "source": "generic label-free gantry guess (round numbers: x=0 centre line, y -60/-63 m, z 12/14 m); k1 = line-derived 0.03 (ptz_v3 addendum 0.027-0.034); wide sigma_C for the lines-only search. NOT derived from calibration GT."
+ }
+}

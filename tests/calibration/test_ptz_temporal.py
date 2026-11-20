@@ -499,3 +499,21 @@ def test_rig_bootstrap_record_shape_and_json():
     assert np.array(b["cov_boot"]).shape == (4, 4) and np.array(b["rigs"]).shape == (b["n"], 4)
     assert set(b) >= {"z2_cov_model", "z2_cov", "lambda_vs_cov_model"}
     json.dumps(rec)
+
+
+def test_rig_estimate_multistart_option_runs_and_records_starts():
+    import json
+
+    from footy_track.scripts import ptz_temporal_segment as seg
+
+    cams, unit, rig0 = _rig_problem(2, n=6)
+
+    class _Cache:
+        ev_frames = list(range(6))
+
+        def evidence(self, t):
+            return unit.evidence[t]
+
+    rec = seg.solve_rig_estimate(_Cache(), unit.states.copy(), [(0, 5)], unit.pairs, {}, rig0, multistart=True)
+    assert len(rec["multistart"]) == 9 and "final_C" in max(rec["multistart"], key=lambda s: "final_C" in s)
+    json.dumps(rec)

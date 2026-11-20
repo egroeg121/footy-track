@@ -220,7 +220,7 @@ RIG_N_ITER = 30
 
 
 def solve_rig_estimate(cache, states, segs, pairs, anchors, rig, *, n_iter: int = RIG_N_ITER, log=None,
-                       bootstrap: int = 0, seed: int = 0) -> dict:
+                       bootstrap: int = 0, seed: int = 0, multistart: bool = False) -> dict:
     """Level-1 rig estimate of one segment: free (C, roll) with a loose prior centred on ``rig`` (the ``--rig`` input; no
     GT-derived prior), jointly with the (pan, tilt, log f) of every calibrated frame of every motion-connected run
     (``segs``), starting from the normal solve's ``states``; k1 stays at ``rig.k1``. Returns a json-able record.
@@ -250,8 +250,13 @@ def solve_rig_estimate(cache, states, segs, pairs, anchors, rig, *, n_iter: int 
            "converged": False}
     if not units or not rec["n_evidence_frames"]:
         return rec | {"reason": "no calibrated frame with line evidence"}
-    shn, poses, info = pt.fit_shared(units, rig, pte.PITCH, free=RIG_FREE, sigma=RIG_PRIOR_SIGMA, n_iter=n_iter, log=log,
-                                     want_cov=True)
+    if multistart:  # P3 ablation: 3 x 3 grid of (C_y, C_z) seeds (C_x fixed at the prior), screened on every 3rd unit, 2 finalists
+        shn, poses, info = pt.fit_shared_multistart(units, rig, pte.PITCH, offsets=pt.seed_offsets(step=(3.0, 4.0, 3.0), n=(0, 1, 1)), top_k=2,
+                                                    screen_iter=6, screen_stride=1, log=log, free=RIG_FREE, sigma=RIG_PRIOR_SIGMA,
+                                                    n_iter=n_iter, want_cov=True)
+    else:
+        shn, poses, info = pt.fit_shared(units, rig, pte.PITCH, free=RIG_FREE, sigma=RIG_PRIOR_SIGMA, n_iter=n_iter, log=log,
+                                         want_cov=True)
     cv = info["cov"]
     allp = np.concatenate(poses)
     ok = np.all(np.isfinite(allp), axis=1)
@@ -268,7 +273,7 @@ def solve_rig_estimate(cache, states, segs, pairs, anchors, rig, *, n_iter: int 
         pan_min_deg=float(np.rad2deg(np.nanmin(allp[ok, 0]))), pan_max_deg=float(np.rad2deg(np.nanmax(allp[ok, 0]))),
         final_cost=float(info["stage2"]["cost"]), stage2_iters=int(info["stage2"]["iters"]),
         converged=bool(info["stage2"]["iters"] < n_iter and np.all(np.isfinite(cv["cov"]))),
-        n_frames=int(info["n_frames"]))
+        n_frames=int(info["n_frames"]), multistart=info.get("starts"))
     if bootstrap > 0:
         rec["bootstrap"] = rig_bootstrap(units, poses, shn, rig, rec, bootstrap, seed, log=log)
     return rec
@@ -337,7 +342,7 @@ def rig_bootstrap(units, poses, shn, rig, rec, n_boot: int, seed: int, *, log=No
 
 def run(video: Path, clip: str, rig_json: Path, out_root: Path, anchor_step: int = 100, recover: bool = True,
         trim: bool = False, force_recover: bool = False, estimate_rig: bool = False, bootstrap_rig: int = 0,
-        bootstrap_seed: int = 0) -> dict:
+        bootstrap_seed: int = 0, rig_multistart: bool = False) -> dict:
     t0, cpu0 = time.time(), time.process_time()
     pte.ROOT = out_root
     pte.VIDEO_PATH = video
@@ -357,7 +362,7 @@ def run(video: Path, clip: str, rig_json: Path, out_root: Path, anchor_step: int
     est = None
     if estimate_rig:  # P3: from the STANDARD pass (before any recovery variant replaces rig / states), prior centred on --rig-json
         est = solve_rig_estimate(cache, states, segs, pairs, anchors, rig, log=pte.log, bootstrap=bootstrap_rig,
-                                 seed=bootstrap_seed)
+                                 seed=bootstrap_seed, multistart=rig_multistart)
 
     f1rep = line_f1_report(cache, states, shared, anchors, segs)
     recovery = None
@@ -425,10 +430,11 @@ def main() -> None:
     ap.add_argument("--bootstrap-rig", type=int, default=0, metavar="N",
                     help="with --estimate-rig: N half-sample resamples of the evidence/anchors, written to rig_bootstrap.json (P3 calibration of the covariance)")
     ap.add_argument("--bootstrap-seed", type=int, default=0)
+    ap.add_argument("--rig-multistart", action="store_true", help="with --estimate-rig: 9 (C_y, C_z) seeds around the prior, keep the lowest cost (P3 ablation)")
     a = ap.parse_args()
     run(a.video, a.clip, a.rig_json, a.out_root, a.anchor_step, recover=not a.no_recover, trim=a.trim,
         force_recover=a.force_recover, estimate_rig=a.estimate_rig, bootstrap_rig=a.bootstrap_rig,
-        bootstrap_seed=a.bootstrap_seed)
+        bootstrap_seed=a.bootstrap_seed, rig_multistart=a.rig_multistart)
 
 
 if __name__ == "__main__":
