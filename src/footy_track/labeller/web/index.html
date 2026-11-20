@@ -786,6 +786,10 @@ async function loadSugData() {
     if (!r.ok) return;
     const txt = await r.text();
     sugData = JSON.parse(txt);
+    for (const [k, c] of Object.entries(sugData.human || {})) {      // earlier sessions' labels = roll-forward anchors from frame 1
+      const i = k.lastIndexOf(":"), key = jobKey(k.slice(0, i), +k.slice(i + 1));
+      if (!humanAt.has(key)) humanAt.set(key, { cx: c[0], cy: c[1] });
+    }
     console.info(`[suggest] ${Object.keys(sugData.frames || {}).length} frames, payload ${txt.length} bytes`);
   } catch (err) { /* no suggestions: the page works as before */ }
   if (sugData) loadSuggestion();

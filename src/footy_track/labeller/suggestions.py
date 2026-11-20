@@ -111,15 +111,21 @@ def _entry_cands(entry: dict | None) -> list[list[float]]:
 
 def candidates_for_job(job: dict, root: Path | None = None) -> dict:
     """Everything the page needs to roll suggestions forward in the browser with no further request (LAB-1479):
-    ``{"frames": {"clip:frame": [[x,y,w,h,conf,tid], ...]}, "size": {clip: [w,h]}, "detector": {clip: sha8}}``.
+    ``{"frames": {"clip:frame": [[x,y,w,h,conf,tid], ...]}, "size": {clip: [w,h]}, "detector": {clip: sha8},
+    "human": {"clip:frame": [cx, cy]}}`` (``human`` = existing tier-1 ball labels of the job's frames, normalised centres).
     Same rules as :func:`suggestion_for`: panel items honour their blind flag (blind items are absent), job-keyed files
     carry no blind set; frames already labelled when a job file was written are absent. One request per job."""
-    out: dict = {"job_id": job.get("id"), "frames": {}, "size": {}, "detector": {}}
+    out: dict = {"job_id": job.get("id"), "frames": {}, "size": {}, "detector": {}, "human": {}}
     if job.get("kind") != "ball_place":
         return out
     root = root or splits.data_root()
     from footy_track.ball_eval import job_suggest as J  # noqa: N812, PLC0415
 
+    try:  # George's existing human ball boxes (sidecar), so the roll-forward also works from earlier sessions' labels
+        out["human"] = {f"{c}:{f}": [round(h.centres[0][0], 4), round(h.centres[0][1], 4)]
+                        for (c, f), h in J.job_human(job).items() if h.state == "ball" and h.centres}
+    except Exception:  # noqa: BLE001 - anchors are an optimisation: never fail the payload for them
+        pass
     jf = J.find_suggest_file(str(job.get("id")), root)
     jdoc = _cached(jf, lambda p: json.loads(p.read_text())) if jf else None
     for it in job.get("items") or []:

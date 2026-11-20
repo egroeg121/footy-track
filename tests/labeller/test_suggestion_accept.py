@@ -120,3 +120,7 @@ def test_rank_marker_survives_and_numbered_key_wiring():
     for needle in ("const SUG_SHOW = 3", "/^[1-3]$/.test(e.key)", '"suggest_rank:" + rank', 'job.kind === "ball_place"', "performance.measure(\"sug-latency\""):
         assert needle in html, needle
     assert html.index("/^[1-3]$/.test(e.key)") < html.index('const classKeys = {"1"')  # job-mode rebind wins; 4-6 stay class keys
+
+
+def test_page_seeds_roll_forward_anchors_from_the_payload():
+    assert "sugData.human" in INDEX_HTML.read_text()

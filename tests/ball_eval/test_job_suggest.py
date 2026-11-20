@@ -141,3 +141,12 @@ def test_panel_recompute_with_tag_writes_a_new_file_and_keeps_pre_labelled(fd, m
     assert r2["status"] == "created" and new.is_file() and old.read_bytes() == before
     assert r2["pre_labelled"] == ["a:1"] and P.find_suggest_file(HELD, root=fd) == new
     assert next(v for v in json.loads(new.read_text()).values() if v)["cands"]
+
+
+def test_payload_carries_existing_human_ball_boxes_as_anchors(env):
+    fd, job, marks, w = env
+    J.suggest_job("j-test", root=fd, weights=w, detector=FakeDet(), log=lambda m: None)
+    pay = suggestions.candidates_for_job(job, fd)
+    assert pay["human"] == {f"{CLIP}:0": [0.5, 0.6]}  # the hand label of the fixture sidecar, compact normalised centre
+    (marks / f"{CLIP}.jsonl").write_text("")
+    assert suggestions.candidates_for_job(job, fd)["human"] == {}
