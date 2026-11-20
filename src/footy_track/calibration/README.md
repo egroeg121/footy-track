@@ -58,3 +58,17 @@ uses it after the coarse fit.
 alias `opus`, effort `medium`. Same prompt/schema as the API identifier (`build_content`), minus our
 `cache_control` (the CLI adds its own; a second one is a 400). Answer is `structured_output` on the
 final `result` event; cost/duration land in the run's `params.usage`.
+
+## PTZ V3: per-segment rig estimate (level 1)
+
+`ptz_temporal_segment --estimate-rig` (default off; with the flag off every output is bit-identical to before) frees the shared
+block (C xyz, roll; k1 stays fixed at the `--rig-json` value) with a loose prior centred on that JSON (never a GT-derived rig),
+solves it jointly with all the segment's per-frame poses (`fit_shared`) and writes `rig_estimate.json` BEFORE the done marker
+`calib_full.npz`: `rig` (Cx, Cy, Cz, roll), the 4x4 `cov` (poses marginalised by Schur complement of the IRLS-weighted
+Gauss-Newton normal matrix, times max(1, chi2/dof), times an empirical ridge inflation of 36 on the variance; `cov_model` is the
+uninflated one), the prior, evidence counts, focal / pan range, cost and a `converged` flag. See
+`ptz_temporal.shared_covariance` for what the covariance does and does not cover: it is local, so on the flat C_y / C_z / f ridge a
+single segment's estimate scatters well beyond the model sigma (the inflation is a placeholder until it is calibrated against a
+bootstrap on real segments), and a start that is several metres off can stall on the ridge (use the multi-start / level-2
+consensus, `docs/design/calibration_match_flow.md`). Real-data regression of the flag-off path on the 11 `ptz_v3_weak.md` segments is
+still to do.

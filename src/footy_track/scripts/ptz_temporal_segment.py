@@ -24,7 +24,9 @@ Work directory: ``<out-root>/<clip>@<rig stem>/`` (the driver's convention: anch
 Output (small): ``calib_full.npz`` (frame, pan, tilt, logf, H (N,3,3) normalised undistorted image -> pitch m, rig),
 ``states_full.npy``, ``line_f1_full.json``, ``solve_full.json``, ``meta.json``, ``anchors_lines.json``,
 ``anchors_refit.json``, ``pairs_g1_5.pkl``. **``calib_full.npz`` is written LAST: its presence means the segment is done.**
-Caches (grey frames, masks, anchors, pairs) make a re-run resume. k1 stays fixed at the rig value (it is poorly
+Caches (grey frames, masks, anchors, pairs) make a re-run resume. With ``--estimate-rig`` (default off; the outputs above are then
+bit-identical to a run without the flag) the segment also writes ``rig_estimate.json`` BEFORE the done marker: the level-1 rig
+estimate (C, roll) with its 4x4 covariance, see :func:`solve_rig_estimate` and ``docs/design/calibration_match_flow.md`` section 2.1. k1 stays fixed at the rig value (it is poorly
 constrained by the lines; see reports/ptz_v3.md).
 """
 
@@ -212,8 +214,65 @@ def recover_pass(cache, rig, shot_info, out: Path, trim: bool = False) -> dict:
     return best or {"stages": stages, "runs": runs}
 
 
+RIG_FREE = ("Cx", "Cy", "Cz", "roll")  # k1 stays fixed at the given value
+RIG_PRIOR_SIGMA = (5.0, 10.0, 3.0, float(np.deg2rad(2.0)), 0.05)  # fit_shared defaults (m, m, m, rad, k1 unused)
+RIG_N_ITER = 30
+
+
+def solve_rig_estimate(cache, states, segs, pairs, anchors, rig, *, n_iter: int = RIG_N_ITER, log=None) -> dict:
+    """Level-1 rig estimate of one segment: free (C, roll) with a loose prior centred on ``rig`` (the ``--rig`` input; no
+    GT-derived prior), jointly with the (pan, tilt, log f) of every calibrated frame of every motion-connected run
+    (``segs``), starting from the normal solve's ``states``; k1 stays at ``rig.k1``. Returns a json-able record.
+
+    ``cov`` is the 4x4 covariance of (Cx, Cy, Cz [m], roll [rad]) from the final Gauss-Newton normal matrix, poses
+    marginalised (Schur complement), robust IRLS weights included, scaled by max(1, chi2/dof)
+    times the empirical ridge inflation (:func:`footy_track.calibration.ptz_temporal.shared_covariance`, which also
+    explains why); it includes the loose prior, so a weak segment's
+    sigma saturates at the prior sigma rather than blowing up."""
+    units, anc_all, n_pairs = [], {}, 0
+    for a, b in segs:
+        fr = [t for t in range(a, b + 1) if np.all(np.isfinite(states[t]))]
+        if len(fr) < 2:
+            continue
+        evs = {t: e for t in cache.ev_frames if a <= t <= b and np.all(np.isfinite(states[t])) and (e := cache.evidence(t)) is not None}
+        anc = pte.anchors_state(anchors, [t for t in evs])
+        keep = set(fr)
+        prs = [p for p in pairs if a <= p.i and p.j <= b and p.i in keep and p.j in keep]
+        n_pairs += sum(1 for p in prs if p.ok and len(p.a) >= 8)
+        anc_all[a] = anc
+        units.append(pt.Unit(a, fr, states[fr], evs, prs, anc))
+    prior = {"centre_C": [float(x) for x in rig.C], "centre_roll": float(rig.roll), "k1_fixed": float(rig.k1),
+             "sigma_C_m": list(RIG_PRIOR_SIGMA[:3]), "sigma_roll_rad": RIG_PRIOR_SIGMA[3], "source": "rig_json"}
+    n_anc = sum(len(v) for v in anc_all.values())
+    rec = {"names": list(RIG_FREE), "units": ["m", "m", "m", "rad"], "prior": prior, "n_anchors": n_anc,
+           "n_evidence_frames": sum(len(u.evidence) for u in units), "n_motion_pairs": n_pairs, "code_sha": _git_sha(),
+           "converged": False}
+    if not units or not rec["n_evidence_frames"]:
+        return rec | {"reason": "no calibrated frame with line evidence"}
+    shn, poses, info = pt.fit_shared(units, rig, pte.PITCH, free=RIG_FREE, sigma=RIG_PRIOR_SIGMA, n_iter=n_iter, log=log,
+                                     want_cov=True)
+    cv = info["cov"]
+    allp = np.concatenate(poses)
+    ok = np.all(np.isfinite(allp), axis=1)
+    f = np.exp(allp[ok, 2]) if ok.any() else np.array([np.nan])
+    sd = np.sqrt(np.clip(np.diag(cv["cov"]), 0, None))
+    rec.update(
+        rig=[float(x) for x in (*shn.C, shn.roll)], rig_roll_deg=float(np.rad2deg(shn.roll)),
+        cov=cv["cov"].tolist(), cov_model=cv["cov_model"].tolist(), cov_nominal=cv["cov_nominal"].tolist(),
+        cov_scale=float(cv["scale"]), cov_inflation=float(cv["inflation"]),
+        cov_method="Schur complement of the IRLS-weighted Gauss-Newton normal matrix J^T W J at the solution "
+                   "(poses marginalised, loose prior included), times max(1, chi2/dof) = cov_model, times cov_inflation (variance) = cov",
+        chi2=cv["chi2"], dof=cv["dof"], sigma=[float(x) for x in sd], corr=(cv["cov"] / np.outer(sd, sd)).tolist(),
+        focal_min=float(np.nanmin(f)), focal_max=float(np.nanmax(f)),
+        pan_min_deg=float(np.rad2deg(np.nanmin(allp[ok, 0]))), pan_max_deg=float(np.rad2deg(np.nanmax(allp[ok, 0]))),
+        final_cost=float(info["stage2"]["cost"]), stage2_iters=int(info["stage2"]["iters"]),
+        converged=bool(info["stage2"]["iters"] < n_iter and np.all(np.isfinite(cv["cov"]))),
+        n_frames=int(info["n_frames"]))
+    return rec
+
+
 def run(video: Path, clip: str, rig_json: Path, out_root: Path, anchor_step: int = 100, recover: bool = True,
-        trim: bool = False, force_recover: bool = False) -> dict:
+        trim: bool = False, force_recover: bool = False, estimate_rig: bool = False) -> dict:
     t0, cpu0 = time.time(), time.process_time()
     pte.ROOT = out_root
     pte.VIDEO_PATH = video
@@ -261,6 +320,10 @@ def run(video: Path, clip: str, rig_json: Path, out_root: Path, anchor_step: int
             np.save(f, states)
 
     _atomic(out / "states_full.npy", _states)
+    if estimate_rig:  # after the normal solve (does not change its outputs), before the done marker
+        est = solve_rig_estimate(cache, states, segs, pairs, anchors, rig, log=pte.log)
+        _atomic(out / "rig_estimate.json", lambda p: p.write_text(json.dumps(est, indent=1, default=float)))
+        pte.log("rig estimate:", est.get("rig"), "sigma", est.get("sigma"), "converged", est["converged"])
     tmp = out / ".export"
     tmp.mkdir(exist_ok=True)
     pte.export_calib(tmp, "full", states, shared)
@@ -284,9 +347,12 @@ def main() -> None:
                     help="evaluation only: run the recovery pass on any segment and keep its result (accuracy of the recovery path on segments the standard pass solves)")
     ap.add_argument("--trim", action="store_true",
                     help="recovery pass: cut stretches whose main-camera probability is low before solving (off by default, see recover_pass)")
+    ap.add_argument("--estimate-rig", action="store_true",
+                    help="level-1 rig estimate: free (C, roll) with a loose prior around --rig-json, write rig_estimate.json "
+                         "(rig, 4x4 covariance, evidence counts) before the done marker; the other outputs are unchanged")
     a = ap.parse_args()
     run(a.video, a.clip, a.rig_json, a.out_root, a.anchor_step, recover=not a.no_recover, trim=a.trim,
-        force_recover=a.force_recover)
+        force_recover=a.force_recover, estimate_rig=a.estimate_rig)
 
 
 if __name__ == "__main__":

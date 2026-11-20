@@ -882,6 +882,50 @@ def lm_solve(rs: _Resid, x0: Array, n_iter: int = 25, log=None, tag: str = "") -
     return x, {"cost0": f0, "cost": f, "iters": len(hist) - 1}
 
 
+#: variance multiplier applied to the model covariance of a rig estimate (see :func:`shared_covariance`)
+RIG_COV_INFLATION = 36.0
+
+
+def shared_covariance(rs: _Resid, x: Array, inflation: float = RIG_COV_INFLATION) -> dict:
+    """Covariance of the free shared block at the solution ``x`` with every per-frame pose marginalised.
+
+    ``A = Jw^T Jw`` is the Gauss-Newton normal matrix of the LAST LM iteration's form: ``J`` the (finite-difference)
+    Jacobian of the whitened residuals at ``x`` and ``w`` the IRLS Cauchy weights at ``x`` (outlier rows are down-weighted
+    exactly as in the solve; the smoothness and shared-prior rows stay quadratic). The shared block of ``A^-1`` equals the
+    inverse Schur complement ``(A_ss - A_sp A_pp^-1 A_ps)^-1``, i.e. the information the data (and the loose prior) leave
+    on the shared quantities once every frame's (pan, tilt, log f) is free. Residuals are whitened by their nominal sigmas,
+    so ``cov_nominal`` is the covariance if those sigmas are right; ``scale = max(1, chi2 / dof)`` (``chi2 = sum w r^2`` over
+    the data rows, ``dof = n_data_rows - n_vars``) inflates it when the residuals say they are not (line evidence is
+    correlated along a line, so ``scale`` is usually > 1); ``cov_model = scale * cov_nominal``.
+
+    ``cov = inflation * cov_model`` is the one to use. The Gauss-Newton covariance is LOCAL and treats the ~1.5 m-spaced
+    line samples as independent, but the cost along the C_y / C_z / f ridge is nearly flat and not quadratic: on synthetic
+    segments (tests/calibration/test_ptz_temporal.py) the estimate sits 5-15 model sigmas from the truth along it (the real
+    data say the same: ``reports/ptz_v3.md``, bootstrap sd(C_y) ~ 1.6 m). ``inflation = 36`` (sd x 6) is the empirical factor
+    that makes the synthetic errors fall within ~3 sigma; it is a placeholder to be re-calibrated against a bootstrap on real
+    segments (design doc P3), which is why ``cov_model`` is kept next to it."""
+    quad = np.zeros(rs.n_res, bool)
+    quad[rs.n_res - rs.nsh - rs.nacc: rs.n_res] = True
+    r = rs.residual(x)
+    J = rs.jacobian(x)
+    w = _robust_w(r, rs.pb.c_robust, quad)
+    Jw = J.multiply(np.sqrt(w)[:, None]).tocsr()
+    A = (Jw.T @ Jw).toarray()
+    ns = rs.ns
+    try:
+        S = A[:ns, :ns] - A[:ns, ns:] @ np.linalg.solve(A[ns:, ns:] + 1e-12 * np.eye(A.shape[0] - ns), A[ns:, :ns])
+        cov0 = np.linalg.inv(S)
+    except np.linalg.LinAlgError:
+        cov0 = np.full((ns, ns), np.nan)
+    cov0 = 0.5 * (cov0 + cov0.T)
+    n_data = int((~quad).sum())
+    chi2 = float(np.sum(w[~quad] * r[~quad] ** 2))
+    dof = max(n_data - rs.nv, 1)
+    scale = max(1.0, chi2 / dof)
+    return {"names": [SHARED_NAMES[i] for i in rs.fs_idx], "cov_nominal": cov0, "scale": scale, "cov_model": scale * cov0, "cov": inflation * scale * cov0, "inflation": inflation,
+            "chi2": chi2, "dof": dof, "n_data_rows": n_data}
+
+
 # --------------------------------------------------------------------------
 # 6. anchors, initial states, the per-segment solve
 # --------------------------------------------------------------------------
@@ -1063,11 +1107,13 @@ def solve_segment(cache: ClipCache, t0: int, t1: int, pairs: list[Pair], anchors
 def joint_solve(F: int, sh: Shared, x_init: Array, evs: list[ptz.LineEvidence], line_frames: Array, pairs: list[Pair],
                 anchors: dict[int, tuple[Array, Array]], pitch: PitchModel, *, free_shared=(), shared_sigma=None,
                 points=(), sigma_line: float = 3.0, sigma_motion: float = 1.0, t0: int = 0, seg_of=None,
-                smooth: bool = True, n_iter: int = 20, log=None, start: Shared | None = None
+                smooth: bool = True, n_iter: int = 20, log=None, start: Shared | None = None, want_cov: bool = False
                 ) -> tuple[Shared, Array, dict]:
     """Two-stage (blurred / sharp line distance transform) LM of F frames' (pan, tilt, log f) + the free shared
     quantities. ``pairs`` carry frame indices ``t0 + local``; ``line_frames`` are local indices into ``evs``.
-    ``sh`` is the prior centre of the shared quantities; ``start`` (default ``sh``) is where their LM starts."""
+    ``sh`` is the prior centre of the shared quantities; ``start`` (default ``sh``) is where their LM starts.
+    ``want_cov``: also return ``info["cov"]`` (:func:`shared_covariance` of the final stage); off by default, and then
+    the solve is untouched."""
     free = np.array([n in set(free_shared) for n in SHARED_NAMES])
     sig = np.array(shared_sigma if shared_sigma is not None else [1.0, 3.0, 1.0, np.deg2rad(0.5), 0.01], float)
     samples, _, _ = ptz._samples(pitch, 1.5)
@@ -1084,6 +1130,8 @@ def joint_solve(F: int, sh: Shared, x_init: Array, evs: list[ptz.LineEvidence], 
         x, inf = lm_solve(rs, x, n_iter=n_iter, log=log, tag=f"stage{stage + 1}")
         info[f"stage{stage + 1}"] = inf
         shn, poses = rs.split(x)
+    if want_cov and free.any():
+        info["cov"] = shared_covariance(rs, x)
     return shn, poses, info
 
 
@@ -1107,7 +1155,7 @@ class Unit:
 
 def fit_shared(units: list[Unit], rig: ptz.Rig, pitch: PitchModel, *, free=("Cx", "Cy", "Cz", "roll", "k1"),
                sigma=(5.0, 10.0, 3.0, np.deg2rad(2.0), 0.05), sigma_line: float = 3.0, n_iter: int = 20, log=None,
-               start: Shared | None = None) -> tuple[Shared, list[Array], dict]:
+               start: Shared | None = None, want_cov: bool = False) -> tuple[Shared, list[Array], dict]:
     """Bundle-adjustment style fit of the rig quantities (``C``, roll, ``k1``) over the frames of many shots at once:
     every frame has its own (pan, tilt, log f); the shared quantities see all the line evidence and all the motion
     pairs. The prior ``sigma`` is deliberately loose (the leave-out rig is only the starting value). The prior is
@@ -1136,7 +1184,7 @@ def fit_shared(units: list[Unit], rig: ptz.Rig, pitch: PitchModel, *, free=("Cx"
     sh0 = Shared.from_rig(rig)
     shn, poses, info = joint_solve(len(frames_all), sh0, np.array(x0), evs, np.array(lf, int), pairs, anchors, pitch,
                                    free_shared=free, shared_sigma=sigma, sigma_line=sigma_line,
-                                   seg_of=np.array(seg_of), smooth=False, n_iter=n_iter, log=log, start=start)
+                                   seg_of=np.array(seg_of), smooth=False, n_iter=n_iter, log=log, start=start, want_cov=want_cov)
     out, k = [], 0
     for u in units:
         out.append(poses[k:k + len(u.frames)])

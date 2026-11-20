@@ -339,3 +339,141 @@ def test_weak_pair_is_a_chain_break_in_segments():
     assert pte.segments(shot, pairs) == [(0, 60)]  # unguarded: one run across the bad pair
     guarded, _ = pt.reject_weak_pairs(pairs)
     assert pte.segments(shot, guarded) == [(0, 30), (31, 60)]
+
+
+# --------------------------------------------------------------------------
+# level-1 rig estimate of one segment (free C, roll; covariance with the poses marginalised)
+# --------------------------------------------------------------------------
+
+_EV_CACHE: dict = {}
+PRIOR_OFF = np.array([0.3, 1.0, -0.3])  # a loose prior centred 1.1 m off; farther starts stall on the y / z ridge (multi-start's job)
+
+
+def _seg_cams(n, pan_span, zoom_span):
+    pans = np.linspace(0.0, pan_span, n)
+    zooms = np.linspace(0.0, zoom_span, n)
+    return [_cam(86.0 - pan_span / 2 + pans[k], 14.0 + 0.8 * np.sin(k / 2), 2800.0 * (1 + zooms[k]), roll_deg=0.2, k1=0.014) for k in range(n)]
+
+
+def _noisy_evidence(cam, rng, shift_px=2):
+    """Rendered lines shifted by a random whole-pixel offset (stand-in for line detection noise); the render is cached."""
+    key = (round(float(cam.pan), 6), round(float(cam.tilt), 6), round(float(cam.logf), 6))
+    if key not in _EV_CACHE:
+        _EV_CACHE[key] = ptz.render_synthetic(cam, PitchModel(), width=1568, thickness=3)
+    lines, grass = _EV_CACHE[key]
+    dx, dy = rng.integers(-shift_px, shift_px + 1, 2)
+    return ptz.LineEvidence.from_masks(np.roll(lines, (dy, dx), (0, 1)), grass)
+
+
+def _rig_problem(seed, n=8, pan_span=3.0, zoom_span=0.25):
+    rng = np.random.default_rng(seed)
+    cams = _seg_cams(n, pan_span, zoom_span)
+    truth = np.array([[c.pan, c.tilt, c.logf] for c in cams])
+    x0 = truth + rng.normal(0, 1, truth.shape) * [0.003, 0.002, 0.01]
+    unit = pt.Unit(0, list(range(n)), x0, {k: _noisy_evidence(c, rng) for k, c in enumerate(cams)},
+                   _pairs(cams, rng, noise=0.5))
+    rig0 = ptz.Rig(C_TRUE + PRIOR_OFF, cams[0].roll, 0.014, (5.0, 10.0, 3.0))  # prior centre off the truth
+    return cams, unit, rig0
+
+
+def _estimate(unit, rig0, **kw):
+    shn, poses, info = pt.fit_shared([unit], rig0, PitchModel(), free=("Cx", "Cy", "Cz", "roll"), n_iter=30, want_cov=True, **kw)
+    return shn, info["cov"]
+
+
+def test_rig_estimate_within_3_sigma_of_truth_in_most_seeds():
+    z, zm, errs = [], [], []
+    for seed in range(5):
+        cams, unit, rig0 = _rig_problem(seed)
+        shn, cv = _estimate(unit, rig0)
+        err = np.array([*(shn.C - C_TRUE), shn.roll - cams[0].roll])
+        z.append(err / np.sqrt(np.diag(cv["cov"])))
+        zm.append(err / np.sqrt(np.diag(cv["cov_model"])))
+        errs.append(err[:3])
+    z, zm = np.array(z), np.array(zm)
+    inside = np.all(np.abs(z) < 3, axis=1)
+    print(f"\nrig estimate err/sigma per seed (Cx, Cy, Cz, roll), inflated Sigma:\n{np.round(z, 2)}"
+          f"\nsame with the raw Gauss-Newton Sigma (max |z| per seed): {np.round(np.abs(zm).max(1), 1)}"
+          f"\nC errors (m): {np.round(errs, 2).tolist()}; coverage {inside.sum()}/5")
+    assert inside.sum() >= 4
+    # and the loose prior was actually moved towards the truth on C
+    assert np.mean([np.linalg.norm(e) for e in errs]) < np.linalg.norm(PRIOR_OFF)
+
+
+def test_rig_sigma_shrinks_with_focal_and_pan_range():
+    _, u_small, rig0 = _rig_problem(0, pan_span=0.6, zoom_span=0.04)
+    _, u_big, _ = _rig_problem(0, pan_span=6.0, zoom_span=0.6)
+    _, cv_small = _estimate(u_small, rig0)
+    _, cv_big = _estimate(u_big, rig0)
+    iy = 1
+    print(f"\nC_y sigma: narrow pan/zoom {np.sqrt(cv_small['cov'][iy, iy]):.2f} m, wide {np.sqrt(cv_big['cov'][iy, iy]):.2f} m")
+    assert cv_big["cov"][iy, iy] < cv_small["cov"][iy, iy]
+
+
+def test_rig_covariance_is_symmetric_psd_with_cy_cz_ridge():
+    _, unit, rig0 = _rig_problem(1)
+    _, cv = _estimate(unit, rig0)
+    cov = cv["cov"]
+    assert cov.shape == (4, 4) and cv["names"] == ["Cx", "Cy", "Cz", "roll"]
+    assert np.allclose(cov, cov.T, atol=1e-12 * np.abs(cov).max())
+    assert np.linalg.eigvalsh(cov).min() > 0
+    assert cv["scale"] >= 1.0 and np.allclose(cv["cov_model"], cv["scale"] * cv["cov_nominal"])
+    assert np.allclose(cov, cv["inflation"] * cv["cov_model"])
+    sd = np.sqrt(np.diag(cov))
+    corr = cov / np.outer(sd, sd)
+    print(f"\nC_y-C_z corr {corr[1, 2]:+.2f}, C_x-C_y {corr[0, 1]:+.2f}, C_y-roll {corr[1, 3]:+.2f}; sd {np.round(sd, 3).tolist()}")
+    assert abs(corr[1, 2]) > 0.3  # strong off-diagonal structure on the y / z ridge: a diagonal Sigma would miss it
+    assert np.all(np.abs(corr) <= 1 + 1e-9)
+
+
+def test_estimate_rig_off_path_is_bit_identical():
+    """``want_cov`` only appends ``info["cov"]``: the solve (shared block, poses, costs) is the same bit for bit, through
+    ``joint_solve`` (what ``solve_segment`` calls)."""
+    cams = _sweep()
+    rng = np.random.default_rng(0)
+    rig = ptz.Rig(C_TRUE, cams[0].roll, cams[0].k1, (1.0, 3.0, 1.0))
+    sh = pt.Shared.from_rig(rig)
+    evs = [_evidence(c) for c in cams]
+    truth = np.array([[c.pan, c.tilt, c.logf] for c in cams])
+    x0 = truth + rng.normal(0, 1, truth.shape) * [0.01, 0.006, 0.04]
+    pairs = _pairs(cams, rng)
+    args = (len(cams), sh, x0, [evs[k] for k in range(0, len(cams), 2)], np.arange(0, len(cams), 2), pairs, {}, PitchModel())
+    sh_a, p_a, i_a = pt.joint_solve(*args)
+    sh_b, p_b, i_b = pt.joint_solve(*args, want_cov=False)
+    sh_c, p_c, i_c = pt.joint_solve(*args, want_cov=True)  # nothing free: no covariance either
+    for sh_x, p_x, i_x in ((sh_b, p_b, i_b), (sh_c, p_c, i_c)):
+        assert np.array_equal(p_a, p_x) and np.array_equal(sh_a.vec(), sh_x.vec())
+        assert i_a == i_x
+    kw = {"free_shared": ("Cx", "Cy", "Cz", "roll"), "shared_sigma": [5.0, 10.0, 3.0, 0.035, 0.05]}
+    sh_d, p_d, i_d = pt.joint_solve(*args, **kw)
+    sh_e, p_e, i_e = pt.joint_solve(*args, want_cov=True, **kw)
+    assert np.array_equal(p_d, p_e) and np.array_equal(sh_d.vec(), sh_e.vec())
+    assert "cov" in i_e and {k: v for k, v in i_e.items() if k != "cov"} == i_d
+
+
+def test_segment_runner_rig_estimate_record_and_states_untouched():
+    """``solve_rig_estimate`` (the ``--estimate-rig`` step of the segment runner) on a stub cache: a json-able record with the
+    required fields, and the normal solve's ``states`` array is not modified."""
+    import json
+
+    from footy_track.scripts import ptz_temporal_segment as seg
+
+    cams, unit, rig0 = _rig_problem(0, n=6)
+
+    class _Cache:
+        ev_frames = list(range(6))
+
+        def evidence(self, t):
+            return unit.evidence[t]
+
+    states = unit.states.copy()
+    before = states.copy()
+    rec = seg.solve_rig_estimate(_Cache(), states, [(0, 5)], unit.pairs, {}, rig0)
+    assert np.array_equal(states, before)
+    for k in ("rig", "cov", "cov_model", "prior", "n_anchors", "n_evidence_frames", "n_motion_pairs", "focal_min", "focal_max",
+              "pan_min_deg", "pan_max_deg", "final_cost", "converged", "code_sha"):
+        assert k in rec, k
+    assert rec["n_evidence_frames"] == 6 and rec["n_motion_pairs"] == 5
+    assert rec["prior"]["source"] == "rig_json" and rec["focal_min"] < rec["focal_max"]
+    assert np.array(rec["cov"]).shape == (4, 4)
+    json.dumps(rec)
