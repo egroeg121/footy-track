@@ -1,0 +1,2 @@
+{"C": [0.0, -60.0, 12.0], "roll": 0.0, "k1": 0.03, "sigma_C": [1.0, 3.0, 1.0], "pitch": [105.0, 68.0],
+ "info": {"ground": "generic_gantry_prior", "source": "generic label-free guess: centre-line gantry 60 m behind the near touchline axis, 12 m high; k1 = line-derived 0.03 (ptz_v3 addendum 0.027-0.034). NOT derived from calibration GT."}}

@@ -46,6 +46,8 @@ def main(argv=None) -> int:
     ap.add_argument("--cauchy-quantile", type=float, default=d.cauchy_quantile)
     ap.add_argument("--max-pos-sd-m", type=float, default=d.max_pos_sd_m)
     ap.add_argument("--max-roll-sd-rad", type=float, default=d.max_roll_sd_rad)
+    ap.add_argument("--cov-inflation", type=float, default=None,
+                    help="variance multiplier on every segment's likelihood covariance (default: each file's own, 36 provisional)")
     ap.add_argument("--min-variant-size", type=int, default=d.min_variant_size)
     a = ap.parse_args(argv)
     prm = ConsensusParams(
@@ -54,6 +56,7 @@ def main(argv=None) -> int:
         max_pos_sd_m=a.max_pos_sd_m,
         max_roll_sd_rad=a.max_roll_sd_rad,
         min_variant_size=a.min_variant_size,
+        cov_inflation=a.cov_inflation,
     )
     paths = [Path(p) for p in a.inputs]
     est = (

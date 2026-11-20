@@ -219,7 +219,8 @@ RIG_PRIOR_SIGMA = (5.0, 10.0, 3.0, float(np.deg2rad(2.0)), 0.05)  # fit_shared d
 RIG_N_ITER = 30
 
 
-def solve_rig_estimate(cache, states, segs, pairs, anchors, rig, *, n_iter: int = RIG_N_ITER, log=None) -> dict:
+def solve_rig_estimate(cache, states, segs, pairs, anchors, rig, *, n_iter: int = RIG_N_ITER, log=None,
+                       bootstrap: int = 0, seed: int = 0) -> dict:
     """Level-1 rig estimate of one segment: free (C, roll) with a loose prior centred on ``rig`` (the ``--rig`` input; no
     GT-derived prior), jointly with the (pan, tilt, log f) of every calibrated frame of every motion-connected run
     (``segs``), starting from the normal solve's ``states``; k1 stays at ``rig.k1``. Returns a json-able record.
@@ -268,11 +269,75 @@ def solve_rig_estimate(cache, states, segs, pairs, anchors, rig, *, n_iter: int 
         final_cost=float(info["stage2"]["cost"]), stage2_iters=int(info["stage2"]["iters"]),
         converged=bool(info["stage2"]["iters"] < n_iter and np.all(np.isfinite(cv["cov"]))),
         n_frames=int(info["n_frames"]))
+    if bootstrap > 0:
+        rec["bootstrap"] = rig_bootstrap(units, poses, shn, rig, rec, bootstrap, seed, log=log)
     return rec
 
 
+BOOT_BLOCK = 4  # consecutive evidence frames (20 frames at EV_STEP 5) drawn together: evidence is correlated along the clip
+BOOT_FRAC = 0.5  # share of evidence blocks / anchors kept per resample
+BOOT_N_ITER = 12
+
+
+def rig_bootstrap(units, poses, shn, rig, rec, n_boot: int, seed: int, *, log=None) -> dict:
+    """Half-sample resampling check of the level-1 covariance (P3, ``reports/ptz_v4_two_level.md``).
+
+    Each resample keeps a random ``BOOT_FRAC`` of the evidence BLOCKS (``BOOT_BLOCK`` consecutive evidence frames) and of the
+    anchors of every unit, keeps all motion pairs and frames, and refits (C, roll) warm-started at the full solution (poses
+    and rig), so only the data sampling varies (local variability, not other basins). Sub-sampling at fraction m/n:
+    ``Var_full ~= (m/n) Var_half``, so ``d = sqrt(BOOT_FRAC) (rig_b - rig_full)`` is the deviation to compare with the model
+    covariance. Returns raw rigs, the scaled bootstrap covariance and the z^2 statistics against ``cov_model`` (no ridge
+    inflation) and ``cov`` (inflated): a calibrated covariance has E[z^2] = 4 (df)."""
+    rng = np.random.default_rng(seed)
+    full = np.array([*shn.C, shn.roll], float)
+    rigs, fails = [], 0
+    for b in range(n_boot):
+        ub = []
+        for u, ps in zip(units, poses):
+            evf = sorted(u.evidence)
+            blocks = [evf[i:i + BOOT_BLOCK] for i in range(0, len(evf), BOOT_BLOCK)]
+            keep_b = rng.random(len(blocks)) < BOOT_FRAC
+            if not keep_b.any() and blocks:
+                keep_b[rng.integers(len(blocks))] = True
+            kept = {t for k, blk in enumerate(blocks) if keep_b[k] for t in blk}
+            anc_t = sorted(u.anchors)
+            keep_a = {t for t in anc_t if rng.random() < BOOT_FRAC}
+            ub.append(pt.Unit(u.uid, u.frames, np.asarray(ps), {t: e for t, e in u.evidence.items() if t in kept},
+                              u.pairs, {t: a for t, a in u.anchors.items() if t in keep_a}))
+        try:
+            sb, _, inf = pt.fit_shared(ub, rig, pte.PITCH, free=RIG_FREE, sigma=RIG_PRIOR_SIGMA, n_iter=BOOT_N_ITER,
+                                       log=None, start=shn)
+            rigs.append([*sb.C, sb.roll])
+        except Exception as e:  # noqa: BLE001
+            fails += 1
+            if log:
+                log("bootstrap fit failed", repr(e)[:100])
+        if log and (b + 1) % 5 == 0:
+            log(f"bootstrap {b + 1}/{n_boot}")
+    R = np.array(rigs, float).reshape(-1, 4)
+    out = {"n": int(len(R)), "n_failed": fails, "frac": BOOT_FRAC, "block": BOOT_BLOCK, "n_iter": BOOT_N_ITER, "seed": seed,
+           "full_rig": full.tolist(), "rigs": R.tolist()}
+    if len(R) >= 4 and rec.get("cov_model") is not None:
+        D = np.sqrt(BOOT_FRAC) * (R - full)  # deviation scaled to full-sample size
+        Sb = (D.T @ D) / len(D)  # about the full estimate (not the resample mean: also catches bias)
+        out["cov_boot"] = Sb.tolist()
+        out["sd_boot"] = np.sqrt(np.diag(Sb)).tolist()
+        for name in ("cov_nominal", "cov_model", "cov"):
+            C0 = np.asarray(rec[name], float)
+            try:
+                z2 = np.einsum("bi,ij,bj->b", D, np.linalg.inv(C0), D)
+                out[f"z2_{name}"] = {"mean": float(z2.mean()), "median": float(np.median(z2)), "values": z2.tolist()}
+            except np.linalg.LinAlgError:
+                pass
+        # variance factor lambda s.t. Sb ~= lambda * cov_model, in the whitened sense: mean z^2 / df
+        if "z2_cov_model" in out:
+            out["lambda_vs_cov_model"] = out["z2_cov_model"]["mean"] / 4.0
+    return out
+
+
 def run(video: Path, clip: str, rig_json: Path, out_root: Path, anchor_step: int = 100, recover: bool = True,
-        trim: bool = False, force_recover: bool = False, estimate_rig: bool = False) -> dict:
+        trim: bool = False, force_recover: bool = False, estimate_rig: bool = False, bootstrap_rig: int = 0,
+        bootstrap_seed: int = 0) -> dict:
     t0, cpu0 = time.time(), time.process_time()
     pte.ROOT = out_root
     pte.VIDEO_PATH = video
@@ -289,6 +354,10 @@ def run(video: Path, clip: str, rig_json: Path, out_root: Path, anchor_step: int
     pte.log("motion-connected main-camera runs:", segs)
     states, infos = pte.solve_variant(cache, segs, pairs, anchors, rig, [], None, "full")
     shared = pt.Shared.from_rig(rig)
+    est = None
+    if estimate_rig:  # P3: from the STANDARD pass (before any recovery variant replaces rig / states), prior centred on --rig-json
+        est = solve_rig_estimate(cache, states, segs, pairs, anchors, rig, log=pte.log, bootstrap=bootstrap_rig,
+                                 seed=bootstrap_seed)
 
     f1rep = line_f1_report(cache, states, shared, anchors, segs)
     recovery = None
@@ -320,10 +389,13 @@ def run(video: Path, clip: str, rig_json: Path, out_root: Path, anchor_step: int
             np.save(f, states)
 
     _atomic(out / "states_full.npy", _states)
-    if estimate_rig:  # after the normal solve (does not change its outputs), before the done marker
-        est = solve_rig_estimate(cache, states, segs, pairs, anchors, rig, log=pte.log)
+    if est is not None:  # computed after the standard solve (does not change its outputs), written before the done marker
+        bs = est.pop("bootstrap", None)
         _atomic(out / "rig_estimate.json", lambda p: p.write_text(json.dumps(est, indent=1, default=float)))
         pte.log("rig estimate:", est.get("rig"), "sigma", est.get("sigma"), "converged", est["converged"])
+        if bs is not None:
+            _atomic(out / "rig_bootstrap.json", lambda p: p.write_text(json.dumps(bs, default=float)))
+            pte.log("bootstrap: n", bs["n"], "sd", bs.get("sd_boot"), "lambda", bs.get("lambda_vs_cov_model"))
     tmp = out / ".export"
     tmp.mkdir(exist_ok=True)
     pte.export_calib(tmp, "full", states, shared)
@@ -350,9 +422,13 @@ def main() -> None:
     ap.add_argument("--estimate-rig", action="store_true",
                     help="level-1 rig estimate: free (C, roll) with a loose prior around --rig-json, write rig_estimate.json "
                          "(rig, 4x4 covariance, evidence counts) before the done marker; the other outputs are unchanged")
+    ap.add_argument("--bootstrap-rig", type=int, default=0, metavar="N",
+                    help="with --estimate-rig: N half-sample resamples of the evidence/anchors, written to rig_bootstrap.json (P3 calibration of the covariance)")
+    ap.add_argument("--bootstrap-seed", type=int, default=0)
     a = ap.parse_args()
     run(a.video, a.clip, a.rig_json, a.out_root, a.anchor_step, recover=not a.no_recover, trim=a.trim,
-        force_recover=a.force_recover, estimate_rig=a.estimate_rig)
+        force_recover=a.force_recover, estimate_rig=a.estimate_rig, bootstrap_rig=a.bootstrap_rig,
+        bootstrap_seed=a.bootstrap_seed)
 
 
 if __name__ == "__main__":

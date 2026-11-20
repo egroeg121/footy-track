@@ -477,3 +477,25 @@ def test_segment_runner_rig_estimate_record_and_states_untouched():
     assert rec["prior"]["source"] == "rig_json" and rec["focal_min"] < rec["focal_max"]
     assert np.array(rec["cov"]).shape == (4, 4)
     json.dumps(rec)
+
+
+def test_rig_bootstrap_record_shape_and_json():
+    """``--bootstrap-rig``: half-sample resamples return the raw rigs, a 4x4 bootstrap covariance and z^2 statistics."""
+    import json
+
+    from footy_track.scripts import ptz_temporal_segment as seg
+
+    cams, unit, rig0 = _rig_problem(1, n=8)
+
+    class _Cache:
+        ev_frames = list(range(8))
+
+        def evidence(self, t):
+            return unit.evidence[t]
+
+    rec = seg.solve_rig_estimate(_Cache(), unit.states.copy(), [(0, 7)], unit.pairs, {}, rig0, bootstrap=5, seed=3)
+    b = rec["bootstrap"]
+    assert b["n"] + b["n_failed"] == 5 and b["n"] >= 4
+    assert np.array(b["cov_boot"]).shape == (4, 4) and np.array(b["rigs"]).shape == (b["n"], 4)
+    assert set(b) >= {"z2_cov_model", "z2_cov", "lambda_vs_cov_model"}
+    json.dumps(rec)
