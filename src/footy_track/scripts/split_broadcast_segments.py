@@ -23,6 +23,12 @@ Usage:
   uv run python -m footy_track.scripts.split_broadcast_segments match.mp4 \
       --sample 1 --merge-gap-s 0.5 --min-seg-s 2.0 --outdir ./segments
 
+Two phases, runnable separately (the first is GPU, the second CPU-only libx264):
+  --classify-only        classify + smooth, write ``segments.draft.json`` (segment boundaries) and stop.
+  --cut-from DRAFT       encode the segments listed in DRAFT; no model load, no GPU.
+With neither flag both phases run in one process, exactly as before; ``segments.json`` is identical
+either way (same boundaries and frame counts) because both paths cut from the same draft structure.
+
 Requires: ffmpeg on PATH (used to cut the segments).
 """
 
@@ -41,8 +47,6 @@ import numpy as np
 from rich.logging import RichHandler
 from tqdm import tqdm
 
-from footy_track.classifier import get_current_best_guess_classifier
-from footy_track.inference.pipeline import select_device
 from footy_track.schema import EnumBroadcastClassification
 
 logging.basicConfig(
@@ -63,12 +67,14 @@ def _check_ffmpeg() -> str:
 
 def _resolve_device(device: str | None) -> str:
     """``device`` if given, else the pipeline default (cuda, then mps, then cpu)."""
+    from footy_track.inference.pipeline import select_device  # torch: only the classify phase needs it
+
     return device or select_device()
 
 
 def _classify_frame(model, frame: np.ndarray, device: str | None = None) -> bool:
     """Return True if the classifier labels this frame as broadcast."""
-    result = model.predict(source=frame, device=device or select_device(), verbose=False)[0]
+    result = model.predict(source=frame, device=_resolve_device(device), verbose=False)[0]
     label = model.names[result.probs.top1]
     return label == EnumBroadcastClassification.YES.value
 
@@ -89,6 +95,8 @@ def classify_broadcast_mask(
     The classifier's YOLO model is fed numpy frames directly to avoid writing a
     temp image per frame.
     """
+    from footy_track.classifier import get_current_best_guess_classifier  # loads the model
+
     classifier = get_current_best_guess_classifier()
     model = classifier.model  # underlying ultralytics YOLO classification model
 
@@ -218,11 +226,122 @@ def cut_segment(
     return proc.returncode
 
 
+DRAFT_NAME = "segments.draft.json"
+DRAFT_VERSION = 1
+
+
+def write_draft(
+    path: Path,
+    *,
+    source: str,
+    fps: float,
+    total: int,
+    sample: int,
+    merge_gap_s: float,
+    min_seg_s: float,
+    broadcast_frames: int,
+    raw_runs: list[tuple[int, int]],
+    segments: list[tuple[int, int]],
+) -> None:
+    """Atomically write the classification result (everything the cutter needs)."""
+    doc = {
+        "version": DRAFT_VERSION,
+        "source": source,
+        "fps": fps,
+        "total_frames": total,
+        "sample": sample,
+        "merge_gap_s": merge_gap_s,
+        "min_seg_s": min_seg_s,
+        "broadcast_frames": broadcast_frames,
+        "raw_runs": [list(r) for r in raw_runs],
+        "segments": [list(s) for s in segments],
+    }
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(json.dumps(doc, indent=1))
+    tmp.replace(path)
+
+
+def read_draft(path: Path) -> dict:
+    """Load and validate a draft; raises ValueError when it is unusable."""
+    try:
+        d = json.loads(path.read_text())
+    except (OSError, ValueError) as e:
+        raise ValueError(f"unreadable draft {path}: {e}") from e
+    need = ("source", "fps", "total_frames", "sample", "merge_gap_s", "min_seg_s",
+            "broadcast_frames", "segments")
+    missing = [k for k in need if k not in d]
+    if d.get("version") != DRAFT_VERSION or missing:
+        raise ValueError(f"invalid draft {path}: version={d.get('version')!r} missing={missing}")
+    segs = d["segments"]
+    if not segs:
+        raise ValueError(f"draft {path} has no segments")
+    for s, e in segs:
+        if not (0 <= s <= e < d["total_frames"]):
+            raise ValueError(f"draft {path}: segment ({s}, {e}) outside 0..{d['total_frames']}")
+    return d
+
+
+def cut_from_draft(ffmpeg: str, input_path: Path, outdir: Path, draft: dict) -> list[dict]:
+    """Encode every segment of ``draft`` and write ``segments.json`` into ``outdir``."""
+    fps = draft["fps"]
+    manifest: list[dict] = []
+    for i, (start_f, end_f) in enumerate(
+        tqdm([tuple(s) for s in draft["segments"]], unit="segment", desc="Cutting")
+    ):
+        start_s = start_f / fps
+        # end_f is inclusive; duration spans through the end of that frame.
+        duration_s = (end_f - start_f + 1) / fps
+        out_path = outdir / f"{input_path.stem}_seg{i:03d}.mp4"
+        rc = cut_segment(ffmpeg, input_path, out_path, start_s, duration_s)
+        if rc != 0:
+            logger.warning(f"ffmpeg failed (rc={rc}) for segment {i}; skipping.")
+            continue
+        manifest.append(
+            {
+                "index": i,
+                "file": out_path.name,
+                "start_frame": start_f,
+                "end_frame": end_f,
+                "frame_count": end_f - start_f + 1,
+                "start_s": round(start_s, 3),
+                "end_s": round((end_f + 1) / fps, 3),
+                "duration_s": round(duration_s, 3),
+            }
+        )
+
+    manifest_path = outdir / "segments.json"
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "source": draft["source"],
+                "fps": fps,
+                "total_frames": draft["total_frames"],
+                "sample": draft["sample"],
+                "merge_gap_s": draft["merge_gap_s"],
+                "min_seg_s": draft["min_seg_s"],
+                "broadcast_frames": draft["broadcast_frames"],
+                "segments": manifest,
+            },
+            indent=2,
+        )
+    )
+    logger.info(f"Wrote {len(manifest)} segment(s) → {outdir}")
+    logger.info(f"Manifest → {manifest_path}")
+    return manifest
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Split a video into broadcast-only segments via the classifier."
     )
-    parser.add_argument("input", type=Path, help="Path to the input match video.")
+    parser.add_argument(
+        "input",
+        type=Path,
+        nargs="?",
+        default=None,
+        help="Path to the input match video (optional with --cut-from: the draft's source).",
+    )
     parser.add_argument(
         "--outdir",
         "-o",
@@ -257,14 +376,55 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help="Torch device for the classifier (default: cuda, then mps, then cpu).",
     )
+    parser.add_argument(
+        "--classify-only",
+        action="store_true",
+        help="GPU phase only: write the draft (segment boundaries) and exit without cutting.",
+    )
+    parser.add_argument(
+        "--cut-from",
+        type=Path,
+        default=None,
+        metavar="DRAFT",
+        help="CPU phase only: encode the segments in this draft; no model load, no GPU.",
+    )
+    parser.add_argument(
+        "--draft-path",
+        type=Path,
+        default=None,
+        help=f"Where --classify-only writes the draft (default: <outdir>/{DRAFT_NAME}).",
+    )
     args = parser.parse_args(argv)
 
-    if not args.input.exists():
+    if args.classify_only and args.cut_from:
+        logger.error("--classify-only and --cut-from are mutually exclusive")
+        return 2
+    if args.cut_from is None and args.input is None:
+        logger.error("input video is required (unless --cut-from is given)")
+        return 2
+    if args.input is not None and not args.input.exists():
         logger.error(f"Input not found: {args.input}")
         return 2
     if args.sample < 1:
         logger.error("--sample must be >= 1")
         return 2
+
+    if args.cut_from is not None:
+        try:
+            draft = read_draft(args.cut_from)
+        except ValueError as e:
+            logger.error(str(e))
+            return 2
+        input_path = args.input or Path(draft["source"])
+        if not input_path.exists():
+            logger.error(f"Input not found: {input_path}")
+            return 2
+        draft["source"] = str(input_path)
+        ffmpeg = _check_ffmpeg()
+        outdir = args.outdir or input_path.parent / f"{input_path.stem}_broadcast"
+        outdir.mkdir(parents=True, exist_ok=True)
+        cut_from_draft(ffmpeg, input_path, outdir, draft)
+        return 0
 
     ffmpeg = _check_ffmpeg()
     outdir = args.outdir or args.input.parent / f"{args.input.stem}_broadcast"
@@ -287,50 +447,34 @@ def main(argv: list[str] | None = None) -> int:
     segments = smooth_mask(mask, fps, args.merge_gap_s, args.min_seg_s)
     logger.info(f"{len(segments)} broadcast segment(s) after smoothing.")
 
-    manifest: list[dict] = []
-    for i, (start_f, end_f) in enumerate(
-        tqdm(segments, unit="segment", desc="Cutting")
-    ):
-        start_s = start_f / fps
-        # end_f is inclusive; duration spans through the end of that frame.
-        duration_s = (end_f - start_f + 1) / fps
-        out_path = outdir / f"{args.input.stem}_seg{i:03d}.mp4"
-        rc = cut_segment(ffmpeg, args.input, out_path, start_s, duration_s)
-        if rc != 0:
-            logger.warning(f"ffmpeg failed (rc={rc}) for segment {i}; skipping.")
-            continue
-        manifest.append(
-            {
-                "index": i,
-                "file": out_path.name,
-                "start_frame": start_f,
-                "end_frame": end_f,
-                "frame_count": end_f - start_f + 1,
-                "start_s": round(start_s, 3),
-                "end_s": round((end_f + 1) / fps, 3),
-                "duration_s": round(duration_s, 3),
-            }
-        )
-
-    manifest_path = outdir / "segments.json"
-    manifest_path.write_text(
-        json.dumps(
-            {
-                "source": str(args.input),
-                "fps": fps,
-                "total_frames": total,
-                "sample": args.sample,
-                "merge_gap_s": args.merge_gap_s,
-                "min_seg_s": args.min_seg_s,
-                "broadcast_frames": broadcast_frames,
-                "segments": manifest,
-            },
-            indent=2,
-        )
+    draft_path = args.draft_path or outdir / DRAFT_NAME
+    draft_args = dict(
+        source=str(args.input),
+        fps=fps,
+        total=total,
+        sample=args.sample,
+        merge_gap_s=args.merge_gap_s,
+        min_seg_s=args.min_seg_s,
+        broadcast_frames=broadcast_frames,
+        raw_runs=_mask_to_segments(mask),
+        segments=segments,
     )
+    if args.classify_only:
+        write_draft(draft_path, **draft_args)
+        logger.info(f"Draft → {draft_path}")
+        return 0
 
-    logger.info(f"Wrote {len(manifest)} segment(s) → {outdir}")
-    logger.info(f"Manifest → {manifest_path}")
+    draft = {
+        "source": str(args.input),
+        "fps": fps,
+        "total_frames": total,
+        "sample": args.sample,
+        "merge_gap_s": args.merge_gap_s,
+        "min_seg_s": args.min_seg_s,
+        "broadcast_frames": broadcast_frames,
+        "segments": segments,
+    }
+    cut_from_draft(ffmpeg, args.input, outdir, draft)
     return 0
 
 
