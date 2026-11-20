@@ -15,6 +15,20 @@ User concept: per-frame detection gives good locks; aggregate across many frames
 rig (match-wide bundle adjustment); offline. That is V3. Decisions: classical only; the rig (C, roll, k1) is shared by all
 segments of a match, but a segment may come from a different camera and must then be flagged, not forced.
 
+**Decision (user, 2026-11-20): inference is label-free.** No human labels and no GT-derived priors (`leave_clip_out_rig`,
+`camera_rigs/*.json` fitted from labels) may enter a production run. Hand labels exist only to build the **evaluation
+set** (calibration GT, plus review verdicts, section 3b). Consequences:
+- The rig prior for a new ground must come from generic camera priors (gantry height/distance ranges) plus the match's
+  own evidence; `fit_shared`'s GT-derived prior is for research only. `ptz_v3.md` section 6 already shows a label-free
+  rig within 0.16 m of the GT rig on Man City, from a good start; a bad start (5 m off) did not converge, so the
+  multi-start fit and the level-2 consensus carry more weight, and P3 must test label-free starts specifically.
+- k1 is estimated from the match (rotation-only consistency / line evidence) or left as a diagnostic; it is never
+  seeded from labels. Where lines and GT points disagree on k1 (0.032 vs 0.0147), report the effect on metre error
+  rather than choosing silently.
+- Any evaluation of a label-free run on a GT frame is clean only if no label touched the run; runs using a GT-derived
+  rig are marked `contaminated` in `eval_result` (section 3).
+- Existing per-ground rig JSONs remain usable as *evaluation references*, not as inputs.
+
 ## 1. What exists vs what is missing
 
 ### 1.1 Exists (V)
@@ -200,7 +214,7 @@ P3 is the only PR that spends significant CPU before the architecture commits.
 
 ## 6. Questions for the user
 
-1. **Rig priors for a new ground**: accept a one-off hand labelling (~7-10 GT frames) to fix k1 and seed the rig per ground, or must new grounds be fully label-free (then k1 stays a diagnostic, not a parameter)?
+1. **ANSWERED (user): label-free at inference; labels only for the eval set** (see section 0). Original question: accept a one-off hand labelling (~7-10 GT frames) to fix k1 and seed the rig per ground, or must new grounds be fully label-free (then k1 stays a diagnostic, not a parameter)?
 2. **Cache retention**: keep per-segment caches (~0.5 MB/frame, ~50 GB per Man City) on the desktop so L1' costs ~15% of a pass, or discard and pay full passes? Which disk is allowed to hold them?
 3. **What do outlier segments become?** Flag and abstain (H = NaN), fit their own camera variant when recoverable (extends `rig_variants`), or send to hand labelling on the labeller (the calibration editor already exists)?
 4. **Accuracy bar**: what metres error, at what depth, makes a frame usable downstream (tracking positions, ball height)? This sets the gate and decides whether far-touchline error needs fixing before ingest.
