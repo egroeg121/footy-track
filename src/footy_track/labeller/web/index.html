@@ -795,41 +795,61 @@ function noteHuman(clip, frame, boxes) {   // boxes: normalised {label, source|m
   const k = jobKey(clip, frame);
   if (hb) humanAt.set(k, { cx: hb.x + hb.w / 2, cy: hb.y + hb.h / 2 }); else humanAt.delete(k);
 }
-function sugAnchor(clip, frame, item) {   // nearest PREVIOUS human box of the same item (<= 30 frames), else a later one
-  let prev = null, next = null;
+const SUG_RANK = { sigma0: 8, kStatic: 6, kVel: 4, confFloor: 0.05, tidBonus: 0.5 };   // tune here (mirror: ball_eval/suggest_rank.py)
+// Pure: order candidates [x,y,w,h,conf,tid] by log(conf) - d^2/(2 sigma^2) (+ tracklet bonus), d = px at 1080p from the position
+// predicted from the human's previous boxes (anchors: [{f,cx,cy}] by frame): constant velocity from the last two, else the last one.
+function rankCandidates(cands, anchors, frame, size, anchorTid) {
+  size = size || [1920, 1080];
+  const prev = anchors.filter(a => a.f < frame);
+  let use = prev.slice(-2);
+  if (!use.length) { const later = anchors.filter(a => a.f > frame).sort((p, q) => p.f - q.f); use = later.length ? [later[0]] : []; }
+  const scale = 1080 / size[1];
+  let pred = null, sigma = 0;
+  if (use.length) {
+    const last = use[use.length - 1];
+    let px = last.cx, py = last.cy, k = SUG_RANK.kStatic;
+    if (use.length === 2 && use[1].f !== use[0].f && use[1].f < frame) {
+      const v = use[1].f - use[0].f;
+      px += (use[1].cx - use[0].cx) / v * (frame - last.f); py += (use[1].cy - use[0].cy) / v * (frame - last.f); k = SUG_RANK.kVel;
+    }
+    pred = [px, py]; sigma = SUG_RANK.sigma0 + k * Math.abs(frame - last.f);
+  }
+  return cands.map(r => {
+    let score = Math.log(Math.max(r[4], SUG_RANK.confFloor)), bonus = 0;
+    if (pred) {
+      const d = Math.hypot((r[0] + r[2] / 2 - pred[0]) * size[0] * scale, (r[1] + r[3] / 2 - pred[1]) * size[1] * scale);
+      score -= d * d / (2 * sigma * sigma);
+      if (anchorTid && r[5] === anchorTid) { bonus = SUG_RANK.tidBonus; score += bonus; }
+    }
+    return { row: r, score, bonus };
+  }).sort((p, q) => q.score - p.score);
+}
+function sugAnchors(clip, frame, item) {   // this session's human ball boxes of the same item within 30 frames, by frame
+  const out = [];
   for (const f of job.frames) {
     if (f.clip !== clip || f.item !== item || f.frame === frame || Math.abs(f.frame - frame) > 30) continue;
-    const a = humanAt.get(jobKey(clip, f.frame)); if (!a) continue;
-    if (f.frame < frame) { if (!prev || f.frame > prev.f) prev = { f: f.frame, ...a }; }
-    else if (!next || f.frame < next.f) next = { f: f.frame, ...a };
+    const a = humanAt.get(jobKey(clip, f.frame)); if (a) out.push({ f: f.frame, ...a });
   }
-  return prev || next;
+  return out.sort((p, q) => p.f - q.f);
 }
 function sugPick(clip, frame, item) {
   const rows = sugData && sugData.frames[`${clip}:${frame}`];
   if (!rows || !rows.length) return null;
-  const sz = (sugData.size && sugData.size[clip]) || [1920, 1080];
-  const dist = (r, a) => Math.hypot((r[0] + r[2] / 2 - a.cx) * sz[0], (r[1] + r[3] / 2 - a.cy) * sz[1]);
-  let row = rows[0], source = "detector", ranked = null;
-  const an = sugAnchor(clip, frame, item);
-  if (an) {
-    const prows = sugData.frames[`${clip}:${an.f}`] || [];
-    let a0 = null, d0 = 40;                                  // the candidate George's box sits on (same tracklet)
-    for (const r of prows) { const d = dist(r, an); if (d <= d0) { d0 = d; a0 = r; } }
-    const follow = a0 && a0[5] ? rows.find(r => r[5] === a0[5]) : null;
-    if (follow) { row = follow; source = "followed"; }
-    else {
-      const rad = Math.max(40, 12 * Math.abs(frame - an.f));
-      let best = null, bd = rad;
-      for (const r of rows) { const d = dist(r, an); if (d <= bd) { bd = d; best = r; } }
-      if (best) { row = best; source = row === rows[0] ? "detector" : "near you"; }
+  const sz = (sugData.size && sugData.size[clip]) || [1920, 1080], det = (sugData.detector || {})[clip] || "";
+  const anchors = sugAnchors(clip, frame, item);
+  let tid = 0;
+  const lastA = anchors.filter(a => a.f < frame).pop() || anchors[0];   // the label the prediction hangs on
+  if (lastA) {                                                          // the candidate under that box, for the tracklet bonus
+    let bd = 40;
+    for (const r of sugData.frames[`${clip}:${lastA.f}`] || []) {
+      const d = Math.hypot((r[0] + r[2] / 2 - lastA.cx) * sz[0], (r[1] + r[3] / 2 - lastA.cy) * sz[1]);
+      if (d <= bd) { bd = d; tid = r[5] || 0; }
     }
   }
-  const det = (sugData.detector || {})[clip] || "";
-  const mk = (r, src) => ({ x: r[0], y: r[1], w: r[2], h: r[3], conf: r[4], detector: det, source: src });
-  const rest = rows.filter(r => r !== row);
-  if (an) rest.sort((p, q) => dist(p, an) - dist(q, an));        // others: by distance to your last box, else by conf (file order)
-  return [mk(row, source), ...rest.map(r => mk(r, "candidate"))].slice(0, SUG_SHOW);
+  const ranked = rankCandidates(rows, anchors, frame, sz, tid);
+  const mk = (o, k) => ({ x: o.row[0], y: o.row[1], w: o.row[2], h: o.row[3], conf: o.row[4], detector: det,
+    source: k > 0 ? "candidate" : (!anchors.length || ranked[0].row === rows[0] && !ranked[0].bonus ? "detector" : (ranked[0].bonus ? "followed" : "near you")) });
+  return ranked.slice(0, SUG_SHOW).map(mk);
 }
 function clearSuggestion() { curSuggestion = null; curSugList = []; updateSuggestionOverlay(); }
 function loadSuggestion() {

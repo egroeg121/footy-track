@@ -29,6 +29,7 @@ from pathlib import Path
 from footy_track import match_splits, splits
 from footy_track.ball_eval import panel as P  # noqa: N812
 from footy_track.ball_eval import panel_suggest as PS  # noqa: N812
+from footy_track.ball_eval.suggest_rank import rank_candidates
 from footy_track.ball_eval.panel_score import BALL, Human, load_human_sidecars
 from footy_track.labeller import datasets, jobs
 
@@ -165,11 +166,19 @@ def coverage(job: dict, doc: dict) -> dict[str, dict]:
                 "mean_conf": round(a["conf"] / a["n"], 4) if a["n"] else None} for s, a in sorted(acc.items())}
 
 
+def _rows(entry: dict | None) -> list[list[float]]:
+    if not isinstance(entry, dict):
+        return []
+    return [[c["x"], c["y"], c["w"], c["h"], c.get("conf", 0.0), c.get("tid", 0)] for c in (entry.get("cands") or [entry])]
+
+
 def report(job_id: str, *, root: Path | None = None, r_px: float = 10.0, size: tuple[int, int] = (1920, 1080)) -> dict:
     """Per stratum and ALL, on the job's labels: share of ball labels that were accepted suggestions, and agreement
     (label centre within ``r_px`` of RT-DETR's top-1) overall and among hand-drawn labels only, plus RT-DETR's miss rate, and how often an accept was #1 vs #2-5 (``rank1`` / ``rank2_5``: cheap evidence of how often the
     right ball is among the candidates but not the pick).
-    Accepted boxes are ordinary tier-1 labels and stay in every number. No blind control, so no bias comparison."""
+    ``mirror_rank_of_label``: where the label's nearest candidate sits when ranked by ``suggest_rank.rank_candidates`` from the earlier
+    labels (1, 2, 3, 4+, none within ``r_px``): evidence for tuning sigma0 / k; ``accepted_rank_counts``: the rank the page offered
+    for the accepts. Accepted boxes are ordinary tier-1 labels and stay in every number. No blind control, so no bias comparison."""
     job = jobs.read_job(job_id)
     sf = find_suggest_file(job_id, root)
     if job is None or sf is None:
@@ -178,11 +187,30 @@ def report(job_id: str, *, root: Path | None = None, r_px: float = 10.0, size: t
     human = job_human(job)
     cells: dict[str, dict] = defaultdict(lambda: dict.fromkeys(
         ("ball_labels", "accepted", "hand", "agree", "agree_hand", "rtdetr_miss", "no_ball", "rank1", "rank2_5"), 0))
+    mrank: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))  # where the human's box sits in the mirrored ranking
+    rcount: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))  # which numbered candidate was accepted (marker)
     for it in job["items"]:
         for f in (int(x) for x in jobs._item_units(job["kind"], it)):  # noqa: SLF001
             h = human.get((it["clip"], f))
             if h is None:
                 continue
+            if h.state == BALL:
+                rows = _rows(doc["boxes"].get(PS.frame_key(it["clip"], f)))
+                anchors = [{"f": g, "cx": human[(it["clip"], g)].centres[0][0], "cy": human[(it["clip"], g)].centres[0][1]}
+                           for g in sorted(int(x) for x in jobs._item_units(job["kind"], it))  # noqa: SLF001
+                           if g < f and f - g <= 30 and (it["clip"], g) in human and human[(it["clip"], g)].state == BALL]
+                where = "none"
+                if rows:
+                    ranked = rank_candidates(rows, anchors, f, tuple(doc.get("size") or size))
+                    cx, cy = h.centres[0]
+                    ds = [math.hypot((r["row"][0] + r["row"][2] / 2 - cx) * size[0], (r["row"][1] + r["row"][3] / 2 - cy) * size[1]) for r in ranked]
+                    if min(ds) <= r_px:
+                        k = ds.index(min(ds)) + 1
+                        where = str(k) if k <= 3 else "4+"
+                for key in (str(it.get("stratum") or ""), "ALL"):
+                    mrank[key][where] += 1
+                    if h.accepted:
+                        rcount[key][str(h.rank or 1)] += 1
             for key in (str(it.get("stratum") or ""), "ALL"):
                 c = cells[key]
                 if h.state != BALL:
@@ -211,5 +239,7 @@ def report(job_id: str, *, root: Path | None = None, r_px: float = 10.0, size: t
                             "share_rank1_of_accepts": share(c["rank1"], c["accepted"]),
                             "agree_rtdetr": share(c["agree"], c["ball_labels"]),
                             "agree_rtdetr_hand_only": share(c["agree_hand"], c["hand"]),
-                            "rtdetr_miss_rate": share(c["rtdetr_miss"], c["ball_labels"])}
+                            "rtdetr_miss_rate": share(c["rtdetr_miss"], c["ball_labels"]),
+                            "accepted_rank_counts": dict(sorted(rcount[st].items())),
+                            "mirror_rank_of_label": dict(sorted(mrank[st].items()))}
                        for st, c in sorted(cells.items())}}

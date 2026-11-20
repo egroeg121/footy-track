@@ -1639,10 +1639,12 @@ restricted to the job's cards (progress and results are).
   already labelled when it was written, which are never offered). No blind control for these jobs (George's call); the eval-panel path
   keeps its 25% blind rule. `GET /api/jobs/<id>/suggestions` ships all of a job's candidates in ONE request (panel items honour their
   blind flag); the per-frame `/suggestion` endpoint is unchanged. In the browser, with no per-frame fetch: #1 is the candidate on the
-  same tracklet as the candidate under George's nearest previous human box of the same item (<= 30 frames, accepted boxes count; a later
-  box only when there is no previous one), else the nearest candidate within `max(40 px, 12 px x frame gap)`, else the top-1; the
-  others are ordered by distance to that box, else by conf. The page draws #1 (bright yellow) and #2-#3 (dimmer, numbered) and records
-  frame-change -> overlay time in `window.sugLatencyMs` (`performance.measure("sug-latency")`). `Y` accepts #1; in job mode on a
+  most likely given his previous labels: `score = log(max(conf, 0.05)) - d^2 / (2 sigma^2)` (+0.5 on the tracklet of the candidate under
+  his last box), `d` = px at 1080p from the position predicted by constant velocity from his last two human boxes of the same item
+  (<= 30 frames, accepted boxes count) or from the last one (a later box only if none is earlier), `sigma = 8 + k * frame gap` px
+  (`k` = 4 with a velocity prediction, 6 without); no anchor: order by conf. Pure `rankCandidates` in the page, mirrored by
+  `ball_eval/suggest_rank.py` (tests run both under node and compare). Constants live in `SUG_RANK` / `suggest_rank.py`.
+  The page draws #1 (bright yellow) and #2-#3 (dimmer, numbered) and records frame-change -> overlay time in `window.sugLatencyMs` (`performance.measure("sug-latency")`). `Y` accepts #1; in job mode on a
   `ball_place` job `1`/`2`/`3` accept that candidate (`4`-`6` stay class keys; outside job mode all of `1`-`6` stay class keys). An
   accept saves as today plus `suggest_rank:N`; drawing replaces all. A VitTrack hop was deliberately NOT added (snapping + tracklets
   cover it, and a server tracker cannot be instant). `job_suggest report --job <id>` prints per stratum coverage, accept share,
