@@ -99,12 +99,22 @@ def frame_key(clip: str, frame: int) -> str:
     return f"{clip}:{int(frame)}"
 
 
-def top1(balls) -> dict | None:
-    """Highest-confidence row of an ``(n, 5)`` x, y, w, h, conf array as a dict (None when empty)."""
+TOPK = 5
+
+
+def _row(r) -> dict:
+    return {k: round(float(v), 6) for k, v in zip(("x", "y", "w", "h", "conf"), r, strict=True)}
+
+
+def top1(balls, k: int = TOPK) -> dict | None:
+    """Top-1 row of an ``(n, 5)`` x, y, w, h, conf array as a dict (None when empty), plus ``cands``: up to ``k``
+    candidates by confidence (the first IS the top-1), so old readers of ``{x,y,w,h,conf}`` keep working."""
     if balls is None or len(balls) == 0:
         return None
-    r = max(balls, key=lambda row: float(row[4]))
-    return {k: round(float(v), 6) for k, v in zip(("x", "y", "w", "h", "conf"), r, strict=True)}
+    rows = sorted(balls, key=lambda row: -float(row[4]))[:k]
+    out = _row(rows[0])
+    out["cands"] = [_row(r) for r in rows]
+    return out
 
 
 def panel_frames(doc: dict) -> dict[str, list[int]]:
@@ -149,6 +159,7 @@ def suggest_match(
     detector=None,
     labelled_keys: Callable[[], set[str]] | None = None,
     log: Callable[[str], None] = print,
+    tag: str = "",
 ) -> dict:
     """Suggest the top-1 ball of every panel frame of ``match`` with ``suggester`` (default: RT-DETR) and write the
     suggest file. Resumable per clip; an existing finished file of the same ``suggester.ident`` is left alone."""
@@ -157,7 +168,7 @@ def suggest_match(
     if suggester is None:
         suggester = RtDetrSuggester(weights, device=device, imgsz=imgsz, batch=batch, detector=detector)
     sha8 = suggester.ident
-    out = P.suggest_path(match, sha8, panel_version, root)
+    out = P.suggest_path(match, sha8 + tag, panel_version, root)  # tag: a NEW file next to the old one (top-k recompute)
     if out.is_file():
         return {"match": match, "status": "exists", "path": str(out), "detector_sha8": sha8}
     partial = out.with_name(out.name + ".partial")
@@ -182,13 +193,23 @@ def suggest_match(
         el = time.monotonic() - t0
         log(f"[suggest] {match} {len(sugg)}/{total} frames, {el:.0f}s ({el / max(done_now, 1):.2f} s/frame)")
     elapsed = time.monotonic() - t0
+    from footy_track.ball_eval import tracklets as T  # noqa: N812, PLC0415
+
+    size = T.video_size(next(iter(files.values()))) if files else T.DEFAULT_SIZE
+    T.add_tracklets(sugg, [[(w["clip"], int(f)) for f in w["frames"]] for w in doc["windows"]], size)
     pre = sorted(labelled_keys()) if labelled_keys else []
+    if tag:  # a recompute: the labels that pre-dated the FIRST suggest file stay the blind-equivalent set
+        try:
+            pre = json.loads(P.suggest_meta_path(P.suggest_path(match, sha8, panel_version, root)).read_text())["pre_labelled"]
+        except (OSError, ValueError, KeyError):
+            pass
     meta = {
         "schema": "ball-eval-panel-suggest/v1",
         "match": match,
         "panel_version": panel_version,
         "created_at": P.now_iso(),
         "detector": suggester.info,
+        "size": list(size),
         "n_frames": total,
         "n_with_suggestion": sum(1 for v in sugg.values() if v),
         "seconds_this_run": round(elapsed, 1),

@@ -72,6 +72,8 @@ class Human:
     #: the box was a detector suggestion accepted as-is (marker ``accepted_suggestion``). Audit only: it is an
     #: ordinary tier-1 label everywhere, the flag feeds the "share accepted" stat and the blind-vs-shown check.
     accepted: bool = False
+    #: which numbered candidate was accepted (marker ``suggest_rank:N``), None for old accepts / hand boxes
+    rank: int | None = None
 
 
 def _centre(row: dict) -> tuple[float, float] | None:
@@ -100,9 +102,10 @@ def _add_row(out: dict[Key, Human], clip: str, row: dict) -> None:
         if c is not None:
             h = out.get(key)
             acc = P.SUGGEST_MARKER_TAG in tags
+            rk = next((int(t[13:]) for t in tags if t.startswith("suggest_rank:") and t[13:].isdigit()), None)
             if h is None or h.state != BALL:
                 out[key] = Human(
-                    BALL, [c], acc
+                    BALL, [c], acc, rk
                 )  # a ball mark beats a marker on the same frame
             else:
                 h.centres.append(c)

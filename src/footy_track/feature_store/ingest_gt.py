@@ -193,7 +193,7 @@ def _split_tags(tags: list[str]) -> tuple[str | None, str | None, bool]:
             prov_tag = t
         elif t == CHECKED_TAG:
             checked = True
-        elif t == SUGGEST_MARKER_TAG or t.startswith(SUGGEST_DET_TAG_PREFIX):
+        elif t == SUGGEST_MARKER_TAG or t.startswith((SUGGEST_DET_TAG_PREFIX, "suggest_rank:")):
             continue  # audit-only marker: never the object class
         elif t not in _SKIP_TAGS and obj_tag is None:
             obj_tag = t
