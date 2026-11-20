@@ -15,6 +15,12 @@ User concept: per-frame detection gives good locks; aggregate across many frames
 rig (match-wide bundle adjustment); offline. That is V3. Decisions: classical only; the rig (C, roll, k1) is shared by all
 segments of a match, but a segment may come from a different camera and must then be flagged, not forced.
 
+Decisions 2026-11-20 (user):
+- **Label-free at inference.** No label-derived prior in a production run (rig JSONs from GT points become eval references only); labels build the eval set (calibration GT + review verdicts). A run that used any label-derived input is marked `contaminated` in eval.
+- **Outlier segments: all three, in order.** Flag first (never forced onto rig*); then try their own camera variant (cluster of rig_i); a segment that still fails gets H = NaN and is queued for the calibration editor, where it becomes eval GT (not an inference input).
+- **Rollout: Man City first**, then the other known matches.
+- **Accuracy bar (provisional, from the research report, not yet confirmed):** goal <= 1 m at ordinary depths, <= 2 m at the far touchline, > 5 m = failure. Gate tuned on review verdicts.
+
 **Decision (user, 2026-11-20): inference is label-free.** No human labels and no GT-derived priors (`leave_clip_out_rig`,
 `camera_rigs/*.json` fitted from labels) may enter a production run. Hand labels exist only to build the **evaluation
 set** (calibration GT, plus review verdicts, section 3b). Consequences:
