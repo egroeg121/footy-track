@@ -55,6 +55,13 @@ class ConsensusParams:
     floor_pos_sd_m: float = 0.05
     floor_roll_sd_rad: float = 3.5e-4
     min_variant_size: int = 2
+    # Level-1 files carry the same loose prior in every segment (see ``to_likelihood``). cov_inflation None = use each
+    # file's own ``cov_inflation`` (1 if absent); apply_prior adds the shared prior ONCE to the consensus.
+    cov_inflation: float | None = None
+    apply_prior: bool = True
+    info_floor: float = (
+        1e-4  # floor on prior-whitened likelihood information eigenvalues
+    )
     max_iter: int = 200
     tol: float = 1e-10
 
@@ -77,6 +84,21 @@ class SegmentEstimate:
     path: str = ""
     sha256: str = ""
     extra: dict = field(default_factory=dict)
+    # P1 format only: the loose prior all segments share, and the un-inflated covariances (see ``to_likelihood``)
+    prior: dict | None = None
+    cov_nominal: np.ndarray | None = None
+    cov_scale: float = 1.0
+    cov_inflation: float = 1.0
+
+
+def _mat(d, key):
+    if d.get(key) is None:
+        return None
+    try:
+        c = np.asarray(d[key], float).reshape(DIM, DIM)
+    except ValueError:
+        return None
+    return c if np.all(np.isfinite(c)) else None
 
 
 def load_estimate(path: str | Path) -> SegmentEstimate:
@@ -84,13 +106,7 @@ def load_estimate(path: str | Path) -> SegmentEstimate:
     raw = p.read_bytes()
     d = json.loads(raw)
     rig = np.asarray(d["rig"], float).reshape(DIM)
-    cov = None
-    if d.get("cov") is not None:
-        try:
-            c = np.asarray(d["cov"], float).reshape(DIM, DIM)
-            cov = c if np.all(np.isfinite(c)) else None
-        except ValueError:
-            cov = None
+    cov = _mat(d, "cov")
     keys = (
         "k1",
         "n_anchors",
@@ -100,15 +116,37 @@ def load_estimate(path: str | Path) -> SegmentEstimate:
         "pan_range_deg",
         "code_sha",
     )
+    extra = {k: d[k] for k in keys if k in d}
+    # P1 (ptz_temporal_segment.solve_rig_estimate) spellings
+    if (
+        "k1" not in extra
+        and isinstance(d.get("prior"), dict)
+        and "k1_fixed" in d["prior"]
+    ):
+        extra["k1"] = d["prior"]["k1_fixed"]
+    if "f_range" not in extra and "focal_min" in d and "focal_max" in d:
+        extra["f_range"] = [d["focal_min"], d["focal_max"]]
+    if "pan_range_deg" not in extra and "pan_min_deg" in d and "pan_max_deg" in d:
+        extra["pan_range_deg"] = float(d["pan_max_deg"]) - float(d["pan_min_deg"])
+    scale = float(d.get("cov_scale", 1.0))
+    nominal = _mat(d, "cov_nominal")
+    if nominal is None and _mat(d, "cov_model") is not None:
+        nominal = _mat(d, "cov_model") / scale
     return SegmentEstimate(
         seg_id=p.parent.name,
         rig=rig,
         cov=cov,
         converged=bool(d.get("converged", True)),
-        cost=d.get("cost"),
+        cost=d.get("cost", d.get("final_cost")),
+        prior=d["prior"]
+        if isinstance(d.get("prior"), dict) and "sigma_C_m" in d["prior"]
+        else None,
+        cov_nominal=nominal,
+        cov_scale=scale,
+        cov_inflation=float(d.get("cov_inflation", 1.0)),
         path=str(p),
         sha256=hashlib.sha256(raw).hexdigest(),
-        extra={k: d[k] for k in keys if k in d},
+        extra=extra,
     )
 
 
@@ -122,6 +160,61 @@ def load_estimates(root_or_files) -> list[SegmentEstimate]:
     else:
         files = [Path(f) for f in root_or_files]
     return [load_estimate(f) for f in files]
+
+
+# ---------------------------------------------------------------------------- prior removal
+
+
+def prior_information(prior: dict):
+    """(Lambda_prior = diag(1/sigma^2), prior centre) from a P1 ``prior`` record."""
+    sig = np.array([*prior["sigma_C_m"], prior["sigma_roll_rad"]], float)
+    return np.diag(1.0 / sig**2), np.array(
+        [*prior["centre_C"], prior["centre_roll"]], float
+    )
+
+
+def to_likelihood(e: SegmentEstimate, prm: ConsensusParams) -> SegmentEstimate:
+    """Strip the shared loose prior out of a P1 segment estimate, returning a likelihood-only (mean, covariance).
+
+    Every P1 estimate/covariance includes the same prior (centred on the input rig JSON); combining n of them naively
+    counts it n times and pulls rig* to the prior centre. In information form, with the prior rows being exactly
+    ``Lambda_prior = diag(1/sigma^2)`` in the Gauss-Newton normal matrix:
+
+        Lambda_post = inv(cov_nominal)          (NOT cov_model / cov: those scale the prior rows too)
+        Lambda_like = Lambda_post - Lambda_prior  (PSD-projected in prior-whitened coordinates, eigenvalues floored at
+                                                   ``info_floor``; a segment whose data add ~nothing is then so wide
+                                                   that the sd thresholds mark it uninformative)
+        eta = Lambda_post r_post - Lambda_prior r_prior ;  mean_like = inv(Lambda_like) eta
+        cov_like = cov_scale * cov_inflation * inv(Lambda_like)
+
+    ``cov_nominal`` is the covariance if the residual sigmas are right; ``cov_scale = max(1, chi2/dof)`` and the
+    ridge ``cov_inflation`` (provisional, 36 on synthetic data) are corrections to the DATA noise model, so they are
+    applied to the likelihood covariance only, after the prior is removed. Files without a P1 ``prior`` (legacy
+    ``{rig, cov}``) are taken as already likelihood-only. The prior is re-added once in ``robust_consensus``."""
+    if e.prior is None or e.cov_nominal is None or not np.all(np.isfinite(e.rig)):
+        return e
+    Lp, rp = prior_information(e.prior)
+    infl = e.cov_inflation if prm.cov_inflation is None else prm.cov_inflation
+    try:
+        Lpost = np.linalg.inv(0.5 * (e.cov_nominal + e.cov_nominal.T))
+        T = np.diag(1.0 / np.sqrt(np.diag(Lp)))  # prior sd: whitening
+        w, V = np.linalg.eigh(T @ (Lpost - Lp) @ T)
+        Ll = (
+            np.linalg.inv(T)
+            @ (V * np.maximum(w, prm.info_floor))
+            @ V.T
+            @ np.linalg.inv(T)
+        )
+        Ll = 0.5 * (Ll + Ll.T)
+        m = np.linalg.solve(Ll, Lpost @ e.rig - Lp @ rp)
+        cov = e.cov_scale * infl * np.linalg.inv(Ll)
+    except np.linalg.LinAlgError:
+        return SegmentEstimate(
+            e.seg_id, e.rig, None, e.converged, e.cost, e.path, e.sha256, e.extra
+        )
+    return SegmentEstimate(
+        e.seg_id, m, cov, e.converged, e.cost, e.path, e.sha256, e.extra
+    )
 
 
 # ---------------------------------------------------------------------------- core maths
@@ -165,15 +258,18 @@ def _weighted_median(R, W):
     return out
 
 
-def robust_consensus(R, W, prm: ConsensusParams | None = None, init=None):
-    """Cauchy IRLS. R (n,4), W (n,4,4) precisions. Returns (r*, Sigma*, robust weights w_i, cost)."""
+def robust_consensus(R, W, prm: ConsensusParams | None = None, init=None, prior=None):
+    """Cauchy IRLS. R (n,4), W (n,4,4) precisions. Returns (r*, Sigma*, robust weights w_i, cost).
+
+    ``prior=(Lambda, centre)`` is added ONCE to the normal equations (not robust-weighted, not in the cost)."""
     prm = prm or ConsensusParams()
     c2 = prm.cauchy_c2
     r = _weighted_median(R, W) if init is None else np.asarray(init, float)
+    Lp, rp = prior if prior is not None else (np.zeros((DIM, DIM)), np.zeros(DIM))
     for _ in range(prm.max_iter):
         w = 1.0 / (1.0 + _d2(R, W, r) / c2)
-        A = np.einsum("n,nij->ij", w, W)
-        b = np.einsum("n,nij,nj->i", w, W, R)
+        A = np.einsum("n,nij->ij", w, W) + Lp
+        b = np.einsum("n,nij,nj->i", w, W, R) + Lp @ rp
         rn = np.linalg.solve(A, b)
         done = np.max(np.abs(rn - r) / (1 + np.abs(r))) < prm.tol
         r = rn
@@ -181,7 +277,7 @@ def robust_consensus(R, W, prm: ConsensusParams | None = None, init=None):
             break
     d2 = _d2(R, W, r)
     w = 1.0 / (1.0 + d2 / c2)
-    Sigma = np.linalg.inv(np.einsum("n,nij->ij", w, W))
+    Sigma = np.linalg.inv(np.einsum("n,nij->ij", w, W) + Lp)
     cost = float(np.sum(c2 * np.log1p(d2 / c2)))
     return r, Sigma, w, cost
 
@@ -302,6 +398,12 @@ def compute_consensus(
     prm = prm or ConsensusParams()
     if not est:
         raise ValueError("no segment estimates")
+    raw_est = est
+    est = [to_likelihood(e, prm) for e in raw_est]
+    prior = None
+    if prm.apply_prior:
+        pri = [e.prior for e in raw_est if e.prior is not None]
+        prior = prior_information(pri[0]) if pri else None
     R = np.stack([e.rig for e in est])
     W, inf = _precisions(est, prm)
     conv = np.array([e.converged for e in est])
@@ -309,7 +411,7 @@ def compute_consensus(
     fit = inf & conv & finite
     if fit.sum() < 1:
         raise ValueError("no informative converged segments to fit")
-    r, Sig, w, cost = robust_consensus(R[fit], W[fit], prm)
+    r, Sig, w, cost = robust_consensus(R[fit], W[fit], prm, prior=prior)
     d2 = np.full(len(est), np.nan)
     ok = inf & finite
     d2[ok] = _d2(R[ok], W[ok], r)

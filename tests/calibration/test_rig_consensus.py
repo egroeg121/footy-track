@@ -10,9 +10,11 @@ import pytest
 from footy_track.calibration.rig_consensus import (
     ConsensusParams,
     ConsensusResult,
+    SegmentEstimate,
     compute_consensus,
     load_estimates,
     stop_rule,
+    to_likelihood,
 )
 from footy_track.scripts import ptz_rig_consensus
 
@@ -153,3 +155,100 @@ def test_cli(match, tmp_path, capsys):
     res = ConsensusResult.load(out)
     assert res.reference["dC_norm"] < 0.3
     assert ConsensusParams(**res.params).outlier_quantile == 0.999
+
+
+# ---------------------------------------------------------------- P1 format / shared-prior removal
+
+P_SIG = np.array([5.0, 10.0, 3.0, np.radians(2.0)])
+P_CENTRE = TRUTH + np.array(
+    [4.0, 6.0, -2.0, 0.0]
+)  # prior centre (input rig JSON), offset from truth
+
+
+def _p1_file(root, name, rng, nominal_sd, scale=1.5, inflation=36.0):
+    """A rig_estimate.json in P1's format: posterior of (likelihood x loose prior), covariance incl. the prior."""
+    Lp = np.diag(1 / P_SIG**2)
+    sd = np.array([*nominal_sd, np.radians(0.5)])
+    S = np.diag(sd**2)
+    S[1, 2] = S[2, 1] = 0.9 * sd[1] * sd[2]  # ridge-like correlation
+    Ll = np.linalg.inv(S)  # nominal likelihood information
+    r_like = rng.multivariate_normal(TRUTH, S * scale)
+    Lpost = Ll + Lp
+    r_post = np.linalg.solve(Lpost, Ll @ r_like + Lp @ P_CENTRE)
+    nominal = np.linalg.inv(Lpost)
+    prior = {
+        "centre_C": P_CENTRE[:3].tolist(),
+        "centre_roll": float(P_CENTRE[3]),
+        "k1_fixed": 0.0147,
+        "sigma_C_m": P_SIG[:3].tolist(),
+        "sigma_roll_rad": float(P_SIG[3]),
+        "source": "rig_json",
+    }
+    d = root / name
+    d.mkdir()
+    doc = {
+        "names": ["Cx", "Cy", "Cz", "roll"],
+        "units": ["m", "m", "m", "rad"],
+        "rig": r_post.tolist(),
+        "cov": (inflation * scale * nominal).tolist(),
+        "cov_model": (scale * nominal).tolist(),
+        "cov_nominal": nominal.tolist(),
+        "cov_scale": scale,
+        "cov_inflation": inflation,
+        "prior": prior,
+        "focal_min": 1500.0,
+        "focal_max": 4200.0,
+        "pan_min_deg": -10.0,
+        "pan_max_deg": 12.0,
+        "final_cost": 12.5,
+        "converged": True,
+        "n_frames": 300,
+        "n_anchors": 4,
+        "code_sha": "abc123",
+    }
+    (d / "rig_estimate.json").write_text(json.dumps(doc))
+    return r_post, Ll, scale
+
+
+def test_p1_schema_roundtrip(tmp_path):
+    rng = np.random.default_rng(3)
+    r_post, Ll, scale = _p1_file(tmp_path, "mc_seg001@emirates", rng, [3.0, 6.0, 2.0])
+    (e,) = load_estimates(tmp_path)
+    assert e.seg_id == "mc_seg001@emirates" and e.extra["k1"] == 0.0147
+    assert (
+        e.extra["f_range"] == [1500.0, 4200.0]
+        and e.extra["pan_range_deg"] == 22.0
+        and e.cost == 12.5
+    )
+    np.testing.assert_allclose(e.rig, r_post)
+    # likelihood covariance = scale * inflation(file) * inv(Lambda_like): prior gone, corrections on the data only
+    lk = to_likelihood(e, ConsensusParams())
+    np.testing.assert_allclose(lk.cov, scale * 36.0 * np.linalg.inv(Ll), rtol=1e-4)
+    lk1 = to_likelihood(e, ConsensusParams(cov_inflation=1.0))
+    np.testing.assert_allclose(lk1.cov, scale * np.linalg.inv(Ll), rtol=1e-4)
+    res = compute_consensus([e], ConsensusParams(max_pos_sd_m=1e6, max_roll_sd_rad=1e3))
+    back = ConsensusResult.from_dict(json.loads(json.dumps(res.to_dict())))
+    assert back.inputs[0]["seg_id"] == "mc_seg001@emirates"
+
+
+def test_shared_prior_not_counted_n_times(tmp_path):
+    rng = np.random.default_rng(11)
+    for i in range(60):  # weak segments: data about as informative as the prior
+        _p1_file(tmp_path, f"mc_seg{i:03d}@x", rng, [6.0, 12.0, 4.0], inflation=1.0)
+    est = load_estimates(tmp_path)
+    loose = {"max_pos_sd_m": 1e3, "max_roll_sd_rad": 1e3}
+    res = compute_consensus(est, ConsensusParams(cov_inflation=1.0, **loose))
+    err = np.linalg.norm(np.array(res.rig[:3]) - TRUTH[:3])
+    assert err < 1.0, err
+    # naive: posterior means as if independent data (prior counted n times)
+    naive = compute_consensus(
+        [SegmentEstimate(e.seg_id, e.rig, e.cov_nominal * e.cov_scale) for e in est],
+        ConsensusParams(**loose),
+    )
+    nerr = np.linalg.norm(np.array(naive.rig[:3]) - TRUTH[:3])
+    assert nerr > 2 * err and nerr > 1.5
+    # prior applied once vs not at all: small difference with 60 segments
+    noprior = compute_consensus(
+        est, ConsensusParams(cov_inflation=1.0, apply_prior=False, **loose)
+    )
+    assert np.linalg.norm(np.array(res.rig[:3]) - np.array(noprior.rig[:3])) < 0.5
