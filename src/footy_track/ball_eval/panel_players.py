@@ -254,8 +254,26 @@ def prefill_match(
 # ---- job ------------------------------------------------------------------------------------- #
 
 
-def job_body(doc: dict) -> dict:
-    """One ``player_check`` job per panel: one item per window (``frame_start..frame_end`` step), ``eval: true``."""
+def not_broadcast_frames(marks_dir: Path, clip: str) -> set[int]:
+    path = marks_dir / f"{clip}.jsonl"
+    if not path.exists():
+        return set()
+    out = set()
+    for raw in path.read_text().splitlines():
+        d = _parse(raw)
+        if d is not None and NOT_BROADCAST_TAG in (d.get("tags") or []):
+            out.add(int(d["frame_index"]))
+    return out
+
+
+def job_body(doc: dict, not_broadcast: dict[str, set[int]] | None = None) -> dict:
+    """One ``player_check`` job per panel: one item per window (``frame_start..frame_end`` step), ``eval: true``.
+
+    A window whose frames are ALL ``not_broadcast`` (George marked them so) is left out: those frames can never be
+    completed, and the job would sit below 100 % forever. ``not_broadcast`` is ``{clip: {frames}}``."""
+    nb = not_broadcast or {}
+    windows = [w for w in doc["windows"] if not set(w["frames"]) <= nb.get(w["clip"], set())]
+    n_frames = sum(len(w["frames"]) for w in windows)
     items = [
         {
             "clip": w["clip"],
@@ -266,7 +284,7 @@ def job_body(doc: dict) -> dict:
             "stratum": doc["match"],
             "sampling": {"regime": "eval", "panel": doc["panel_version"], "match": doc["match"], "window_id": w["window_id"]},
         }
-        for w in doc["windows"]
+        for w in windows
     ]
     return {
         "title": f"Player check (eval): {doc['match']}",
@@ -274,8 +292,8 @@ def job_body(doc: dict) -> dict:
         "dataset": P.dataset_name(doc["panel_version"]),
         "items": items,
         "why": (
-            f"Box every player and referee on the {doc['n_frames']} ball-panel frames of {doc['match']} "
-            f"({doc['n_windows']} windows). Machine boxes (RT-DETR, conf >= 0.3) are pre-filled: swipe right "
+            f"Box every player and referee on the {n_frames} ball-panel frames of {doc['match']} "
+            f"({len(windows)} windows). Machine boxes (RT-DETR, conf >= 0.3) are pre-filled: swipe right "
             "if each person has exactly one box, left to fix. Eval data: never training."
         ),
         "device": "laptop",  # ~15 tiny boxes per full 1920 px frame: tap-to-fix needs a laptop (swipe-ok alone works on a phone)
@@ -333,7 +351,8 @@ def main(argv: list[str] | None = None) -> int:
         jobs_client.DEFAULT_URL = a.url
     for m in a.match:
         doc = P.read_panel(P.panel_path(m, a.panel_version, a.root))
-        body = job_body(doc)
+        marks, _clips = _dataset_dirs(a.dataset)
+        body = job_body(doc, {c: not_broadcast_frames(marks, c) for c in {w["clip"] for w in doc["windows"]}})
         job = jobs_client.submit(
             body["title"], body["kind"], body["items"], dataset=a.dataset, why=body["why"],
             device=body["device"], priority=body["priority"], key=body["key"],

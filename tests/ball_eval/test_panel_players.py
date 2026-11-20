@@ -114,3 +114,13 @@ def test_job_body_is_one_eval_item_per_window(fd):  # noqa: F811
     assert b["kind"] == "player_check" and b["dataset"] == "ball_eval_v1" and len(b["items"]) == doc["n_windows"]
     assert all(i["eval"] is True and i["frame_end"] >= i["frame_start"] for i in b["items"])
     assert b["key"] == f"player-check/{doc['panel_version']}/{HELD}"
+
+
+def test_job_body_leaves_out_windows_that_are_entirely_not_broadcast(fd):  # noqa: F811
+    doc = build(fd)
+    w0 = doc["windows"][0]
+    b = PP.job_body(doc, {w0["clip"]: set(w0["frames"])})
+    assert len(b["items"]) == doc["n_windows"] - 1
+    assert w0["window_id"] not in {i["sampling"]["window_id"] for i in b["items"]}
+    part = PP.job_body(doc, {w0["clip"]: {w0["frames"][0]}})
+    assert len(part["items"]) == doc["n_windows"]  # a partly not-broadcast window stays
