@@ -68,7 +68,7 @@ def test_progress_counts_only_complete_player_frames_and_next_is_the_first_open_
     assert (j["progress"]["done"], j["progress"]["total"]) == (6, 10)
     q = parse_qs(urlparse(j["url"]).query)
     assert urlparse(j["url"]).path == "/player-check"
-    assert q["clip"] == [CLIP] and q["start"] == ["900"] and q["end"] == ["940"] and q["eval"] == ["true"]
+    assert q["clip"] == [CLIP] and q["start"] == ["900"] and q["end"] == ["940"] and q["eval"] == ["true"] and q["view"] == ["frame"]
     assert q["dataset"] == ["nottinghamforest"] and q["job"] == [jid]
 
 

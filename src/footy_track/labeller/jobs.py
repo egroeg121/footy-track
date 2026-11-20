@@ -988,6 +988,7 @@ def deep_link(job: dict, c: dict | None = None) -> str:
         if nxt.get("eval", first_it.get("eval")):
             q["eval"] = "true"
         q["job"] = job["id"]
+        q["view"] = "frame"  # one whole-frame card per frame (a window's frames are 10 apart: clusters do not link across them)
         page = "/player-check"
     elif kind == "identity":
         page = "/identity"

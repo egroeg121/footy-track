@@ -8,7 +8,8 @@ Routes (all take the clip as ``clip``; windows are frame ranges ``start``..``end
   tracks drop out of the queue as ``auto_ok``.
 * ``POST /player-check/verdict`` - ``ok`` | ``count_is_N`` (+ ``start``/``end`` run) | ``fixed`` (+ ``fix``
   boxes, written to the sidecar as ``labeller`` = ``hand_label`` GT) | ``unsure``, for a cluster; or the same
-  for a frame sweep (``sweep`` = frame index).
+  for a frame sweep (``sweep`` = frame index). A sweep ``ok`` / ``fixed`` with ``scope: "frame"`` also verifies every
+  cluster on that frame (whole-frame review).
 
 State: decisions go to the feature store ``player_check`` table. A frame's player ``frame_label_state`` is
 ``complete`` (method ``hand_frame``) only when EVERY cluster on it is verified AND its sweep is verified;
@@ -384,7 +385,7 @@ def _parse_verdict(body: dict) -> tuple[PlayerCheckVerdict, int | None]:
 
 
 @router.post("/player-check/verdict")
-def verdict(body: dict) -> dict:  # noqa: PLR0915
+def verdict(body: dict) -> dict:  # noqa: PLR0912, PLR0915
     clip = safe_clip_name(body.get("clip"))
     guard_split(clip, bool(body.get("eval", False)))
     kind, count = _parse_verdict(body)
@@ -401,6 +402,9 @@ def verdict(body: dict) -> dict:  # noqa: PLR0915
 
     sweep_frame = body.get("sweep")
     run_id = None
+    frame_scope = body.get("scope") == "frame"
+    if frame_scope and (sweep_frame is None or kind not in (PlayerCheckVerdict.OK, PlayerCheckVerdict.FIXED)):
+        raise HTTPException(422, "scope=frame needs a sweep frame and an ok or fixed verdict")
     if sweep_frame is not None:
         if kind == PlayerCheckVerdict.COUNT_N:
             raise HTTPException(422, "count_is_N does not apply to a frame sweep")
@@ -424,12 +428,19 @@ def verdict(body: dict) -> dict:  # noqa: PLR0915
     if fix:
         _apply_fix(clip, fix)
 
+    # scope=frame: the reviewer looked at the whole frame (every box, numbered), so one verdict covers the frame
+    # sweep AND every cluster on it. This is the cheap path for windows whose frames are 10 apart: boxes do not
+    # overlap between frames, so each person is a one-frame cluster and per-cluster cards would be ~13 per frame.
+    cluster_ids = [cluster_id]
+    if frame_scope:
+        cluster_ids += sorted({t.track_id for t in tracks for o in t.obs if o.frame == targets[0]})
+
     now = datetime.now(UTC).replace(tzinfo=None)
     new_rows = [
         PlayerCheckRow(
             game_id=clip,
             frame_index=f,
-            cluster_id=cluster_id,
+            cluster_id=cid,
             verdict=kind,
             count=count,
             run_id=run_id,
@@ -437,6 +448,7 @@ def verdict(body: dict) -> dict:  # noqa: PLR0915
             verified_at=now,
         )
         for f in targets
+        for cid in cluster_ids
     ]
     complete: list[int] = []
     partial: list[int] = []

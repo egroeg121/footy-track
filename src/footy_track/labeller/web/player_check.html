@@ -42,7 +42,7 @@ let queue = null, cards = [], cur = 0, fixState = null;
 // Deep link: /player-check?dataset=D&clip=C&start=S&end=E&eval=true&job=J (LAB-1480). `dataset` rides on every request
 // (the server picks the dataset per request); start/end restrict the window; `job` lets the page hop to the job's next window.
 const P = new URLSearchParams(location.search);
-const DS = P.get('dataset'), JOB = P.get('job');
+const DS = P.get('dataset'), JOB = P.get('job'), FRAME_VIEW = P.get('view') === 'frame';  // view=frame: whole-frame cards only
 const WIN = [P.get('start') === null ? null : +P.get('start'), P.get('end') === null ? null : +P.get('end')];
 const withDs = u => DS ? u + (u.includes('?') ? '&' : '?') + 'dataset=' + encodeURIComponent(DS) : u;
 if (P.get('clip')) $('clip').value = P.get('clip');
@@ -60,7 +60,7 @@ const q = () => `clip=${encodeURIComponent($('clip').value)}&policy=${$('policy'
 async function load() {
   queue = await api('/player-check/queue?' + q());
   if (!queue) return;
-  cards = [...queue.clusters, ...queue.sweeps];
+  cards = FRAME_VIEW ? [...queue.sweeps] : [...queue.clusters, ...queue.sweeps];
   cur = 0; msg(`${queue.auto_ok.length} auto_ok, ${queue.audits.length} blind-audit frames (audit cards: not yet submittable)`);
   show();
 }
@@ -117,13 +117,18 @@ async function show() {
     $('bUnsure').onclick = () => submit({...win, verdict: 'unsure'});
     $('bFix').onclick = () => startFix(k, win, k.strip[0]);
   } else {
-    card.innerHTML = `<h3>Frame ${k.frame_index} - anyone unboxed?</h3><canvas id="cv"></canvas>
+    const sc = FRAME_VIEW ? {scope: 'frame'} : {};
+    card.innerHTML = FRAME_VIEW
+      ? `<h3>Frame ${k.frame_index} - does every person (and referee) have exactly one box?</h3><canvas id="cv"></canvas>
+      <div class="row"><button class="ok" id="bOk">Every person has one box</button><button class="fix" id="bFix">Fix...</button>
+      <button class="unsure" id="bUnsure">Unsure</button></div>`
+      : `<h3>Frame ${k.frame_index} - anyone unboxed?</h3><canvas id="cv"></canvas>
       <div class="row"><button class="ok" id="bOk">Nobody missed</button><button class="fix" id="bFix">Add missing...</button>
       <button class="unsure" id="bUnsure">Unsure</button></div>`;
     await drawFrame($('cv'), k.frame_index, k.boxes, null);
-    $('bOk').onclick = () => submit({sweep: k.frame_index, verdict: 'ok'});
+    $('bOk').onclick = () => submit({sweep: k.frame_index, verdict: 'ok', ...sc});
     $('bUnsure').onclick = () => submit({sweep: k.frame_index, verdict: 'unsure'});
-    $('bFix').onclick = () => startFix(k, {sweep: k.frame_index}, {frame_index: k.frame_index, boxes: k.boxes});
+    $('bFix').onclick = () => startFix(k, {sweep: k.frame_index, ...sc}, {frame_index: k.frame_index, boxes: k.boxes});
   }
   // swipe right = ok, swipe left = fix
   let x0 = null;

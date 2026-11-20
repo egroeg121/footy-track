@@ -151,3 +151,17 @@ def test_heldout_refused_unless_eval_flag(client, env, monkeypatch):
     ok = _queue(client, eval="true")
     assert ok.status_code == 200 and ok.json()["split"] == splits.EVAL_HELDOUT
     assert _post(client, sweep=0, verdict="ok", eval=True).status_code == 200
+
+
+def test_scope_frame_verifies_the_sweep_and_every_cluster_on_that_frame(client, env):
+    r = _post(client, sweep=1, verdict="ok", scope="frame", eval=False).json()
+    assert r["complete_frames"] == [1] and r["partial_frames"] == []
+    assert _states(env)[1] == ("complete", "hand_frame")
+    with FeatureStore.open(env) as s:
+        ids = {x.cluster_id for x in s.read_player_checks(CLIP, [1]).itertuples()}
+    assert "__sweep__" in ids and len(ids) == 3  # sweep + the trio cluster + the loner
+
+
+def test_scope_frame_needs_a_sweep_and_ok_or_fixed(client, env):
+    assert _post(client, sweep=1, verdict="unsure", scope="frame").status_code == 422
+    assert _post(client, cluster_id="c0", verdict="ok", scope="frame").status_code == 422

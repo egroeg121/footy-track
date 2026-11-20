@@ -2125,12 +2125,16 @@ the result is a player **eval** set (Player Check `eval` flag, LAB-1475), never 
   - Tests: `tests/ball_eval/test_panel_players.py`
 - **LAB-1481** (MUST) Job kind `player_check`: items are windows `{clip, frame_start, frame_end, step?, eval?}` (or `{clip, frame}`); a frame is
   done when the feature store's player `frame_label_state` is `complete` (read-only, a missing or locked store reads as nothing done). The
-  deep link is `/player-check?dataset=&clip=&start=&end=&eval=true&job=<id>` at the first window with an open frame, so the task board
+  deep link is `/player-check?dataset=&clip=&start=&end=&eval=true&job=<id>&view=frame` at the first window with an open frame, so the task board
   count ("N left", frames) and link work like any other job. `panel_players job` submits one job per panel (one item per window, `eval: true`,
-  device `either`, key `player-check/<panel>/<match>`).
+  device `laptop` (about 15 tiny boxes per full frame make tap-to-fix a laptop job; swipe-ok alone works on a phone), key
+  `player-check/<panel>/<match>`).
   - Tests: `tests/labeller/test_jobs_player_check.py`
 - **LAB-1482** (SHOULD) `/player-check` reads `dataset`, `clip`, `start`, `end`, `eval` and `job` from the URL: the dataset rides on every request,
-  the queue and verdicts are restricted to the window, and in job mode an empty window hops to the job's next window.
+  the queue and verdicts are restricted to the window, and in job mode an empty window hops to the job's next window. `view=frame` shows
+  one whole-frame card per frame (a window's frames are 10 apart, so boxes do not overlap between frames and per-cluster cards would be
+  ~13 per frame); its `ok` / `fixed` sends `scope: "frame"`, and `POST /player-check/verdict` then verifies the frame sweep AND every cluster
+  on the frame in one write (design 6b still holds: the human saw every box; nothing is auto-accepted).
   - Tests: UNTESTED-FRONTEND
 
 ## 15. Traceability summary

@@ -278,7 +278,7 @@ def job_body(doc: dict) -> dict:
             f"({doc['n_windows']} windows). Machine boxes (RT-DETR, conf >= 0.3) are pre-filled: swipe right "
             "if each person has exactly one box, left to fix. Eval data: never training."
         ),
-        "device": "either",
+        "device": "laptop",  # ~15 tiny boxes per full 1920 px frame: tap-to-fix needs a laptop (swipe-ok alone works on a phone)
         "priority": 2,
         "key": f"player-check/{doc['panel_version']}/{doc['match']}",
     }
