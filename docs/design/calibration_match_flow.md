@@ -125,13 +125,51 @@ New flow `calibrate-match` in `~/code/jobs` (own deployment, pool `cpu`, parent 
 5. **Gate** (per frame, written into the Parquet as `quality`): accepted (F1 >= 0.5 both sides) / calibrated-unconfirmed / uncalibrated / segment flagged `other_camera` / `rig_outlier`. Abstain (NaN H) rules: segment with no confirmed anchor; segment flagged outlier and unresolved by a variant; frames outside accepted ranges stay stored but `accepted=false`. Do not interpolate H across abstained frames.
 6. **Combine**: `combine_match` (existing), with the manifest extended: rig*, Sigma*, consensus round, per-segment `rig_deviation`, code sha, inputs hash. Fix `KNOWN_MATCHES` to be a parameter.
 7. **Ingest** (new `feature_store/ingest_match_calibration.py`): per frame row in `calibration` with `source='ptz_v3'`, `run_id=<version_id>`, `H`, `quality` = evidence F1, `distortion_k1`, `review_status` mapped (accepted -> `proposed`/`accepted`, never `hand`), `method`, `dataset_tag='calibration_match'`. Write ~100k rows with a bulk path (not row pydantic; DuckDB on mini pinned 1.3-1.5.3), skip a version already ingested (idempotent by `run_id` = content-hash `version_id`). Add `RunKind.CALIBRATION` and set the deprecated `calibration_model_version` only if a consumer still reads it (U). The `h_convention` mismatch is resolved in the ingest, not by changing either side.
-8. **Report artifact**: Prefect markdown artifact + `reports/calibration/<match>/<version_id>.md`: accepted/calibrated fractions per segment, rig*, rig_i scatter plot, d_i table, flagged segments, CPU/wall, failed segments.
+8. **Review job**: submit a `calibration_verdict` labelling job (section 3b) for the seeded sample; its `version_id` is the version being judged.
+9. **Report artifact**: Prefect markdown artifact + `reports/calibration/<match>/<version_id>.md`: accepted/calibrated fractions per segment, rig*, rig_i scatter plot, d_i table, flagged segments, CPU/wall, failed segments.
 
 Idempotency and resume: segments by done marker keyed on `<rig hash>`; L2 by hash of its inputs; combine by content hash (existing no-op); ingest by `run_id`. A crashed run re-submitted with the same parameters resumes (already how the jobs flow behaves). Failed segments do not abort the match: the flow completes `Failed` only after combine, listing them, as today.
 
 Placement: heavy CPU on the desktop only, one heavy process per machine, `max_parallel<=4`, niced (as today; 0.16-0.25 CPU-s/frame desktop vs ~1 on the mini; `ptz_v3.md` section 9 recommends desktop). Mini/merlin runs L2/combine/ingest (light). Results go to `/mnt/storage/footy_data` on the mini (read-write only for the `mini-host` queue, per `prefect-job-system`).
 
 Dataset versioning and metrics (versioned-datasets goal): the calibration dataset is GT; the V3 output is a *model result* scored on it. Extend the nightly eval adapter: for each stored match calibration `version_id`, score H at every GT clip's frames (clip -> match/global frame via `pts_frame_map`), metrics `err5_median/p90/p95` **and the same split near/mid/far**, `answered_frac`, `gross_frac` (>2 m), plus `accepted_frac`/`calibrated_frac` per match; rows in `eval_result` with `model_name='ptz_v3'`, `model_version=version_id`, split by the global split authority, `contaminated=true` if the rig prior was fit on that clip's GT (the Emirates rig JSON was: use leave-clip-out or the label-free rig* for the scored version). GT frames from `ptz-rig` source are not independent of a fixed-C solve (`ptz_v3.md` Bournemouth): scored separately, not mixed into the headline.
+
+## 3b. Human review step: verdicts on projected lines (U)
+
+Verified (V): `/calibration/match` (`labeller/calibration_match.py`, `web/calibration_match.html`) draws projected pitch lines on any frame of the per-match
+Parquet and already has `sample_rows` (modes even/random/uncertain/accepted, seeded) but is read-only. `calibration_proposals.py` accept copies a per-frame proposal into
+`calibration_gt` (with `origin`), reject records a rejection. Ball Check (`ball_check.py`) is the pattern to copy: `POST /ball_check/verdict` appends one JSON line to
+`<marks>/ball_checks/<clip>.jsonl`, last line wins, `verdict: null` is an undo tombstone, `hooks.emit` per write, and `feature_store/ingest_all.py` merges the logs into
+`detection_review`. Labelling jobs (`labeller/jobs.py`, `POST /api/jobs`) have `KINDS = (ball_place, ball_check, calibration, frame_type, identity, broadcast_review, other)`; progress is computed from
+the real label store, and items carry a `sampling` object copied onto result rows (inclusion probabilities). `broadcast_review` (one frame per item, verdict file per match) is the closest existing kind.
+
+**(a) Verdict mode.** On `/calibration/match?match=&version=&review=1` add keys `g` good, `b` bad, `u` unsure, `r` + one-letter reason (line off at far touchline, wrong zoom,
+wrong camera, not a main view, flicker/jump), `z` undo, auto-advance through the job's items. Writes `POST /calibration/match/api/verdict` -> append-only
+`<marks>/calibration_verdicts/<match>.jsonl`, record `{match, version_id, frame (global), segment, local_frame, verdict, reason, stratum, status_at_review, accepted, evidence_f1, job, ts}`;
+last line per `(match, version_id, frame)` wins, tombstone for undo, `hooks.emit("calibration_verdict", ...)`. The verdict is keyed to `version_id` (content hash), so a new version never inherits old verdicts and is
+re-sampled with the same seed. The overlay must be drawn from the **stored** row (what the version says), not recomputed. The page stays read-only for everything except this log. Ingest: new
+table `calibration_verdict` (match/game_id, version_id, frame, verdict, reason, stratum, ts) in `ingest_all` (new helper next to `import_ball_checks`); never written to `calibration` and never promoted to GT automatically.
+Job: new kind `calibration_verdict` (item `{match, version_id, frame, stratum, sampling}`), labelled when the log has a live verdict; the flow submits it as its last step via `POST /api/jobs` (`labeller/prefect_client.py` pattern, `labelling-site-task-board`: one site on :8011, deploy after merge), deep link `/calibration/match?...&job=<id>`.
+
+**(b) Sampling (fixed seed, comparable across versions).** Per match ~300 frames (cap `max_cards`), stratified, drawn by `np.random.default_rng(sha256(match, seed))` over *global frame ids*, so the same frames are
+requested again for every version (only strata membership changes) and inclusion probabilities go in `sampling.pi_frame`:
+- status: accepted (50%), calibrated-not-accepted (25%), uncalibrated-but-main-camera (10%, expect "bad": checks abstention), plus **not-broadcast negatives** from `frame_type` (5%, for the gate);
+- within status: tertiles of focal length (zoom), pan band, and visible-depth (far touchline in view or not), so far-touchline error gets labelled;
+- boundary strata: frames within 10 of a segment start/end and within 10 of a motion-chain break / recovery seam (where the solve is weakest);
+- rig-outlier strata: all flagged `other_camera`/`rig_outlier` segments get a minimum of 5 frames each; also 5 per recovered (`source=recovered`) segment;
+- at most 3 frames per segment per stratum, minimum 1 frame from every segment >= 100 frames, so coverage is across the match, not clustered.
+
+**(c) Uses.** (i) Per-version % good with Wilson interval per stratum and headline weighted by `pi_frame` (a Horvitz-Thompson estimate of the share of the match that is good, which is the
+number to track in `eval_result`, `model_name=ptz_v3`, metric `human_good_frac`). (ii) Gate quality: precision of `accepted` = good/(good+bad) among accepted frames, recall of the gate = share of
+good frames that were accepted, swept over the F1 threshold (0.5 now, never validated): pick the threshold with a stated precision floor (e.g. >= 0.95 good among accepted); needs several hundred verdicts to
+pin a threshold, so the first version can only give an interval. (iii) Compare methods/versions without full GT: same seeded frames, paired verdicts (A good / B bad); report disagreement counts and a sign test. (iv) Routing: a `bad`
+frame offers a button "fix" to the existing calibration editor (`/calibration`, seeded with the stored H as the proposal, `calibration_proposals` accept path -> `calibration_gt` with `origin=ptz_v3@version_id`); frames fixed this way become GT and
+grow the calibration dataset (a new dataset version, tracked by the nightly flow), which also gives the near/mid/far metres-error numbers the plan needs. Verdicts themselves are labels about a *version*, not GT.
+
+**(d) Neighbours.** A verdict is about that frame and one version only. Within a motion-connected run adjacent frames share the same anchors, so errors are strongly correlated (one bad anchor spoils up to ~100 frames) but a
+good frame does not certify the segment: drift, zoom changes and chain breaks (e.g. Bournemouth seg060 frame 563/564) appear between samples. Rules: never propagate a verdict to unsampled frames in stored data;
+report estimates per stratum and per match with segment-clustered intervals (treat segments as clusters, not frames as independent); a `bad` on an accepted frame triggers a flag on its segment (extra samples queued from the same
+segment next round) rather than a rejection of the segment. A segment-level claim needs >= 3 verdicts spread across it.
 
 ## 4. Open risks, with evidence
 
@@ -155,6 +193,7 @@ Dataset versioning and metrics (versioned-datasets goal): the calibration datase
 | P4 | `calibrate-match` flow (jobs): plan, L1, L2, L1', gate, combine, report artifact; `max_rounds`, budget | Man City end to end from an empty scratch with no rig JSON: manifest records rig*, resume after a killed run finishes without re-solving done segments, second identical run = `unchanged` |
 | P5 | `ingest_match_calibration` + `RunKind.CALIBRATION`; bulk path | row count = calibrated frames; re-run is a no-op; `frame_calibration_best` still prefers hand GT on GT frames; DuckDB ingest of 100k rows under ~1 min on the mini |
 | P6 | Eval adapter: `ptz_v3@<version_id>` on the GT clips, near/mid/far split, nightly flow wiring, `/progress` series | a Man City `eval_result` row set appears for the version; contamination flag set for the GT-rig variant |
+| P6b | Verdict mode on the match page, `calibration_verdicts` log, `calibration_verdict` job kind, seeded stratified sampler, ingest table | verdict round-trips (write, undo, last-wins), job progress is computed from the log, the same seed gives the same frame ids for two versions, overlay shown equals the stored H, ingest is idempotent |
 | P7 | Second ground end to end (Bournemouth), outlier handling for gantry/high cameras, optional round 2 | Bournemouth rig* within ~1.5 m of vitality.json C_y and C_z within 0.5 m; gantry segments flagged, not forced |
 
 P3 is the only PR that spends significant CPU before the architecture commits.
@@ -166,4 +205,5 @@ P3 is the only PR that spends significant CPU before the architecture commits.
 3. **What do outlier segments become?** Flag and abstain (H = NaN), fit their own camera variant when recoverable (extends `rig_variants`), or send to hand labelling on the labeller (the calibration editor already exists)?
 4. **Accuracy bar**: what metres error, at what depth, makes a frame usable downstream (tracking positions, ball height)? This sets the gate and decides whether far-touchline error needs fixing before ingest.
 5. **Store trade-off**: ingest only accepted frames (smaller) or all calibrated frames with a quality column (a consumer filters)? And should machine rows ever appear in `frame_calibration_best`, or only as a separate versioned dataset?
-6. **Rollout**: Man City first (GT-rich, validated), then Bournemouth/Villa/Forest, or all four known matches in one go? Bournemouth halves: second half has no `split_video_broadcast_frames` yet.
+6. **Review budget**: how many verdicts per match are you willing to give (300 is about 10-15 minutes at keyboard speed), and is a first threshold from ~300 verdicts good enough to tune the gate?
+7. **Rollout**: Man City first (GT-rich, validated), then Bournemouth/Villa/Forest, or all four known matches in one go? Bournemouth halves: second half has no `split_video_broadcast_frames` yet.
