@@ -90,3 +90,11 @@ def test_hidden_machine_boxes_never_undo_no_ball_or_not_broadcast():
     html = (Path(__file__).resolve().parents[2] / "src/footy_track/labeller/web/index.html").read_text()
     assert "skipMarked" in html and "(visibleOnly || skipMarked) ? vis : vis.concat(hiddenMachine)" in html
     assert 'if (boxLayer.find(".box").length || hiddenMachine.length)' not in html
+
+
+def test_timeline_bar_marks_job_frames_of_loaded_clip():
+    html = INDEX_HTML.read_text()
+    bar = html.split("function renderTimelineBar()")[1].split("\n}\n")[0]
+    assert "job.frames" in bar and "stemOf(loadedPath)" in bar and "jobDone.has" in bar
+    render = html.split("function jobRender()")[1].split("\n}\n")[0]
+    assert "renderTimelineBar()" in render
