@@ -80,6 +80,9 @@
   .foot { font-size:12px; color:var(--muted); margin:6px 2px 0; }
   details.more { margin:28px 0 0; border-top:1px solid var(--border); padding-top:10px; }
   details.more > summary { cursor:pointer; font-size:14px; font-weight:600; color:var(--muted); padding:4px 0; }
+.fbar{display:flex;height:10px;background:#8883;border-radius:3px;overflow:hidden;min-width:120px}
+.fbar .seg{display:block;height:100%}
+.s-ball{background:#2a9d5c}.s-noball{background:#4a7fd0}.s-unusable{background:#888}.s-deferred{background:#d98a1f}
 </style>
 </head>
 <body>
@@ -433,7 +436,7 @@ function renderLabelling(L) {
   const el = document.getElementById("labelling");
   if (!L || (L.state !== "ok" && !L.clips.length)) {
     const why = !L ? "failed to load" : L.state === "missing" ? "no feature store yet" : L.state === "busy" ? "store busy, retry shortly" : L.state === "error" ? esc(L.error) : "no frame labels in the store yet";
-    el.innerHTML = `<h2>Labelling coverage</h2><div class="empty">${why}</div>`;
+    el.innerHTML = `<h2>Labelling coverage</h2><div class="empty">${why}</div>` + frameProgressHtml(L && L.frame_progress);
     return;
   }
   const n = v => Number(v).toLocaleString();
@@ -444,7 +447,29 @@ function renderLabelling(L) {
   const t = L.tiers, tv = Object.entries(t.silver.by_teacher_version).map(([k, v]) => `${esc(k)} ${n(v)}`).join(", ");
   el.innerHTML = `<h2>Labelling coverage</h2><div class="wrap"><table><thead><tr><th class="l">Clip</th><th>Frames</th><th>Ball</th><th>Player</th><th>Fully</th><th>Partial</th><th title="player boxes drawn (not verified complete)">Player boxes drawn*</th></tr></thead><tbody>` +
     rowOf("<b>All clips</b>", {...L.totals, clip_frames: L.clips.some(c => c.clip_frames == null) ? null : L.clips.reduce((a, c) => a + c.clip_frames, 0), player_marked_sidecar: L.clips.reduce((a, c) => a + c.player_marked_sidecar, 0)}) + splitRows + clipRows + `</tbody></table></div>` +
-    `<p class="muted">Ordered by fewest fully-labelled frames. Partial = a group marked partial, or only one of ball/player labelled. *Player boxes drawn = frames with a hand-drawn player box in the sidecar, not verified complete (the Player column is the authoritative count). Gold (hand / verdict) ${n(t.gold)} · silver (audited teacher) ${n(t.silver.total)}${tv ? " (" + tv + ")" : ""} · other ${n(t.other)} labelled class-group rows.</p>`;
+    `<p class="muted">Ordered by fewest fully-labelled frames. Partial = a group marked partial, or only one of ball/player labelled. *Player boxes drawn = frames with a hand-drawn player box in the sidecar, not verified complete (the Player column is the authoritative count). Gold (hand / verdict) ${n(t.gold)} · silver (audited teacher) ${n(t.silver.total)}${tv ? " (" + tv + ")" : ""} · other ${n(t.other)} labelled class-group rows.</p>` + frameProgressHtml(L.frame_progress);
+}
+function frameBar(b) {
+  const t = b.frames_total || 0, s = b.by_state || {};
+  const seg = (k, cls) => s[k] ? `<span class="seg ${cls}" style="width:${100 * s[k] / t}%" title="${k}: ${s[k]}"></span>` : "";
+  return `<div class="fbar">${seg("ball", "s-ball")}${seg("no_ball", "s-noball")}${seg("unusable", "s-unusable")}${seg("deferred", "s-deferred")}</div>`;
+}
+function frameProgressHtml(fp) {
+  if (!fp || fp.state === "empty" || fp.state === "missing") return `<h3>Selected-frame progress</h3><div class="empty">no selected frames in the store yet</div>`;
+  const n = v => Number(v).toLocaleString();
+  const names = {eval: "Eval jobs (ball-eval/...)", train: "Train jobs (ball-round/...)", other: "Other jobs"};
+  const cell = b => `${n(b.frames_terminal)} / ${n(b.frames_total)} terminal` + (b.by_state.outstanding ? ` · ${n(b.by_state.outstanding)} outstanding` : "");
+  const brk = b => ["ball", "no_ball", "unusable", "deferred"].map(k => `${k.replace("_", " ")} ${n(b.by_state[k])}`).join(" · ");
+  let html = "<h3>Selected-frame progress</h3>";
+  for (const [fam, x] of Object.entries(fp.families)) {
+    if (!x.jobs.length) continue;
+    html += `<h4>${names[fam]}: ${cell(x.totals)}</h4>${frameBar(x.totals)}<p class="muted">${brk(x.totals)} (deferred is its own segment; it is never exported)</p>`;
+    html += `<div class="wrap"><table><thead><tr><th class="l">Job / window</th><th>Terminal</th><th>Breakdown</th></tr></thead><tbody>` +
+      x.jobs.map(j => `<tr><td class="l"><b>${esc(j.job_key)}</b>${j.done ? " done" : ""}${j.flag_deferred ? " <b>(>10% deferred)</b>" : ""}</td><td>${cell(j)}</td><td>${frameBar(j)}</td></tr>` +
+        j.windows.map(w => `<tr class="diag"><td class="l">&nbsp;&nbsp;${esc(w.window_id || "(no window)")}${w.done ? " done" : ""}${w.flag_deferred ? " <b>(>10% deferred)</b>" : ""}</td><td>${cell(w)}</td><td>${brk(w)}</td></tr>`).join("")).join("") +
+      `</tbody></table></div>`;
+  }
+  return html;
 }
 async function loadLabelling() {
   try {

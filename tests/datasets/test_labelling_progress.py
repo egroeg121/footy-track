@@ -95,7 +95,7 @@ def test_counts_ball_only_clip_and_splits(env, client):
     ho = by["h1_seg001"]
     assert (ho["frames"], ho["ball_labelled"], ho["player_labelled"], ho["fully_labelled"]) == (2, 2, 0, 0)
     assert j["totals"] == {"frames": 6, "ball_labelled": 6, "player_labelled": 2,
-                           "fully_labelled": 2, "partial": 4}
+                           "fully_labelled": 2, "partial": 4, "ball_unusable": 0, "ball_deferred": 0}
     assert t["split"] == splits.TRAIN
     assert ho["split"] == splits.EVAL_HELDOUT
     assert by["t1_seg001"]["split"] == splits.EVAL_IN_MATCH
@@ -157,3 +157,83 @@ def test_teacher_versions_block(env):
     rates = {"offline_v1": {"n": 10, "passed": 9, "pass_rate": 0.9}}
     out = labelling_progress.get_labelling(audit_rates=rates)
     assert out["teacher_versions"] == {"offline_v1": {"silver": 1, "audit": rates["offline_v1"]}}
+
+
+# -- selected-frame progress (ball_anchor_iteration.md 3.2 / 3.3) -------------------------------
+
+
+def _seed_f(root):
+    from footy_track.feature_store.schema import SelectedFrameRow
+
+    with FeatureStore.open(root / "fs.duckdb") as s:
+        sel = [("ball-round/d/1", "w1", 0, 10), ("ball-round/d/1", "w2", 0, 3), ("ball-eval/m/v1", "p1", 0, 2)]
+        s.upsert_selected_frames([
+            SelectedFrameRow(job_key=k, game_id="t1_seg002", window_id=w, split="train", frame_index=base + i)
+            for k, w, base, n in sel for i in range(n) for base in [{"w1": 0, "w2": 100, "p1": 200}[w]]
+        ])
+        t = lambda fi, term, **kw: s.write_ball_terminal_state(  # noqa: E731
+            "t1_seg002", fi, term, method="hand_frame", full_frame_check=term == "no_ball", **kw)
+        for fi in (0, 1, 2, 3):
+            t(fi, "ball")
+        t(4, "no_ball")
+        t(5, "unusable")
+        t(6, "deferred", reason="unsure_x2")
+        # frames 7-9 of w1 unreviewed; w2 (100-102): all terminal; eval p1 (200,201): one ball
+        for fi in (100, 101):
+            t(fi, "ball")
+        t(102, "no_ball")
+        t(200, "ball")
+
+
+def test_frame_progress_counts_and_families(env, client):
+    _seed_f(env)
+    fp = client.get("/progress/labelling").json()["frame_progress"]
+    assert fp["state"] == "ok"
+    train, ev = fp["families"]["train"], fp["families"]["eval"]
+    assert train["totals"]["frames_total"] == 13 and train["totals"]["frames_terminal"] == 10
+    assert train["totals"]["by_state"] == {"ball": 6, "no_ball": 2, "unusable": 1, "deferred": 1, "outstanding": 3}
+    assert ev["totals"]["frames_total"] == 2 and ev["totals"]["frames_terminal"] == 1
+    assert fp["families"]["other"]["jobs"] == []
+    (job,) = train["jobs"]
+    w1, w2 = job["windows"]
+    assert (w1["window_id"], w1["done"]) == ("w1", False)
+    assert (w2["window_id"], w2["done"]) == ("w2", True)
+    assert w1["by_state"]["deferred"] == 1 and w1["flag_deferred"] is False  # exactly 10% is not flagged
+    assert labelling_progress._bucket(10, 5, 2, 0, 2)["flag_deferred"] is True  # 20% deferred
+    assert job["done"] is False
+
+
+def test_reasoned_rows_are_not_plain_absent(env, client):
+    _seed_f(env)
+    t = client.get("/progress/labelling").json()["totals"]
+    assert t["ball_unusable"] == 1 and t["ball_deferred"] == 1
+    assert t["ball_labelled"] == 9  # 7 ball + 2 no_ball; unusable/deferred are not plain labels
+
+
+def test_store_without_selected_frame_rows(env, client):
+    seed(env, [row("t1_seg002", 0, B, C)])
+    fp = client.get("/progress/labelling").json()["frame_progress"]
+    assert fp["state"] == "empty" and fp["totals"]["frames_total"] == 0
+    # a pre-T6 store: table dropped
+    with duckdb.connect(str(env / "fs.duckdb")) as c:
+        c.execute("DROP TABLE selected_frame")
+    fp = labelling_progress.get_frame_progress()
+    assert fp["state"] == "empty"
+
+
+def test_job_frame_progress(env):
+    _seed_f(env)
+    p = labelling_progress.job_frame_progress("ball-eval/m/v1")
+    assert (p["frames_total"], p["frames_terminal"]) == (2, 1)
+    assert labelling_progress.job_frame_progress("nope") is None
+
+
+def test_job_progress_gets_frame_fields(env):
+    from footy_track.labeller import jobs
+
+    _seed_f(env)
+    base = {"supported": True, "done": 1, "total": 2}
+    out = jobs._with_frames({"key": "ball-eval/m/v1"}, dict(base))
+    assert out["frames_total"] == 2 and out["frames_terminal"] == 1 and out["by_state"]["ball"] == 1
+    assert jobs._with_frames({"key": "other/x"}, dict(base)) == base
+    assert jobs._with_frames({"key": "ball-round/none"}, dict(base)) == base
