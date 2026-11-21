@@ -281,7 +281,7 @@ def test_forbidden_disc_lets_a_weaker_candidate_win():
     assert _centre(res.points[8])[0] == pytest.approx(bx + 25)
 
 
-def test_no_candidate_in_gate_is_unreachable_not_forced():
+def test_out_of_gate_candidate_is_dropped_and_frame_interpolated():
     frames = {f: [cand(*ball_xy(f), 0.9)] for f in range(20)}
     frames[6] = [cand(1800, 1000, 0.9)]  # far outside the anchor gate
     frames[7] = []
@@ -289,8 +289,12 @@ def test_no_candidate_in_gate_is_unreachable_not_forced():
     res = _tracker(frames, 20).constrained_points(
         [Anchor(2, (a0[0] / W, a0[1] / H)), Anchor(14, (a1[0] / W, a1[1] / H))]
     )
-    assert 6 not in res.unreachable_frames or res.points[6].source != DETECTED
-    assert res.points[6].source != DETECTED or err_px(res.points[6], 6) < 1
+    # the far candidate is gated out, so frame 6 has no eligible candidate; the
+    # path (5 -> 8, gap 3 <= max_gap) interpolates it, so it is not unreachable
+    assert res.points[6].source == INTERPOLATED
+    assert not res.unreachable[6] and 6 not in res.unreachable_frames
+    assert err_px(res.points[6], 6) < 1  # on the ball's line, not at (1800, 1000)
+    assert res.points[7].source == INTERPOLATED
 
 
 def test_unreachable_frame_marker_when_window_has_no_eligible_candidates():
