@@ -2,14 +2,15 @@
 
 Complete frames only (docs/design/full_frame_labelling.md sections 1-2). In multi-class mode
 (``--classes``) a frame reaches the export iff it is in the ``frame_complete`` view; in the default
-ball-only mode only the BALL group must be ``complete``/``absent`` (player state is not required, since
-nothing writes it yet), so ball frames with partial/unreviewed ball state are skipped. ``frame_complete`` means every class group (``ball``, ``player``) has state ``complete`` or
+ball-only mode only the BALL group must be ``complete``/``absent`` (player state is not required), so ball frames with partial/unreviewed ball state are skipped. ``frame_complete`` means every class group (``ball``, ``player``) has state ``complete`` or
 ``absent`` in ``frame_label_state``. A missing label never implies background. Frames that are partial or
 unreviewed are skipped, and the manifest counts them by reason (``frames.skipped_by_reason``).
 
-NOTE: nothing writes *player* completeness yet (series review and the legacy backfill are Tasks 3 and 8).
-Until they land, multi-class (``--classes``) exports yield few or no frames; the default ball-only export is
-unaffected. That is expected, not a bug.
+NOTE: player completeness is written by the ``P`` "All players boxed" marker, the series review and the
+legacy backfill (``--legacy-complete-clips``). Multi-class (``--classes``) exports still gate on ``frame_complete``,
+so they yield only frames complete for both groups. Under the 2026-11-21 decision (two detectors) each model should
+gate on its own group; a player-only mode is TODO (see docs/design/full_frame_labelling.md). The default ball-only
+export already does this for the ball.
 
 Negatives:
 
