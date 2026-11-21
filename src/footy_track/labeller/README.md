@@ -23,6 +23,15 @@ through the clip with VitTrack, review/correct the results.
   `motion_tracker.py`, `ball_trackers/sot_vittrack.py`
 - Konva.js frontends: `web/index.html` (labeller), `web/review.html` (review)
 
+**Training direction (decision 2026-11-21): two detectors, not one multi-class model.** A ball detector
+(`ball` / `in_play_ball` / `out_of_play_ball`, high-res or tiled, own hard negatives) and a player-side
+detector (`player`, `referee`, `coach`, `player_sub`, `person`). Each trains on frames complete for its own
+group, so `frame_complete` (both groups) is informational, not the training gate. Ball-only export exists;
+the player-only export, two-target progress view and per-group auto-label pipeline are TODO. Details and
+status table: `docs/design/full_frame_labelling.md` ("Decision 2026-11-21"). Requirements below that assume a
+single multi-class model or `frame_complete` as the training gate (e.g. the series registry, LAB-1465) describe
+current behaviour and are superseded in intent only.
+
 Run with:
 
 ```bash

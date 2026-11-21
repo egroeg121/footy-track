@@ -2,6 +2,34 @@
 
 Status: Tasks 1-10 implemented and merged 2026-11-19 (PRs #107, #109-#118); the pieces are untested against real models and the real store. Original proposal 2026-11-19. KB relied on: `footy-claude-autolabel-loop` (Claude verify precision, queue), `footy-datasets-and-progress` (store, splits, `/progress`, Prefect nightly), `footy-labeller-gotchas` (sidecar data loss, `_segNNN` clips not contiguous). Builds on `ball_sampling.md`, `feature_store.md`.
 
+## Decision 2026-11-21: two detectors (supersedes the single multi-class student)
+
+Decision (user, 2026-11-21): train **two separate detectors** instead of one multi-class RT-DETR.
+- **Ball detector**: `ball` / `in_play_ball` / `out_of_play_ball`. High-resolution or tiled (can run on crops/tiles), its own hard negatives (Ball Check `not_ball`), evaluated on the ball eval panel.
+- **Player-side detector**: `player`, `referee`, `coach`, `player_sub`, `person`.
+
+Why: labelling is already split (Ball Check / ball jobs vs Player Check); the ball is tiny and needs different resolution and evaluation; each model gets its own teacher version, targeted queue and eval; the pipeline is easier to label and train.
+Costs: two inference passes (the ball model can run on crops/tiles); ball false positives lose player context, mitigated by Ball Check hard negatives.
+
+Consequences:
+1. **`frame_complete` (both groups complete) stops being the training gate.** The ball model trains on frames whose *ball* state is `complete`/`absent`; the player model on frames whose *player* state is `complete`/`absent`. `frame_complete` / `fully_labelled` stay as an informational view. Class ids stay frozen (`constants.py`); the player export simply excludes the ball classes.
+2. **Progress** (`/progress/labelling`) should show two independent targets: ball-complete and player-complete; "fully labelled" is informational only.
+3. **Auto-label pipeline** (windows, propose, pre-verify, series review, teacher versions, targeting queue; sections 4-4b) runs **per group**: a ball pipeline and a player pipeline, each with its own teacher version and queue.
+4. **Eval**: the ball eval panel for the ball model; blind hand-labelled heldout frames (the player eval panel, section 4c.6b) for the player model.
+
+Status:
+| Part | State |
+|---|---|
+| Ball-only export (default, no `--classes`; gate = ball group only; ball classes collapse to one class id 0) | Implemented (`scripts/export_training_dataset.py`) |
+| `frame_label_state` per group, per-group writers, frozen class ids | Implemented |
+| Player-only export mode (player-group gate, ball classes excluded, frozen ids unchanged) | TODO. Today `--classes` multi-class export still gates on `frame_complete` |
+| `/progress/labelling` as two independent targets | TODO. Today it reports `ball_labelled`, `player_labelled` and `fully_labelled` (section 3) |
+| Per-group auto-label pipeline and per-group teacher versions / queues | TODO. Stages in section 4 are built as one pipeline for both groups |
+| Ball model training recipe (high-res/tiled) and player model training run | TODO (not covered by this doc) |
+| Player eval panel (blind heldout frames) | TODO (see 4c.6b) |
+
+Where sections below say "one detector", "multi-class" or that fully labelled frames are the training target, that text is **superseded** by this decision; it is kept for history and marked inline.
+
 ## 1. Fully labelled frame
 
 A frame is **fully labelled** when each class group (`ball`, `player`) has state `complete` or `absent`:
@@ -18,11 +46,11 @@ frame_label_state(game_id, frame_index, cls_group, state,  -- complete|absent|pa
 - `run_id` points at the proposing run (provenance).
 - View `frame_complete(game_id, frame_index)` = both groups in (`complete`,`absent`). Absence of a row means `unreviewed`.
 - Writers: labeller flush writes `no_ball`, plus `complete` for ball when a human box exists. Ball Check verdicts write ball state. The series review (section 4) writes both groups. Existing GT is NOT back-filled as player-complete; only clips the user flags (`--legacy-complete-clips`) are.
-- Missing label never implies background. Only `complete`/`absent` frames reach training.
+- Missing label never implies background. Only `complete`/`absent` frames reach training. *(Superseded 2026-11-21: per group. Ball-model frames need ball `complete`/`absent`, player-model frames need player `complete`/`absent`; both groups are no longer required.)*
 
 ## 2. Exporter (`scripts/export_training_dataset.py`)
 
-- Query joins `frame_complete`; only those frames are emitted. Frames with partial state are skipped, with a manifest count.
+- *(Superseded 2026-11-21: the gate is per model group, not `frame_complete`; ball-only mode already does this, player-only mode is TODO.)* Query joins `frame_complete`; only those frames are emitted. Frames with partial state are skipped, with a manifest count.
 - Positives are canonical boxes of reviewed sources. Negatives: ball `absent` frames are written with an empty ball label set. Ball Check `not_ball` boxes are kept as `hard_negatives.json` (and optional empty-region crops), never as a class.
 - Class ids are stable: a fixed list in `constants.py` (`player=0, ball=1, referee=2, ...`) replaces sorted-label ids. The manifest records the list, and a test fails if ids change.
 - `--sources` defaults to `hand_label,reviewed` (machine boxes enter only via `reviewed=true`). `--sources all` remains explicit.
@@ -30,9 +58,11 @@ frame_label_state(game_id, frame_index, cls_group, state,  -- complete|absent|pa
 
 ## 3. Progress view
 
-`GET /progress/labelling` returns, per clip and totals: `frames`, `ball_labelled` (ball in complete/absent), `player_labelled`, `fully_labelled`, `partial`, plus `by_method` and `by_split`. It reads the store (not the JSONL), so it can run on the mini. Add a "Labelling coverage" table to the existing `/progress` page, and a per-clip badge to the clip list (replacing the weak `_clip_completion` heuristic in `server.py`).
+`GET /progress/labelling` returns, per clip and totals: `frames`, `ball_labelled` (ball in complete/absent), `player_labelled`, `fully_labelled`, `partial`, plus `by_method` and `by_split`. *(2026-11-21: `ball_labelled` and `player_labelled` become the two headline targets; `fully_labelled` is informational. TODO.)* It reads the store (not the JSONL), so it can run on the mini. Add a "Labelling coverage" table to the existing `/progress` page, and a per-clip badge to the clip list (replacing the weak `_clip_completion` heuristic in `server.py`).
 
 ## 4. Auto-label pipeline (priority)
+
+*(2026-11-21: runs per group, one ball pipeline and one player pipeline, each with its own teacher version and queue. The text below describes the combined pipeline as built and is otherwise unchanged. TODO for the split.)*
 
 Stages, each writing a run row and resumable:
 
@@ -48,9 +78,9 @@ GPU: stage 2 only. CPU: selection, verify, commit, export. The nightly `footy-ni
 
 Two separate systems, deliberately:
 - **Offline pipeline ("teacher")**: a versioned set of heavy models with no real-time limit that auto-labels training data. Members: large detector at high resolution plus test-time augmentation, bidirectional ROI-YOLO/ViTTrack ball tracking, SAM3 for missing people, temporal smoothing/Viterbi, Claude verify. It is a pipeline version (`offline_vN`), recorded on every label it writes (`source=offline_vN`, `run_id`).
-- **Online detector ("student")**: the RT-DETR that must run fast. It trains only on fully labelled frames (section 1).
+- **Online detector ("student")**: the RT-DETR that must run fast. *(Superseded 2026-11-21: there are two students, a ball detector and a player-side detector, each trained on frames complete for its own group.)* Originally: one model trained only on fully labelled frames (section 1).
 
-Label tiers: **gold** = human-verified (hand label, accept-all review, exceptions); **silver** = teacher output that passed the `auto_ok` rules and the blind audit (`method=offline_audited`). Student trains on gold + silver. The teacher is scored, and the student evaluated, on gold only (held-out matches, never silver).
+Label tiers: **gold** = human-verified (hand label, accept-all review, exceptions); **silver** = teacher output that passed the `auto_ok` rules and the blind audit (`method=offline_audited`). Each student trains on gold + silver of its own group. The teacher is scored, and the student evaluated, on gold only (held-out matches, never silver).
 
 **Human labelling is targeted, not uniform.** Every labelling request must be one of:
 1. *Improves the teacher*: frames where teacher members disagree (forward/backward tracker, detector vs SAM3 person count), flagged frames, audit failures, and hard cases it gets wrong (small/occluded ball, crowded boxes). Corrected frames become teacher training data and gold eval.
@@ -84,7 +114,7 @@ Ball Check verifies one box per card. Player errors are different: a missed pers
 **6b. No trust in the 0.98.** The detector's player mAP50 (0.98-0.99) was measured on the original one-game dataset, so it is in-distribution and does not predict performance on new matches (the same gap seen for the ball: 0.92 in-distribution vs 0.49 on held-out clips). Consequences:
 - Nothing is auto-accepted for players on the strength of detector confidence alone. The `auto_ok` rule for isolated boxes starts at "audit everything" and relaxes per match only once that match's blind audits show a low miss rate.
 - Player miss rate and box quality are reported **per match and per overlap bucket**, never pooled into one number.
-- A **player eval panel** is needed beside the ball one: fully hand-labelled frames (blind, all people boxed) from the heldout matches, sampled with logged inclusion probabilities, used to score the teacher and the student. Player mAP/recall/precision on this panel is the headline; the one-game number is retired from reporting.
+- A **player eval panel** is needed beside the ball one (under the 2026-11-21 decision it is the eval for the player-side detector; TODO): fully hand-labelled frames (blind, all people boxed) from the heldout matches, sampled with logged inclusion probabilities, used to score the teacher and the student. Player mAP/recall/precision on this panel is the headline; the one-game number is retired from reporting.
 - Player audits from train matches measure drift across kits, camera zoom and crowd density, and decide how much human review each new match needs.
 
 **7. Cost target.** Under 3 s for a clean cluster card (swipe), under 15 s with fixes. Report cost per card type on `/progress` alongside the miss rate per overlap bucket.
@@ -97,7 +127,7 @@ Additions from 4b: Task 1's `method` also takes `offline_audited` plus a `teache
 2. **Window selector + propose flow.** Files: new `autolabel/windows.py`, `autolabel/propose.py`, a Prefect entry in the jobs repo. Accept: windows stay inside a segment and never touch heldout; proposals ingest as unreviewed rows. Deps: 1 (for exclusion of already-complete frames).
 3. **Series review API and card.** Files: `labeller/series_review.py`, `web/series.html`, `server.py` router. Accept: accept-all writes complete state; one exception demotes only that frame; the reject path re-queues. Deps: 1.
 4. **Pre-verify + auto_ok rules + audit sampler.** Files: `autolabel/preverify.py`, tests with fixture tracks. Accept: flagged ordering is deterministic; audit fraction is 10% blind. Deps: 2.
-5. **Exporter filter.** Files: `scripts/export_training_dataset.py`, `constants.py`, tests. Accept: no partial frame appears; negatives present; class ids frozen; default sources. Deps: 1.
+5. **Exporter filter.** Files: `scripts/export_training_dataset.py`, `constants.py`, tests. Accept (original; per-group gate after 2026-11-21, player-only mode TODO): no partial frame appears; negatives present; class ids frozen; default sources. Deps: 1.
 6. **Progress endpoint and UI.** Files: `labeller/progress.py`, `web/progress*`, clip list badge. Accept: counts equal a fixture store; ball-only clip counts as not fully labelled. Deps: 1.
 7. **Series registry + temporal export option.** Files: `schema.py`, exporter. Accept: contiguous series exported in frame order. Deps: 3, 5.
 8. **Legacy backfill flag.** Files: `ingest_gt.py` CLI. Accept: only named clips become player-complete. Deps: 1.
