@@ -92,6 +92,19 @@ def test_hidden_machine_boxes_never_undo_no_ball_or_not_broadcast():
     assert 'if (boxLayer.find(".box").length || hiddenMachine.length)' not in html
 
 
+def test_job_bar_layout_is_stable_between_job_and_non_job_frames():
+    html = INDEX_HTML.read_text()
+    # middle grid column cannot be widened by non-wrapping bar content
+    assert "minmax(0,1fr)" in html
+    # accept button keeps its space when hidden (no display toggling)
+    assert 'id="jobAcceptBtn" class="primary" style="visibility:hidden"' in html
+    assert 'btn.style.display' not in html
+    assert 'btn.style.visibility' in html
+    # bar has fixed min height, clips overflow; text spans ellipsize instead of wrapping
+    assert "#jobBar { min-height:" in html and "overflow:hidden" in html.split("#jobBar {", 1)[1].split("}", 1)[0]
+    rule = html.split("#jobBar #jobTitle, #jobBar #jobPos, #jobBar #jobMeta {", 1)[1].split("}", 1)[0]
+    assert "white-space:nowrap" in rule and "text-overflow:ellipsis" in rule and "min-width:0" in rule
+
 def test_timeline_bar_marks_job_frames_of_loaded_clip():
     html = INDEX_HTML.read_text()
     bar = html.split("function renderTimelineBar()")[1].split("\n}\n")[0]

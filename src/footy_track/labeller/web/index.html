@@ -13,7 +13,7 @@
          font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
   header { padding:10px 16px; border-bottom:1px solid var(--border); }
   header h1 { margin:0; font-size:18px; }
-  .wrap { display:grid; grid-template-columns:200px 1fr 280px; gap:14px; padding:14px 16px; }
+  .wrap { display:grid; grid-template-columns:200px minmax(0,1fr) 280px; gap:14px; padding:14px 16px; }
   .toolbar { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:8px; }
   button, select, input[type=text] {
     background:#0d1620; color:var(--ink); border:1px solid var(--border);
@@ -40,6 +40,14 @@
                border:2px solid rgba(255,255,255,.35); border-top-color:#fff;
                animation:spin .8s linear infinite; }
   @keyframes spin { to { transform:rotate(360deg); } }
+  /* Job bar layout-stability: same size on job and non-job frames (text swaps, accept button
+     toggles) so the middle column / #stageWrap never changes width or height. */
+  #jobBar { min-height:46px; overflow:hidden; flex-wrap:nowrap; white-space:nowrap; }
+  #jobBar > * { flex-shrink:0; }
+  #jobBar #jobTitle, #jobBar #jobPos, #jobBar #jobMeta { flex-shrink:1; min-width:0; white-space:nowrap;
+               overflow:hidden; text-overflow:ellipsis; }
+  #jobBar #jobTitle { max-width:28%; }
+  #jobBar #jobPos { min-width:22ch; }
   .row { display:flex; gap:8px; align-items:center; margin-bottom:8px; }
   .grow { flex:1; }
   .side { background:var(--panel); border:1px solid var(--border); border-radius:8px;
@@ -123,7 +131,7 @@
       <span class="grow"></span>
       <label class="muted" title="Placing the ball or marking no-ball / not-broadcast jumps to the next unlabelled job frame"><input type="checkbox" id="jobAuto" checked> auto-advance</label>
       <label class="muted" title="Pre-existing machine boxes (vittrack/yolo/...) are hidden in job mode so they cannot bias placement. Shown dimmed and dashed. Hidden boxes are never deleted or changed by saving."><input type="checkbox" id="jobShowMachine"> Show machine boxes (M)</label>
-      <button id="jobAcceptBtn" class="primary" style="display:none" title="Save the dashed yellow detector suggestion (#1) as your box for this frame (Y); the dimmer numbered ones with 1-3. It is a human label tagged accepted_suggestion; draw your own box instead to replace it. Never offered for 'no ball'.">Accept suggestion (Y)</button>
+      <button id="jobAcceptBtn" class="primary" style="visibility:hidden" title="Save the dashed yellow detector suggestion (#1) as your box for this frame (Y); the dimmer numbered ones with 1-3. It is a human label tagged accepted_suggestion; draw your own box instead to replace it. Never offered for 'no ball'.">Accept suggestion (Y)</button>
       <button id="jobCardBtn" title="Jump back to this card's frame, reloading its clip if you wandered off (C). Does not label or advance.">↩ Card frame (C)</button>
       <button id="jobPrevBtn" title="Previous job frame (K)">⏮ Prev job frame (K)</button>
       <button id="jobNextBtn" class="primary" title="Next job frame that is not labelled yet (J)">Next job frame (J) ⏭</button>
@@ -754,7 +762,7 @@ function jobRender() {
   const at = job.frames[jobPos];
   // highlight the card-frame button while the view is off the card's frame
   $("jobCardBtn").classList.toggle("primary", !f);
-  $("jobTitle").textContent = `Job: ${job.title}`;
+  $("jobTitle").textContent = `Job: ${job.title}`; $("jobTitle").title = job.title;
   if (f) {
     $("jobPos").textContent = `job frame ${i + 1} / ${job.total}${jobDone.has(jobKey(f.clip, f.frame)) ? " ✓ labelled" : ""}`;
     $("jobMeta").textContent = `clip ${f.clip}, stratum ${f.stratum || "-"} · done ${jobDone.size} / ${job.total}`;
@@ -890,7 +898,7 @@ function updateSuggestionOverlay() {
   const skip = viewFrame != null && (noBallFrames.has(viewFrame) || notBroadcastFrames.has(viewFrame));
   const show = !!curSuggestion && !skip && boxLayer.find(".box").length === 0 && mode !== "running";
   const btn = $("jobAcceptBtn");
-  if (btn) btn.style.display = show ? "" : "none";
+  if (btn) btn.style.visibility = show ? "visible" : "hidden";
   if (show) {
     curSugList.forEach((s, k) => {
       const x = s.x * dispW, y = s.y * dispH, w = Math.max(s.w * dispW, 6), h = Math.max(s.h * dispH, 6);
