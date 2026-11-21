@@ -39,6 +39,7 @@ PROVENANCE = "ball_pool_auto"
 TIER = 3
 DEFAULT_OUT_ROOT = "/mnt/storage/footy_data/ball_auto"
 DEFAULT_POOL = "/mnt/storage/footy_data/ball_pool"
+CLOSE_LOCK_WAIT_S = 600.0
 DEFAULT_DATA_ROOT = "/mnt/storage/footy_data"
 _SAFE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 
@@ -156,7 +157,7 @@ def write_auto_accept(
     return paths
 
 
-def close_round(
+def _close_round(
     ref: str,
     *,
     client=None,
@@ -239,6 +240,15 @@ def close_round(
         **refit.summary(state, cal),
         "auto_accept": out,
     }
+
+
+def close_round(ref: str, *, client=None, marks_dir: str | Path | None = None, lock_wait_s: float = CLOSE_LOCK_WAIT_S, **kw) -> dict:
+    """Close the round job ``ref`` under the per-job mutex shared with the refit and the anchor search (design 7.4); waits up
+    to ``lock_wait_s`` for a run in progress (``refit.JobBusy`` after that: the close is not skipped silently)."""
+    client = client or jobs_client
+    job = client.results(ref)["job"]
+    with refit.job_lock(refit.resolve_marks(job["dataset"], marks_dir), job["id"], wait_s=lock_wait_s):
+        return _close_round(ref, client=client, marks_dir=marks_dir, **kw)
 
 
 def _read(path: str | Path) -> pd.DataFrame | None:
