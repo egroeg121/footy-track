@@ -74,6 +74,10 @@ Stages, each writing a run row and resumable:
 
 GPU: stage 2 only. CPU: selection, verify, commit, export. The nightly `footy-nightly-datasets` ingests, then bumps dataset versions.
 
+### Ball anchor iteration (design 2026-11-21)
+
+A confirmed ball can anchor a forward/backward search that proposes the next most likely ball cards, checked again in Ball Check, until every selected frame is terminal (`ball`, `no_ball`, `unusable`, explicit `deferred`). Applies to train-split windows only; the blind ball eval panel (labeller job mode, machine boxes hidden) stays a separate job family that measures the detector and hunts false negatives. See [ball_anchor_iteration.md](ball_anchor_iteration.md) (design only, nothing built; includes the orchestration/sync rules between labeller jobs, Prefect flows and `frame_label_state`).
+
 ## 4b. Offline teacher pipeline (framing for sections 4 and 5)
 
 Two separate systems, deliberately:
