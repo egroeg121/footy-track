@@ -8,7 +8,7 @@ Marking: **BUILT** = exists in `src/` and was read for this doc; **NEW** = to bu
 
 Request (George, 2026-11-21): the offline model already suggests the most likely ball per frame; a human-confirmed one should **anchor** a search forward and backward in time for the most likely ball on the neighbouring frames, those candidates are checked again in Ball Check, and the confirmed ones become new anchors, until the selected frames are done.
 
-Training and teacher data only. Eval panel frames are out of this loop (section 4).
+**Design change 2026-11-21 (George):** the same suggestion / anchor-iteration Ball Check flow serves BOTH families, train (training and teacher data) and eval (measuring the detector). Phone Ball Check cards (confirm / not-ball) do the bulk for both; the laptop does the full-frame hand checks. Anchoring bias from showing suggestions is accepted ("don't worry about anchoring bias"); the safeguards that remain are about completeness, split separation and versioning (section 4).
 
 ### 1.1 What already exists (extend, do not duplicate)
 
@@ -100,7 +100,7 @@ F = the frames chosen into a job or window (job items, `job_suggest.job_frames`)
 | State | Meaning | Terminal | Written as |
 |---|---|---|---|
 | `ball` | human confirmed or drew the ball box (verdict `ball`/`corrected`, or `ball_place` box) | yes | `frame_label_state(ball, complete, method=verdict/hand_frame)` BUILT writers |
-| `no_ball` | human: no ball visible | yes | `(ball, absent, ...)` BUILT |
+| `no_ball` | human full-frame check: no ball visible (never inferred from "no candidate") | yes | `(ball, absent, ...)` BUILT |
 | `unusable` | not broadcast / too few points / frame type mark | yes | NEW mapping: `frame_type` mark -> ball `absent` with reason `not_broadcast`? Needs a `reason` column (section 6) |
 | `deferred` | explicit, with a reason (`unsure` twice, video unreadable, window rejected) | yes, but **counted separately and never exported** | NEW: `partial` state + `deferred_reason` |
 | `queued` | a card exists, unanswered | no | job item |
@@ -120,36 +120,40 @@ A window is **done** when every frame in F(window) is terminal (`ball`, `no_ball
 
 ### 3.4 Unreachable frames fall back to hand labelling
 
-After a refresh, frames in F that are `unreviewed` and have no eligible candidate, or that stayed `queued` unanswered past a stale age, are moved by the generator into a companion `ball_place` job in labeller **job mode** (`ball-place/<window>`; the generator writes it with `jobs_client.submit`, idempotent key). Suggestions are off for that job (no suggest file is written for train windows), so hand labelling is blind. When the human places a box it becomes an anchor and the search re-runs for the window. This guarantees the loop terminates: every frame is either reached by a card or by a hand-label task.
+After a refresh, frames in F that are `unreviewed` and have no eligible candidate, or that stayed `queued` unanswered past a stale age, are moved by the generator into a companion `ball_place` job in labeller **job mode** (`ball-place/<window>`; the generator writes it with `jobs_client.submit`, idempotent key). A frame the search cannot reach is **never defaulted to `no_ball`**: it goes to this explicit full-frame human check (laptop job mode, or a full-frame card on the phone). When the human places a box it becomes an anchor and the search re-runs for the window; a human `no_ball` is the only way a no-candidate frame ends as `no_ball`. This guarantees the loop terminates: every frame is reached by a card or by a full-frame check, and recall is not inflated by silently dropping frames the model missed (section 4.1).
 
-## 4. Eval isolation (critical)
+## 4. Eval and train sharing the flow: what stays separate (revised 2026-11-21)
 
-Eval frames exist to **measure the detector and to find its false negatives**. Anything that shows the model's output to the labeller, or labels frames from it, defeats that.
+Eval frames exist to **measure the detector and find its false negatives**. Both families now use the same card mechanics (offline suggestion on a Ball Check card, anchor search, full-frame fallback), so one phone flow covers both. Because every selected frame must be completed anyway, showing a suggestion does not change *which* frames are measured; anchoring bias is accepted and not mitigated here (no machine-box hiding, no blind audit slice). The measure stays valid only if the following hold.
 
-Rules (enforced in code, in addition to `ball_sampling.md` §4):
-1. The generator accepts only `split_of(match, clip) == "train"` (`footy_track/splits.py::split_of`). It refuses `eval_heldout_match` and `eval_in_match`, with the same `ScoringRefused`-style error as the other guards. NEW guard + test.
-2. Anchors never cross the split: the anchor reader filters on train clips, and the append path rejects an item whose clip is not train (the job API already rejects jobs that mix splits; extend it to appended items).
-3. Eval panel frames are labelled in **labeller job mode, blind, on the laptop labelling site** (`ball_place` jobs). Machine boxes are hidden by default.
-4. **Conflict to resolve (open question 1).** The built code does not match "fully blind": `ball_sampling.md` §2.2.1 shows suggestions on 75% of panel windows (blind control 25%), and `suggestions._job_suggestion` / `job_suggest.suggest_job` show a suggestion on *every* frame with a candidate in non-panel heldout jobs, with `require_heldout_job` making it heldout-only. Accepted suggestions are ordinary tier-1 labels. That is exactly the false-negative blind spot: a frame the model missed never gets a suggestion, so the labeller is not primed to look, and a frame the model got right is accepted faster than it is verified. Recommendation: make blind the default (`sampling.suggest = "blind"` for all panel items; suggestions only by an explicit toggle), keep `suggestion_report` to quantify the bias for any past labels, and score headline numbers on blind labels only.
+1. **Selected set fixed first, with logged inclusion probabilities.** Each job's F is chosen up front (eval: panel windows with `pi_window`/`pi_frame`, BUILT in `ball_eval/panel.py`; train: the round's bucket sampler and its `sampling` block) and written to `selected_frame` **before any candidate is generated**. Candidates never decide which frames are measured; they only order and pre-fill cards.
+2. **Every selected frame reaches an explicit terminal state** (section 3.1). No candidate is not `no_ball`.
+3. **False-negative rule.** A frame where the search finds no confirmed candidate (zero candidates, all rejected, `unsure`, not found) goes to an explicit human full-frame check: laptop labeller job mode, or a full-frame card on the phone ("tap the ball, or no ball"). Only that check can write `no_ball`. This is the false-negative hunt (4.1).
+4. **Split separation.** `split_of(match, clip)` (`footy_track/splits.py`) puts every frame in exactly one set. The generator runs **per split and per job**: anchors and candidates come only from that job's own selected set, so anchors propagate only inside the same F (guard + test, NEW). Eval and train F are disjoint; eval labels never enter a training export (the exporter's `split_of` gate stays: heldout and `eval_in_match` frames are excluded); an appended item whose split differs from the job's is rejected (extend the job API's mixed-split check to `append_items`).
+5. **Versions on everything.** Every card and label records `generator_version` (candidate model sha8 + tracker params), `teacher_version`, `run_id`. Eval scores (`panel_score.score`) are reported **per version**, and an eval label is read together with the version of the model whose box the labeller saw.
+6. **Two job families stay separate** (7.0): own keys, caps and `done` counters, though the card mechanics are shared.
 
-### 4.1 The false-negative hunt (eval side, no suggestions)
+Existing code that fits: `ball_sampling.md` §2.2.1 already shows suggestions on 75% of panel windows with a 25% blind control; accepted suggestions are ordinary tier-1 labels tagged `accepted_suggestion` + `suggest_det:<sha8>`; `panel_score.suggestion_report` compares blind vs shown. The blind control is no longer required by this design; it may stay as an optional diagnostic and nothing here depends on it. `job_suggest.require_heldout_job` limits job-keyed suggestion files to heldout jobs; the train family needs the same builder with a per-job split guard instead (task 1).
 
-False negatives = ball present, no correct prediction (`miss`, and `off` for a wrong top-1). The blind human labels are the only unbiased source.
-- Sampling stratum **`model_no_ball`**: eval windows where the frozen reference model produced zero candidates or top-1 conf below a floor on the window. The panel already allows a difficulty band from a frozen reference model (`ball_sampling.md` §2.3, v2); add this as a band with a logged `pi` (HT weights keep the estimate unbiased; do not mix it into the headline unweighted).
-- Measurement: `ball_eval/panel_score.py::score` already classifies `hit/off/miss/false_ball/true_empty` per frame with HT totals and bootstrap CIs. Add `miss` split by bucket (`easy/gappy/contested/low_evidence` from `ball_mining/buckets.py`) and by "candidate within r px present or not" (detector recall ceiling vs ranking error: `rank1` / `rank2_5` already in `job_suggest.report`). NEW report columns.
-- Output feeds back, via humans only: every confirmed `miss` on the *train* side is a source for stratum M (missed ball); on eval it only updates the score. Eval misses never become training positives (rule zero).
+### 4.1 The false-negative hunt
 
-## 5. Bias and risk
+False negatives = ball present, no correct prediction (`miss`; `off` for a wrong top-1). They are visible only if frames with no confirmed candidate are looked at in full, which is rule 3.
+- **Stratum `model_no_ball`** (eval and train): windows where the frozen reference model gave zero candidates or top-1 conf below a floor, with logged `pi` and HT weighting (`ball_sampling.md` §2.3 difficulty bands) so it never inflates the headline unweighted.
+- **Measurement** (`ball_eval/panel_score.py::score`, BUILT): `hit/off/miss/false_ball/true_empty` per frame, HT totals, bootstrap CIs. NEW columns: `miss` per bucket (`easy/gappy/contested/low_evidence`, `ball_mining/buckets.py`); whether a candidate within r px existed (detector recall ceiling vs ranking error); and the share of terminal frames found by a card vs by a full-frame check (the latter are the candidate source's false negatives).
+- **Feedback:** eval results feed back only as measurement and as new targeted TRAIN strata (train windows resembling the failing buckets). Eval labels are never copied into training.
+
+## 5. Risk
+
+Anchoring bias (a shown box pulling the label) is **accepted** by decision (2026-11-21); no mitigation is built for it.
 
 | Risk | Mitigation |
 |---|---|
-| **Confirmation bias** (card shows a box, human accepts) | Verify cards are the existing design; keep R and A cards **blind to the model's confidence**; G cards (planted wrong, shifted 15-30 px) measure over-acceptance, flagged at > 10% (`refit.gold_check`, `GOLD_ACCEPT_FLAG`). Search cards S are a *new* population: add S-gold (shift a good search proposal) at 5% |
 | **Wrong anchor propagates** | A human-confirmed anchor is treated as ground truth but cards carry `hop`; cap `hop` at 3 steps beyond the last confirmation (a card further than that is not auto-extended, it needs a fresh seed); confidence on the card = `p_cal * decay^hop`; a later `not_ball`/`box_off` on a card adjacent to an anchor flags the anchor `suspect` and re-runs the window with that anchor **released**; a `not_ball` is always a forbidden zone (`ball_ck` rejects stay forbidden for all later refreshes, kept per window) |
-| **Auto-propagation** (bulk "accept the run" for interpolated frames) | Never auto-accepted: they are a card. A 10% blind audit of bulk-accepted frames (box hidden), counted as an A-style audit |
+| **Auto-propagation** (bulk "accept the run" for interpolated frames) | Never auto-accepted: it is a card a human answers |
 | **Wilson/LTT thresholds** (`ball_mining/threshold.py`) | LTT requires exchangeable A-bucket audits: verdicts on S cards are *chosen* by the anchor and are **not exchangeable**, so `threshold.audit_rows` must keep excluding them (`ExchangeabilityError` on a non-"A" tag). The auto-accept set is still computed from A cards; S-card verdicts feed training labels and the report only. S frames' `p_real` for Platt uses only R/A cards, as `refit.fit_calibration` already does |
-| **Teacher drift** | Every card and every label records `generator_version` (detector sha8 + tracker params), `teacher_version` (`offline_vN`) and `run_id`; a card whose generator version is older than the current one is **stale** (section 7.5), still answerable, and its verdict still counts |
+| **Teacher drift** | Every card and label records `generator_version`, `teacher_version` (`offline_vN`) and `run_id`; eval scores are reported per version; a card whose generator version is older than the current one is **stale** (section 7.5), still answerable, and its verdict still counts |
 | **Selection of "easy" frames** | Search favours frames near confirmed balls, which are easy. Training export composition check per bucket and `hop`; hard strata still come from U/M/N, and `hop >= 2` labels are loss-weighted 0.5 until an audit shows their precision |
-| **Eval leakage** | Section 4 |
+| **Eval leakage** | Section 4 rules 4 and 5 |
 
 ## 6. Data model / API changes (all NEW)
 
@@ -167,24 +171,24 @@ Three systems own parts of the state, so each fact gets exactly one owner.
 
 ### 7.0 Two job families that both stay (assumption: "both jobs" = these two)
 
-Neither replaces the other; they advance side by side and never exchange labels.
+Neither replaces the other; they advance side by side, share card mechanics, and never exchange labels. (Revised 2026-11-21: both now use suggestion + anchor cards on the phone.)
 
-| | **Eval job family** (blind) | **Train job family** (anchor loop) |
+| | **Eval job family** | **Train job family** |
 |---|---|---|
-| Job kind / keys | `ball_place` (labeller job mode, laptop labelling site), key namespace `ball-eval/<panel>/<match>` (panel jobs, BUILT in `ball_eval/panel.py`) | `ball_check` round `ball-round/<date>/<n>` (BUILT) plus fallback `ball_place` `ball-place/<window>` (NEW) |
-| Selected set F | panel windows of heldout matches (`split_of` = `eval_heldout_match`; in-match eval clips are a secondary `eval_in_match` set) | train-split windows only (`split_of` = `train`) |
-| Machine boxes | hidden by default (section 4) | shown (verify cards) |
+| Phone | `ball_check` cards from the offline suggestion + anchor search, key namespace `ball-eval/<panel>/<match>` (NEW card job; the panel's frozen windows and `pi` are BUILT in `ball_eval/panel.py`) | `ball_check` round `ball-round/<date>/<n>` (BUILT) |
+| Laptop | full-frame hand-label checks for frames with no confirmed candidate: `ball_place` job mode `ball-eval-place/<panel>/<match>` (NEW, idempotent) | the same for train: `ball-place/<window>` (NEW) |
+| Selected set F | panel windows of heldout matches (`split_of` = `eval_heldout_match`; in-match eval clips `eval_in_match` as a secondary panel), fixed at creation with `pi` | train-split windows (`split_of` = `train`), fixed per round |
 | Purpose | score the detector, find false negatives | training and teacher data |
-| Done | every frame of F has a human terminal state: `ball` box, `no_ball`, `unusable`, `deferred(reason)`; QA repeat/gold cards excluded from estimates | section 3.2 |
-| Progress counter | `/progress/labelling` ball-eval block: `frames_terminal / frames_total` per panel and match, plus panel-score CIs | ball-train block, per window |
+| Done | every frame of F terminal (`ball`, `no_ball` only via full-frame check, `unusable`, `deferred(reason)`); QA repeat/gold cards excluded from estimates | section 3.2 |
+| Progress counter | `/progress/labelling` ball-eval block: `frames_terminal / frames_total` per panel and match, found-by-card vs found-by-check, panel-score CIs per version | ball-train block, per window |
 
 Rules that keep them from starving or contaminating each other:
-1. **Disjoint by construction.** F_eval and F_train are disjoint because `split_of` is a function of `(match, clip)` and assignments are sticky; the creator records each frame's `split` in `selected_frame`, and the reconciler fails hard if a `(game, frame)` appears in both sets or in a job of the wrong family.
-2. **Separate caps and namespaces.** `tick_decision` counts only `ball-round/*` jobs (`refit.is_round_job` filters on the key prefix), so the eval job's open cards never consume the train cap (open < 100, today < 600), and the anchor loop's S cards never count against eval. Eval has its own cap: the panel job is created once per panel version, not by a tick; its pace is the labeller's, not the scheduler's.
-3. **Both advance on the labelling site.** The phone (Ball Check) and laptop (job mode) sites are one labeller and one board; the task board shows both families as separate lines with their own counters, so neither is hidden behind the other. A nightly report lists per family `frames_outstanding` and days idle; an eval panel with outstanding frames raises a board task so training rounds cannot silently absorb all human time. Time split is a policy (open question 9), not enforced by code.
-4. **Nothing generated crosses over.** The anchor flow never reads eval verdicts and never writes eval jobs; the eval job never receives suggestions, anchors, search files or `generator_version`-tagged cards. Search files live under the train dataset's marks dir; the guard in section 4 rejects an eval clip. The eval job's items are fixed at creation (frozen panel), so no flow appends to it.
-5. **Eval feeds back only as measurement and targeting.** Allowed: the panel score (per-bucket miss, `model_no_ball` stratum, section 4.1) and **new targeted TRAIN sampling strata** derived from them (for example train windows that look like the failing buckets: no candidate, low confidence, gap frames). Not allowed: copying an eval label or box into the train set, or using an eval frame as an anchor.
-6. **The reconciler checks each set independently** (section 7.7 loops over families): its own F, its own job, its own store rows, with separate reports and separate alerts.
+1. **Disjoint by construction.** F_eval and F_train are disjoint because `split_of` is a function of `(match, clip)` and assignments are sticky; the creator records each frame's `split` in `selected_frame`; the reconciler fails hard if a `(game, frame)` is in both sets or in a job of the wrong family.
+2. **Separate caps and namespaces.** `tick_decision` counts only `ball-round/*` jobs (`refit.is_round_job` filters on the key prefix), so eval cards never consume the train cap (open < 100, today < 600) and S cards never count against eval. Eval has its own cap and no daily tick: its F is fixed at creation (the panel version), and the anchor flow appends to it only within F, bounded by its own open-card cap so the phone is not flooded.
+3. **Both advance on the phone and laptop.** The board shows both families as separate lines with their own counters. A nightly report lists per family `frames_outstanding` and days idle, and an eval family with outstanding frames raises a board task so training rounds cannot absorb all human time. Time split is a policy (open question 9).
+4. **Nothing generated crosses over.** The generator runs per job and reads only that job's F (section 4 rule 4). Search files are per job (`<marks>/ball_mining/search/<job>/<window>/`), so train anchors can never seed an eval frame and the reverse.
+5. **Eval feeds back only as measurement and targeting.** Allowed: the per-version panel score (per-bucket miss, `model_no_ball`, section 4.1) and new targeted TRAIN strata derived from it. Not allowed: copying an eval label or box into training, or using an eval frame as a train anchor.
+6. **The reconciler checks each set independently** (7.7 loops over families): own F, own job, own store rows, separate reports and alerts.
 
 ### 7.1 Single source of truth, and who may write
 
@@ -253,7 +257,7 @@ Because `emit` can drop events and a labeller restart loses the in-memory counte
 
 Legend as in `full_frame_labelling.md` §5. All NEW.
 
-1. **Split guard + candidate cache reader.** Files: `ball_mining/anchor_search.py` (guard, loaders), tests. Accept: raises for any `eval_*` clip; reads `job_suggest` `cands` or pool candidates uniformly; anchors read from marks. Deps: none.
+1. **Per-job split guard + candidate cache reader.** Files: `ball_mining/anchor_search.py` (guard, loaders), `ball_eval/job_suggest.py` (drop heldout-only restriction for a per-job split check), `labeller/job_edit.py` (reject appended items of another split), tests. Accept: a job only ever reads/writes frames of its own selected set and one split; anchors never cross jobs; reads `job_suggest` `cands` or pool candidates uniformly; anchors read from marks. Deps: none.
 2. **Constrained Viterbi.** Files: `ball_trackers/viterbi.py` (anchor/forbidden args, synthetic anchor node), tests with a fixture clip. Accept: anchor frame returns the anchor; forbidden disc never chosen; unconstrained output unchanged (regression); both directions in one pass. Deps: 1.
 3. **Generator + ranking + versioned search file.** Files: `anchor_search.py`, `search/<window>/vNNN.json`. Accept: frontier order = hop, margin, conf; skips judged frames (verdicts, pending round cards, terminal `frame_label_state`); same input digest -> no new file; no candidate in gate -> frame listed `unreachable`. Deps: 2.
 4. **Append/reorder client with caps.** Files: `anchor_search.py` using `refit._apply_order`'s retry. Accept: respects open-card and daily caps from `round.tick_decision`; retried append adds 0; 409 retries; append is atomic (kill test). Deps: 3.
@@ -262,14 +266,14 @@ Legend as in `full_frame_labelling.md` §5. All NEW.
 7. **Fallback hand-label job.** Files: `anchor_search.py`, `jobs_client` use. Accept: unreachable frames produce one idempotent `ball_place` job with no suggestion; a placed box re-runs the search. Deps: 3, 6.
 8. **Progress.** Files: `labeller/progress.py`, `jobs.py` progress fields, page bars. Accept: `frames_total/terminal/by_state` equal a fixture store; `deferred` shown separately. Deps: 6.
 9. **Reconciler.** Files: `ball_mining/reconcile.py`, `scripts/`. Accept: fixtures detect orphan, missing, stuck, store lag, split violation; read-only by default. Deps: 6.
-10. **Eval isolation: blind default and miss report.** Files: `ball_eval/panel.py` (default `suggest = blind`), `panel_score.py` (miss by bucket, `model_no_ball` stratum). Accept: job API rejects appended non-train items; blind labels scored separately; report has miss by bucket with CIs. Deps: none.
-11. **Bias audit.** Files: `anchor_search.py`, `refit.py`. Accept: S-gold cards injected at 5%; `hop` cap enforced; `suspect` anchor flow; bulk-accept audit 10% blind. Deps: 5.
+10. **Eval on the shared flow + false-negative report.** Files: `ball_eval/panel.py` (eval `ball_check` job from the frozen panel, `selected_frame` written before candidates, `model_no_ball` band), `panel_score.py` (miss by bucket, found-by-card vs by-check, per-version scores). Accept: F and `pi` logged before candidate generation; a no-candidate frame becomes a full-frame check, never `no_ball`; scores carry the generator version; report has miss by bucket with CIs. Deps: 1, 6, 7.
+11. **Wrong-anchor controls.** Files: `anchor_search.py`, `refit.py`. Accept: S-gold cards injected at 5%; `hop` cap enforced; `suspect` anchor flow. Deps: 5.
 12. **Jobs-repo changes (section 7.8).** In `~/code/jobs`. Accept: concurrency limits verified with two overlapping triggers; a dry run produces the same state twice. Deps: 5, 9.
 13. **Replay evaluation on already-labelled train clips** (before any rollout). Accept: with a perfect oracle on 5 held-out-by-us train clips, taps-to-90% beats the 13 of the KB simulation or the design is revised. Deps: 3.
 
 ## 9. Open questions for George
 
-1. Eval blindness: the built panel shows suggestions on 75% of windows and heldout job-mode suggestions on all frames with a candidate (`suggestions._job_suggestion`). Switch panels to fully blind by default (recommended), keeping the toggle for speed on non-headline work?
+1. Eval candidate source: should it be a different model or version from the one being scored (so the suggestions are not the scored model's own output), or the same one? Recorded either way (`generator_version`), but the per-version eval number reads differently.
 2. `hop` cap and decay: stop at 3 steps beyond the last confirmation? Or let long runs bulk-accept after two confirmations either side?
 3. Card cadence: one card per every second sampled frame plus bulk "accept the run" for interpolated frames, or every sampled frame?
 4. `deferred` frames: allowed to remain forever (reported, never exported), or must a human resolve them before a window counts as done?
@@ -277,4 +281,4 @@ Legend as in `full_frame_labelling.md` §5. All NEW.
 6. Does Claude verify run on search cards (as pre-filter) or are they human-only until their precision is measured?
 7. Window size for search (250 frames = 5 s as in `full_frame_labelling.md`, or longer)? Segments are not contiguous, so windows cannot span `_segNNN`.
 8. Should the reconciler be allowed to auto re-queue (`--apply`), or report only?
-9. "Keep both jobs": I read it as the blind eval job and the train anchor loop run side by side (section 7.0). If you meant something else (for example keeping the old per-frame `ball_place` flow beside Ball Check cards in the train family), say so. Also: a fixed share of labelling time for the eval job until its panel is done?
+9. "Keep both jobs": I read it as the eval family and the train family run side by side with shared card mechanics (section 7.0). If you meant something else (for example keeping the old per-frame `ball_place` flow beside Ball Check cards), say so. Also: a fixed share of labelling time for the eval job until its panel is done?

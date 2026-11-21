@@ -168,7 +168,7 @@ The newest feature store (2026-08-04) predates the `human_checked` ingest fix, t
 
 ### Ball anchor iteration (design 2026-11-21)
 
-Proposal: offline-model ball suggestions become Ball Check cards; a confirmed ball is an anchor, and a bidirectional constrained search from it (motion gate, forbidden positions from rejected cards) yields the next candidate cards, which are checked in turn, until all selected frames reach a terminal state. Train-split windows only. The blind eval ball labelling (laptop job mode) is kept as a separate job family and never receives anything the anchor loop generates; its misses become measurement and new targeted train sampling strata. Design, orchestration and task list: [design/ball_anchor_iteration.md](design/ball_anchor_iteration.md). Nothing is built yet.
+Proposal: offline-model ball suggestions become Ball Check cards; a confirmed ball is an anchor, and a bidirectional constrained search from it (motion gate, forbidden positions from rejected cards) yields the next candidate cards, which are checked in turn, until all selected frames reach a terminal state. The same flow serves train windows and the ball eval panel (two separate job families with their own keys, caps and counters; sets disjoint by `split_of`; eval labels never feed training). A frame with no confirmed candidate is never defaulted to no-ball: it gets an explicit full-frame human check (laptop job mode or phone full-frame card), which is the false-negative hunt. Design, orchestration and task list: [design/ball_anchor_iteration.md](design/ball_anchor_iteration.md). Nothing is built yet.
 
 ## 5. Recommendation, in order
 
