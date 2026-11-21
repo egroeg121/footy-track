@@ -27,6 +27,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Iterator, Sequence
 from contextlib import contextmanager
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -36,11 +37,18 @@ from footy_track.feature_store.extra_schema import EXTRA_DDL
 from footy_track.feature_store.schema import (
     DDL,
     METHOD_RANK,
+    REASON_STATE,
     TABLES,
     VIEWS,
     CalibrationRow,
     DetectionRow,
+    ClsGroup,
     FrameLabelStateRow,
+    FrameReason,
+    LabelMethod,
+    LabelState,
+    SelectedFrameRow,
+    TerminalState,
     FrameRow,
     GameRow,
     PitchKeypointRow,
@@ -165,6 +173,16 @@ _COLUMNS: dict[str, tuple[str, ...]] = {
         "teacher_version",
         "verified_by",
         "verified_at",
+        "reason",
+        "generator_version",
+    ),
+    "selected_frame": (
+        "job_key",
+        "game_id",
+        "frame_index",
+        "window_id",
+        "split",
+        "selected_at",
     ),
     "player_check": (
         "game_id",
@@ -232,6 +250,7 @@ _PK: dict[str, tuple[str, ...]] = {
     "track_meta": ("game_id", "source", "run_id", "track_id"),
     "detection_review": ("game_id", "vsource", "frame_index", "box_index"),
     "frame_label_state": ("game_id", "frame_index", "cls_group"),
+    "selected_frame": ("job_key", "game_id", "frame_index"),
     "player_check": ("game_id", "frame_index", "cluster_id"),
     "series": ("game_id", "start_frame", "end_frame"),
     "calibration": ("game_id", "source", "run_id", "frame_index"),
@@ -251,6 +270,63 @@ def _row_to_value(table: str, column: str, value: object) -> object:
         # list[Point] -> list[dict] for the STRUCT(x,y)[] column.
         return [{"x": p.x, "y": p.y} for p in value]  # type: ignore[union-attr]
     return value
+
+
+def ball_terminal_row(
+    game_id: str,
+    frame_index: int,
+    terminal: TerminalState | str,
+    *,
+    method: LabelMethod | str,
+    reason: FrameReason | str | None = None,
+    full_frame_check: bool = False,
+    run_id: str | None = None,
+    generator_version: str | None = None,
+    teacher_version: str | None = None,
+    verified_by: str | None = None,
+    verified_at: datetime | None = None,
+) -> FrameLabelStateRow:
+    """Build the ``frame_label_state`` ball row for a terminal state (see ``write_ball_terminal_state``)."""
+    t = TerminalState(terminal)
+    rsn = FrameReason(reason) if reason is not None else None
+    if t is TerminalState.NO_BALL:
+        if not full_frame_check:
+            raise ValueError(
+                "no_ball may only be written by an explicit full-frame human check "
+                "(pass full_frame_check=True); 'no candidate' / 'unreachable' is never no_ball"
+            )
+        if rsn is not None:
+            raise ValueError("no_ball takes no reason")
+        state = LabelState.ABSENT
+    elif t is TerminalState.BALL:
+        if rsn is not None:
+            raise ValueError("ball takes no reason")
+        state = LabelState.COMPLETE
+    elif t is TerminalState.UNUSABLE:
+        if rsn not in (None, FrameReason.NOT_BROADCAST):
+            raise ValueError("unusable requires reason=not_broadcast")
+        rsn, state = FrameReason.NOT_BROADCAST, LabelState.ABSENT
+    else:  # DEFERRED
+        if rsn is None or REASON_STATE[rsn] != LabelState.PARTIAL:
+            raise ValueError("deferred requires reason in unsure_x2 / window_rejected / video_unreadable")
+        state = LabelState.PARTIAL
+    return FrameLabelStateRow(
+        game_id=game_id, frame_index=frame_index, cls_group=ClsGroup.BALL, state=state,
+        method=LabelMethod(method), run_id=run_id, teacher_version=teacher_version,
+        verified_by=verified_by, verified_at=verified_at, reason=rsn, generator_version=generator_version,
+    )  # fmt: skip
+
+
+def terminal_of(state: str, reason: str | None) -> TerminalState | None:
+    """Terminal state of a ball ``(state, reason)`` pair; ``None`` when not terminal (unreviewed, or a
+    reason-less ``partial`` demotion)."""
+    if state == LabelState.COMPLETE:
+        return TerminalState.BALL
+    if state == LabelState.ABSENT:
+        return TerminalState.UNUSABLE if reason == FrameReason.NOT_BROADCAST else TerminalState.NO_BALL
+    if state == LabelState.PARTIAL and reason is not None:
+        return TerminalState.DEFERRED
+    return None
 
 
 class FeatureStore:
@@ -423,6 +499,107 @@ class FeatureStore:
             sql += " AND cls_group = ?"
             params.append(cls_group)
         return self.query(sql + " ORDER BY game_id, frame_index, cls_group", params)
+
+    # -- selected frames (expected set F) ----------------------------------- #
+
+    def upsert_selected_frames(self, rows: Sequence[SelectedFrameRow]) -> int:
+        """Record the expected set F of a job/window. Idempotent on (job_key, game_id, frame_index).
+
+        Call this BEFORE any candidate card exists. A re-write updates ``window_id`` / ``split`` but
+        keeps the original ``selected_at`` (first write wins; ``now()`` when the row carries none).
+        Returns the number of rows offered.
+        """
+        rows = list(rows)
+        if not rows:
+            return 0
+        cols = _COLUMNS["selected_frame"]
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        latest: dict[tuple, SelectedFrameRow] = {}
+        for r in rows:
+            latest[(r.job_key, r.game_id, r.frame_index)] = r
+        items = list(latest.values())
+        ph = "(" + ", ".join("?" for _ in cols) + ")"
+        tail = (
+            " ON CONFLICT (job_key, game_id, frame_index) DO UPDATE SET"
+            " window_id = excluded.window_id, split = excluded.split,"
+            " selected_at = coalesce(selected_frame.selected_at, excluded.selected_at)"
+        )
+        for start in range(0, len(items), _UPSERT_CHUNK):
+            chunk = items[start : start + _UPSERT_CHUNK]
+            self._conn.execute(
+                f"INSERT INTO selected_frame ({', '.join(cols)}) VALUES "
+                + ", ".join(ph for _ in chunk)
+                + tail,
+                [
+                    (r.selected_at or now) if c == "selected_at" else getattr(r, c)
+                    for r in chunk
+                    for c in cols
+                ],
+            )
+        return len(rows)
+
+    def read_selected_frames(
+        self,
+        job_key: str | None = None,
+        game_id: str | None = None,
+        window_id: str | None = None,
+    ) -> pd.DataFrame:
+        """Read the expected set F, optionally filtered by job / game / window."""
+        sql, params = "SELECT * FROM selected_frame WHERE TRUE", []
+        for col, val in (("job_key", job_key), ("game_id", game_id), ("window_id", window_id)):
+            if val is not None:
+                sql += f" AND {col} = ?"
+                params.append(val)
+        return self.query(sql + " ORDER BY job_key, game_id, frame_index", params)
+
+    # -- terminal ball state (ball_anchor_iteration.md section 3.1) --------- #
+
+    def write_ball_terminal_state(
+        self,
+        game_id: str,
+        frame_index: int,
+        terminal: TerminalState | str,
+        *,
+        method: LabelMethod | str,
+        reason: FrameReason | str | None = None,
+        full_frame_check: bool = False,
+        run_id: str | None = None,
+        generator_version: str | None = None,
+        teacher_version: str | None = None,
+        verified_by: str | None = None,
+        verified_at: datetime | None = None,
+    ) -> int:
+        """Write one frame's terminal ball state with method precedence (3.1 mapping).
+
+        ``ball`` -> ``(ball, complete)``; ``no_ball`` -> ``(ball, absent)``;
+        ``unusable`` -> ``(ball, absent, reason=not_broadcast)``;
+        ``deferred`` -> ``(ball, partial, reason in unsure_x2/window_rejected/video_unreadable)``.
+
+        ``no_ball`` is a human claim ("looked at the whole frame, no ball") and may ONLY be written
+        with ``full_frame_check=True``: "no candidate" or "unreachable" must never become ``no_ball``.
+        Raises ``ValueError`` on a bad terminal/reason combination or ``no_ball`` without the flag.
+        """
+        rows = ball_terminal_row(
+            game_id, frame_index, terminal, method=method, reason=reason,
+            full_frame_check=full_frame_check, run_id=run_id, generator_version=generator_version,
+            teacher_version=teacher_version, verified_by=verified_by, verified_at=verified_at,
+        )  # fmt: skip
+        return self.upsert_frame_label_states([rows])
+
+    def read_ball_terminal_states(self, game_id: str, frames: Sequence[int] | None = None) -> dict[int, str]:
+        """``{frame_index: terminal state}`` for frames with a ball row; frames without one are absent
+        (``unreviewed``). Inverse of ``write_ball_terminal_state``; a ``partial`` row without a reason
+        (a Player/series demotion) is not terminal and is omitted."""
+        df = self.read_frame_label_states(game_id, ClsGroup.BALL.value)
+        out: dict[int, str] = {}
+        want = None if frames is None else {int(f) for f in frames}
+        for r in df.itertuples(index=False):
+            if want is not None and r.frame_index not in want:
+                continue
+            t = terminal_of(r.state, r.reason if isinstance(r.reason, str) else None)
+            if t is not None:
+                out[int(r.frame_index)] = t.value
+        return out
 
     def upsert_player_checks(self, rows: Sequence[PlayerCheckRow]) -> int:
         """Upsert Player Check decisions (last write per (game, frame, cluster) wins)."""
@@ -597,8 +774,9 @@ class FeatureStore:
             if not root.exists():
                 continue
             cols = ", ".join(_COLUMNS[table])
-            store._conn.execute(
-                f"INSERT INTO {table} ({cols}) "
-                f"SELECT {cols} FROM read_parquet('{root}/**/*.parquet', hive_partitioning=true)"
-            )
+            src = f"read_parquet('{root}/**/*.parquet', hive_partitioning=true)"
+            # An export from before a column existed lacks it: read it as NULL.
+            have = {r[0] for r in store._conn.execute(f"DESCRIBE SELECT * FROM {src}").fetchall()}
+            sel = ", ".join(c if c in have else f"NULL AS {c}" for c in _COLUMNS[table])
+            store._conn.execute(f"INSERT INTO {table} ({cols}) SELECT {sel} FROM {src}")
         return store
