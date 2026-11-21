@@ -39,25 +39,35 @@ const COLORS = ['#e6194b','#3cb44b','#ffe119','#4363d8','#f58231','#911eb4','#46
 const $ = id => document.getElementById(id);
 let queue = null, cards = [], cur = 0, fixState = null;
 
+// Deep link: /player-check?dataset=D&clip=C&start=S&end=E&eval=true&job=J (LAB-1480). `dataset` rides on every request
+// (the server picks the dataset per request); start/end restrict the window; `job` lets the page hop to the job's next window.
+const P = new URLSearchParams(location.search);
+const DS = P.get('dataset'), JOB = P.get('job'), FRAME_VIEW = P.get('view') === 'frame';  // view=frame: whole-frame cards only
+const WIN = [P.get('start') === null ? null : +P.get('start'), P.get('end') === null ? null : +P.get('end')];
+const withDs = u => DS ? u + (u.includes('?') ? '&' : '?') + 'dataset=' + encodeURIComponent(DS) : u;
+if (P.get('clip')) $('clip').value = P.get('clip');
+if (P.get('eval') === 'true') $('eval').checked = true;
 const msg = t => { $('msg').textContent = t || ''; };
 async function api(path, body) {
+  path = withDs(path);
   const r = await fetch(path, body ? {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)} : {});
   if (!r.ok) { msg((await r.json().catch(() => ({}))).detail || r.statusText); return null; }
   return r.json();
 }
-const q = () => `clip=${encodeURIComponent($('clip').value)}&policy=${$('policy').value}&eval=${$('eval').checked}`;
+const q = () => `clip=${encodeURIComponent($('clip').value)}&policy=${$('policy').value}&eval=${$('eval').checked}` +
+  (WIN[0] !== null ? `&start=${WIN[0]}` : '') + (WIN[1] !== null ? `&end=${WIN[1]}` : '') + '&limit=500';
 
 async function load() {
   queue = await api('/player-check/queue?' + q());
   if (!queue) return;
-  cards = [...queue.clusters, ...queue.sweeps];
+  cards = FRAME_VIEW ? [...queue.sweeps] : [...queue.clusters, ...queue.sweeps];
   cur = 0; msg(`${queue.auto_ok.length} auto_ok, ${queue.audits.length} blind-audit frames (audit cards: not yet submittable)`);
   show();
 }
 
 function frameImg(frame) {
   return new Promise(res => { const i = new Image(); i.onload = () => res(i); i.onerror = () => res(null);
-    i.src = `/review/frame/${$('clip').value}/${frame}.jpg`; });
+    i.src = withDs(`/review/frame/${$('clip').value}/${frame}.jpg`); });
 }
 
 // Draw one frame, cropped to `crop` (normalised); boxes get numbers, distinct colours and a growing
@@ -82,7 +92,7 @@ async function drawFrame(canvas, frame, boxes, crop) {
 async function show() {
   const card = $('card'); card.innerHTML = ''; fixState = null;
   $('count').textContent = cards.length ? `${cur + 1} / ${cards.length}` : '';
-  if (!cards.length) { card.textContent = 'Nothing pending.'; return; }
+  if (!cards.length) { card.textContent = 'Nothing pending.'; await nextWindow(); return; }
   const k = cards[cur];
   if (k.type === 'cluster') {
     card.innerHTML = `<h3>Cluster ${k.cluster_id} (${k.triage_reason}) - does each person have exactly one box?</h3>
@@ -107,13 +117,18 @@ async function show() {
     $('bUnsure').onclick = () => submit({...win, verdict: 'unsure'});
     $('bFix').onclick = () => startFix(k, win, k.strip[0]);
   } else {
-    card.innerHTML = `<h3>Frame ${k.frame_index} - anyone unboxed?</h3><canvas id="cv"></canvas>
+    const sc = FRAME_VIEW ? {scope: 'frame'} : {};
+    card.innerHTML = FRAME_VIEW
+      ? `<h3>Frame ${k.frame_index} - does every person (and referee) have exactly one box?</h3><canvas id="cv"></canvas>
+      <div class="row"><button class="ok" id="bOk">Every person has one box</button><button class="fix" id="bFix">Fix...</button>
+      <button class="unsure" id="bUnsure">Unsure</button></div>`
+      : `<h3>Frame ${k.frame_index} - anyone unboxed?</h3><canvas id="cv"></canvas>
       <div class="row"><button class="ok" id="bOk">Nobody missed</button><button class="fix" id="bFix">Add missing...</button>
       <button class="unsure" id="bUnsure">Unsure</button></div>`;
     await drawFrame($('cv'), k.frame_index, k.boxes, null);
-    $('bOk').onclick = () => submit({sweep: k.frame_index, verdict: 'ok'});
+    $('bOk').onclick = () => submit({sweep: k.frame_index, verdict: 'ok', ...sc});
     $('bUnsure').onclick = () => submit({sweep: k.frame_index, verdict: 'unsure'});
-    $('bFix').onclick = () => startFix(k, {sweep: k.frame_index}, {frame_index: k.frame_index, boxes: k.boxes});
+    $('bFix').onclick = () => startFix(k, {sweep: k.frame_index, ...sc}, {frame_index: k.frame_index, boxes: k.boxes});
   }
   // swipe right = ok, swipe left = fix
   let x0 = null;
@@ -149,13 +164,25 @@ async function startFix(card, base, frameInfo) {
 }
 
 async function submit(body) {
-  const res = await api('/player-check/verdict', {clip: $('clip').value, eval: $('eval').checked, ...body});
+  const res = await api('/player-check/verdict', {clip: $('clip').value, eval: $('eval').checked, window: WIN, ...body});
   if (!res) return;
   msg(`complete frames: ${res.complete_frames.length}, partial: ${res.partial_frames.length}` +
       (res.needs_fix.length ? `, count disagrees with boxes on ${res.needs_fix.length} frame(s) - fix needed` : ''));
   cur++; if (cur >= cards.length) { await load(); } else { show(); }
 }
-$('load').onclick = load;
+// Job mode: when this window has nothing pending, open the job's next window (its deep link points at it).
+async function nextWindow() {
+  if (!JOB) return;
+  const j = await api('/api/jobs/' + encodeURIComponent(JOB));
+  if (!j || !j.url || j.status === 'done') { msg('Job complete.'); return; }
+  const u = new URL(j.url, location.origin);
+  if (u.searchParams.get('clip') === $('clip').value && u.searchParams.get('start') === String(WIN[0])) {
+    msg('This window still has frames that are not complete (unsure or count mismatch); fix or reopen it.'); return;
+  }
+  location.href = u.pathname + u.search;
+}
+$('load').onclick = () => { WIN[0] = WIN[1] = null; load(); };
+if (P.get('clip')) load();
 </script>
 </body>
 </html>

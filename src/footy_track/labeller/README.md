@@ -2109,6 +2109,34 @@ count run `<cluster>:<a>-<b>`; `verified_by/at`). The frame sweep uses `cluster_
   pre-fix boxes. Not built: audit-card submission (blind relabel), the independent second-model count (4c step 3), the Claude-assisted check
   (step 5), split / merge-by-line fix tools, per-bucket miss-rate reporting.
 
+## 19l. Panel player pre-fill and Player Check jobs (LAB-1480..1482)
+
+Goal: the eval-panel frames George has already ball-labelled become *fully* labelled (players and referees too). Heldout matches, so
+the result is a player **eval** set (Player Check `eval` flag, LAB-1475), never training.
+
+- **LAB-1480** (MUST) `python -m footy_track.ball_eval.panel_players prefill --dataset ball_eval_v1 --match M` runs the production RT-DETR
+  (1280 px, CPU, nice) on exactly the panel's window frames and appends `player` / `referee` boxes (conf >= 0.3) to the dataset sidecars as
+  machine rows `{"tags": ["player", "yolo", "prefill:rtdetr"]}`. Provenance is `yolo` (machine tier everywhere; `rtdetr` is not a recognised
+  provenance and `Session` would restore it as `labeller` GT); the trailing marker lets a re-run replace only its own rows. Every other line
+  (ball boxes, `no_ball`, `not_broadcast`, `players_complete`, `accepted_suggestion`, any hand box) is kept byte for byte. A frame that is
+  `not_broadcast`, carries `players_complete` or already has a `labeller` player-class box is skipped and reported. The `<clip>__b` QA alias
+  sidecars (blind ball repeats) are not included. Written like `/review/correct` (temp + fsync + `os.replace`, re-checked for a concurrent
+  write). Refuses a match that is not registered heldout.
+  - Tests: `tests/ball_eval/test_panel_players.py`
+- **LAB-1481** (MUST) Job kind `player_check`: items are windows `{clip, frame_start, frame_end, step?, eval?}` (or `{clip, frame}`); a frame is
+  done when the feature store's player `frame_label_state` is `complete` (read-only, a missing or locked store reads as nothing done). The
+  deep link is `/player-check?dataset=&clip=&start=&end=&eval=true&job=<id>&view=frame` at the first window with an open frame, so the task board
+  count ("N left", frames) and link work like any other job. `panel_players job` submits one job per panel (one item per window, `eval: true`,
+  device `laptop` (about 15 tiny boxes per full frame make tap-to-fix a laptop job; swipe-ok alone works on a phone), key
+  `player-check/<panel>/<match>`).
+  - Tests: `tests/labeller/test_jobs_player_check.py`
+- **LAB-1482** (SHOULD) `/player-check` reads `dataset`, `clip`, `start`, `end`, `eval` and `job` from the URL: the dataset rides on every request,
+  the queue and verdicts are restricted to the window, and in job mode an empty window hops to the job's next window. `view=frame` shows
+  one whole-frame card per frame (a window's frames are 10 apart, so boxes do not overlap between frames and per-cluster cards would be
+  ~13 per frame); its `ok` / `fixed` sends `scope: "frame"`, and `POST /player-check/verdict` then verifies the frame sweep AND every cluster
+  on the frame in one write (design 6b still holds: the human saw every box; nothing is auto-accepted).
+  - Tests: UNTESTED-FRONTEND
+
 ## 15. Traceability summary
 
 | Section | Requirements | Tested | UNTESTED | UNTESTED-FRONTEND |
@@ -2140,7 +2168,8 @@ count run `<cluster>:<a>-<b>`; `verified_by/at`). The frame sweep uses `cluster_
 | 19i. Series review (LAB-1460..1468) | 9 | 8 | 0 | 1 |
 | 19g. Ball Check card reason (LAB-1478) | 1 | 1 | 0 | 0 |
 | 19k. Job suggestions (LAB-1479) | 1 | 1 | 0 | 0 |
-| **Total** | **177** | **134** | **9** | **34** |
+| 19l. Panel player pre-fill (LAB-1480..1482) | 3 | 2 | 0 | 1 |
+| **Total** | **180** | **136** | **9** | **35** |
 
 Open items: 4 (OPEN-1..4) + 1 fixed on main (undo provenance, `95b60cc`).
 Test suite: 138 tests in `tests/labeller/` (all green), plus the

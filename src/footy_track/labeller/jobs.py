@@ -29,6 +29,11 @@ ball_check      pointer card ``{clip, frame_index, box_index, source?}`` (``sour
                 card** ``{clip, frame_index, bbox{x,y,w,h normalised}, other_bbox?,
                 label?, ...}`` that carries its own geometry (see below). Labelled
                 when the verdict log has a live verdict for it.
+player_check    same window shapes plus ``eval`` (bool, set it for heldout / in-match eval clips: Player Check
+                refuses those without it). A frame is labelled when the feature store's player
+                ``frame_label_state`` for it is ``complete`` (every cluster and the sweep verified in Player Check,
+                or the ``players_complete`` marker was ingested). The deep link opens ``/player-check`` on the
+                first window with an unlabelled frame.
 identity        ``{clip}``. Labelled when an identity pair/review record
                 mentions the clip.
 broadcast_review ``{clip: <match key>, frame, ts_s?, p_yes?, pred?, reason?}`` (one
@@ -83,7 +88,7 @@ from footy_track.labeller import datasets
 from footy_track.labeller.constants import BALL_LABELS, NO_BALL_TAG, NOT_BROADCAST_TAG
 
 DEFAULT_JOBS_DIR = "/mnt/storage/footy_data/labelling_jobs"
-KINDS = ("ball_place", "ball_check", "calibration", "frame_type", "identity", "broadcast_review", "other")
+KINDS = ("ball_place", "ball_check", "calibration", "frame_type", "identity", "broadcast_review", "player_check", "other")
 STATUSES = ("preparing", "open", "in_progress", "done", "cancelled")
 LIVE = ("open", "in_progress")
 #: ``preparing`` = renders are being made ahead of time; the phone and the board do not offer it yet.
@@ -120,6 +125,8 @@ PAGE_KEYS = ("label", "provenance", "role", "confidence", "note", "other_bbox")
 _CARD_CORE = ("clip", "frame_index", "box_index", "source", "bbox", *PAGE_KEYS)
 HUMAN_TAGS = {"labeller", "human_checked"}
 _FRAME_KINDS = ("ball_place", "calibration", "frame_type")
+#: Kinds whose items are ``{clip, frame_start, frame_end, step?}`` windows (or ``{clip, frame}``).
+_WINDOW_KINDS = (*_FRAME_KINDS, "player_check")
 _REQUESTER_KEYS = ("branch", "commit", "host", "session")
 
 _LOCK = threading.RLock()
@@ -268,7 +275,7 @@ def _unit_cap(kind: str, raw_max: object) -> tuple[int | None, int | None]:
     """``(effective cap, hard ceiling)`` for a kind, honouring a requested ``max_cards``."""
     if kind == "ball_check":
         default, hard = MAX_CARDS_DEFAULT, MAX_CARDS_HARD
-    elif kind in (*_FRAME_KINDS, "broadcast_review"):
+    elif kind in (*_WINDOW_KINDS, "broadcast_review"):
         default, hard = MAX_FRAMES_DEFAULT, MAX_FRAMES_HARD
     else:
         return None, None
@@ -284,7 +291,7 @@ def _unit_cap(kind: str, raw_max: object) -> tuple[int | None, int | None]:
     return raw_max, hard
 
 
-def _normalise_items(kind: str, raw: object, max_cards: object = None) -> list[dict]:  # noqa: PLR0912
+def _normalise_items(kind: str, raw: object, max_cards: object = None) -> list[dict]:  # noqa: PLR0912, PLR0915
     if raw is None:
         raw = []
     if not isinstance(raw, list) or not all(isinstance(x, dict) for x in raw):
@@ -299,7 +306,9 @@ def _normalise_items(kind: str, raw: object, max_cards: object = None) -> list[d
         it["clip"] = _clip(it, i)
         if it.get("sampling") is not None and not isinstance(it["sampling"], dict):
             raise JobError(422, f"items[{i}].sampling must be an object (docs/design/ball_sampling.md 2.3)")
-        if kind in _FRAME_KINDS:
+        if kind in _WINDOW_KINDS:
+            if kind == "player_check":
+                it["eval"] = bool(it.get("eval", False))  # eval windows (heldout / in-match eval) need the flag
             if "frame" in it:
                 it["frame"] = _int(it["frame"], f"items[{i}].frame")
             else:
@@ -381,7 +390,7 @@ def _assign_inline_boxes(job_id: str, dataset: str, items: list[dict], start: in
 
 def _item_units(kind: str, item: dict) -> list:
     """The things to label in one item: frame indices, card keys or the clip."""
-    if kind in _FRAME_KINDS:
+    if kind in _WINDOW_KINDS:
         if "frame" in item:
             return [item["frame"]]
         return list(range(item["frame_start"], item["frame_end"] + 1, item["step"]))
@@ -669,6 +678,29 @@ def _frame_unit_labels(kind: str, ds: datasets.Dataset, clip: str) -> tuple[dict
     return out, {"clip": clip, **store}
 
 
+def _player_complete_frames(clip: str) -> set[int]:
+    """Frames whose player ``frame_label_state`` is ``complete`` in the feature store (read-only, never raises)."""
+    try:
+        import duckdb  # noqa: PLC0415
+
+        from footy_track.feature_store.lock import default_db_path  # noqa: PLC0415
+
+        db = default_db_path()
+        if not db.exists():
+            return set()
+        conn = duckdb.connect(str(db), read_only=True)
+        try:
+            rows = conn.execute(
+                "SELECT frame_index FROM frame_label_state WHERE game_id = ? AND cls_group = 'player' AND state = 'complete'",
+                [clip],
+            ).fetchall()
+        finally:
+            conn.close()
+        return {int(r[0]) for r in rows}
+    except Exception:  # noqa: BLE001 - a locked / missing store must not break the board; shows as 0 done
+        return set()
+
+
 _CALIB_FIELDS = (
     "frame_index", "correspondences", "H", "H_convention", "pitch_dims", "image_size",
     "method", "inliers", "mean_err_m", "ts", "origin",
@@ -734,7 +766,7 @@ def _identity_clips(rec: dict) -> set[str]:
 # ---------------------------------------------------------------------------
 
 
-def compute(job: dict) -> dict:  # noqa: PLR0912
+def compute(job: dict) -> dict:  # noqa: PLR0912, PLR0915
     """Walk the job's items against the label store.
 
     Returns ``{"supported", "done", "total", "labels", "items", "next", "stores"}``.
@@ -756,6 +788,7 @@ def compute(job: dict) -> dict:  # noqa: PLR0912
     nxt: dict | None = None
     done = total = 0
     ident = _identity_records(ds) if kind == "identity" else []
+    pc_done: dict[str, set[int]] = {}  # player_check: complete frames per clip (one store read each)
     br_stores: dict[str, dict] = {}  # broadcast_review: one read_store per match per call (items are frames)
     for i, it in enumerate(job["items"]):
         units = _item_units(kind, it)
@@ -774,6 +807,19 @@ def compute(job: dict) -> dict:  # noqa: PLR0912
                     labels.extend({"clip": it["clip"], **r, **extra} for r in rows)
                 elif first_missing is None:
                     first_missing = {"clip": it["clip"], "frame": f}
+        elif kind == "player_check":
+            if it["clip"] not in pc_done:
+                pc_done[it["clip"]] = _player_complete_frames(it["clip"])
+            have = pc_done[it["clip"]]
+            for f in units:
+                if f in have:
+                    n_done += 1
+                    labels.append({"clip": it["clip"], "frame_index": f, "player_state": "complete"})
+                elif first_missing is None:
+                    first_missing = {
+                        "clip": it["clip"], "frame": f, "start": it["frame_start"], "end": it["frame_end"],
+                        "eval": it.get("eval", False),
+                    }  # fmt: skip
         elif kind == "ball_check":
             verd = _verdicts(ds, it["clip"])
             for unit in units:
@@ -933,6 +979,17 @@ def deep_link(job: dict, c: dict | None = None) -> str:
     elif kind == "broadcast_review":
         q["job"] = job["id"]
         page = "/broadcast_review"
+    elif kind == "player_check":
+        # the first window still to do (or the first window when all are done); ``job`` lets the page hop to the next
+        first_it = items[0] if items else {}
+        q["clip"] = nxt.get("clip") or first_it.get("clip")
+        q["start"] = nxt.get("start", first_it.get("frame_start"))
+        q["end"] = nxt.get("end", first_it.get("frame_end"))
+        if nxt.get("eval", first_it.get("eval")):
+            q["eval"] = "true"
+        q["job"] = job["id"]
+        q["view"] = "frame"  # one whole-frame card per frame (a window's frames are 10 apart: clusters do not link across them)
+        page = "/player-check"
     elif kind == "identity":
         page = "/identity"
     else:
