@@ -376,6 +376,21 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="4. How labels are created today">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#ball-anchor-iteration-design-2026-11-21" class="md-nav__link">
+    <span class="md-ellipsis">
+      Ball anchor iteration (design 2026-11-21)
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -1126,6 +1141,21 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="4. How labels are created today">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#ball-anchor-iteration-design-2026-11-21" class="md-nav__link">
+    <span class="md-ellipsis">
+      Ball anchor iteration (design 2026-11-21)
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -1598,6 +1628,8 @@
 <li><strong>J.</strong> Design and open questions: <a href="../design/claude_autolabel_loop/">Claude-assisted ball labelling loop</a>. Nothing is built. It reuses route F candidates and the bidirectional ball tracker (<a href="../ball-tracking-eval/">Ball tracking evaluation</a>).</li>
 </ul>
 <p>The newest feature store (2026-08-04) predates the <code>human_checked</code> ingest fix, the Ball Check corrections and six new sidecars, so store, export and Roboflow is stale end to end (<a href="../todo/">T-07</a>).</p>
+<h3 id="ball-anchor-iteration-design-2026-11-21">Ball anchor iteration (design 2026-11-21)<a class="headerlink" href="#ball-anchor-iteration-design-2026-11-21" title="Permanent link">&para;</a></h3>
+<p>Proposal: offline-model ball suggestions become Ball Check cards; a confirmed ball is an anchor, and a bidirectional constrained search from it (motion gate, forbidden positions from rejected cards) yields the next candidate cards, which are checked in turn, until all selected frames reach a terminal state. The same flow serves train windows and the ball eval panel (two separate job families with their own keys, caps and counters; sets disjoint by <code>split_of</code>; eval labels never feed training). A frame with no confirmed candidate is never defaulted to no-ball: it gets an explicit full-frame human check (laptop job mode or phone full-frame card), which is the false-negative hunt. Design, orchestration and task list: <a href="../design/ball_anchor_iteration/">design/ball_anchor_iteration.md</a>. Nothing is built yet.</p>
 <h2 id="5-recommendation-in-order">5. Recommendation, in order<a class="headerlink" href="#5-recommendation-in-order" title="Permanent link">&para;</a></h2>
 <ol>
 <li><strong>Fix the record.</strong> Done on this branch: the code comment and docs now cite .665 / .591 and the 74% caveat. The KB findings page still needs updating, with the maintainer's approval (<a href="../todo/">T-15</a>).</li>

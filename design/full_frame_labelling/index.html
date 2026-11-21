@@ -933,6 +933,21 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="4. Auto-label pipeline (priority)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#ball-anchor-iteration-design-2026-11-21" class="md-nav__link">
+    <span class="md-ellipsis">
+      Ball anchor iteration (design 2026-11-21)
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -1045,6 +1060,8 @@ Costs: two inference passes (the ball model can run on crops/tiles); ball false 
 <li><strong>Commit</strong> (mini). Accept writes <code>reviewed=true</code> on accepted machine boxes, <code>frame_label_state</code> rows with <code>method=hand_series</code> and <code>run_id</code> of the proposing run, and the window's audit stats. Boxes the human touched become <code>hand_label</code>. Windows with every frame complete are registered as a <strong>series</strong> (<code>series(game_id,start,end,run_id)</code>), which the exporter can use for temporal training.</li>
 </ol>
 <p>GPU: stage 2 only. CPU: selection, verify, commit, export. The nightly <code>footy-nightly-datasets</code> ingests, then bumps dataset versions.</p>
+<h3 id="ball-anchor-iteration-design-2026-11-21">Ball anchor iteration (design 2026-11-21)<a class="headerlink" href="#ball-anchor-iteration-design-2026-11-21" title="Permanent link">&para;</a></h3>
+<p>A confirmed ball can anchor a forward/backward search that proposes the next most likely ball cards, checked again in Ball Check, until every selected frame is terminal (<code>ball</code>, <code>no_ball</code>, <code>unusable</code>, explicit <code>deferred</code>). The same flow serves the train windows and the ball eval panel (anchoring bias accepted); a frame with no confirmed candidate is never defaulted to <code>no_ball</code> but goes to an explicit full-frame human check (laptop job mode or a phone full-frame card), which is how false negatives are found. Train and eval frame sets stay disjoint by <code>split_of</code>, eval labels never feed training, anchors propagate only inside one job's selected set, and every card/label records the generator/teacher version. See <a href="../ball_anchor_iteration/">ball_anchor_iteration.md</a> (design only, nothing built; includes the orchestration/sync rules between labeller jobs, Prefect flows and <code>frame_label_state</code>).</p>
 <h2 id="4b-offline-teacher-pipeline-framing-for-sections-4-and-5">4b. Offline teacher pipeline (framing for sections 4 and 5)<a class="headerlink" href="#4b-offline-teacher-pipeline-framing-for-sections-4-and-5" title="Permanent link">&para;</a></h2>
 <p>Two separate systems, deliberately:
 - <strong>Offline pipeline ("teacher")</strong>: a versioned set of heavy models with no real-time limit that auto-labels training data. Members: large detector at high resolution plus test-time augmentation, bidirectional ROI-YOLO/ViTTrack ball tracking, SAM3 for missing people, temporal smoothing/Viterbi, Claude verify. It is a pipeline version (<code>offline_vN</code>), recorded on every label it writes (<code>source=offline_vN</code>, <code>run_id</code>).
