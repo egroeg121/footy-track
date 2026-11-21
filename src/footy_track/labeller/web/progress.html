@@ -437,14 +437,22 @@ function renderLabelling(L) {
     return;
   }
   const n = v => Number(v).toLocaleString();
-  const of = (v, tot) => tot ? `${n(v)} / ${n(tot)} <span class="muted">(${Math.round(100 * v / tot)}%)</span>` : n(v);
-  const rowOf = (name, r, cls) => `<tr class="${cls || ""}"><td class="l">${name}</td><td>${r.clip_frames ? n(r.frames) + " / " + n(r.clip_frames) : n(r.frames)}</td><td>${of(r.ball_labelled, r.clip_frames)}</td><td>${of(r.player_labelled, r.clip_frames)}</td><td><b>${of(r.fully_labelled, r.clip_frames)}</b></td><td>${n(r.partial)}</td><td title="player boxes drawn (not verified complete)">${n(r.player_marked_sidecar || 0)}</td></tr>`;
-  const splitRows = Object.entries(L.by_split).map(([s, r]) => rowOf("split: " + esc(s), r, "diag")).join("");
-  const clipRows = L.clips.map(c => rowOf(esc(c.clip) + ` <span class="muted">${esc(c.split)}</span>`, c)).join("");
-  const t = L.tiers, tv = Object.entries(t.silver.by_teacher_version).map(([k, v]) => `${esc(k)} ${n(v)}`).join(", ");
-  el.innerHTML = `<h2>Labelling coverage</h2><div class="wrap"><table><thead><tr><th class="l">Clip</th><th>Frames</th><th>Ball</th><th>Player</th><th>Fully</th><th>Partial</th><th title="player boxes drawn (not verified complete)">Player boxes drawn*</th></tr></thead><tbody>` +
-    rowOf("<b>All clips</b>", {...L.totals, clip_frames: L.clips.some(c => c.clip_frames == null) ? null : L.clips.reduce((a, c) => a + c.clip_frames, 0), player_marked_sidecar: L.clips.reduce((a, c) => a + c.player_marked_sidecar, 0)}) + splitRows + clipRows + `</tbody></table></div>` +
-    `<p class="muted">Ordered by fewest fully-labelled frames. Partial = a group marked partial, or only one of ball/player labelled. *Player boxes drawn = frames with a hand-drawn player box in the sidecar, not verified complete (the Player column is the authoritative count). Gold (hand / verdict) ${n(t.gold)} · silver (audited teacher) ${n(t.silver.total)}${tv ? " (" + tv + ")" : ""} · other ${n(t.other)} labelled class-group rows.</p>`;
+  const pct = v => v == null ? "" : ` <span class="muted">(${v}%)</span>`;
+  const gcells = r => `<td>${n(r.frames)}${r.clip_frames ? " / " + n(r.clip_frames) : ""}</td><td><b>${n(r.complete)}</b></td><td>${n(r.absent)}</td><td>${n(r.partial)}</td><td>${n(r.unreviewed)}</td><td><b>${n(r.labelled)}</b>${pct(r.pct_labelled)}</td>`;
+  const head = first => `<thead><tr><th class="l">${first}</th><th>Frames</th><th>Complete</th><th>Absent</th><th>Partial</th><th>Unreviewed</th><th>Labelled</th></tr></thead>`;
+  const section = (key, G) => {
+    const splitRows = Object.entries(G.by_split).map(([s, r]) => `<tr class="diag"><td class="l">split: ${esc(s)}</td>${gcells(r)}</tr>`).join("");
+    const clipRows = G.clips.map(c => `<tr><td class="l">${esc(c.clip)} <span class="muted">${esc(c.split)}</span></td>${gcells(c)}</tr>`).join("");
+    const m = Object.entries(G.by_method).map(([k, v]) => `${esc(k)} ${n(v)}`).join(" · ") || "none";
+    const t = G.tiers, tv = Object.entries(t.silver.by_teacher_version).map(([k, v]) => `${esc(k)} ${n(v)}`).join(", ");
+    return `<h3>${esc(G.label)} <span class="muted">${G.classes.map(esc).join(", ")}</span></h3>` +
+      `<div class="wrap"><table>${head("Clip")}<tbody><tr><td class="l"><b>All clips</b></td>${gcells(G.totals)}</tr>${splitRows}${clipRows}</tbody></table></div>` +
+      `<p class="muted">By method: ${m}. Gold (hand / verdict) ${n(t.gold)} · silver (audited teacher) ${n(t.silver.total)}${tv ? " (" + tv + ")" : ""} · other ${n(t.other)}.</p>`;
+  };
+  const f = L.totals, sc = L.clips.reduce((a, c) => a + c.player_marked_sidecar, 0);
+  el.innerHTML = `<h2>Labelling coverage</h2><p class="muted">Two independent detectors, each trained on frames complete for its own group. Ball and player-side counts are never pooled. Labelled = complete + absent; unreviewed includes frames with no state row for that group.</p>` +
+    section("ball", L.groups.ball) + section("player", L.groups.player) +
+    `<p class="muted"><b>Informational:</b> fully labelled (ball and player-side both labelled) ${n(f.fully_labelled)} of ${n(f.frames)} frames with any state; ${n(f.partial)} frames partial or labelled in one group only. This is not a training gate. Player boxes drawn in the sidecar (not verified complete): ${n(sc)} frames.</p>`;
 }
 async function loadLabelling() {
   try {
