@@ -1449,6 +1449,10 @@ A *dataset* is a clips dir plus where its labels live. One server serves all of 
 
 ## 19. Labelling jobs: ask main for labels (LAB-14xx)
 
+### Ball anchor iteration (design 2026-11-21)
+
+Design only. A Ball Check `ball`/`corrected` verdict becomes an anchor; a generator (reusing `ball_eval/suggest_rank.py` scoring and a constrained `ViterbiBallTracker`) appends the next likely candidates to the same job via the existing `append`/`reorder` API (`if_rev`), driven by a third `ROUND_HOOKS` hook and a nightly sweep. Same flow for the train rounds and the eval panel (separate job families, disjoint by `split_of`; anchoring bias accepted). Frames with no confirmed candidate go to an explicit full-frame check in job mode (never default no-ball); every selected frame must end `ball`, `no_ball`, `unusable` or `deferred`. See [docs/design/ball_anchor_iteration.md](../../../docs/design/ball_anchor_iteration.md).
+
 ### Job-mode page controls
 
 - **LAB-1442** (SHOULD) In job mode the page has a "Card frame (C)" button (key `C`; `R` is already Run/Restart) that returns to the current job card's clip and frame after the user stepped away. It reloads the clip if needed, saves a dirty edit like any frame change, never answers or advances, does nothing when already on the card frame, and is highlighted while off it.

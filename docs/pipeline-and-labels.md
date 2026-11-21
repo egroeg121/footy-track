@@ -166,6 +166,10 @@ Seam ids (S1 and so on) are the rows of [Architecture, section 7](architecture.m
 
 The newest feature store (2026-08-04) predates the `human_checked` ingest fix, the Ball Check corrections and six new sidecars, so store, export and Roboflow is stale end to end ([T-07](todo.md)).
 
+### Ball anchor iteration (design 2026-11-21)
+
+Proposal: offline-model ball suggestions become Ball Check cards; a confirmed ball is an anchor, and a bidirectional constrained search from it (motion gate, forbidden positions from rejected cards) yields the next candidate cards, which are checked in turn, until all selected frames reach a terminal state. The same flow serves train windows and the ball eval panel (two separate job families with their own keys, caps and counters; sets disjoint by `split_of`; eval labels never feed training). A frame with no confirmed candidate is never defaulted to no-ball: it gets an explicit full-frame human check (laptop job mode or phone full-frame card), which is the false-negative hunt. Design, orchestration and task list: [design/ball_anchor_iteration.md](design/ball_anchor_iteration.md). Nothing is built yet.
+
 ## 5. Recommendation, in order
 
 1. **Fix the record.** Done on this branch: the code comment and docs now cite .665 / .591 and the 74% caveat. The KB findings page still needs updating, with the maintainer's approval ([T-15](todo.md)).
