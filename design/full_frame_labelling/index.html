@@ -891,6 +891,15 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#decision-2026-11-21-two-detectors-supersedes-the-single-multi-class-student" class="md-nav__link">
+    <span class="md-ellipsis">
+      Decision 2026-11-21: two detectors (supersedes the single multi-class student)
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#1-fully-labelled-frame" class="md-nav__link">
     <span class="md-ellipsis">
       1. Fully labelled frame
@@ -980,6 +989,28 @@
 
 <h1 id="full-frame-labelling-complete-frames-progress-auto-label-series">Full-frame labelling: complete frames, progress, auto-label series<a class="headerlink" href="#full-frame-labelling-complete-frames-progress-auto-label-series" title="Permanent link">&para;</a></h1>
 <p>Status: Tasks 1-10 implemented and merged 2026-11-19 (PRs #107, #109-#118); the pieces are untested against real models and the real store. Original proposal 2026-11-19. KB relied on: <code>footy-claude-autolabel-loop</code> (Claude verify precision, queue), <code>footy-datasets-and-progress</code> (store, splits, <code>/progress</code>, Prefect nightly), <code>footy-labeller-gotchas</code> (sidecar data loss, <code>_segNNN</code> clips not contiguous). Builds on <code>ball_sampling.md</code>, <code>feature_store.md</code>.</p>
+<h2 id="decision-2026-11-21-two-detectors-supersedes-the-single-multi-class-student">Decision 2026-11-21: two detectors (supersedes the single multi-class student)<a class="headerlink" href="#decision-2026-11-21-two-detectors-supersedes-the-single-multi-class-student" title="Permanent link">&para;</a></h2>
+<p>Decision (user, 2026-11-21): train <strong>two separate detectors</strong> instead of one multi-class RT-DETR.
+- <strong>Ball detector</strong>: <code>ball</code> / <code>in_play_ball</code> / <code>out_of_play_ball</code>. High-resolution or tiled (can run on crops/tiles), its own hard negatives (Ball Check <code>not_ball</code>), evaluated on the ball eval panel.
+- <strong>Player-side detector</strong>: <code>player</code>, <code>referee</code>, <code>coach</code>, <code>player_sub</code>, <code>person</code>.</p>
+<p>Why: labelling is already split (Ball Check / ball jobs vs Player Check); the ball is tiny and needs different resolution and evaluation; each model gets its own teacher version, targeted queue and eval; the pipeline is easier to label and train.
+Costs: two inference passes (the ball model can run on crops/tiles); ball false positives lose player context, mitigated by Ball Check hard negatives.</p>
+<p>Consequences:
+1. <strong><code>frame_complete</code> (both groups complete) stops being the training gate.</strong> The ball model trains on frames whose <em>ball</em> state is <code>complete</code>/<code>absent</code>; the player model on frames whose <em>player</em> state is <code>complete</code>/<code>absent</code>. <code>frame_complete</code> / <code>fully_labelled</code> stay as an informational view. Class ids stay frozen (<code>constants.py</code>); the player export simply excludes the ball classes.
+2. <strong>Progress</strong> (<code>/progress/labelling</code>) should show two independent targets: ball-complete and player-complete; "fully labelled" is informational only.
+3. <strong>Auto-label pipeline</strong> (windows, propose, pre-verify, series review, teacher versions, targeting queue; sections 4-4b) runs <strong>per group</strong>: a ball pipeline and a player pipeline, each with its own teacher version and queue.
+4. <strong>Eval</strong>: the ball eval panel for the ball model; blind hand-labelled heldout frames (the player eval panel, section 4c.6b) for the player model.</p>
+<p>Status:
+| Part | State |
+|---|---|
+| Ball-only export (default, no <code>--classes</code>; gate = ball group only; ball classes collapse to one class id 0) | Implemented (<code>scripts/export_training_dataset.py</code>) |
+| <code>frame_label_state</code> per group, per-group writers, frozen class ids | Implemented |
+| Player-only export mode (player-group gate, ball classes excluded, frozen ids unchanged) | TODO. Today <code>--classes</code> multi-class export still gates on <code>frame_complete</code> |
+| <code>/progress/labelling</code> as two independent targets | TODO. Today it reports <code>ball_labelled</code>, <code>player_labelled</code> and <code>fully_labelled</code> (section 3) |
+| Per-group auto-label pipeline and per-group teacher versions / queues | TODO. Stages in section 4 are built as one pipeline for both groups |
+| Ball model training recipe (high-res/tiled) and player model training run | TODO (not covered by this doc) |
+| Player eval panel (blind heldout frames) | TODO (see 4c.6b) |</p>
+<p>Where sections below say "one detector", "multi-class" or that fully labelled frames are the training target, that text is <strong>superseded</strong> by this decision; it is kept for history and marked inline.</p>
 <h2 id="1-fully-labelled-frame">1. Fully labelled frame<a class="headerlink" href="#1-fully-labelled-frame" title="Permanent link">&para;</a></h2>
 <p>A frame is <strong>fully labelled</strong> when each class group (<code>ball</code>, <code>player</code>) has state <code>complete</code> or <code>absent</code>:
 - <code>ball</code>: <code>complete</code> = a verified ball box exists; <code>absent</code> = explicit no_ball (sidecar <code>no_ball</code> tag or Ball Check frame verdict). <code>unsure</code> and unreviewed are neither.
@@ -992,18 +1023,19 @@
 - <code>run_id</code> points at the proposing run (provenance).
 - View <code>frame_complete(game_id, frame_index)</code> = both groups in (<code>complete</code>,<code>absent</code>). Absence of a row means <code>unreviewed</code>.
 - Writers: labeller flush writes <code>no_ball</code>, plus <code>complete</code> for ball when a human box exists. Ball Check verdicts write ball state. The series review (section 4) writes both groups. Existing GT is NOT back-filled as player-complete; only clips the user flags (<code>--legacy-complete-clips</code>) are.
-- Missing label never implies background. Only <code>complete</code>/<code>absent</code> frames reach training.</p>
+- Missing label never implies background. Only <code>complete</code>/<code>absent</code> frames reach training. <em>(Superseded 2026-11-21: per group. Ball-model frames need ball <code>complete</code>/<code>absent</code>, player-model frames need player <code>complete</code>/<code>absent</code>; both groups are no longer required.)</em></p>
 <h2 id="2-exporter-scriptsexport_training_datasetpy">2. Exporter (<code>scripts/export_training_dataset.py</code>)<a class="headerlink" href="#2-exporter-scriptsexport_training_datasetpy" title="Permanent link">&para;</a></h2>
 <ul>
-<li>Query joins <code>frame_complete</code>; only those frames are emitted. Frames with partial state are skipped, with a manifest count.</li>
+<li><em>(Superseded 2026-11-21: the gate is per model group, not <code>frame_complete</code>; ball-only mode already does this, player-only mode is TODO.)</em> Query joins <code>frame_complete</code>; only those frames are emitted. Frames with partial state are skipped, with a manifest count.</li>
 <li>Positives are canonical boxes of reviewed sources. Negatives: ball <code>absent</code> frames are written with an empty ball label set. Ball Check <code>not_ball</code> boxes are kept as <code>hard_negatives.json</code> (and optional empty-region crops), never as a class.</li>
 <li>Class ids are stable: a fixed list in <code>constants.py</code> (<code>player=0, ball=1, referee=2, ...</code>) replaces sorted-label ids. The manifest records the list, and a test fails if ids change.</li>
 <li><code>--sources</code> defaults to <code>hand_label,reviewed</code> (machine boxes enter only via <code>reviewed=true</code>). <code>--sources all</code> remains explicit.</li>
 <li>Train/val comes from <code>splits.split_of</code> only (existing guard test applies). Manifest reports frames by state, split and class.</li>
 </ul>
 <h2 id="3-progress-view">3. Progress view<a class="headerlink" href="#3-progress-view" title="Permanent link">&para;</a></h2>
-<p><code>GET /progress/labelling</code> returns, per clip and totals: <code>frames</code>, <code>ball_labelled</code> (ball in complete/absent), <code>player_labelled</code>, <code>fully_labelled</code>, <code>partial</code>, plus <code>by_method</code> and <code>by_split</code>. It reads the store (not the JSONL), so it can run on the mini. Add a "Labelling coverage" table to the existing <code>/progress</code> page, and a per-clip badge to the clip list (replacing the weak <code>_clip_completion</code> heuristic in <code>server.py</code>).</p>
+<p><code>GET /progress/labelling</code> returns, per clip and totals: <code>frames</code>, <code>ball_labelled</code> (ball in complete/absent), <code>player_labelled</code>, <code>fully_labelled</code>, <code>partial</code>, plus <code>by_method</code> and <code>by_split</code>. <em>(2026-11-21: <code>ball_labelled</code> and <code>player_labelled</code> become the two headline targets; <code>fully_labelled</code> is informational. TODO.)</em> It reads the store (not the JSONL), so it can run on the mini. Add a "Labelling coverage" table to the existing <code>/progress</code> page, and a per-clip badge to the clip list (replacing the weak <code>_clip_completion</code> heuristic in <code>server.py</code>).</p>
 <h2 id="4-auto-label-pipeline-priority">4. Auto-label pipeline (priority)<a class="headerlink" href="#4-auto-label-pipeline-priority" title="Permanent link">&para;</a></h2>
+<p><em>(2026-11-21: runs per group, one ball pipeline and one player pipeline, each with its own teacher version and queue. The text below describes the combined pipeline as built and is otherwise unchanged. TODO for the split.)</em></p>
 <p>Stages, each writing a run row and resumable:</p>
 <ol>
 <li><strong>Select windows</strong> (mini CPU). Contiguous windows of N=250 frames (5 s at 50 fps) taken inside one <code>_segNNN</code> clip, since segments cannot be chained. Choose train-match clips only, balanced across matches, favouring windows with lowest ball-tracker agreement or fewest labels. Heldout matches are excluded (rule zero in <code>ball_sampling.md</code>). Output: <code>windows.json</code>.</li>
@@ -1016,8 +1048,8 @@
 <h2 id="4b-offline-teacher-pipeline-framing-for-sections-4-and-5">4b. Offline teacher pipeline (framing for sections 4 and 5)<a class="headerlink" href="#4b-offline-teacher-pipeline-framing-for-sections-4-and-5" title="Permanent link">&para;</a></h2>
 <p>Two separate systems, deliberately:
 - <strong>Offline pipeline ("teacher")</strong>: a versioned set of heavy models with no real-time limit that auto-labels training data. Members: large detector at high resolution plus test-time augmentation, bidirectional ROI-YOLO/ViTTrack ball tracking, SAM3 for missing people, temporal smoothing/Viterbi, Claude verify. It is a pipeline version (<code>offline_vN</code>), recorded on every label it writes (<code>source=offline_vN</code>, <code>run_id</code>).
-- <strong>Online detector ("student")</strong>: the RT-DETR that must run fast. It trains only on fully labelled frames (section 1).</p>
-<p>Label tiers: <strong>gold</strong> = human-verified (hand label, accept-all review, exceptions); <strong>silver</strong> = teacher output that passed the <code>auto_ok</code> rules and the blind audit (<code>method=offline_audited</code>). Student trains on gold + silver. The teacher is scored, and the student evaluated, on gold only (held-out matches, never silver).</p>
+- <strong>Online detector ("student")</strong>: the RT-DETR that must run fast. <em>(Superseded 2026-11-21: there are two students, a ball detector and a player-side detector, each trained on frames complete for its own group.)</em> Originally: one model trained only on fully labelled frames (section 1).</p>
+<p>Label tiers: <strong>gold</strong> = human-verified (hand label, accept-all review, exceptions); <strong>silver</strong> = teacher output that passed the <code>auto_ok</code> rules and the blind audit (<code>method=offline_audited</code>). Each student trains on gold + silver of its own group. The teacher is scored, and the student evaluated, on gold only (held-out matches, never silver).</p>
 <p><strong>Human labelling is targeted, not uniform.</strong> Every labelling request must be one of:
 1. <em>Improves the teacher</em>: frames where teacher members disagree (forward/backward tracker, detector vs SAM3 person count), flagged frames, audit failures, and hard cases it gets wrong (small/occluded ball, crowded boxes). Corrected frames become teacher training data and gold eval.
 2. <em>Becomes student training data</em>: windows reviewed as series, where the teacher already does well and human time confirms it.
@@ -1039,7 +1071,7 @@ Anything that is none of these (random frames, clips already well covered) is no
 <p><strong>6b. No trust in the 0.98.</strong> The detector's player mAP50 (0.98-0.99) was measured on the original one-game dataset, so it is in-distribution and does not predict performance on new matches (the same gap seen for the ball: 0.92 in-distribution vs 0.49 on held-out clips). Consequences:
 - Nothing is auto-accepted for players on the strength of detector confidence alone. The <code>auto_ok</code> rule for isolated boxes starts at "audit everything" and relaxes per match only once that match's blind audits show a low miss rate.
 - Player miss rate and box quality are reported <strong>per match and per overlap bucket</strong>, never pooled into one number.
-- A <strong>player eval panel</strong> is needed beside the ball one: fully hand-labelled frames (blind, all people boxed) from the heldout matches, sampled with logged inclusion probabilities, used to score the teacher and the student. Player mAP/recall/precision on this panel is the headline; the one-game number is retired from reporting.
+- A <strong>player eval panel</strong> is needed beside the ball one (under the 2026-11-21 decision it is the eval for the player-side detector; TODO): fully hand-labelled frames (blind, all people boxed) from the heldout matches, sampled with logged inclusion probabilities, used to score the teacher and the student. Player mAP/recall/precision on this panel is the headline; the one-game number is retired from reporting.
 - Player audits from train matches measure drift across kits, camera zoom and crowd density, and decide how much human review each new match needs.</p>
 <p><strong>7. Cost target.</strong> Under 3 s for a clean cluster card (swipe), under 15 s with fixes. Report cost per card type on <code>/progress</code> alongside the miss rate per overlap bucket.</p>
 <h2 id="5-task-breakdown-priority-order">5. Task breakdown (priority order)<a class="headerlink" href="#5-task-breakdown-priority-order" title="Permanent link">&para;</a></h2>
@@ -1049,7 +1081,7 @@ Anything that is none of these (random frames, clips already well covered) is no
 <li><strong>Window selector + propose flow.</strong> Files: new <code>autolabel/windows.py</code>, <code>autolabel/propose.py</code>, a Prefect entry in the jobs repo. Accept: windows stay inside a segment and never touch heldout; proposals ingest as unreviewed rows. Deps: 1 (for exclusion of already-complete frames).</li>
 <li><strong>Series review API and card.</strong> Files: <code>labeller/series_review.py</code>, <code>web/series.html</code>, <code>server.py</code> router. Accept: accept-all writes complete state; one exception demotes only that frame; the reject path re-queues. Deps: 1.</li>
 <li><strong>Pre-verify + auto_ok rules + audit sampler.</strong> Files: <code>autolabel/preverify.py</code>, tests with fixture tracks. Accept: flagged ordering is deterministic; audit fraction is 10% blind. Deps: 2.</li>
-<li><strong>Exporter filter.</strong> Files: <code>scripts/export_training_dataset.py</code>, <code>constants.py</code>, tests. Accept: no partial frame appears; negatives present; class ids frozen; default sources. Deps: 1.</li>
+<li><strong>Exporter filter.</strong> Files: <code>scripts/export_training_dataset.py</code>, <code>constants.py</code>, tests. Accept (original; per-group gate after 2026-11-21, player-only mode TODO): no partial frame appears; negatives present; class ids frozen; default sources. Deps: 1.</li>
 <li><strong>Progress endpoint and UI.</strong> Files: <code>labeller/progress.py</code>, <code>web/progress*</code>, clip list badge. Accept: counts equal a fixture store; ball-only clip counts as not fully labelled. Deps: 1.</li>
 <li><strong>Series registry + temporal export option.</strong> Files: <code>schema.py</code>, exporter. Accept: contiguous series exported in frame order. Deps: 3, 5.</li>
 <li>

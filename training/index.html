@@ -919,6 +919,9 @@
 <hr />
 <h1 id="object-detector-training">Object Detector Training<a class="headerlink" href="#object-detector-training" title="Permanent link">&para;</a></h1>
 <p>This document covers how to run the object detector training script and documents baseline training results.</p>
+<blockquote>
+<p>Update 2026-11-21: the direction is two separate detectors (ball; player-side classes), not one multi-class model. This script and its results describe the earlier single-model setup. See <a href="../design/full_frame_labelling/">design/full_frame_labelling.md</a>.</p>
+</blockquote>
 <h2 id="script-train_object_detectorpy">Script: <code>train_object_detector.py</code><a class="headerlink" href="#script-train_object_detectorpy" title="Permanent link">&para;</a></h2>
 <p><strong>Location:</strong> <code>src/footy_track/scripts/train_object_detector.py</code></p>
 <p>Downloads a labelled dataset from Roboflow, fine-tunes a YOLO model on it, and saves the best weights.</p>
