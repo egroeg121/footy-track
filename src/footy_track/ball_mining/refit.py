@@ -311,34 +311,31 @@ def resolve_marks(dataset: str, marks_dir: str | Path | None) -> Path:
     return Path(marks_dir) if marks_dir else datasets.get(dataset).marks_dir
 
 
-def _apply_order(client, ref: str, doc: dict, cal: dict | None, state: dict) -> dict:
-    """POST the new order with ``if_rev``; on a rev conflict (a reorder / append landed since the read) re-read the job and
-    recompute the order from the fresh unanswered cards, up to ``REORDER_TRIES`` times."""
-    note = f"ball_mining state v{state['version']} ({state['n_verdicts']} verdicts)"
+def apply_order(client, ref: str, doc: dict, order_fn, *, by: str, note: str) -> dict:
+    """POST ``order_fn(unanswered)`` with ``if_rev``; on a rev conflict (a reorder / append landed since the read) re-read the
+    job and recompute the order from the fresh unanswered cards, up to ``REORDER_TRIES`` times. ``order_fn`` takes the
+    ``(position, item)`` list of :func:`unanswered_from_results` and returns the new order of those positions (the refit and
+    the anchor search each pass their own)."""
     for attempt in range(1, REORDER_TRIES + 1):
         if doc["job"].get("status") not in LIVE:
             return {"reorder": f"skipped, job is {doc['job'].get('status')}"}
-        order = priority_order(unanswered_from_results(doc), cal)
+        order = order_fn(unanswered_from_results(doc))
         try:
-            res = client.reorder(
-                ref,
-                order,
-                by=REORDER_BY,
-                note=note,
-                if_rev=int(doc["job"].get("rev") or 0),
-            )
+            res = client.reorder(ref, order, by=by, note=note, if_rev=int(doc["job"].get("rev") or 0))
         except jobs_client.JobsError as e:
             if e.status == 409 and isinstance(e.body, dict) and "rev" in e.body:
-                LOGGER.info(
-                    "reorder of %s hit a rev conflict (attempt %d): re-reading",
-                    ref,
-                    attempt,
-                )
+                LOGGER.info("reorder of %s hit a rev conflict (attempt %d): re-reading", ref, attempt)
                 doc = client.results(ref)
                 continue
             raise
-        return {"reordered": res["unanswered"], "changed": res["changed"], "rev": res["rev"], "attempts": attempt}  # fmt: skip
+        return {"reordered": res["unanswered"], "changed": res["changed"], "rev": res["rev"], "attempts": attempt}
     return {"reorder": "rev_conflict", "attempts": REORDER_TRIES}
+
+
+def _apply_order(client, ref: str, doc: dict, cal: dict | None, state: dict) -> dict:
+    """The refit's reorder: U / M cards re-dealt by :func:`priority_order` (see :func:`apply_order`)."""
+    note = f"ball_mining state v{state['version']} ({state['n_verdicts']} verdicts)"
+    return apply_order(client, ref, doc, lambda un: priority_order(un, cal), by=REORDER_BY, note=note)
 
 
 def summary(state: dict, cal: dict | None) -> dict:

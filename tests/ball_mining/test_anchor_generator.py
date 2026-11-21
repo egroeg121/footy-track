@@ -8,7 +8,13 @@ import pytest
 
 from footy_track.ball_mining import anchor_search as A  # noqa: N812
 
-from .test_anchor_search import HC, TC, check_job, register, verdict  # noqa: F401
+from .test_anchor_search import (  # noqa: F401
+    HC,
+    TC,
+    check_job,
+    register_splits,
+    verdict,
+)
 
 AX, AY = 0.41, 0.52  # anchor centre (the verdict BOX centre)
 
@@ -189,7 +195,7 @@ def test_selected_row_of_another_split_is_refused(ds, run):
         run(check_job(TC, FRAMES), NEAR, store=SelStore(sel("r1", HC, [0, 10])))  # heldout clip labelled train
 
 
-def test_check_emittable_rejects_frames_outside_F_or_split(register):
+def test_check_emittable_rejects_frames_outside_F_or_split():
     card = {"clip": TC, "frame_index": 10}
     A.check_emittable([card], frozenset({(TC, 10)}), "train")
     with pytest.raises(A.SplitError):
