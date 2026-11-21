@@ -282,3 +282,37 @@ Legend as in `full_frame_labelling.md` §5. All NEW.
 7. Window size for search (250 frames = 5 s as in `full_frame_labelling.md`, or longer)? Segments are not contiguous, so windows cannot span `_segNNN`.
 8. Should the reconciler be allowed to auto re-queue (`--apply`), or report only?
 9. "Keep both jobs": I read it as the eval family and the train family run side by side with shared card mechanics (section 7.0). If you meant something else (for example keeping the old per-frame `ball_place` flow beside Ball Check cards), say so. Also: a fixed share of labelling time for the eval job until its panel is done?
+
+## 10. Replay results (task 13, 2026-11-21)
+
+Harness: `ball_mining/anchor_replay.py` + `scripts/ball_anchor_replay.py` (CPU, read-only, train clips only via `splits.split_of_name`). It runs the real `generate_window` after every verdict. Oracle: human ball GT (`labeller`-tagged sidecars of `ball_gt_marks` + `ball_gt_marks_ball_train_v1`, aliases merged by canonical clip id). Candidates: RT-DETR jsonl (`ball_candidates`, sha `b4ea4b22`, conf >= 0.1, top 6/frame). A card is `ball` when its centre is within 20 px of GT, else `not_ball` (anchor / forbidden disc). A GT frame counts as covered when it has a correct anchor or the current card for it is within 20 px (nothing beyond the hop cap is credited). Re-seed = top-1 detection on an uncovered frame, oracle-judged; no detection left = hand placement (one tap, counted as `hand_in_90`). The tracker also gets a stride-5 grid of non-GT "bridge" frames (never asked or scored), because `max_gap = 12` otherwise cannot link GT frames that are about 25 frames apart. Windows are 250 frames, clip taps = sum over windows.
+
+**Real data available.** 7 train clips have both dense human GT (>= 20 ball frames) and per-frame detector candidates, all `arsenal_mancity_seg{010,030,031,050,060,100,110}` (GT 124/26/53/80/20/24/29 frames). 7 more train clips with >= 11 GT frames have NO candidates on disk (`arsenal_example`, `arsenal_mancity_part050`, `arsenal_astonvilla_seg080`, `arsenal_bournemouth_1st_seg009/031/035/040`): their only candidate source is a sparse `ball_pool` parquet (a few clips per match, a handful of frames each) and `machine_labels` / `ball_candidates` exist only for `arsenal_mancity_20250925_*` plus a few eval clips. Most `ball_gt_marks_ball_train_v1` clips have a single human frame (Ball Check outcomes), useless for a replay. GT frames are sparse (about one per 25 frames), unlike the dense per-frame GT of the KB simulation. Detector recall ceiling on these GT frames: 124 - 11, 26, 53 - 18, 80 - 2, 20 - 2, 24, 29 - 1 unreachable (within 20 px), 323 frames in total of which 34 unreachable.
+
+**Result: the acceptance criterion is NOT met.** Perfect oracle, design as specified (hop cap 3, order hop / margin / conf, judged frames skipped, window 250), real candidates:
+
+| clip | GT | unreachable | taps to 90% | of which hand | taps to 100% of reachable | wrong anchors |
+|---|---|---|---|---|---|---|
+| seg010 | 124 | 11 | 129 | 11 | 129 | 0 |
+| seg030 | 26 | 0 | 24 | 0 | 26 | 0 |
+| seg031 | 53 | 18 | 64 | 15 | 55 | 0 |
+| seg050 | 80 | 2 | 75 | 0 | 80 | 0 |
+| seg060 | 20 | 2 | 14 | 0 | 15 | 0 |
+| seg100 | 24 | 0 | 23 | 0 | 25 | 0 |
+| seg110 | 29 | 1 | 27 | 0 | 30 | 0 |
+
+Mean 50.9, median 27 taps to 90% against the baseline 13 (no clip but seg060 is near it). Tapping every frame would cost 323 * 0.9 = 323 taps over the 7 clips (sum of the per-clip naive figure); the design needs 356 (`design` policy), so it is no better than confirming every frame once. Variants (same data, `--help` for flags):
+
+| variant | mean / median taps to 90% |
+|---|---|
+| spec (design order, hop cap 3) | 50.9 / 27 |
+| smallest margin first (KB simulation order) | 50.3 / 24 |
+| `requeue` (rejected frame stays open for its next candidate) | 57.6 / 26 |
+| margin order, hop cap 12 | 35.0 / 24 |
+| margin order, hop cap 100 | 22.6 / 8 |
+| margin order, hop cap 100, whole clip as one window | 32.3 / 5 |
+| spec with a 5% noisy oracle | 54.7 / 29 (1 wrong anchor) |
+
+Why: (1) the hop cap counts sampled steps, so on a 25-frame GT spacing almost every frame is beyond the cap and needs its own seed card; lifting the cap gives 1-8 taps on four clips (seg050, 060, 100, 110, one continuous ball track) but seg010, seg031 stay at 80+ (hop cap is a wrong-anchor safeguard, so a safe value is the open question); (2) cards are asked in frontier / margin order, including frames whose pick is already right, so correct frames cost a tap without raising coverage, while confident wrong picks (large margin) come last; (3) the detector ceiling (seg031: 18 of 53 GT frames without a candidate) forces hand placements before 90% is reachable; (4) `max_gap = 12` means the unmodified tracker cannot link frames more than 12 apart: the stride-5 grid is required.
+
+**Verdict:** revise the design before rollout. Suggested changes to test next in this harness: spend the first taps on the most-informative frames only and let high-margin runs be bulk-accepted (section 2.2 item 4, never auto-accepted) instead of one card per frame; make the hop cap depend on the margin / track continuity (the replay shows wrong anchors are rare, 0 with a perfect oracle); keep the stride-5 bridge frames as part of the generator input (task 3 follow-up). The 13-tap KB figure came from dense per-frame GT, so this replay is a harder test than that simulation; a like-for-like rerun needs dense GT, which does not exist for these clips. A synthetic run (`--synthetic 5`, labelled as such, not a measurement) only proves the harness: mean 72 taps (design) / 95 (requeue).
