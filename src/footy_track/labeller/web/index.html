@@ -514,6 +514,24 @@ function renderTimelineBar(){
     ctx.fillStyle = "#17c3b2";
     ctx.fillRect(Math.floor((idx / total) * W), 9, pw, 3);
   }
+  // job frames of the loaded clip: magenta top band = still to label, hollow dim = done
+  if (job && loadedPath) {
+    const clipId = stemOf(loadedPath);
+    const jw = Math.max(2, pw);
+    for (const f of job.frames) {
+      if (f.clip !== clipId) continue;
+      const x = Math.min(W - jw, Math.floor((f.frame / total) * W));
+      if (jobDone.has(jobKey(f.clip, f.frame))) {
+        ctx.strokeStyle = "rgba(255,0,255,0.45)";
+        ctx.lineWidth = 1;
+        ctx.strokeRect(x + 0.5, 0.5, jw - 1, 4);
+      } else {
+        ctx.fillStyle = "#ff00ff";
+        ctx.fillRect(x, 0, jw, 5);
+      }
+    }
+    canvas.title = "Magenta ticks = job frames still to label; hollow = done";
+  }
   // current frame cursor
   ctx.fillStyle = "#fff";
   ctx.fillRect(Math.floor((viewFrame / total) * W), 0, 2, 12);
@@ -754,6 +772,7 @@ function jobRender() {
     $("jobMeta").textContent = at ? `clip ${at.clip}, frame ${at.frame} · done ${jobDone.size} / ${job.total}` : "";
     $("jobMeta").title = "";
   }
+  renderTimelineBar();   // job-frame markers follow done state / clip
 }
 
 // Mirror the labeller's rule for the frame on screen: done = a human ball box, a no-ball mark or a

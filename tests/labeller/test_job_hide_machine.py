@@ -104,3 +104,10 @@ def test_job_bar_layout_is_stable_between_job_and_non_job_frames():
     assert "#jobBar { min-height:" in html and "overflow:hidden" in html.split("#jobBar {", 1)[1].split("}", 1)[0]
     rule = html.split("#jobBar #jobTitle, #jobBar #jobPos, #jobBar #jobMeta {", 1)[1].split("}", 1)[0]
     assert "white-space:nowrap" in rule and "text-overflow:ellipsis" in rule and "min-width:0" in rule
+
+def test_timeline_bar_marks_job_frames_of_loaded_clip():
+    html = INDEX_HTML.read_text()
+    bar = html.split("function renderTimelineBar()")[1].split("\n}\n")[0]
+    assert "job.frames" in bar and "stemOf(loadedPath)" in bar and "jobDone.has" in bar
+    render = html.split("function jobRender()")[1].split("\n}\n")[0]
+    assert "renderTimelineBar()" in render
