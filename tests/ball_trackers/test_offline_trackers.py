@@ -199,3 +199,125 @@ def test_online_tracker_is_unchanged_by_the_new_modules():
     t.update(0, [cand(100, 100, 0.9)])
     assert t.points()[0].source == DETECTED
     assert isinstance(BidirectionalBallTracker((W, H)), BidirectionalBallTracker)
+
+
+# ---------------------------------------------------------------- constrained Viterbi
+
+from footy_track.ball_trackers.viterbi import Anchor, ForbiddenDisc  # noqa: E402
+
+
+def _tracker(frames: dict[int, list[BallCandidate]], n: int) -> ViterbiBallTracker:
+    t = ViterbiBallTracker((W, H))
+    for f in range(n):
+        t.update(f, frames.get(f, []))
+    return t
+
+
+def _centre(p) -> tuple[float, float]:
+    return (p.x + p.w / 2) * W, (p.y + p.h / 2) * H
+
+
+def _rows(pts):
+    return [p.to_row() for p in pts]
+
+
+def test_constrained_without_constraints_is_identical_to_points():
+    frames = fp_first_then_ball()
+    frames[12] = []  # a hole too
+    t = _tracker(frames, 30)
+    assert _rows(t.constrained_points().points) == _rows(t.points())
+    t2 = _tracker({}, 5)
+    assert _rows(t2.constrained_points().points) == _rows(t2.points())
+
+
+def test_anchor_frame_returns_the_anchor_even_without_a_detector_candidate():
+    frames = {f: [cand(*ball_xy(f), 0.9)] for f in range(20)}
+    frames[10] = []  # detector missed it
+    ax, ay = ball_xy(10)
+    res = _tracker(frames, 20).constrained_points([Anchor(10, (ax / W, ay / H))])
+    px, py = _centre(res.points[10])
+    assert (px, py) == pytest.approx((ax, ay))
+    assert res.points[10].source == DETECTED
+    assert not res.unreachable[10]
+
+
+def test_anchor_overrides_a_confident_false_positive_both_directions():
+    frames = fp_first_then_ball(early_conf=0.3)
+    for f in range(30):  # a confident FP everywhere
+        frames[f].append(cand(1500, 80, 0.95))
+    t = _tracker(frames, 30)
+    free = t.points()
+    ax, ay = ball_xy(15)
+    res = t.constrained_points([Anchor(15, (ax / W, ay / H))])
+    assert err_px(res.points[15], 15) < 1
+    # the anchor in the middle pulls both earlier and later frames onto the ball
+    # never the FP, on either side of the anchor; confident later frames are the ball
+    assert all(err_px(q, q.frame_index) < 1 for q in res.points if q.x is not None)
+    assert all(err_px(res.points[f], f) < 1 for f in (16, 22, 25))
+    assert res.points[15].track_id == res.points[25].track_id
+    assert any(err_px(free[f], f) > 100 for f in range(30))  # unconstrained is fooled
+
+
+def test_forbidden_disc_is_never_chosen():
+    frames = {f: [cand(*ball_xy(f), 0.9)] for f in range(20)}
+    t = _tracker(frames, 20)
+    assert err_px(t.points()[8], 8) < 1
+    bx, by = ball_xy(8)
+    res = t.constrained_points(forbidden=[ForbiddenDisc(8, (bx / W, by / H), 15.0)])
+    p = res.points[8]
+    # the only candidate was rejected: no forced pick (interpolated across the hole at most)
+    assert p.source != DETECTED
+    assert res.points[7].source == DETECTED and res.points[9].source == DETECTED
+
+
+def test_forbidden_disc_lets_a_weaker_candidate_win():
+    frames = {f: [cand(*ball_xy(f), 0.9)] for f in range(20)}
+    bx, by = ball_xy(8)
+    frames[8].append(cand(bx + 25, by, 0.7))
+    res = _tracker(frames, 20).constrained_points(
+        forbidden=[ForbiddenDisc(8, (bx / W, by / H), 10.0)]
+    )
+    assert res.points[8].source == DETECTED
+    assert _centre(res.points[8])[0] == pytest.approx(bx + 25)
+
+
+def test_out_of_gate_candidate_is_dropped_and_frame_interpolated():
+    frames = {f: [cand(*ball_xy(f), 0.9)] for f in range(20)}
+    frames[6] = [cand(1800, 1000, 0.9)]  # far outside the anchor gate
+    frames[7] = []
+    a0, a1 = ball_xy(2), ball_xy(14)
+    res = _tracker(frames, 20).constrained_points(
+        [Anchor(2, (a0[0] / W, a0[1] / H)), Anchor(14, (a1[0] / W, a1[1] / H))]
+    )
+    # the far candidate is gated out, so frame 6 has no eligible candidate; the
+    # path (5 -> 8, gap 3 <= max_gap) interpolates it, so it is not unreachable
+    assert res.points[6].source == INTERPOLATED
+    assert not res.unreachable[6] and 6 not in res.unreachable_frames
+    assert err_px(res.points[6], 6) < 1  # on the ball's line, not at (1800, 1000)
+    assert res.points[7].source == INTERPOLATED
+
+
+def test_unreachable_frame_marker_when_window_has_no_eligible_candidates():
+    frames = {0: [cand(*ball_xy(0), 0.9)], 12: [cand(1800, 1000, 0.9)]}
+    a = ball_xy(0)
+    t = _tracker(frames, 14)
+    res = t.constrained_points([Anchor(0, (a[0] / W, a[1] / H))])
+    assert res.points[12].source == "none" and res.unreachable[12]
+    assert 12 in res.unreachable_frames
+    assert not res.unreachable[0]
+
+
+def test_margin_is_small_for_ambiguous_and_large_for_clear_frames():
+    frames = {f: [cand(*ball_xy(f), 0.9)] for f in range(20)}
+    bx, by = ball_xy(10)
+    frames[10].append(cand(bx, by + 14, 0.88))  # near-identical rival
+    frames[5].append(cand(1700, 900, 0.3))  # clearly worse rival
+    res = _tracker(frames, 20).constrained_points()
+    assert res.margin[10] is not None and res.margin[5] is not None
+    assert 0 <= res.margin[10] < res.margin[5]
+    assert res.margin[0] == float("inf")  # single candidate
+
+
+def test_anchor_on_unknown_frame_raises():
+    with pytest.raises(ValueError):
+        _tracker({}, 3).constrained_points([Anchor(99, (0.5, 0.5))])

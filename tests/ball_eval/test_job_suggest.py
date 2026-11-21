@@ -1,5 +1,5 @@
 """Job-keyed detector suggestions for non-panel ball_place jobs (LAB-1479): no blind control, pre-labelled frames left
-alone, heldout gate, report; and an accept on such a job saves the marker and survives a reload."""
+alone, per-job split guard (heldout and train jobs allowed, mixed refused), report; and an accept on such a job saves the marker and survives a reload."""
 
 from __future__ import annotations
 
@@ -71,7 +71,7 @@ def test_no_suggest_file_or_other_kind_answers_null(env):
     assert suggestions.suggestion_for(job, CLIP, 11, root=fd)["suggestion"] is None  # frame not in the job
 
 
-def test_non_heldout_job_is_refused(env, monkeypatch):
+def test_mixed_split_job_is_refused(env, monkeypatch):
     fd, job, _, w = env
     job["items"][0]["clip"] = f"{TRAIN}_seg001"
     with pytest.raises(P.PanelError):
@@ -150,3 +150,15 @@ def test_payload_carries_existing_human_ball_boxes_as_anchors(env):
     assert pay["human"] == {f"{CLIP}:0": [0.5, 0.6]}  # the hand label of the fixture sidecar, compact normalised centre
     (marks / f"{CLIP}.jsonl").write_text("")
     assert suggestions.candidates_for_job(job, fd)["human"] == {}
+
+
+def test_train_job_is_allowed_same_builder(env, monkeypatch):
+    fd, job, _, w = env
+    monkeypatch.setenv("FOOTY_MATCH_SPLITS_ALLOW_SEED", "1")  # train clips need the clip register (seed stands in)
+    for it in job["items"]:
+        it["clip"] = f"{TRAIN}_seg001"
+    (fd / "clips").mkdir(exist_ok=True)
+    ds = datasets.get("ds")
+    (ds.clips_dir / f"{TRAIN}_seg001.mp4").write_bytes(b"x")
+    r = J.suggest_job("j-test", root=fd, weights=w, detector=FakeDet(), log=lambda m: None)
+    assert r["status"] == "created"

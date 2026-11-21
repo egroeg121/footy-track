@@ -5,8 +5,10 @@ A dashed suggested box on every frame with a detector candidate; ``Y`` accepts i
 is NO blind control here (George's call): every frame with a candidate is offered. Frames already labelled when the
 file was written (``pre_labelled``) are left as they are and never get a suggestion served.
 
-HELDOUT-DATA RULE. Eval-only inference: :func:`suggest_job` refuses a job with any clip outside a registered heldout
-match; nothing is trained, mined or cached into a training pool.
+SPLIT RULE. One job = one split: :func:`suggest_job` refuses a job whose clips span more than one split
+(``anchor_search.job_split``, via ``splits.split_of``), so the eval and the train family share this builder but never
+mix. The file is keyed by job id and only ever holds that job's own frames; nothing is trained, mined or cached into
+a pool from it, and a job never reads another job's file.
 
 File ``<FD>/job_suggestions/<job_id>.suggest.<detector_sha8>.json``::
 
@@ -26,7 +28,7 @@ from collections import defaultdict
 from collections.abc import Callable
 from pathlib import Path
 
-from footy_track import match_splits, splits
+from footy_track import splits
 from footy_track.ball_eval import panel as P  # noqa: N812
 from footy_track.ball_eval import panel_suggest as PS  # noqa: N812
 from footy_track.ball_eval.suggest_rank import rank_candidates
@@ -56,14 +58,21 @@ def window_id(item: dict) -> str:
 def job_frames(job: dict) -> dict[str, list[int]]:
     out: dict[str, set[int]] = defaultdict(set)
     for it in job.get("items") or []:
+        if job["kind"] == "ball_check":  # a card's unit is (source, frame, box); the frame is what a window shares
+            out[it["clip"]].add(int(it["frame_index"]))
+            continue
         out[it["clip"]].update(int(f) for f in jobs._item_units(job["kind"], it))  # noqa: SLF001
     return {c: sorted(f) for c, f in sorted(out.items())}
 
 
-def require_heldout_job(job: dict) -> None:
-    bad = sorted(c for c in job_frames(job) if not match_splits.is_heldout_clip(c))
-    if bad:
-        raise P.PanelError(f"job {job['id']} has clips outside a registered heldout match ({bad[:3]}); eval-only inference refused")
+def require_single_split_job(job: dict) -> str:
+    """The job's one split, or ``PanelError`` when its clips span several (per-job split guard)."""
+    from footy_track.ball_mining import anchor_search as A  # noqa: N812, PLC0415 (anchor_search imports this module)
+
+    try:
+        return A.job_split(job) or ""
+    except A.SplitError as e:
+        raise P.PanelError(f"job {job['id']}: {e}; refusing to suggest across splits") from e
 
 
 def job_human(job: dict) -> dict[tuple[str, int], Human]:
@@ -102,7 +111,7 @@ def suggest_job(
     job = jobs.read_job(job_id)
     if job is None or job.get("kind") != "ball_place":
         raise P.PanelError(f"{job_id!r} is not a ball_place job")
-    require_heldout_job(job)
+    require_single_split_job(job)
     if suggester is None:
         suggester = PS.RtDetrSuggester(weights, device=device, batch=batch, detector=detector)
     out = suggest_path(job_id, suggester.ident, root)

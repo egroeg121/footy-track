@@ -42,12 +42,12 @@ def neighbour_clips(clip: str) -> list[str]:
     return [f"{m['stem']}{k:0{width}d}" for k in (n - 1, n + 1) if k >= 0]
 
 
-def read_verdict_frames(marks_dir: str | Path) -> set[tuple[str, int]]:
-    """``{(canonical clip id, frame)}`` that hold a *live* Ball Check verdict in ``<marks>/ball_checks/*.jsonl``.
+def read_live_verdicts(marks_dir: str | Path) -> list[dict]:
+    """Live Ball Check verdict records of ``<marks>/ball_checks/*.jsonl`` (full record, ``clip`` canonicalised).
 
     Per ``(source, frame_index, box_index)`` the last line wins and a ``verdict: null`` line is a tombstone
-    (undo) that retracts it, exactly as ``ball_check._read_verdicts``. A tombstoned card does not count as labelled."""
-    out: set[tuple[str, int]] = set()
+    (undo) that retracts it, exactly as ``ball_check._read_verdicts``. A tombstoned card is not returned."""
+    out: list[dict] = []
     vdir = Path(marks_dir) / "ball_checks"
     if not vdir.is_dir():
         return out
@@ -73,7 +73,12 @@ def read_verdict_frames(marks_dir: str | Path) -> set[tuple[str, int]]:
             if rec.get("verdict") is None:
                 live.pop(key, None)
             else:
-                live[key] = {"clip": clip}
-        for (_, frame, _), rec in live.items():
-            out.add((canonical_clip_id(rec["clip"]), frame))
+                live[key] = {**rec, "clip": canonical_clip_id(clip)}
+        out.extend(live.values())
     return out
+
+
+def read_verdict_frames(marks_dir: str | Path) -> set[tuple[str, int]]:
+    """``{(canonical clip id, frame)}`` that hold a *live* Ball Check verdict in ``<marks>/ball_checks/*.jsonl``
+    (see :func:`read_live_verdicts`). A tombstoned card does not count as labelled."""
+    return {(r["clip"], int(r["frame_index"])) for r in read_live_verdicts(marks_dir)}
