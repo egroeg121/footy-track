@@ -744,7 +744,7 @@ function jobRender() {
   const at = job.frames[jobPos];
   // highlight the card-frame button while the view is off the card's frame
   $("jobCardBtn").classList.toggle("primary", !f);
-  $("jobTitle").textContent = `Job: ${job.title}`;
+  $("jobTitle").textContent = `Job: ${job.title}`; $("jobTitle").title = job.title;
   if (f) {
     $("jobPos").textContent = `job frame ${i + 1} / ${job.total}${jobDone.has(jobKey(f.clip, f.frame)) ? " ✓ labelled" : ""}`;
     $("jobMeta").textContent = `clip ${f.clip}, stratum ${f.stratum || "-"} · done ${jobDone.size} / ${job.total}`;
