@@ -1,0 +1,215 @@
+{
+ "n_files": 28,
+ "n_with_estimate": 28,
+ "runs": {
+  "1": {
+   "rig": [
+    0.1304121753580577,
+    -66.93213845828328,
+    15.733599351269154,
+    -0.002382610180896287
+   ],
+   "dC_vs_gt_m": 0.35755821075031086,
+   "dC_vs_fit95_m": 0.4277847335362327,
+   "droll_vs_gt_deg": -0.0065135075902588305,
+   "sd_C": [
+    0.04318075336341833,
+    0.0441798757100156,
+    0.04314020677638829
+   ],
+   "flags": {
+    "inlier": 2,
+    "unconverged": 6,
+    "outlier": 18,
+    "variant": 2
+   },
+   "n_fit": 22,
+   "main_weight_share": 0.09090909090909091,
+   "variants": 1,
+   "chi2_df4": {
+    "mean_d2": 5645.647599828008,
+    "median_d2": 1529.744493908549,
+    "expected_mean": 4.0,
+    "expected_median": 3.3566939800333224,
+    "frac_le_0.999": 0.07142857142857142,
+    "ks_p": 1.688005519875286e-40
+   },
+   "gantry": {
+    "46": "no estimate file / uncalibrated",
+    "71": "no estimate file / uncalibrated",
+    "73": "no estimate file / uncalibrated",
+    "108": "no estimate file / uncalibrated",
+    "137": "no estimate file / uncalibrated",
+    "154": "no estimate file / uncalibrated"
+   },
+   "non_inlier_segments": [
+    12,
+    16,
+    19,
+    20,
+    29,
+    32,
+    35,
+    41,
+    50,
+    57,
+    64,
+    76,
+    80,
+    81,
+    86,
+    96,
+    101,
+    104,
+    106,
+    129,
+    136,
+    140,
+    145,
+    150,
+    152,
+    159
+   ]
+  },
+  "30": {
+   "rig": [
+    0.16881235803296363,
+    -66.72488572806397,
+    15.715210209351294,
+    -0.003362902232604007
+   ],
+   "dC_vs_gt_m": 0.16635616340699594,
+   "dC_vs_fit95_m": 0.551592479272489,
+   "droll_vs_gt_deg": -0.06268010484333145,
+   "sd_C": [
+    0.04337708729186864,
+    0.05443770969836959,
+    0.04237178480963596
+   ],
+   "flags": {
+    "inlier": 2,
+    "unconverged": 6,
+    "variant": 5,
+    "outlier": 15
+   },
+   "n_fit": 22,
+   "main_weight_share": 0.09090909090909091,
+   "variants": 2,
+   "chi2_df4": {
+    "mean_d2": 1986.1627806690335,
+    "median_d2": 673.5860747631589,
+    "expected_mean": 4.0,
+    "expected_median": 3.3566939800333224,
+    "frac_le_0.999": 0.07142857142857142,
+    "ks_p": 4.481422514567739e-37
+   },
+   "gantry": {
+    "46": "no estimate file / uncalibrated",
+    "71": "no estimate file / uncalibrated",
+    "73": "no estimate file / uncalibrated",
+    "108": "no estimate file / uncalibrated",
+    "137": "no estimate file / uncalibrated",
+    "154": "no estimate file / uncalibrated"
+   },
+   "non_inlier_segments": [
+    12,
+    16,
+    19,
+    20,
+    29,
+    32,
+    35,
+    41,
+    50,
+    57,
+    64,
+    76,
+    80,
+    86,
+    96,
+    101,
+    104,
+    106,
+    114,
+    129,
+    136,
+    140,
+    145,
+    150,
+    152,
+    159
+   ]
+  },
+  "36": {
+   "rig": [
+    0.1687865040356451,
+    -66.72314869007758,
+    15.71390124739922,
+    -0.0033722714687948203
+   ],
+   "dC_vs_gt_m": 0.16501835513638075,
+   "dC_vs_fit95_m": 0.5531669540888973,
+   "droll_vs_gt_deg": -0.06321692253432629,
+   "sd_C": [
+    0.04289244240736347,
+    0.055042504673934095,
+    0.04177891692356159
+   ],
+   "flags": {
+    "inlier": 2,
+    "unconverged": 6,
+    "variant": 5,
+    "outlier": 15
+   },
+   "n_fit": 22,
+   "main_weight_share": 0.09090909090909091,
+   "variants": 2,
+   "chi2_df4": {
+    "mean_d2": 1800.4045034274588,
+    "median_d2": 624.5167594782176,
+    "expected_mean": 4.0,
+    "expected_median": 3.3566939800333224,
+    "frac_le_0.999": 0.07142857142857142,
+    "ks_p": 1.1015326525596115e-35
+   },
+   "gantry": {
+    "46": "no estimate file / uncalibrated",
+    "71": "no estimate file / uncalibrated",
+    "73": "no estimate file / uncalibrated",
+    "108": "no estimate file / uncalibrated",
+    "137": "no estimate file / uncalibrated",
+    "154": "no estimate file / uncalibrated"
+   },
+   "non_inlier_segments": [
+    12,
+    16,
+    19,
+    20,
+    29,
+    32,
+    35,
+    41,
+    50,
+    57,
+    64,
+    76,
+    80,
+    86,
+    96,
+    101,
+    104,
+    106,
+    114,
+    129,
+    136,
+    140,
+    145,
+    150,
+    152,
+    159
+   ]
+  }
+ },
+ "segments_without_estimate": 0,
+ "segments_without_estimate_ids": []
+}

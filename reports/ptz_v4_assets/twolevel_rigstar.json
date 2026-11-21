@@ -1,0 +1,22 @@
+{
+ "C": [
+  0.21857133407362553,
+  -63.64144079224395,
+  14.855608379162799
+ ],
+ "roll": -0.0036947478644072398,
+ "k1": 0.03,
+ "sigma_C": [
+  1.0,
+  3.0,
+  1.0
+ ],
+ "pitch": [
+  105.0,
+  68.0
+ ],
+ "info": {
+  "ground": "twolevel_rigstar",
+  "source": "P3 L2 consensus (cov inflation 30) of 145 L1 rig_estimate.json from generic_gantry_prior_v2 start; k1 = generic line-derived 0.03. Label-free (no GT anywhere in the chain)."
+ }
+}

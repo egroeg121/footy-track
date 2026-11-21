@@ -1,0 +1,22 @@
+{
+ "C": [
+  0.16881235803296363,
+  -66.72488572806397,
+  15.715210209351294
+ ],
+ "roll": -0.003362902232604007,
+ "k1": 0.03,
+ "sigma_C": [
+  1.0,
+  3.0,
+  1.0
+ ],
+ "pitch": [
+  105.0,
+  68.0
+ ],
+ "info": {
+  "ground": "twolevel_ms_rigstar",
+  "source": "P3 L2 consensus (infl 30) of 28 per-segment MULTISTART L1 estimates from generic_gantry_prior_v2; k1 generic 0.03. Label-free."
+ }
+}

@@ -1,0 +1,2979 @@
+{
+ "rig": [
+  0.21857133407362553,
+  -63.64144079224395,
+  14.855608379162799,
+  -0.0036947478644072398
+ ],
+ "cov": [
+  [
+   0.00044556809436278893,
+   -3.6484812427021496e-05,
+   -7.865971437744199e-07,
+   -1.1815499563838194e-07
+  ],
+  [
+   -3.6484812427021346e-05,
+   0.0007119143410797251,
+   -5.542947239552679e-05,
+   -1.6575196717655452e-07
+  ],
+  [
+   -7.8659714377437e-07,
+   -5.5429472395526804e-05,
+   0.00045021169202060575,
+   -5.824073186335507e-08
+  ],
+  [
+   -1.1815499563839794e-07,
+   -1.6575196717649366e-07,
+   -5.8240731863357074e-08,
+   8.775256078623348e-08
+  ]
+ ],
+ "cost": 917.1545606085406,
+ "params": {
+  "cauchy_quantile": 0.5,
+  "outlier_quantile": 0.999,
+  "max_pos_sd_m": 10.0,
+  "max_roll_sd_rad": 0.05,
+  "floor_pos_sd_m": 0.05,
+  "floor_roll_sd_rad": 0.00035,
+  "min_variant_size": 2,
+  "cov_inflation": 30.0,
+  "apply_prior": true,
+  "info_floor": 0.0001,
+  "max_iter": 200,
+  "tol": 1e-10
+ },
+ "thresholds": {
+  "cauchy_c2": 3.3566939800333224,
+  "outlier_d2": 18.46682695290317,
+  "outlier_d": 4.297304614860711
+ },
+ "segments": [
+  {
+   "seg_id": "arsenal_mancity_seg000@generic_gantry_prior_v2-1be31b96",
+   "d": 13.777564626203374,
+   "flag": "unconverged",
+   "weight": 0.01737617280446005,
+   "rig": [
+    0.4022357782160652,
+    -64.20703286656725,
+    15.192892301807454,
+    -0.0064031057629415815
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg001@generic_gantry_prior_v2-1be31b96",
+   "d": 12.137884355249605,
+   "flag": "unconverged",
+   "weight": 0.02227624200134251,
+   "rig": [
+    0.31236280880952944,
+    -64.33891796657362,
+    15.144486975009677,
+    -0.002213109449597417
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg002@generic_gantry_prior_v2-1be31b96",
+   "d": 8.12043712668724,
+   "flag": "unconverged",
+   "weight": 0.04843840552634736,
+   "rig": [
+    0.34396515463296085,
+    -64.07110207355343,
+    14.929030346862033,
+    -0.005693392920504474
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg003@generic_gantry_prior_v2-1be31b96",
+   "d": 3.9674995016518455,
+   "flag": "inlier",
+   "weight": 0.1757638797576215,
+   "rig": [
+    0.1159133812613434,
+    -63.2722838507957,
+    14.808184527940956,
+    -0.0038234972619029103
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg004@generic_gantry_prior_v2-1be31b96",
+   "d": 13.305374983381695,
+   "flag": "outlier",
+   "weight": 0.01860801380502923,
+   "rig": [
+    0.3564869745703747,
+    -63.14850362812677,
+    14.065883243343107,
+    -0.001361689857188439
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg006@generic_gantry_prior_v2-1be31b96",
+   "d": 9.832381498462157,
+   "flag": "variant:3",
+   "weight": 0.033556060955124305,
+   "rig": [
+    0.2052371935726366,
+    -62.975603943291155,
+    14.856631799760406,
+    -0.003480877859590431
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg007@generic_gantry_prior_v2-1be31b96",
+   "d": 8.94503416170782,
+   "flag": "variant:1",
+   "weight": 0.0402624527770489,
+   "rig": [
+    0.32123955166244983,
+    -64.15403113847017,
+    14.988390239865973,
+    -0.004210070235318783
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg008@generic_gantry_prior_v2-1be31b96",
+   "d": 12.33384661275546,
+   "flag": "unconverged",
+   "weight": 0.02158916847278117,
+   "rig": [
+    0.3291946760629542,
+    -64.1949749556438,
+    15.085162342076714,
+    -0.006534749028143103
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg009@generic_gantry_prior_v2-1be31b96",
+   "d": 18.487865711473955,
+   "flag": "unconverged",
+   "weight": 0.009725097548196764,
+   "rig": [
+    0.3416559990971855,
+    -64.64485193521406,
+    15.148220199767993,
+    -0.0013774338280162128
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg010@generic_gantry_prior_v2-1be31b96",
+   "d": 11.354682940600844,
+   "flag": "variant:1",
+   "weight": 0.02537461404690835,
+   "rig": [
+    0.20555349335666537,
+    -64.44443243922298,
+    15.07010163006763,
+    -0.0025396355274913025
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg011@generic_gantry_prior_v2-1be31b96",
+   "d": 8.814068838892299,
+   "flag": "variant:3",
+   "weight": 0.041417910358296464,
+   "rig": [
+    0.10718768750061634,
+    -63.07928400172215,
+    14.73234081327456,
+    -0.004066967168996226
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg012@generic_gantry_prior_v2-1be31b96",
+   "d": 26.369009879113538,
+   "flag": "unconverged",
+   "weight": 0.004804327259048406,
+   "rig": [
+    1.6422554873697994,
+    -64.86648700920192,
+    14.734633043758567,
+    0.001859936825302642
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg013@generic_gantry_prior_v2-1be31b96",
+   "d": 11.02409698855455,
+   "flag": "unconverged",
+   "weight": 0.02687776152314668,
+   "rig": [
+    0.33773701123318606,
+    -64.51954430792735,
+    15.082273201907162,
+    -0.0029652039754006886
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg014@generic_gantry_prior_v2-1be31b96",
+   "d": 11.663089669428102,
+   "flag": "variant:1",
+   "weight": 0.024082286632908935,
+   "rig": [
+    0.4252099546866397,
+    -64.24191288190161,
+    15.146028577270894,
+    -0.004432314069551097
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg016@generic_gantry_prior_v2-1be31b96",
+   "d": 22.71212708944242,
+   "flag": "unconverged",
+   "weight": 0.006465159319976787,
+   "rig": [
+    0.8421695721859589,
+    -65.31060102689788,
+    15.119877129401196,
+    -0.0010693260736388058
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg017@generic_gantry_prior_v2-1be31b96",
+   "d": 2.142219547761359,
+   "flag": "inlier",
+   "weight": 0.4224489143671672,
+   "rig": [
+    0.22649668813639806,
+    -63.53947059317774,
+    14.760894244090519,
+    -0.0038407657963427577
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg018@generic_gantry_prior_v2-1be31b96",
+   "d": 8.924356184415293,
+   "flag": "variant:3",
+   "weight": 0.0404416930502759,
+   "rig": [
+    0.14731329860585718,
+    -62.939513750690764,
+    14.737794292351229,
+    -0.0035871726152927894
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg019@generic_gantry_prior_v2-1be31b96",
+   "d": 13.410129279473763,
+   "flag": "unconverged",
+   "weight": 0.01832373950558436,
+   "rig": [
+    0.8166506916744956,
+    -63.36283547995829,
+    14.486527327554716,
+    -0.0021741802357067345
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg020@generic_gantry_prior_v2-1be31b96",
+   "d": 8.258472165791781,
+   "flag": "outlier",
+   "weight": 0.046908024567829824,
+   "rig": [
+    0.32392109345764963,
+    -64.04219855565798,
+    14.55917210167388,
+    -0.01205965764535298
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg021@generic_gantry_prior_v2-1be31b96",
+   "d": 9.242043027176527,
+   "flag": "unconverged",
+   "weight": 0.03781250805174764,
+   "rig": [
+    -0.5211787463453861,
+    -63.75579871522727,
+    14.854778144116406,
+    -0.01274397324999557
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg022@generic_gantry_prior_v2-1be31b96",
+   "d": 2.5559482561503315,
+   "flag": "inlier",
+   "weight": 0.3394177419466362,
+   "rig": [
+    0.17146425366584167,
+    -63.5379076119662,
+    14.7708786750682,
+    -0.004136623759966182
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg023@generic_gantry_prior_v2-1be31b96",
+   "d": 9.057836514725988,
+   "flag": "outlier",
+   "weight": 0.03930504554585079,
+   "rig": [
+    -0.024582779330347818,
+    -63.217272048754054,
+    14.77175438859187,
+    -0.0025575955803753543
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg024@generic_gantry_prior_v2-1be31b96",
+   "d": 2.534142126813993,
+   "flag": "inlier",
+   "weight": 0.34327042475746833,
+   "rig": [
+    0.12767771567692332,
+    -63.66731047631374,
+    14.784938990973343,
+    -0.002917832539732318
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg025@generic_gantry_prior_v2-1be31b96",
+   "d": 11.379259854270629,
+   "flag": "unconverged",
+   "weight": 0.02526789085771961,
+   "rig": [
+    0.2264271785185704,
+    -64.28736642684788,
+    14.943741253509456,
+    -0.003949594175881543
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg026@generic_gantry_prior_v2-1be31b96",
+   "d": 16.500526700032857,
+   "flag": "unconverged",
+   "weight": 0.012178522415601576,
+   "rig": [
+    0.3535360529854678,
+    -64.51026881806106,
+    15.228144655237188,
+    -0.00204183916812829
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg027@generic_gantry_prior_v2-1be31b96",
+   "d": 41.02756316649132,
+   "flag": "unconverged",
+   "weight": 0.0019901926279196685,
+   "rig": [
+    4.293712378551533,
+    -58.671809416029504,
+    14.114270959675098,
+    0.006518090246752076
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg028@generic_gantry_prior_v2-1be31b96",
+   "d": 16.32778274220658,
+   "flag": "variant:5",
+   "weight": 0.01243435598550072,
+   "rig": [
+    0.02931128715998155,
+    -62.81271086397702,
+    14.037171432241102,
+    0.0004658010740805942
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg029@generic_gantry_prior_v2-1be31b96",
+   "d": 20.58130757339933,
+   "flag": "unconverged",
+   "weight": 0.007862087437270293,
+   "rig": [
+    0.4032938642888834,
+    -64.72147401438127,
+    15.154593104007771,
+    -0.0008623567537010986
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg030@generic_gantry_prior_v2-1be31b96",
+   "d": 3.7128614343296227,
+   "flag": "unconverged",
+   "weight": 0.19581655117265628,
+   "rig": [
+    0.2590764430032705,
+    -63.88461290575959,
+    14.849404310323429,
+    -0.002094356857634629
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg031@generic_gantry_prior_v2-1be31b96",
+   "d": 18.51127874839194,
+   "flag": "outlier",
+   "weight": 0.009700751021863309,
+   "rig": [
+    0.036091464290139104,
+    -62.1567749474916,
+    14.590396976631613,
+    -0.0004936680127718367
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg032@generic_gantry_prior_v2-1be31b96",
+   "d": 21.361880755279678,
+   "flag": "outlier",
+   "weight": 0.007302135113893026,
+   "rig": [
+    0.6641406134911709,
+    -62.84161069451404,
+    14.342162707600504,
+    -0.013740709238570157
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg033@generic_gantry_prior_v2-1be31b96",
+   "d": 17.592566997112222,
+   "flag": "unconverged",
+   "weight": 0.010729228640557868,
+   "rig": [
+    0.5213816772919783,
+    -64.81993922692877,
+    15.271695598284216,
+    -0.0035987590467123983
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg034@generic_gantry_prior_v2-1be31b96",
+   "d": 19.65404362737556,
+   "flag": "unconverged",
+   "weight": 0.008614901277970162,
+   "rig": [
+    0.28334662097097735,
+    -64.80602269220275,
+    15.150122826232645,
+    0.0004096615196638665
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg035@generic_gantry_prior_v2-1be31b96",
+   "d": 8.75365438365303,
+   "flag": "variant:6",
+   "weight": 0.04196750941030831,
+   "rig": [
+    0.13274063714380477,
+    -64.6272120002234,
+    15.017784225330802,
+    -0.0037159200873344072
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg036@generic_gantry_prior_v2-1be31b96",
+   "d": 15.509550869453633,
+   "flag": "unconverged",
+   "weight": 0.013762421442757144,
+   "rig": [
+    0.29450887805052356,
+    -64.48284390405293,
+    15.145333456923645,
+    -0.002181953583070281
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg037@generic_gantry_prior_v2-1be31b96",
+   "d": 24.65048025492741,
+   "flag": "unconverged",
+   "weight": 0.005493745022434831,
+   "rig": [
+    0.384615771182009,
+    -65.44869975842467,
+    15.361489744971989,
+    -0.0002369912766625713
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg038@generic_gantry_prior_v2-1be31b96",
+   "d": 15.901923341338167,
+   "flag": "outlier",
+   "weight": 0.013100425460760559,
+   "rig": [
+    0.46008015867116653,
+    -64.64055147999888,
+    15.106957696244368,
+    -0.007167837802814413
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg039@generic_gantry_prior_v2-1be31b96",
+   "d": 10.2537919685215,
+   "flag": "unconverged",
+   "weight": 0.03093814318760339,
+   "rig": [
+    0.4234743843961758,
+    -64.11046380524992,
+    14.705953934461585,
+    -0.012434036059803687
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg040@generic_gantry_prior_v2-1be31b96",
+   "d": 10.18356222442431,
+   "flag": "unconverged",
+   "weight": 0.03135291204193309,
+   "rig": [
+    0.1057372527025256,
+    -64.06544885679864,
+    14.943933450602112,
+    -0.013399790762423798
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg041@generic_gantry_prior_v2-1be31b96",
+   "d": 12.086100353892059,
+   "flag": "unconverged",
+   "weight": 0.022463242954841353,
+   "rig": [
+    0.18609019731715787,
+    -64.35884643879827,
+    15.082376699318695,
+    -0.011648901018602288
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg042@generic_gantry_prior_v2-1be31b96",
+   "d": 12.99542954541254,
+   "flag": "unconverged",
+   "weight": 0.019488708991287955,
+   "rig": [
+    0.33180358949521177,
+    -64.34699567781631,
+    15.048588115580259,
+    -0.004245047246930497
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg043@generic_gantry_prior_v2-1be31b96",
+   "d": 9.402855256654975,
+   "flag": "outlier",
+   "weight": 0.036577095409278323,
+   "rig": [
+    0.5253804985186348,
+    -63.79991229067291,
+    14.955101320700543,
+    -0.007603464303307673
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg044@generic_gantry_prior_v2-1be31b96",
+   "d": 20.482199178314463,
+   "flag": "unconverged",
+   "weight": 0.007937751577361343,
+   "rig": [
+    0.7389015830894036,
+    -65.73585770359807,
+    15.140823652078945,
+    0.003698597383076478
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg045@generic_gantry_prior_v2-1be31b96",
+   "d": 22.640860509807982,
+   "flag": "unconverged",
+   "weight": 0.0065056589063984946,
+   "rig": [
+    0.7661061900117135,
+    -65.06590949750874,
+    15.143173036224757,
+    0.001056058396194956
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg047@generic_gantry_prior_v2-1be31b96",
+   "d": 26.01795378258724,
+   "flag": "outlier",
+   "weight": 0.0049342059346771765,
+   "rig": [
+    0.4136867591664115,
+    -65.73497877350614,
+    15.389846283894837,
+    -0.0017422485854261653
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg048@generic_gantry_prior_v2-1be31b96",
+   "d": 13.578499148306555,
+   "flag": "unconverged",
+   "weight": 0.017880212345918373,
+   "rig": [
+    0.834844552439424,
+    -64.44674131702139,
+    14.652536432098328,
+    0.0022528815560968825
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg049@generic_gantry_prior_v2-1be31b96",
+   "d": 3.8268082524944025,
+   "flag": "inlier",
+   "weight": 0.1864710297152963,
+   "rig": [
+    0.15459561121409315,
+    -64.11358253814663,
+    14.812473157374281,
+    -0.003526086525560636
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg050@generic_gantry_prior_v2-1be31b96",
+   "d": 20.45382791183093,
+   "flag": "unconverged",
+   "weight": 0.007959612177244082,
+   "rig": [
+    0.3788602040726124,
+    -64.9124787514445,
+    15.177248917571683,
+    -0.002048409812992645
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg051@generic_gantry_prior_v2-1be31b96",
+   "d": 25.100329941219094,
+   "flag": "outlier",
+   "weight": 0.005299625372480411,
+   "rig": [
+    2.1048806344145934,
+    -63.88849536550524,
+    14.586839945464089,
+    0.00431134546444905
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg052@generic_gantry_prior_v2-1be31b96",
+   "d": 13.562679333903274,
+   "flag": "variant:6",
+   "weight": 0.01792120047598536,
+   "rig": [
+    0.13395899752021556,
+    -64.92679377025114,
+    15.163801998258224,
+    3.543148789425916e-05
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg053@generic_gantry_prior_v2-1be31b96",
+   "d": 7.849082025640989,
+   "flag": "unconverged",
+   "weight": 0.051669440647484605,
+   "rig": [
+    0.2011496007279193,
+    -64.21719631631099,
+    14.935389415567034,
+    -0.0030900597439194816
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg054@generic_gantry_prior_v2-1be31b96",
+   "d": 3.831178688265816,
+   "flag": "inlier",
+   "weight": 0.18612497590343,
+   "rig": [
+    0.2534932059961005,
+    -63.589142767710456,
+    14.911339007903997,
+    -0.0056024641235645056
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg055@generic_gantry_prior_v2-1be31b96",
+   "d": 18.76179588834115,
+   "flag": "outlier",
+   "weight": 0.00944585243430164,
+   "rig": [
+    -0.25808974933338097,
+    -62.466224435756885,
+    14.521329416501905,
+    0.03740430176376182
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg056@generic_gantry_prior_v2-1be31b96",
+   "d": 19.969707272974798,
+   "flag": "outlier",
+   "weight": 0.008346955567027978,
+   "rig": [
+    0.23270949344895947,
+    -62.809532955019705,
+    13.84030085054479,
+    -0.012270811686430207
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg057@generic_gantry_prior_v2-1be31b96",
+   "d": 6.406762317852749,
+   "flag": "unconverged",
+   "weight": 0.07559560163959546,
+   "rig": [
+    0.29254131064306454,
+    -64.07774393605342,
+    15.035436511450378,
+    -0.002850123552862451
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg058@generic_gantry_prior_v2-1be31b96",
+   "d": 11.59123014153664,
+   "flag": "unconverged",
+   "weight": 0.02437450654399128,
+   "rig": [
+    0.3629867052915524,
+    -64.1826725733479,
+    15.112356716962777,
+    -0.0023064693597138032
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg059@generic_gantry_prior_v2-1be31b96",
+   "d": 1.9373804981281912,
+   "flag": "inlier",
+   "weight": 0.47209974964240925,
+   "rig": [
+    0.25975366075409306,
+    -63.62223841773723,
+    14.923336293336499,
+    -0.0030044485816021586
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg060@generic_gantry_prior_v2-1be31b96",
+   "d": 13.462632040956592,
+   "flag": "outlier",
+   "weight": 0.018183690883344407,
+   "rig": [
+    0.27933625083002284,
+    -63.737233953704376,
+    14.111881096270224,
+    0.005094185974198397
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg061@generic_gantry_prior_v2-1be31b96",
+   "d": 16.00631667859221,
+   "flag": "unconverged",
+   "weight": 0.012932303223273309,
+   "rig": [
+    1.3029716943743115,
+    -64.39160850472838,
+    14.611018563134275,
+    0.002079485118880903
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg062@generic_gantry_prior_v2-1be31b96",
+   "d": 2.7138013882633065,
+   "flag": "inlier",
+   "weight": 0.3130832015531598,
+   "rig": [
+    0.22613904488756784,
+    -63.64691786263286,
+    14.968520667811818,
+    -0.002826145948455699
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg063@generic_gantry_prior_v2-1be31b96",
+   "d": 16.43141592166918,
+   "flag": "outlier",
+   "weight": 0.01227992327547271,
+   "rig": [
+    0.2686957836460974,
+    -63.72017684932918,
+    15.750957161051732,
+    0.0013186138124990751
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg064@generic_gantry_prior_v2-1be31b96",
+   "d": 13.150766805662093,
+   "flag": "outlier",
+   "weight": 0.01903973985152097,
+   "rig": [
+    0.11134276500362969,
+    -63.39014909339956,
+    14.116859141327526,
+    -0.008813733845237889
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg065@generic_gantry_prior_v2-1be31b96",
+   "d": 25.31041637735811,
+   "flag": "unconverged",
+   "weight": 0.005212469216968787,
+   "rig": [
+    0.6291865824493755,
+    -64.8983389867944,
+    15.373626841572568,
+    -0.0035421286177106073
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg067@generic_gantry_prior_v2-1be31b96",
+   "d": 17.128834861207,
+   "flag": "outlier",
+   "weight": 0.011311381231218663,
+   "rig": [
+    0.5735761680703301,
+    -62.983913108615475,
+    13.733483586472435,
+    -0.0008157249813637511
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg069@generic_gantry_prior_v2-1be31b96",
+   "d": 12.703272903231941,
+   "flag": "unconverged",
+   "weight": 0.020376964202096993,
+   "rig": [
+    0.1912374320294904,
+    -64.45342137450143,
+    14.993832592702812,
+    -0.003951538023932657
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg070@generic_gantry_prior_v2-1be31b96",
+   "d": 23.099323984137403,
+   "flag": "unconverged",
+   "weight": 0.006251578102847322,
+   "rig": [
+    0.6013838065830264,
+    -64.79255563201691,
+    15.144635877021841,
+    -0.0025261315491858856
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg072@generic_gantry_prior_v2-1be31b96",
+   "d": 8.283649610119312,
+   "flag": "outlier",
+   "weight": 0.04663659007157215,
+   "rig": [
+    0.2886231171428112,
+    -63.285578215285035,
+    14.469977397513489,
+    -0.004313042258627603
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg074@generic_gantry_prior_v2-1be31b96",
+   "d": 10.099776485531587,
+   "flag": "variant:1",
+   "weight": 0.03185862337595821,
+   "rig": [
+    0.3146055238058057,
+    -64.20812659743018,
+    15.03225579301215,
+    -0.0025333917877153203
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg075@generic_gantry_prior_v2-1be31b96",
+   "d": 35.879236237425154,
+   "flag": "outlier",
+   "weight": 0.0026007249175832746,
+   "rig": [
+    0.8492614231108773,
+    -68.79773072244085,
+    15.721662790594081,
+    -0.007235506003695521
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg076@generic_gantry_prior_v2-1be31b96",
+   "d": 35.30543189512589,
+   "flag": "outlier",
+   "weight": 0.002685719979395397,
+   "rig": [
+    0.5194992455741173,
+    -66.92639739690985,
+    16.32535094709534,
+    -0.013386855952002091
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg077@generic_gantry_prior_v2-1be31b96",
+   "d": 28.033406504900277,
+   "flag": "unconverged",
+   "weight": 0.004253132856000996,
+   "rig": [
+    0.5204558513233184,
+    -65.3100362936636,
+    15.347527742402153,
+    0.00015317894739105476
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg078@generic_gantry_prior_v2-1be31b96",
+   "d": 1.2598225437778345,
+   "flag": "unconverged",
+   "weight": 0.6789639932212125,
+   "rig": [
+    0.26059679770854227,
+    -63.68354045842321,
+    14.889901920037072,
+    -0.0033523720719784733
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg079@generic_gantry_prior_v2-1be31b96",
+   "d": 90.66994144586847,
+   "flag": "unconverged",
+   "weight": 0.00040813871292898305,
+   "rig": [
+    3.9018279067683146,
+    -78.86918203971298,
+    13.936811492986743,
+    -0.016409564006904253
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg080@generic_gantry_prior_v2-1be31b96",
+   "d": 4.763230693195826,
+   "flag": "outlier",
+   "weight": 0.12888025216916774,
+   "rig": [
+    0.16359483488000998,
+    -63.7225761074992,
+    14.600372856788018,
+    -0.002758500415329211
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg081@generic_gantry_prior_v2-1be31b96",
+   "d": 14.763250971078755,
+   "flag": "unconverged",
+   "weight": 0.015167366301025513,
+   "rig": [
+    0.2734633234315681,
+    -64.297684639242,
+    14.958056240305273,
+    -0.007358792167411083
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg082@generic_gantry_prior_v2-1be31b96",
+   "d": 14.002948572059603,
+   "flag": "outlier",
+   "weight": 0.016830657788887225,
+   "rig": [
+    0.6235919315744772,
+    -63.0993385610827,
+    15.252734716785548,
+    -0.006067676533691102
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg084@generic_gantry_prior_v2-1be31b96",
+   "d": 23.966908966431642,
+   "flag": "outlier",
+   "weight": 0.005809746704152041,
+   "rig": [
+    0.7594741681916909,
+    -68.01288206017836,
+    14.436151352640932,
+    -0.0034880181089697454
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg086@generic_gantry_prior_v2-1be31b96",
+   "d": 20.41695359939775,
+   "flag": "unconverged",
+   "weight": 0.007988159392735944,
+   "rig": [
+    0.42399164195318745,
+    -65.05264224603378,
+    15.288693785902044,
+    -0.00026353459068316753
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg087@generic_gantry_prior_v2-1be31b96",
+   "d": 8.582364035267972,
+   "flag": "variant:1",
+   "weight": 0.04358569246649607,
+   "rig": [
+    0.2817341129733955,
+    -64.14457723155087,
+    15.070436563226263,
+    -0.0019822685189787815
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg088@generic_gantry_prior_v2-1be31b96",
+   "d": 12.575264385690664,
+   "flag": "unconverged",
+   "weight": 0.020785259129662188,
+   "rig": [
+    0.4418074158945047,
+    -64.20089427193925,
+    15.156228980634554,
+    -0.007152818527142974
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg089@generic_gantry_prior_v2-1be31b96",
+   "d": 9.799011066626719,
+   "flag": "variant:5",
+   "weight": 0.033777266833602805,
+   "rig": [
+    0.33079896089841193,
+    -63.42136995130923,
+    14.209633256670847,
+    0.00037414218391643313
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg090@generic_gantry_prior_v2-1be31b96",
+   "d": 2.9316871635045825,
+   "flag": "inlier",
+   "weight": 0.2808600246680542,
+   "rig": [
+    0.10480640773235497,
+    -63.65357945470916,
+    14.734359490364104,
+    -0.003077573717511863
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg091@generic_gantry_prior_v2-1be31b96",
+   "d": 13.407156172487001,
+   "flag": "unconverged",
+   "weight": 0.018331718182582776,
+   "rig": [
+    0.29695028341419055,
+    -64.26874890755794,
+    15.088059410813088,
+    -0.0011032978655892746
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg094@generic_gantry_prior_v2-1be31b96",
+   "d": 4.234262871758438,
+   "flag": "inlier",
+   "weight": 0.1576973159129323,
+   "rig": [
+    0.2741526142470659,
+    -63.796481875932884,
+    14.9939182017473,
+    -0.0032215566741926613
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg095@generic_gantry_prior_v2-1be31b96",
+   "d": 4.598553817713487,
+   "flag": "variant:4",
+   "weight": 0.13698895607539002,
+   "rig": [
+    0.08671598280413385,
+    -63.41024622731965,
+    14.944965371958963,
+    -0.004688263495311242
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg096@generic_gantry_prior_v2-1be31b96",
+   "d": 2.841423349756803,
+   "flag": "inlier",
+   "weight": 0.2936642346333395,
+   "rig": [
+    0.16870146179970763,
+    -63.5829085317541,
+    14.987873446092385,
+    -0.00334000067918471
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg097@generic_gantry_prior_v2-1be31b96",
+   "d": 55.11592917494742,
+   "flag": "unconverged",
+   "weight": 0.0011037681492764744,
+   "rig": [
+    0.7155853620465404,
+    -69.98547404851153,
+    17.16409711255029,
+    -0.014056203935924888
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg098@generic_gantry_prior_v2-1be31b96",
+   "d": 22.683886262506032,
+   "flag": "outlier",
+   "weight": 0.006481162840816829,
+   "rig": [
+    2.271189584483343,
+    -65.69335389859545,
+    15.51866367229193,
+    -0.03877664976412611
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg099@generic_gantry_prior_v2-1be31b96",
+   "d": 15.08786086030264,
+   "flag": "outlier",
+   "weight": 0.014531127716214282,
+   "rig": [
+    0.2565633245486711,
+    -63.16445978270753,
+    14.182379339542774,
+    -0.01849152032596756
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg100@generic_gantry_prior_v2-1be31b96",
+   "d": 5.058629625204619,
+   "flag": "variant:4",
+   "weight": 0.11596228795059196,
+   "rig": [
+    0.24808655752823952,
+    -63.417756468364466,
+    14.93821292059713,
+    -0.005011663492801773
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg101@generic_gantry_prior_v2-1be31b96",
+   "d": 12.129706522610801,
+   "flag": "unconverged",
+   "weight": 0.02230561912984148,
+   "rig": [
+    0.80699245177002,
+    -63.875321304590734,
+    15.246019628661836,
+    -0.00962080866902994
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg102@generic_gantry_prior_v2-1be31b96",
+   "d": 18.29213767777611,
+   "flag": "unconverged",
+   "weight": 0.009932252230754984,
+   "rig": [
+    0.4628734011653122,
+    -65.3392816324071,
+    15.38381861919658,
+    -0.0010216566560095745
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg104@generic_gantry_prior_v2-1be31b96",
+   "d": 19.996696658096354,
+   "flag": "variant:7",
+   "weight": 0.008324626572014073,
+   "rig": [
+    0.4068952262142206,
+    -62.83550756004839,
+    14.09214111720406,
+    0.01356490692647607
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg105@generic_gantry_prior_v2-1be31b96",
+   "d": 7.561765065261827,
+   "flag": "variant:1",
+   "weight": 0.055448648236487784,
+   "rig": [
+    0.3123125716815484,
+    -64.04273974539711,
+    14.92879290736776,
+    -0.002711378730031625
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg106@generic_gantry_prior_v2-1be31b96",
+   "d": 22.636487283077685,
+   "flag": "unconverged",
+   "weight": 0.006508156492679512,
+   "rig": [
+    0.32956002804891976,
+    -65.05941335589671,
+    15.332705921275931,
+    -0.0011724311679196884
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg107@generic_gantry_prior_v2-1be31b96",
+   "d": 10.187778010999788,
+   "flag": "variant:5",
+   "weight": 0.03132778195444098,
+   "rig": [
+    0.23457510341152374,
+    -63.27134761903246,
+    14.095927549968456,
+    -0.005127447189380053
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg110@generic_gantry_prior_v2-1be31b96",
+   "d": 4.863016014770548,
+   "flag": "variant:2",
+   "weight": 0.12429613305130174,
+   "rig": [
+    0.33578070918442365,
+    -63.793770917200334,
+    14.989091377502715,
+    -0.0051680533507287634
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg111@generic_gantry_prior_v2-1be31b96",
+   "d": 11.02500766276455,
+   "flag": "outlier",
+   "weight": 0.026873440778321326,
+   "rig": [
+    -0.33365085483540097,
+    -62.673502332021094,
+    14.315773194323548,
+    -0.004900149290318814
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg112@generic_gantry_prior_v2-1be31b96",
+   "d": 9.917694093846565,
+   "flag": "outlier",
+   "weight": 0.033000210643526096,
+   "rig": [
+    0.16973228939724286,
+    -63.94742027227893,
+    15.262299351962662,
+    -0.006754479008851936
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg113@generic_gantry_prior_v2-1be31b96",
+   "d": 10.433824207784799,
+   "flag": "unconverged",
+   "weight": 0.029911358537950645,
+   "rig": [
+    0.2850638419397964,
+    -64.18999483207989,
+    15.03438733895357,
+    -0.004299951595867555
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg114@generic_gantry_prior_v2-1be31b96",
+   "d": 2.1929545888102147,
+   "flag": "inlier",
+   "weight": 0.41107020483438256,
+   "rig": [
+    0.2542883335896119,
+    -63.46417596221689,
+    14.852987279516984,
+    -0.004209155972016544
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg115@generic_gantry_prior_v2-1be31b96",
+   "d": 9.876115443448404,
+   "flag": "unconverged",
+   "weight": 0.03326939488983343,
+   "rig": [
+    0.4847484981609817,
+    -63.96186490847333,
+    15.067440905731958,
+    -0.005863373258654327
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg116@generic_gantry_prior_v2-1be31b96",
+   "d": 8.404956668099619,
+   "flag": "variant:2",
+   "weight": 0.04536073523870465,
+   "rig": [
+    0.3228766564248617,
+    -63.95691655470276,
+    15.092711112266032,
+    -0.006135332037635153
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg117@generic_gantry_prior_v2-1be31b96",
+   "d": 13.899951325484732,
+   "flag": "unconverged",
+   "weight": 0.017076733700074686,
+   "rig": [
+    0.8513691895785777,
+    -64.17753985147003,
+    14.906042803858242,
+    -0.007632098881555262
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg118@generic_gantry_prior_v2-1be31b96",
+   "d": 9.575026754971107,
+   "flag": "unconverged",
+   "weight": 0.03531955572596733,
+   "rig": [
+    0.4039412298865155,
+    -64.22791295195056,
+    14.820303269382324,
+    -0.012369667382909613
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg120@generic_gantry_prior_v2-1be31b96",
+   "d": 1.9727263985649062,
+   "flag": "inlier",
+   "weight": 0.4630980879149785,
+   "rig": [
+    0.20715081306515892,
+    -63.723667529307775,
+    14.874405131997447,
+    -0.002784406343832002
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg121@generic_gantry_prior_v2-1be31b96",
+   "d": 10.707771167587383,
+   "flag": "variant:5",
+   "weight": 0.02844341173084139,
+   "rig": [
+    0.2960846355536221,
+    -63.195075919521145,
+    14.13889665204223,
+    -0.0009236006140485711
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg122@generic_gantry_prior_v2-1be31b96",
+   "d": 3.064237480874546,
+   "flag": "unconverged",
+   "weight": 0.26334766795749837,
+   "rig": [
+    0.36073808919690975,
+    -63.57287306609829,
+    14.886754202158642,
+    -0.0034454707394375793
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg123@generic_gantry_prior_v2-1be31b96",
+   "d": 4.429211070861987,
+   "flag": "variant:3",
+   "weight": 0.1461045369565597,
+   "rig": [
+    0.3572998794072762,
+    -62.35430034065155,
+    14.545680501410256,
+    -0.00455041037424142
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg124@generic_gantry_prior_v2-1be31b96",
+   "d": 9.695171973411094,
+   "flag": "variant:3",
+   "weight": 0.034479596240708905,
+   "rig": [
+    0.2776665410591932,
+    -63.02485113133828,
+    14.802572800488678,
+    -0.003296351954624573
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg125@generic_gantry_prior_v2-1be31b96",
+   "d": 4.67751961224928,
+   "flag": "variant:2",
+   "weight": 0.1330127377165301,
+   "rig": [
+    0.23469859999532788,
+    -63.9466433250393,
+    15.003620403855264,
+    -0.0033486015717297
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg126@generic_gantry_prior_v2-1be31b96",
+   "d": 7.41921110464399,
+   "flag": "variant:3",
+   "weight": 0.05747627119391199,
+   "rig": [
+    0.18465724300626488,
+    -62.30258434169536,
+    14.75362525441053,
+    -0.003429820254214824
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg127@generic_gantry_prior_v2-1be31b96",
+   "d": 16.748404816575242,
+   "flag": "outlier",
+   "weight": 0.011824934451774669,
+   "rig": [
+    -0.08532883648468069,
+    -62.89851330232459,
+    15.40723341864249,
+    -0.005508636301020885
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg128@generic_gantry_prior_v2-1be31b96",
+   "d": 13.337583531093324,
+   "flag": "unconverged",
+   "weight": 0.01851991281291197,
+   "rig": [
+    0.3193106495430843,
+    -64.33891163768438,
+    15.118840822265124,
+    -0.0022573532462708346
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg129@generic_gantry_prior_v2-1be31b96",
+   "d": 11.692478247659066,
+   "flag": "outlier",
+   "weight": 0.023964276499434757,
+   "rig": [
+    0.6148671450731023,
+    -64.04056333493105,
+    15.163683449565172,
+    -0.008054741478858112
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg130@generic_gantry_prior_v2-1be31b96",
+   "d": 5.683128728298747,
+   "flag": "variant:4",
+   "weight": 0.0941446443895562,
+   "rig": [
+    0.15754475948087163,
+    -63.28886944870436,
+    14.861228663169262,
+    -0.0026340405600849596
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg131@generic_gantry_prior_v2-1be31b96",
+   "d": 12.72179585650616,
+   "flag": "variant:5",
+   "weight": 0.020318874420146762,
+   "rig": [
+    0.03666940569604118,
+    -63.426657224410974,
+    14.04542855317781,
+    -0.001452861597051634
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg132@generic_gantry_prior_v2-1be31b96",
+   "d": 19.115645291772278,
+   "flag": "outlier",
+   "weight": 0.009102538804059314,
+   "rig": [
+    1.1121673889700396,
+    -64.08941880247747,
+    14.531293374693487,
+    0.013129773149303933
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg133@generic_gantry_prior_v2-1be31b96",
+   "d": 6.7590667821681185,
+   "flag": "variant:2",
+   "weight": 0.06844574113939104,
+   "rig": [
+    0.36546920687215173,
+    -63.89637531717014,
+    14.948912255071553,
+    -0.005512438401964667
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg134@generic_gantry_prior_v2-1be31b96",
+   "d": 46.81561395283873,
+   "flag": "outlier",
+   "weight": 0.0015292048604636588,
+   "rig": [
+    1.6947395053427352,
+    -64.03391506575159,
+    16.759363802423294,
+    -0.03112526560766442
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg135@generic_gantry_prior_v2-1be31b96",
+   "d": 5.811322775526572,
+   "flag": "variant:2",
+   "weight": 0.09040828856326379,
+   "rig": [
+    0.3123011080248677,
+    -63.93825350243243,
+    14.946884082355048,
+    -0.0035042839967199826
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg136@generic_gantry_prior_v2-1be31b96",
+   "d": 47.54690666436892,
+   "flag": "outlier",
+   "weight": 0.001482596100162147,
+   "rig": [
+    3.17718895660556,
+    -67.21000171807603,
+    15.872731462063632,
+    -0.028143231826231064
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg138@generic_gantry_prior_v2-1be31b96",
+   "d": 12.0207736398924,
+   "flag": "unconverged",
+   "weight": 0.022702500760130258,
+   "rig": [
+    0.4206264017744214,
+    -64.06810074615895,
+    15.334384406806176,
+    -0.009427000535531662
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg139@generic_gantry_prior_v2-1be31b96",
+   "d": 8.51674622961527,
+   "flag": "unconverged",
+   "weight": 0.04423007700573424,
+   "rig": [
+    0.26152448891930347,
+    -63.97291140950631,
+    15.176344687723345,
+    -0.006419194931660684
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg140@generic_gantry_prior_v2-1be31b96",
+   "d": 25.745774728936365,
+   "flag": "outlier",
+   "weight": 0.005038555788169104,
+   "rig": [
+    1.4765897376300763,
+    -64.51011225766031,
+    15.146000461323403,
+    -0.03300761344568114
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg141@generic_gantry_prior_v2-1be31b96",
+   "d": 14.11350640363197,
+   "flag": "unconverged",
+   "weight": 0.016572358193408084,
+   "rig": [
+    0.3179684317007032,
+    -64.34522221080886,
+    15.14434497673892,
+    -0.0015044833173356597
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg142@generic_gantry_prior_v2-1be31b96",
+   "d": 5.855258748830886,
+   "flag": "outlier",
+   "weight": 0.08917713035966433,
+   "rig": [
+    0.12171615003053796,
+    -63.61124228284227,
+    15.115062626135662,
+    -0.0055872334210735446
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg143@generic_gantry_prior_v2-1be31b96",
+   "d": 16.23425522523357,
+   "flag": "variant:5",
+   "weight": 0.012576233351491906,
+   "rig": [
+    0.09763307747250385,
+    -62.98940726678131,
+    14.057785777371631,
+    0.00155167097664846
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg144@generic_gantry_prior_v2-1be31b96",
+   "d": 7.090939906658568,
+   "flag": "unconverged",
+   "weight": 0.06258037769725758,
+   "rig": [
+    0.43681953886002794,
+    -63.05104126869968,
+    14.602475149864878,
+    -0.005959155298891321
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg145@generic_gantry_prior_v2-1be31b96",
+   "d": 17.236876958069594,
+   "flag": "unconverged",
+   "weight": 0.011171603574782838,
+   "rig": [
+    0.3161924194666491,
+    -64.7382051283826,
+    15.118466793521455,
+    -0.0007623328027996484
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg146@generic_gantry_prior_v2-1be31b96",
+   "d": 24.361521744460198,
+   "flag": "unconverged",
+   "weight": 0.005624106175339952,
+   "rig": [
+    1.1427563161619958,
+    -64.59077123732345,
+    14.980242135699875,
+    0.0058444911564465634
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg147@generic_gantry_prior_v2-1be31b96",
+   "d": 13.55276287638759,
+   "flag": "unconverged",
+   "weight": 0.01794696485075247,
+   "rig": [
+    0.4505234745857344,
+    -64.27155870896983,
+    15.135354422701342,
+    -0.0051814042487235675
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg148@generic_gantry_prior_v2-1be31b96",
+   "d": 12.08826492664146,
+   "flag": "unconverged",
+   "weight": 0.022455379590979416,
+   "rig": [
+    0.4196516957672297,
+    -64.1407546695993,
+    15.101978560439317,
+    -0.007519467941607325
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg149@generic_gantry_prior_v2-1be31b96",
+   "d": 9.589509572929403,
+   "flag": "unconverged",
+   "weight": 0.03521670589059005,
+   "rig": [
+    0.1937830545403342,
+    -64.30470184503342,
+    15.03883557493936,
+    -0.0033970896311729076
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg150@generic_gantry_prior_v2-1be31b96",
+   "d": 5.32697436964461,
+   "flag": "variant:2",
+   "weight": 0.10577811636769335,
+   "rig": [
+    0.23205588288830903,
+    -64.1367813394635,
+    15.087546904714683,
+    -0.005036069936453063
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg151@generic_gantry_prior_v2-1be31b96",
+   "d": 17.67150979520207,
+   "flag": "unconverged",
+   "weight": 0.010634599925886171,
+   "rig": [
+    0.4258303616512509,
+    -64.56413666380494,
+    15.163283109942752,
+    -0.005859495522903782
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg152@generic_gantry_prior_v2-1be31b96",
+   "d": 18.070038257699224,
+   "flag": "outlier",
+   "weight": 0.010175408305331953,
+   "rig": [
+    1.4728836417099604,
+    -65.77712467018794,
+    14.336950116085992,
+    -0.019405400544095033
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg153@generic_gantry_prior_v2-1be31b96",
+   "d": 9.490161841066971,
+   "flag": "unconverged",
+   "weight": 0.035931265294554655,
+   "rig": [
+    0.3752031763384607,
+    -64.01095720743128,
+    15.169663838643151,
+    -0.004607846247498632
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg155@generic_gantry_prior_v2-1be31b96",
+   "d": 21.49189397640384,
+   "flag": "unconverged",
+   "weight": 0.007214690628080738,
+   "rig": [
+    0.3353884690624963,
+    -64.74602519159478,
+    15.192533256395729,
+    -0.0011125390864869158
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg156@generic_gantry_prior_v2-1be31b96",
+   "d": 39.84384893184012,
+   "flag": "outlier",
+   "weight": 0.0021099485869731124,
+   "rig": [
+    2.2080600016494083,
+    -70.22332913575143,
+    14.140043818471208,
+    0.008683097534766043
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg157@generic_gantry_prior_v2-1be31b96",
+   "d": 9.413653921821211,
+   "flag": "variant:7",
+   "weight": 0.03649628723712748,
+   "rig": [
+    0.47965500196909744,
+    -62.91797666325371,
+    14.280849016682456,
+    0.0075874175596916124
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg158@generic_gantry_prior_v2-1be31b96",
+   "d": 25.105136163224508,
+   "flag": "unconverged",
+   "weight": 0.0052976071548213955,
+   "rig": [
+    0.3773583330723948,
+    -64.9773220393115,
+    15.374875442880793,
+    -0.003355457002099389
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg159@generic_gantry_prior_v2-1be31b96",
+   "d": 26.157840503214253,
+   "flag": "outlier",
+   "weight": 0.004881829767860803,
+   "rig": [
+    0.17854989973659469,
+    -61.83109379697329,
+    14.620705873223793,
+    -0.003423232374588943
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg160@generic_gantry_prior_v2-1be31b96",
+   "d": 18.70445200787963,
+   "flag": "unconverged",
+   "weight": 0.0095033079184677,
+   "rig": [
+    0.3522398182920328,
+    -64.5718596381382,
+    15.404128077418648,
+    -0.0027530544397113815
+   ],
+   "informative": true
+  },
+  {
+   "seg_id": "arsenal_mancity_seg161@generic_gantry_prior_v2-1be31b96",
+   "d": 9.390046405875838,
+   "flag": "variant:3",
+   "weight": 0.03667329015422298,
+   "rig": [
+    0.20693371742269817,
+    -62.98769757986128,
+    14.855338408265473,
+    -0.002757860549424197
+   ],
+   "informative": true
+  }
+ ],
+ "variants": [
+  {
+   "rig": [
+    0.3095905873778235,
+    -64.18140096242469,
+    15.033443741952915,
+    -0.002779740792858335
+   ],
+   "cov": [
+    [
+     0.001094801148880306,
+     -3.9638269681143406e-05,
+     -1.475562039678359e-06,
+     -4.084333385937325e-07
+    ],
+    [
+     -3.963826968114339e-05,
+     0.001613521377870253,
+     -0.00012158345172773926,
+     4.702273581551692e-07
+    ],
+    [
+     -1.4755620396781222e-06,
+     -0.00012158345172773933,
+     0.0011290435721247956,
+     -4.370090523326875e-07
+    ],
+    [
+     -4.0843333859374553e-07,
+     4.70227358155165e-07,
+     -4.370090523326913e-07,
+     1.613062369151893e-07
+    ]
+   ],
+   "members": [
+    "arsenal_mancity_seg007@generic_gantry_prior_v2-1be31b96",
+    "arsenal_mancity_seg010@generic_gantry_prior_v2-1be31b96",
+    "arsenal_mancity_seg014@generic_gantry_prior_v2-1be31b96",
+    "arsenal_mancity_seg074@generic_gantry_prior_v2-1be31b96",
+    "arsenal_mancity_seg087@generic_gantry_prior_v2-1be31b96",
+    "arsenal_mancity_seg105@generic_gantry_prior_v2-1be31b96"
+   ],
+   "weight": 6218246.537296567,
+   "cost": 21.83976984148427
+  },
+  {
+   "rig": [
+    0.31061353403060915,
+    -63.90001114925686,
+    14.996272352147075,
+    -0.005022569133715714
+   ],
+   "cov": [
+    [
+     0.0012403320398496247,
+     -7.324694985793059e-05,
+     4.068300224705503e-06,
+     -3.204652424852639e-07
+    ],
+    [
+     -7.324694985793057e-05,
+     0.0016470181613538128,
+     -8.864072747442535e-05,
+     6.359047642288826e-09
+    ],
+    [
+     4.0683002247054984e-06,
+     -8.864072747442534e-05,
+     0.0012500637225790782,
+     -4.5032362751723674e-08
+    ],
+    [
+     -3.204652424853384e-07,
+     6.359047642296874e-09,
+     -4.503236275172416e-08,
+     1.7405147441843232e-07
+    ]
+   ],
+   "members": [
+    "arsenal_mancity_seg110@generic_gantry_prior_v2-1be31b96",
+    "arsenal_mancity_seg116@generic_gantry_prior_v2-1be31b96",
+    "arsenal_mancity_seg125@generic_gantry_prior_v2-1be31b96",
+    "arsenal_mancity_seg133@generic_gantry_prior_v2-1be31b96",
+    "arsenal_mancity_seg135@generic_gantry_prior_v2-1be31b96",
+    "arsenal_mancity_seg150@generic_gantry_prior_v2-1be31b96"
+   ],
+   "weight": 5750440.198299499,
+   "cost": 20.991134640323565
+  },
+  {
+   "rig": [
+    0.20658569360398968,
+    -62.98883891816536,
+    14.805645198912632,
+    -0.003303008261402465
+   ],
+   "cov": [
+    [
+     0.0009014030897882226,
+     -6.7685782494782975e-06,
+     -1.7316411222669565e-05,
+     -6.14592880150343e-07
+    ],
+    [
+     -6.768578249478339e-06,
+     0.0016891868909451758,
+     -0.00014416807545656433,
+     1.775758159562074e-07
+    ],
+    [
+     -1.7316411222669575e-05,
+     -0.00014416807545656433,
+     0.0009010215494858272,
+     -6.594922365068046e-08
+    ],
+    [
+     -6.145928801503474e-07,
+     1.7757581595620755e-07,
+     -6.594922365068026e-08,
+     2.0524760689009715e-07
+    ]
+   ],
+   "members": [
+    "arsenal_mancity_seg006@generic_gantry_prior_v2-1be31b96",
+    "arsenal_mancity_seg011@generic_gantry_prior_v2-1be31b96",
+    "arsenal_mancity_seg018@generic_gantry_prior_v2-1be31b96",
+    "arsenal_mancity_seg123@generic_gantry_prior_v2-1be31b96",
+    "arsenal_mancity_seg124@generic_gantry_prior_v2-1be31b96",
+    "arsenal_mancity_seg126@generic_gantry_prior_v2-1be31b96",
+    "arsenal_mancity_seg161@generic_gantry_prior_v2-1be31b96"
+   ],
+   "weight": 4885498.237494374,
+   "cost": 21.467532900391532
+  },
+  {
+   "rig": [
+    0.16216511063703204,
+    -63.39078554143159,
+    14.925858289420306,
+    -0.004619367523465915
+   ],
+   "cov": [
+    [
+     0.002008573841012188,
+     -0.00019225739593172739,
+     1.07623708679024e-05,
+     -6.594927666371191e-07
+    ],
+    [
+     -0.00019225739593172744,
+     0.002831987080410539,
+     -0.00013871498475222455,
+     -5.685939668917729e-07
+    ],
+    [
+     1.0762370867902404e-05,
+     -0.0001387149847522246,
+     0.0019587199736153466,
+     -5.6305259853222614e-08
+    ],
+    [
+     -6.594927666373441e-07,
+     -5.685939668917511e-07,
+     -5.630525985322405e-08,
+     3.6905689337603536e-07
+    ]
+   ],
+   "members": [
+    "arsenal_mancity_seg095@generic_gantry_prior_v2-1be31b96",
+    "arsenal_mancity_seg100@generic_gantry_prior_v2-1be31b96",
+    "arsenal_mancity_seg130@generic_gantry_prior_v2-1be31b96"
+   ],
+   "weight": 2713640.0093962154,
+   "cost": 8.439327141987956
+  },
+  {
+   "rig": [
+    0.09994407088501646,
+    -62.98251613703334,
+    14.058273603616438,
+    0.001049015218296257
+   ],
+   "cov": [
+    [
+     0.0017427996083046787,
+     -0.0004442556168380131,
+     -2.373302898983894e-05,
+     -9.413941675501671e-07
+    ],
+    [
+     -0.0004442556168380126,
+     0.005875728737885194,
+     -0.0006422157980022396,
+     -1.3276797322602095e-06
+    ],
+    [
+     -2.3733028989838604e-05,
+     -0.0006422157980022387,
+     0.0015475011041300706,
+     -1.5418082620136035e-06
+    ],
+    [
+     -9.413941675502355e-07,
+     -1.3276797322600664e-06,
+     -1.5418082620136327e-06,
+     7.036103689143294e-07
+    ]
+   ],
+   "members": [
+    "arsenal_mancity_seg028@generic_gantry_prior_v2-1be31b96",
+    "arsenal_mancity_seg089@generic_gantry_prior_v2-1be31b96",
+    "arsenal_mancity_seg107@generic_gantry_prior_v2-1be31b96",
+    "arsenal_mancity_seg121@generic_gantry_prior_v2-1be31b96",
+    "arsenal_mancity_seg131@generic_gantry_prior_v2-1be31b96",
+    "arsenal_mancity_seg143@generic_gantry_prior_v2-1be31b96"
+   ],
+   "weight": 1428709.9926342636,
+   "cost": 21.440158545401268
+  },
+  {
+   "rig": [
+    0.13557216884471393,
+    -64.71671059669505,
+    15.050603745524056,
+    -0.0035679365007800453
+   ],
+   "cov": [
+    [
+     0.0029372004804064464,
+     2.8792857887084496e-05,
+     -0.00010170974391002559,
+     -1.2702803791884782e-06
+    ],
+    [
+     2.879285788708512e-05,
+     0.011860119943641799,
+     -0.0011089575176097721,
+     1.921447828128442e-06
+    ],
+    [
+     -0.00010170974391002599,
+     -0.0011089575176097721,
+     0.003155684487243341,
+     -2.22084990054863e-06
+    ],
+    [
+     -1.2702803791881125e-06,
+     1.921447828128393e-06,
+     -2.2208499005484925e-06,
+     7.620012597423636e-07
+    ]
+   ],
+   "members": [
+    "arsenal_mancity_seg035@generic_gantry_prior_v2-1be31b96",
+    "arsenal_mancity_seg052@generic_gantry_prior_v2-1be31b96"
+   ],
+   "weight": 1317045.6872984453,
+   "cost": 5.511227952857354
+  },
+  {
+   "rig": [
+    0.4136562699352997,
+    -62.828603479583755,
+    14.1180668129242,
+    0.01300214443849571
+   ],
+   "cov": [
+    [
+     0.003687571686936695,
+     0.0008586963694634715,
+     -0.0003657256333640847,
+     9.435808064946389e-07
+    ],
+    [
+     0.0008586963694634715,
+     0.0073075240811976624,
+     -0.0007576932200396984,
+     1.5931133666822637e-06
+    ],
+    [
+     -0.00036572563336408477,
+     -0.0007576932200396988,
+     0.0031724033802366302,
+     -2.1959147844466585e-06
+    ],
+    [
+     9.435808064946413e-07,
+     1.5931133666822696e-06,
+     -2.195914784446681e-06,
+     1.8196784270491316e-06
+    ]
+   ],
+   "members": [
+    "arsenal_mancity_seg104@generic_gantry_prior_v2-1be31b96",
+    "arsenal_mancity_seg157@generic_gantry_prior_v2-1be31b96"
+   ],
+   "weight": 550833.6926446047,
+   "cost": 5.78560020641467
+  }
+ ],
+ "inputs": [
+  {
+   "seg_id": "arsenal_mancity_seg000@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg000@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "695d8dfb388c683cf2ae368bf507c7adb0658311164a57c0b268f2b1609db44f"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg001@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg001@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "518912595c5072c37253013b381fc939f10ffcc2aead0c6ffc66ea9172cf91ba"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg002@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg002@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "f927f90d4cc2702c5af65ded14af559825fb9bbeeba39e6896f4a92fcdde75b4"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg003@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg003@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "b59c7eaf993f6628040839ffbc147a7a4f29a69f17fa259a756f66416b90d956"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg004@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg004@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "427cf7e3dd9141c203267ace8b5864f5f6a24c3f434b57b68983b252bc8fcad6"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg006@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg006@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "aa3cb55ba76f285ec491fde65f6802f9026241dc8722060dd81efa8d8a19625a"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg007@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg007@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "607cb9a5bc5661ff6038f9d0983f673c4bf352b1ac482aa22871e08415e6e11f"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg008@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg008@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "5db1ff90f02f3f3ddbca088347c60e164be0a438d231da1844eddd78b620bc26"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg009@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg009@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "bdb14b8f570cbf764f9f372fd36512700210bd46feeca49c60196aaac1fd19e7"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg010@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg010@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "a03e1d3eecb576633d2b412e98b1cc4722f4d76cc061a704bba156fc8f1d6570"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg011@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg011@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "2f57e8b03140b437e515394b34e9e7746c99e2d7a9e27fb364b7bb020f572029"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg012@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg012@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "2bc9dd6260549d4b649b72c06d2bd88c8baf27ac6047c738a920173569199fca"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg013@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg013@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "105c08ec3432a864df26c2d1c41a3a8a1950fe5ec2d989f3257f6b00c0319877"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg014@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg014@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "b92a29d67ee5dfde8ae91c3d6bce05219b9bd71501c10968300d35ab7249bba5"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg016@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg016@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "7239901e6596a59eeb3836fc2ee09e069bcf5fe7bb304bd8bc0e035a3f2ff70b"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg017@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg017@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "0e2b01707f41e04d660a91e1dee40e06d3269eeed7db594474ddabe7813c1433"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg018@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg018@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "2282bb5678b40c832a5f0daadeca522a04b6c37b00633a5a99dec8d95a415956"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg019@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg019@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "d9da5f79af78975a43d53632b61adbb451819b2b35f2002b7a87a8f9914e6684"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg020@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg020@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "b72ce2a91a80759bde9189a19ac19b4f7862b4bc709c421486f6258cfaef7fb0"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg021@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg021@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "12b1787958156c9326f0321ac79d061425a72ffd645ee6bbb53d3e3e6fa9af78"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg022@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg022@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "1241fa31b59d41ddea016899ba4e8884221b7ef2c92623eae6d00146350556d2"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg023@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg023@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "0d71627d39d9c3c91c1c9f7619484fc6f0d5a58a4e5ace99e794ed0f6183c298"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg024@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg024@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "81afc8fb9ae179a287255884cd1c3075d732e92cf5106fc51b04dcf2619304ff"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg025@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg025@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "f91d72d23cc0cf541ce0a69154fb946f508c5161d294827bc52d5aa4d8cc79f3"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg026@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg026@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "37d9097ea67c47e96a88932de1cc76b555f3f26ee7efa5dbb048fc0841a7d834"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg027@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg027@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "c871d31bca45ca5b84ff25a7abcef89db63e563fd5d1c0563ef2d7b20781952f"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg028@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg028@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "228688e1d395a85478e7f462a797cce3ad0254d5b22d57114032d792eef0532d"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg029@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg029@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "0db45ab753f9c33e73c271c83686713c9a0f27a448ce312692d11f0a3ec35802"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg030@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg030@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "125df64d0228e76ada4e188662ac966600c13d419a7ec31f2cf963bc2448370b"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg031@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg031@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "3baa46d3ae01b85376488db1ff93c829ab810eefcbd9a520398846c1a6eafc37"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg032@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg032@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "23a941e54b3f9de299387f35f79d4fdee00c6c1539404893e192ad4f0ed089d0"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg033@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg033@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "0eccd3a4da6307409e49dc8def5c557afe9fe27bfa90d4089ea586356db357e6"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg034@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg034@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "64fb7f9f70d8b8a83500388bb7d1908801331cc498c98671dd058fb110d5e7ed"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg035@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg035@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "40d5795fd8cfb13bfb6561d6494c72f05829c38460e946522c07450e10c3b656"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg036@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg036@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "9f3548df3efa6e522060b597e62bfd4b1fbc4dac5982778e99fd7a902f4bfcb8"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg037@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg037@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "8c28b041043a35aff604cc4489221e15a934d768d82d27786978dd67fedec976"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg038@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg038@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "642c15e4947e647c967f527517409a34f47a9bdddc6a23bed6c97f82f433d84f"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg039@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg039@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "ae3331f73a582ce57206ab0ead3b2ab13e07210fd5b97d6ec2cc18526c2da62c"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg040@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg040@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "06956b86114a41691b429cd6f3a11f3e33f429a819f200895173bee3e40cdb75"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg041@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg041@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "ce447bd54abe9e582e6a52e81aed3fb0fab98a5c1b5abbb69e890b0b043da065"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg042@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg042@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "7a68642119f44c497934325c9db9272089f5349da1abded479c3c1c5431c778f"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg043@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg043@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "d69940cad9c946f89cb90126df34b70de6861eeae12c3576bb363072826533f9"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg044@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg044@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "ffb32473470212d95fe359b543b09fee6cd7243c69928f88a3e7d274cf480b5f"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg045@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg045@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "825b99357a4b2edf60ebc92c5ea02d3409c117de1c961757fb840667a8d2577f"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg047@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg047@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "5c375ca24081d35c55e40bd3f7b34d4f90da846116edd8d0c4541c85d601556f"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg048@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg048@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "37f007ba95248bab841236f1acae1a5d1c3098fdc509217b81a1b1079179c55c"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg049@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg049@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "abe655e753b80f330206911df37fdde0b2cb20a4530c35b87133a3269b5d4967"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg050@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg050@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "e4fafbe314756d897897cb0dea943ca6932f3985f7fed944a4eb671d8266c8b4"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg051@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg051@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "97e3ecd480cdc30645bd3628409e22b3dd3b9d4a6118426804efd80d0014e0c5"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg052@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg052@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "195ce911a7aedb575d41ed36db1aebd581a65d9b26cc178a53b6beeb3092a90b"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg053@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg053@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "7ce1115a2b7d6ee1f93f2880d957aff6d3b129a0d1281a6352ad04ec342dc0dc"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg054@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg054@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "a89a92f99255b18d1f6a19047aa8558c1b6a257a551560a88ef1f1c67c767a59"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg055@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg055@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "334b4c6b8280a8c23e61b63f2600ce98ac98693e09ad3e83afa8064c944a9ca4"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg056@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg056@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "5ee51a47fabcf824a7d6b4d355e8fa604dc71aec8902822ac1e20654d53ecbe8"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg057@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg057@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "330893c17417b9645802dc05e54d7d17f6131cfb9e025344963e3dbae1df8023"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg058@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg058@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "debb5ea1fe4882ff8b7c3df9bb1ec4087d73d24d18f3166683807f44b35a6262"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg059@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg059@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "f882a3ee7695d3550b1000a47825315c2391b36c042dcb56aacffc3d18caeeee"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg060@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg060@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "f50d983bb8302b8eba4be29c31c28120c7b8a5126ad3ca9da6dc9e8d525a62f3"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg061@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg061@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "4e468802a69fc6146d69f985f743c30d454da62da5d9b7982e064d2d0290438d"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg062@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg062@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "17e6331cd57de96a3942010eddee0c1cb7db9cc7e5d45e13a16adacbb29b8a3e"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg063@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg063@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "b2059fd54fb90b597338f219e88f4f8349c772d84aa642c525e46051eae2257d"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg064@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg064@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "a58da6e60bee8e5f9f3c1f80821c73f55bb38c734b0b96ff3d2f1f95ddf75e67"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg065@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg065@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "dc84913402fe6e11fa254e91eb03a5b0450c4b8def5d4716f8ffc9c2ba00c6b6"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg067@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg067@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "544402bc8246d68f6ae0a156a4c7fbea2d4213337616de3be769f40cb063fd57"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg069@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg069@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "79ccc5e80e509697c3024c9a99d25ce529f8ae3a31b6052364402f89af538ed6"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg070@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg070@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "c3fe3665d77e6d16bbd48f3e3b14a2dfd27bab100a90301503b268a7cd38a9c4"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg072@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg072@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "cc2ccfff1d33c6c8f65ee8d666885e0e5145ccbd25ac75cd50c09005ee6854cc"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg074@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg074@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "c30f66d06f7b5aad1a1fd4ec274c49beb66cb691fb147a2d3d5ccab87bd4a2d6"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg075@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg075@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "e2c2a2998f5902491dee96bbbaac2508fd074994c86990196a0aa73365e6fc9e"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg076@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg076@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "2af33bf7e29aef545b285d50dc582076d6bb4955c3d0362323b94228acd29d1c"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg077@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg077@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "21e1a090ac79d28e5f53a9c356607dd974551bb17d723b5cf816fd8d5587d38f"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg078@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg078@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "9bba3c00dc8b5dfa81dc7fb87e9823ecd9b935658ed6584c76ada58ebf63a60a"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg079@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg079@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "296e85c019378f924f10b3c42b1b5f11e41714baff7c7c4e07098d17841dc8ad"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg080@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg080@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "068c17c08b81acd6b5c34dd4ae56774c21571ecfb79fb26f8af64be2df375c73"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg081@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg081@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "85ebe12a91818384d356b06adcbfdf8ed640d3e81613b7f2176060e54353740d"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg082@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg082@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "2a84f19902a4ca10b57180a9297a7626294b535968e1ac5d1e8e7255fffa78d2"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg084@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg084@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "c462a30336b0b137ac8bca46094c43eefe9b7caf3087a21c7c644f44e99be07c"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg086@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg086@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "2a9f82064260f9ce9a718f6710513bb8e8028e4870e818581b97435bc3c5f024"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg087@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg087@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "6f6399c35ba3b166836cf31d6703134c8d5ee304abd96c900c68e92c5fe55c5e"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg088@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg088@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "3c0ff350200ba9c384db789a8631996b286714fe0fde7aff3d35752b15f4fb20"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg089@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg089@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "9e5b6f5e6afdf332bac4459c76068d7443f9f3b193066e76f014d804e18a364e"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg090@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg090@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "af5d0e3e7e7d435d1c61324ee65ff6b716f057c421f01519a39f625475e8612c"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg091@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg091@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "131c59b778c417e3ecb0435e890e10fa78117b2f10c2ddee1bda6c84496a47f1"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg094@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg094@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "46143ffe79db8c6e87091728f3b84d0a48bb47a37fc13f108bb2cfba91f131b9"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg095@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg095@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "f89417c54e332b54bb58a9b204981296ee8846df3fcf5aa9ea29a1ee9589fdc1"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg096@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg096@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "95d8a1ccb4985088e5883896fcc93cc4519843c61dd1013749a79ea0f12cbcd2"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg097@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg097@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "d859186b1a020cb9f34b64195b8f8db1be867b2040447eabd07e3254ea715af4"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg098@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg098@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "ad47f38d2b1783a78aa159f51f317bfb47dcfb0689cd4acdbb62a30c5a7124ce"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg099@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg099@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "c608cf2a97b3b2fc2e9a194f9b688bfe24fd74962fec0a3ab29104e6f89b1a95"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg100@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg100@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "2307126911b94aa069fd1f6ff12f03aa415c39caece0229a66f6ce5f70e45386"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg101@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg101@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "9b22818e40333d894b0a800851f873d88e2631f3d739774e9e56746468be0fb0"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg102@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg102@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "a2800cc81e52016e43ff3c4909cc07de92ba7a06b2c136cf98e2bb83fe77b153"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg104@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg104@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "50358394a18a61d8db726d0ee59242bfd668117c90ada41881e1d0f8dbba45fe"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg105@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg105@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "cccda0af454663e6d755e069cccc7e4e651fc4ffb505344d4487a0357864577e"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg106@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg106@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "7662d749d286b397d027ad2d368289b21b038b558ea0c3b68e40278f6ea6d167"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg107@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg107@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "30ab038ec5b3019064596c82ebe1c05e47b7f903b92866c0281c99290559b859"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg110@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg110@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "b07b8664f4a8212ef81a5958b7c08a3a81dce78c70eaaf1c093ef9dadb00db94"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg111@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg111@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "6b4c7fe849cd61b8e0fcf03b96e23fe5b3e9bdf03e885ac7e70125bc5aecc241"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg112@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg112@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "7f00b9a97f1693444da9771fa7e65ba399589b76da82d9807b79249ce0a2c466"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg113@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg113@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "61d0431602ac4a58133992efe29d6bdb78a16785afa2abd3afe5aec665df29cd"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg114@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg114@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "3377d90ed59d16712126d1b00ccf3323f965eae7e47a3b79615b5a239caa8d64"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg115@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg115@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "7553422f9ac9abcaef6d80f9530551b1465445a3710c99bda0bd886165bc9c39"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg116@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg116@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "dd0729b109c39880d945e0fee685a95297c3f5ee757bf4a1e946316b839ba1db"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg117@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg117@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "047fddec102e4d42fa214afc9a7b157caceba5b43972da50c21c4d046a32f063"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg118@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg118@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "e123b6b37714064b60eeab5ef7365df882215003d3bcde6a1c9f7101c3e3a4e8"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg120@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg120@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "322576fd7c4828a460a5d32ce2059cd00a5ad70ccdc47aad6d8fb9000d26a448"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg121@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg121@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "132d0a8553f29f0a09e420e6bba27b94d8653b3220c2ec7f991be1035cf86ebd"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg122@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg122@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "196bce17220301bf4c12d9e20f1420724b40507bd4131d822718c75aee774d5e"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg123@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg123@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "05055157b1f5489ec915becfa2cc1a84fde614b171bc153fb480958ff521859a"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg124@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg124@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "b10b5292009a89103392f6bd0d069d3b07761f1272e4521681755559f80a7519"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg125@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg125@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "be82128cadffb551a957cdde950f2efe79963eb4d909ad298617470d0e96658f"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg126@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg126@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "5aeefd0476fc091c21ea7fe19f11bdd65ff6d9130e0e1b16d271a435ffdfe6d6"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg127@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg127@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "705be9d0c685adf7c3f11de72ce057a58669fcfba2a7a6dcc2346ce3bc3c1120"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg128@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg128@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "9b12f7c0c7097f0a378464e57b3cd2bd4d198df9b164a9558353c57f9c0474e1"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg129@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg129@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "a443fde33efa218c04e3440412f7e99ead288b42560c53b439da49dc408a25a0"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg130@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg130@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "c537db91458e36618fbde8ca1ec7beae13cc9605048a7536c523100f487060f4"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg131@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg131@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "9882ff0ed841ceacfdf0189f6614aefe7a46fc5d1ba1383b7cdf93ca25d078e4"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg132@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg132@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "dac6d8344eebb0cc3848becbe03d9a974adb12e28a57c148650d460f1b2eff24"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg133@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg133@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "a12e36f5703a95c583c534ad5d5f5d5f24fbc2f7cf1f1fd27e81c088016f2a13"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg134@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg134@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "f897b8d897db776928996d3a3d48d6dd661d06fcbf67a73690315ae5b620573e"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg135@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg135@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "5252cb814fda6609d45883b44b485ddeac62dc1b76bce416424083758117a2f5"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg136@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg136@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "f37542ae101d1a600abc5f226579302a3a52d83f27b9c84fb2c9bab9ea971d19"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg138@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg138@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "dd28203d475588a134512aa41acaf32105cc8a6efdc11d96bc34032f739c9250"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg139@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg139@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "c0f32aa6fd96d28f9f34282a1a59d68c30e7e205f844d562c1a2054dc4b5ddd2"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg140@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg140@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "5b3142e01933b4e45992cdbde7bf75dec1103e8fa2e42a646f32efa9a8dc2b26"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg141@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg141@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "cd4c8d2b5db637c36e8e68d71572a0257aab7f31db5e42bfe3f1bc4d61702c4d"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg142@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg142@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "6e96c79e2e379a00522bca97db978d231d02e7b3fdc90a2b4b1c846086d916b4"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg143@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg143@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "d788904f07d28dc7d36bdf0befe47cfda4ea843d81ea5e89216524e8019faed9"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg144@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg144@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "0909043cde6c9fc98a3e1621978b5e85ee728d212a5157cb920e58be1b45cdbb"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg145@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg145@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "44834afd0c7a1725768647c2cbe65c96a4f0eca813b85d478120a2fb6c2f74e2"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg146@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg146@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "b467b0b5bc1568b35c0d59253df2418bc56b6fef27b38e693aa822a3f2dc685b"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg147@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg147@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "fab4fdf3109313415ec22c9168c87047bac0d7cf5be3b6d2f62dfbf21e699d55"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg148@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg148@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "9d5777c39d50c7f50206021de5f16c81fb7741398d65626c4f0989f0d9ebd874"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg149@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg149@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "17d36d9b485c3cc31e155bc32b3ef5d2086f88164d574ee1af7309e4ae274554"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg150@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg150@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "8113c0e8a8c9a47c488ab1759442f3bd72371b31dba38f1d06349b221c94ba69"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg151@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg151@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "b87dc09b3716c083e5cc07e86d1b481ee7c9cdefbbe35e9206363d83bbbcf53a"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg152@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg152@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "4c44e04391c781b533771e90bd48883479a38796868054f224221bf8f0ab063e"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg153@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg153@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "b1ee9e8d9868cb54713b633b67efe2f1f5bb3d73add4cc5d2e5ded8d38709fa4"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg155@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg155@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "379ecef9b5a4ef5c09ca0f184a18c0646d1c6a7e30c2d51b2792e0359406a2f7"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg156@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg156@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "3b2f15b9bd29b89f551646a43e830c69b164cdb2f830270cd8497bd56f1fb33c"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg157@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg157@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "1477d27b0c1760795916242d08351d14682e8f6f6102dcc7500290089a272829"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg158@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg158@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "393d5a0a1e06e5e0b16bd90130813b553b9bb3b4e8ad01eea076ac498697934d"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg159@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg159@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "0fe3b08658c0d269cb149c3b4fec6ff8e2d96e85d17e3c5887f7226adcf4f745"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg160@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg160@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "878247feb0be36834cdd4ae94501ec74000981eb7ca430d60e940d67282c901c"
+  },
+  {
+   "seg_id": "arsenal_mancity_seg161@generic_gantry_prior_v2-1be31b96",
+   "path": "/mnt/storage/footy_data/scratch/temporal/arsenal_mancity_seg161@generic_gantry_prior_v2-1be31b96/rig_estimate.json",
+   "sha256": "3e2c6460810324fbbbc6be4c4b6469b55eb719f6fbbf0cb64834cd05838165ac"
+  }
+ ],
+ "main_weight_share": 0.1625,
+ "n_fit": 80,
+ "reference": {
+  "dC": [
+   0.11857133407362552,
+   2.9345592077560454,
+   -0.8873916208372012
+  ],
+  "dC_norm": 3.0680874814486407,
+  "droll_deg": -0.08169345899550898
+ }
+}
