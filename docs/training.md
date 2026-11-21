@@ -8,6 +8,8 @@ This document covers how to run the training scripts and documents baseline resu
 
 This document covers how to run the object detector training script and documents baseline training results.
 
+> Update 2026-11-21: the direction is two separate detectors (ball; player-side classes), not one multi-class model. This script and its results describe the earlier single-model setup. See [design/full_frame_labelling.md](design/full_frame_labelling.md).
+
 ## Script: `train_object_detector.py`
 
 **Location:** `src/footy_track/scripts/train_object_detector.py`

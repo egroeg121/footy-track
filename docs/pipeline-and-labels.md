@@ -2,6 +2,8 @@
 
 _Research of 2026-11-08 against `main` @ 26d2506. Evidence tags: **[V]** verified against code, data or run logs; **[H]** stated only in `<storage>/tools/HANDOFF.md` (2026-08-28) or a doc, not re-checked; **[I]** inference._ Context: [Architecture](architecture.md), [Datasets and labels](data.md), [TODO list](todo.md).
 
+> Update 2026-11-21: the plan is now two detectors (ball; player/referee/coach/person) instead of one multi-class RT-DETR, so "Detection (ball, players, refs)" below describes the historical single model. See [full_frame_labelling.md](design/full_frame_labelling.md).
+
 ## Summary
 
 - The best measured ball detector is **RT-DETR-L trained at 1920 on Roboflow v11: ball mAP50 0.665, recall 0.591** on v11-val [V]. The older ".221 / .209" quoted next to it was yolo11n on v11 (`xeval.log`); it was pasted next to the RT-DETR path by commit `24229bb` (2026-08-29). The comment in `detectors/ultralytics.py` and the docs now say so.
