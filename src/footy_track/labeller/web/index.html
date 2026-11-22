@@ -1052,10 +1052,13 @@ async function loadClipList() {
       if (!el) return;
       const b = document.createElement("span");
       b.className = "no-ball-badge";
-      b.style.background = c.fully_labelled ? "#1f6f3d" : "#555";
+      const gb = c.groups.ball, gp = c.groups.player;
       const t = c.clip_frames ? "/" + c.clip_frames : "";
-      b.textContent = `ball ${c.ball_labelled}${t} / player ${c.player_labelled}${t} / full ${c.fully_labelled}${t}`;
-      b.title = `${c.frames} frames with a label state; ${c.partial} partial; ${c.player_marked_sidecar} frames with player boxes drawn (not verified complete)`;
+      const mk = (txt, g) => { const s = document.createElement("span"); s.textContent = txt; s.title = `${g.complete} complete, ${g.absent} absent, ${g.partial} partial, ${g.unreviewed} unreviewed`; s.style.cssText = "padding:0 4px;border-radius:3px;background:" + (g.labelled ? "#1f6f3d" : "#555"); b.appendChild(s); };
+      b.style.background = "transparent";
+      mk(`ball ${gb.labelled}${t}`, gb);
+      mk(`player ${gp.labelled}${t}`, gp);
+      b.title = `${c.frames} frames with a label state; fully labelled (both, informational) ${c.fully_labelled}; ${c.player_marked_sidecar} frames with player boxes drawn (not verified complete)`;
       el.appendChild(b);
     });
   }).catch(() => {});
@@ -1068,7 +1071,7 @@ async function loadClipList() {
       if (clip.complete) {
         el.firstChild.nodeValue = clip.name + " ✅";
         el.style.color = "var(--green)";
-        el.title = `${clip.name} — fully labelled (${clip.label_count} marks)`;
+        el.title = `${clip.name} — swept to the end with player marks (${clip.label_count} marks; sidecar heuristic, see the ball / player badges for verified progress)`;
       } else if (clip.marked) {
         el.firstChild.nodeValue = clip.name + " ✓";
         el.style.color = "var(--muted)";

@@ -28,10 +28,15 @@ Any other API error propagates (fail closed): the state file may exist, the job 
 
 from __future__ import annotations
 
+import contextlib
+import fcntl
 import json
 import logging
+import os
 import re
+import time
 from collections import Counter, defaultdict
+from collections.abc import Iterator
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -55,6 +60,44 @@ LIVE = ("open", "in_progress")
 CAL_MIN_PER_CLASS = 10
 GOLD_ACCEPT_FLAG = 0.10
 _STATE_NAME = re.compile(r"^v(\d{3,})\.json$")
+#: Bucket tag of the cards the anchor search appends (``anchor_search``). They are *not* a random or audit sample (chosen for
+#: sitting next to a confirmed ball), so their verdicts never feed the Platt fit or Learn-then-Test; they are reported as
+#: their own bucket in ``hit_rates``.
+SEARCH_BUCKET = "S"
+
+
+class JobBusy(RuntimeError):
+    """Another run (refit, close, anchor search) holds the job mutex."""
+
+
+def lock_path(marks_dir: str | Path, job_id: str) -> Path:
+    return Path(marks_dir) / "ball_mining" / "locks" / f"{job_id}.lock"
+
+
+@contextlib.contextmanager
+def job_lock(marks_dir: str | Path, job_id: str, *, wait_s: float = 0.0) -> Iterator[None]:
+    """Per-job mutex (design 7.4, the local twin of the Prefect tag ``ball-job:<job_id>``): refit, close and the anchor search
+    take it so two runs never fight over the job ``rev``. An advisory ``flock`` on ``<marks>/ball_mining/locks/<job>.lock``
+    (released by the kernel if the process dies). Waits up to ``wait_s`` seconds, then raises :class:`JobBusy`."""
+    path = lock_path(marks_dir, job_id)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd = os.open(path, os.O_CREAT | os.O_RDWR, 0o644)
+    deadline = time.monotonic() + wait_s
+    try:
+        while True:
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except BlockingIOError:
+                if time.monotonic() >= deadline:
+                    raise JobBusy(f"job {job_id} is locked by another ball-round run ({path})") from None
+                time.sleep(0.2)
+        try:
+            yield
+        finally:
+            fcntl.flock(fd, fcntl.LOCK_UN)
+    finally:
+        os.close(fd)
 
 
 def state_dir(marks_dir: str | Path) -> Path:
@@ -139,6 +182,11 @@ def unanswered_from_results(doc: dict) -> list[tuple[int, dict]]:
         for p in doc.get("items") or []
         if not (p["total"] and p["done"] >= p["total"])
     ]
+
+
+def exclude_search(rows: list[dict]) -> list[dict]:
+    """``rows`` without the anchor-search (bucket ``S``) verdicts: the only rows the calibrated fit and the threshold test may see."""
+    return [r for r in rows if r.get("bucket") != SEARCH_BUCKET]
 
 
 def hit_rates(rows: list[dict]) -> dict[str, dict]:
@@ -284,7 +332,8 @@ def compute_state(
     params = params or {}
     job = doc["job"]
     scorer = current_scorer({"items": [p["item"] for p in doc.get("items") or []]})
-    same = [r for r in rows if r.get("scorer_version") in (scorer, None)]
+    fit_rows = exclude_search(rows)  # EXPLICIT: S verdicts never reach Platt / learn_then_test
+    same = [r for r in fit_rows if r.get("scorer_version") in (scorer, None)]
     cal = fit_calibration(
         same, min_per_class=int(params.get("min_per_class", CAL_MIN_PER_CLASS))
     )
@@ -299,7 +348,7 @@ def compute_state(
     state = {
         "schema": STATE_SCHEMA, "ts": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"), "job_id": job["id"], "round": job.get("key"),
         "trigger": "close" if closed else "refit", "closed": closed, "scorer_version": scorer, "n_verdicts": len(decided),
-        "n_rows_other_scorer": len(rows) - len(same), "hit_rates": hit_rates(rows), "gold": gold_check(rows), "calibration": cal,
+        "n_rows_other_scorer": len(fit_rows) - len(same), "n_search_excluded": len(rows) - len(fit_rows), "hit_rates": hit_rates(rows), "gold": gold_check(rows), "calibration": cal,
         "threshold": {"global": ltt.as_dict(), "per_match": {m: r.as_dict() for m, r in per_match.items()}, "grid": [0.99, 0.50, 0.01],
                       "method": "learn-then-test, fixed sequence from high t, exact binomial", **kw},
         "auto_accept": {"threshold": ltt.effective_threshold, "scale": ltt.effective_scale, "fallback": ltt.fallback},
@@ -358,8 +407,12 @@ def refit_round(
     doc = client.results(ref)
     rows = collect_rows(client, doc["job"]["dataset"], current=doc)
     marks = resolve_marks(doc["job"]["dataset"], marks_dir)
-    state, cal = compute_state(doc, rows, marks=marks, params=params)
-    out = {"job": doc["job"]["id"], "key": doc["job"].get("key"), **summary(state, cal)}
-    if reorder:
-        out.update(_apply_order(client, ref, doc, cal, state))
+    try:
+        with job_lock(marks, doc["job"]["id"]):
+            state, cal = compute_state(doc, rows, marks=marks, params=params)
+            out = {"job": doc["job"]["id"], "key": doc["job"].get("key"), **summary(state, cal)}
+            if reorder:
+                out.update(_apply_order(client, ref, doc, cal, state))
+    except JobBusy as e:  # an anchor search / close is on the job: the next hook tick refits
+        return {"job": doc["job"]["id"], "key": doc["job"].get("key"), "status": "skipped_busy", "detail": str(e)}
     return out

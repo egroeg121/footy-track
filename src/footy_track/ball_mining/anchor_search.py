@@ -671,7 +671,7 @@ def run_search(
 #     same ``if_rev`` retry loop the refit uses).
 # ===========================================================================================================
 
-SEARCH_BUCKET = "S"
+SEARCH_BUCKET = refit.SEARCH_BUCKET
 APPEND_BY = "ball_anchor_search"
 APPEND_TRIES = 3  # rev conflicts tolerated on the append before giving up (the next run converges)
 LIVE = refit.LIVE
