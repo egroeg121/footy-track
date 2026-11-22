@@ -836,8 +836,15 @@ def _robust_w(r: Array, c: float, quad: Array) -> Array:
     return w
 
 
-def lm_solve(rs: _Resid, x0: Array, n_iter: int = 25, log=None, tag: str = "") -> tuple[Array, dict]:
-    """Levenberg-Marquardt with IRLS Cauchy weights on all data rows (the smoothness / prior rows stay quadratic)."""
+#: default stopping rule of :func:`lm_solve`: stop once a step gains less than this fraction of the total cost
+LM_REL_TOL = 1e-4
+
+
+def lm_solve(rs: _Resid, x0: Array, n_iter: int = 25, log=None, tag: str = "", *, rel_tol: float = LM_REL_TOL
+             ) -> tuple[Array, dict]:
+    """Levenberg-Marquardt with IRLS Cauchy weights on all data rows (the smoothness / prior rows stay quadratic).
+    Stops when a step gains less than ``rel_tol`` x the total cost (default :data:`LM_REL_TOL`, the production rule),
+    when no step improves, or after ``n_iter`` iterations."""
     quad = np.zeros(rs.n_res, bool)
     quad[rs.n_res - rs.nsh - rs.nacc: rs.n_res] = True
     c = rs.pb.c_robust
@@ -877,7 +884,7 @@ def lm_solve(rs: _Resid, x0: Array, n_iter: int = 25, log=None, tag: str = "") -
         hist.append(f)
         if log:
             log(f"    {tag} it {it}: cost {f:.1f} lam {lam:.1e} |step| {np.abs(step).max():.2e}")
-        if not improved or (hist[-2] - f) < 1e-4 * max(hist[-2], 1.0):
+        if not improved or (hist[-2] - f) < rel_tol * max(hist[-2], 1.0):
             break
     return x, {"cost0": f0, "cost": f, "iters": len(hist) - 1}
 
@@ -1063,8 +1070,8 @@ def solve_segment(cache: ClipCache, t0: int, t1: int, pairs: list[Pair], anchors
 def joint_solve(F: int, sh: Shared, x_init: Array, evs: list[ptz.LineEvidence], line_frames: Array, pairs: list[Pair],
                 anchors: dict[int, tuple[Array, Array]], pitch: PitchModel, *, free_shared=(), shared_sigma=None,
                 points=(), sigma_line: float = 3.0, sigma_motion: float = 1.0, t0: int = 0, seg_of=None,
-                smooth: bool = True, n_iter: int = 20, log=None, start: Shared | None = None
-                ) -> tuple[Shared, Array, dict]:
+                smooth: bool = True, n_iter: int = 20, log=None, start: Shared | None = None,
+                rel_tol: float = LM_REL_TOL) -> tuple[Shared, Array, dict]:
     """Two-stage (blurred / sharp line distance transform) LM of F frames' (pan, tilt, log f) + the free shared
     quantities. ``pairs`` carry frame indices ``t0 + local``; ``line_frames`` are local indices into ``evs``.
     ``sh`` is the prior centre of the shared quantities; ``start`` (default ``sh``) is where their LM starts."""
@@ -1081,7 +1088,7 @@ def joint_solve(F: int, sh: Shared, x_init: Array, evs: list[ptz.LineEvidence], 
         if not smooth:
             pb.sigma_acc = None
         rs = _Resid(pb, stack, trunc)
-        x, inf = lm_solve(rs, x, n_iter=n_iter, log=log, tag=f"stage{stage + 1}")
+        x, inf = lm_solve(rs, x, n_iter=n_iter, log=log, tag=f"stage{stage + 1}", rel_tol=rel_tol)
         info[f"stage{stage + 1}"] = inf
         shn, poses = rs.split(x)
     return shn, poses, info
@@ -1107,7 +1114,8 @@ class Unit:
 
 def fit_shared(units: list[Unit], rig: ptz.Rig, pitch: PitchModel, *, free=("Cx", "Cy", "Cz", "roll", "k1"),
                sigma=(5.0, 10.0, 3.0, np.deg2rad(2.0), 0.05), sigma_line: float = 3.0, n_iter: int = 20, log=None,
-               start: Shared | None = None) -> tuple[Shared, list[Array], dict]:
+               start: Shared | None = None,
+               rel_tol: float = LM_REL_TOL) -> tuple[Shared, list[Array], dict]:
     """Bundle-adjustment style fit of the rig quantities (``C``, roll, ``k1``) over the frames of many shots at once:
     every frame has its own (pan, tilt, log f); the shared quantities see all the line evidence and all the motion
     pairs. The prior ``sigma`` is deliberately loose (the leave-out rig is only the starting value). The prior is
@@ -1136,7 +1144,8 @@ def fit_shared(units: list[Unit], rig: ptz.Rig, pitch: PitchModel, *, free=("Cx"
     sh0 = Shared.from_rig(rig)
     shn, poses, info = joint_solve(len(frames_all), sh0, np.array(x0), evs, np.array(lf, int), pairs, anchors, pitch,
                                    free_shared=free, shared_sigma=sigma, sigma_line=sigma_line,
-                                   seg_of=np.array(seg_of), smooth=False, n_iter=n_iter, log=log, start=start)
+                                   seg_of=np.array(seg_of), smooth=False, n_iter=n_iter, log=log, start=start,
+                                   rel_tol=rel_tol)
     out, k = [], 0
     for u in units:
         out.append(poses[k:k + len(u.frames)])
@@ -1184,13 +1193,14 @@ def seed_offsets(step=(3.0, 4.0, 3.0), n=(1, 2, 1)) -> list[Array]:
 
 def fit_shared_multistart(units: list[Unit], rig: ptz.Rig, pitch: PitchModel, *, states_at: Shared | None = None,
                           offsets: list[Array] | None = None, extra_seeds: list[Array] | None = None, top_k: int = 3,
-                          screen_iter: int = 6, screen_stride: int = 1, log=None, **kw) -> tuple[Shared, list[Array], dict]:
+                          screen_iter: int = 6, screen_stride: int = 1, log=None, rel_tol: float = LM_REL_TOL, **kw) -> tuple[Shared, list[Array], dict]:
     """:func:`fit_shared` from many starts of C, keeping the lowest robust cost. The prior stays centred on ``rig`` for
     every seed (so costs compare); a seed is ``rig.C + offset`` (grid ``offsets``) or an absolute C (``extra_seeds``,
     e.g. the per-frame lines-only centre estimates). Each seed: poses re-expressed at the seed's C
     (:func:`reseed_states`, from ``states_at``, default the rig), a short *screening* fit (``screen_iter`` LM
     iterations per stage, on every ``screen_stride``-th unit); the ``top_k`` cheapest seeds are then fitted to convergence. ``info["starts"]`` lists
-    every seed with its screening cost and, for the finalists, the final C and cost."""
+    every seed with its screening cost and, for the finalists, the final C and cost. ``rel_tol`` (the LM stopping rule,
+    :data:`LM_REL_TOL` by default) applies to the finalists only; screening keeps the default rule."""
 
     n_iter = kw.pop("n_iter", 20)
     src = states_at or Shared.from_rig(rig)
@@ -1211,7 +1221,7 @@ def fit_shared_multistart(units: list[Unit], rig: ptz.Rig, pitch: PitchModel, *,
         st = starts[i]
         start = replace(sh0, C=np.asarray(st["seed_C"], float))
         us = [replace(u, states=reseed_states(u.states, src, start)) for u in units]
-        shn, poses, info = fit_shared(us, rig, pitch, start=start, n_iter=n_iter, **kw)
+        shn, poses, info = fit_shared(us, rig, pitch, start=start, n_iter=n_iter, rel_tol=rel_tol, **kw)
         st.update(final_C=[float(c) for c in shn.C], final_cost=info["stage2"]["cost"], final_roll=float(shn.roll),
                   final_k1=float(shn.k1))
         if log:
