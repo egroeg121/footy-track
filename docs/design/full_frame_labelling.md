@@ -23,7 +23,7 @@ Status:
 | Ball-only export (default, no `--classes`; gate = ball group only; ball classes collapse to one class id 0) | Implemented (`scripts/export_training_dataset.py`) |
 | `frame_label_state` per group, per-group writers, frozen class ids | Implemented |
 | Player-only export mode (player-group gate, ball classes excluded, frozen ids unchanged) | TODO. Today `--classes` multi-class export still gates on `frame_complete` |
-| `/progress/labelling` as two independent targets | TODO. Today it reports `ball_labelled`, `player_labelled` and `fully_labelled` (section 3) |
+| `/progress/labelling` as two independent targets | Implemented 2026-11-21: `groups.ball` / `groups.player` (section 3), two sections on `/progress`, ball and player badges in the clip list |
 | Per-group auto-label pipeline and per-group teacher versions / queues | TODO. Stages in section 4 are built as one pipeline for both groups |
 | Ball model training recipe (high-res/tiled) and player model training run | TODO (not covered by this doc) |
 | Player eval panel (blind heldout frames) | TODO (see 4c.6b) |
@@ -58,7 +58,7 @@ frame_label_state(game_id, frame_index, cls_group, state,  -- complete|absent|pa
 
 ## 3. Progress view
 
-`GET /progress/labelling` returns, per clip and totals: `frames`, `ball_labelled` (ball in complete/absent), `player_labelled`, `fully_labelled`, `partial`, plus `by_method` and `by_split`. *(2026-11-21: `ball_labelled` and `player_labelled` become the two headline targets; `fully_labelled` is informational. TODO.)* It reads the store (not the JSONL), so it can run on the mini. Add a "Labelling coverage" table to the existing `/progress` page, and a per-clip badge to the clip list (replacing the weak `_clip_completion` heuristic in `server.py`).
+`GET /progress/labelling` presents two independent targets, **Ball** (`ball`, `in_play_ball`, `out_of_play_ball`) and **Player-side** (`player`, `referee`, `coach`, `player_sub`, `person`); their counts are never pooled. Response: `groups.<ball|player>` = `{label, classes, totals, by_split, by_method, tiers, clips}`, where `totals`, each `by_split[split]` and each per-clip row hold `frames`, `complete`, `absent`, `partial`, `unreviewed` (a frame with no row for the group is `unreviewed`), `labelled` (= complete + absent), `clip_frames` and `pct_labelled` (of the clip's video frames when known, else of frames with a state row). `by_split` keys are `train` / `eval_in_match` / `eval_heldout_match`; per-clip `clips` are sorted least-labelled first per group. The legacy keys stay for compatibility: per clip and in `totals`, `frames`, `ball_labelled`, `player_labelled`, `fully_labelled` (both groups; **informational only, not a training gate**), `partial`, plus top-level `by_method`, `by_split`, `tiers`, `teacher_versions`; each legacy clip row also carries `groups.<g>` counts. It reads the store (not the JSONL), so it can run on the mini. The "Labelling coverage" table on `/progress` is two sections (Ball, Player-side) plus an informational fully-labelled line, and the clip list shows separate ball and player badges (the old `_clip_completion` tick remains a sidecar heuristic, not verified progress).
 
 ## 4. Auto-label pipeline (priority)
 
