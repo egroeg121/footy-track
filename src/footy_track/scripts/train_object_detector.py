@@ -80,6 +80,8 @@ def train_detector(
     rect: bool = False,
     fraction: float = 1.0,
     patience: int = 100,
+    optimizer: str = "auto",
+    lr0: float = 0.01,
 ):
     """
     Downloads a dataset from Roboflow (or uses a local path) and trains a YOLO detector.
@@ -145,6 +147,8 @@ def train_detector(
         rect=rect,
         fraction=fraction,
         patience=patience,
+        optimizer=optimizer,
+        lr0=lr0,
     )
     print("Training complete.")
     print(f"Model and results saved to: {results.save_dir}")
@@ -272,4 +276,6 @@ if __name__ == "__main__":
         rect=args.rect,
         fraction=args.fraction,
         patience=args.patience,
+        optimizer=args.optimizer,
+        lr0=args.lr0,
     )
