@@ -180,13 +180,24 @@ def _frame_cap(job: dict) -> tuple[int | None, int | None]:
     return cap, hard
 
 
+def _check_split(job: dict, new: list[dict]) -> None:
+    """One job = one split: refuse (422, nothing written) items of another split than the job's own."""
+    from footy_track.ball_mining import anchor_search  # noqa: PLC0415 (it imports the labeller)
+
+    try:
+        anchor_search.check_append_split(job, new)
+    except anchor_search.SplitError as e:
+        raise JobError(422, f"split guard: {e}") from e
+
+
 def append_items(
     job_id: str, raw_items: object, *, by: str = "api", note: str | None = None, if_rev: int | None = None
 ) -> dict:
     """Append items (same shapes as at submit) to a live job, with provenance, inside its bounds.
 
     Refused (nothing written) with 422 over the job's card/frame cap or ``MAX_APPEND_PER_CALL``, 429 when
-    a prepared ball_check job would pass the queued-card cap, 507 below the disk floor. Items whose
+    a prepared ball_check job would pass the queued-card cap, 507 below the disk floor, and 422 when an item is of
+    another split than the job's own (``splits.split_of``; a job is eval-heldout, eval-in-match or train, never mixed). Items whose
     unit is already in the job are skipped and counted.
     """
     if not isinstance(raw_items, list) or not all(isinstance(x, dict) for x in raw_items):
@@ -201,6 +212,7 @@ def append_items(
         if if_rev is not None and int(job.get("rev") or 0) != if_rev:
             raise JobError(409, f"job is at rev {job.get('rev') or 0}, not {if_rev}; re-read it", rev=int(job.get("rev") or 0))
         new = jobs._normalise_items(kind, raw_items) if raw_items else []
+        _check_split(job, new)
         have = {_dedupe_key(kind, it) for it in job["items"]}
         fresh: list[dict] = []
         for it in new:
