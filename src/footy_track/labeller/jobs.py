@@ -1004,8 +1004,23 @@ def public(job: dict, c: dict | None = None, *, items: bool = True) -> dict:
         out["items"] = job.get("items") or []
     out["url"] = deep_link(job, c)
     if c is not None:
-        out["progress"] = progress_of(c)
+        out["progress"] = _with_frames(job, progress_of(c))
     return out
+
+
+def _with_frames(job: dict, prog: dict) -> dict:
+    """Add ``frames_total / frames_terminal / by_state`` (expected set F in the store's ``selected_frame``)
+    to a ball-round / ball-eval job's progress; best effort, absent when the job has no F rows."""
+    key = job.get("key") or ""
+    if not key.startswith(("ball-round/", "ball-eval/")):
+        return prog
+    try:
+        from footy_track.labeller import labelling_progress  # noqa: PLC0415
+
+        fp = labelling_progress.job_frame_progress(key)
+    except Exception:
+        fp = None
+    return {**prog, **{k: fp[k] for k in ("frames_total", "frames_terminal", "by_state")}} if fp else prog
 
 
 def job_with_progress(job: dict) -> tuple[dict, dict]:
