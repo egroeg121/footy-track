@@ -257,6 +257,20 @@ if __name__ == "__main__":
         "--patience", type=int, default=100, help="Early-stop patience."
     )
 
+    parser.add_argument(
+        "--optimizer",
+        type=str,
+        default="auto",
+        help="Ultralytics optimizer. 'auto' picks AdamW at lr~0.002 for short runs (nc=1): "
+        "too hot for fine-tuning RT-DETR; use AdamW with --lr0 1e-4.",
+    )
+    parser.add_argument(
+        "--lr0",
+        type=float,
+        default=0.01,
+        help="Initial LR (ignored by --optimizer auto).",
+    )
+
     args = parser.parse_args()
 
     train_detector(
