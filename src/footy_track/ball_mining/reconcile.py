@@ -23,6 +23,7 @@ from collections import defaultdict
 from collections.abc import Callable
 from datetime import UTC, datetime
 
+from footy_track.ball_mining import anchor_controls as ctl
 from footy_track.feature_store.store import FeatureStore
 
 REPORT_SCHEMA = "ball-reconcile/v1"
@@ -104,7 +105,15 @@ def _check_duplicates(rep: dict, key: str, items: list[dict], seen: dict[tuple, 
             seen[ck] = key
 
 
+def _is_control_label(lab: dict) -> bool:
+    s = (lab.get("meta") or {}).get("sampling") or lab.get("sampling") or {}
+    return s.get("bucket") == ctl.SEARCH_BUCKET and bool(s.get("gold"))
+
+
 def _check_orphans(rep: dict, key: str, items: list[dict], labels: list[dict], f: dict) -> None:
+    """Cards / verdicts outside F. S-gold control cards (``anchor_controls``) are known frames from outside F by design: skipped."""
+    items = [it for it in items if not ctl.is_control_item(it)]
+    labels = [lab for lab in labels if not _is_control_label(lab)]
     if items and not f:
         rep["orphans"].append({"type": "job_without_selection", "job": key, "cards": len(items)})
         return
@@ -165,7 +174,30 @@ def _check_selected(rep: dict, ctx: _Ctx, fam: str, f_job: dict, job_keys: set[s
                 rep["split_violations"].append({"type": "selected_split", "job": key, "clip": g, "frame": fr, "split_of": ctx.split_fn(g), "job_split": r.split, "family": fam})
 
 
-def _check_family(ctx: _Ctx, fam: str, rows: list, jobs: list[dict], client) -> dict:
+def _controls_block(docs: dict[str, dict], marks_dir) -> dict:
+    """Informational (never a violation): S-gold control cards / agreement and the suspect anchors, per job."""
+    from footy_track.ball_mining.refit import rows_from_results  # noqa: PLC0415
+
+    per_job: dict[str, dict] = {}
+    n_cards = n_open = 0
+    rows: list[dict] = []
+    for key, doc in docs.items():
+        items = _items_of(doc)
+        cards = [it for it in items if ctl.is_control_item(it)]
+        answered = {(lab.get("clip"), lab.get("frame_index")) for lab in _verdict_labels(doc)}
+        n_cards += len(cards)
+        n_open += sum(1 for it in cards if (it["clip"], it.get("frame_index")) not in answered)
+        r = rows_from_results(doc)
+        rows += r
+        sus = ctl.read_suspects(marks_dir, doc["job"]["id"]) if marks_dir else []
+        if cards or sus:
+            per_job[key] = {"control_cards": len(cards), "agreement": ctl.agreement(r), "suspect_anchors": sorted({e["anchor_id"] for e in sus}),
+                            "impact": ctl.suspect_impact(doc, sus) if sus else {}}  # fmt: skip
+    return {"control_cards": n_cards, "control_cards_open": n_open, "agreement": ctl.agreement(rows), "jobs": per_job,
+            "suspect_anchors": sum(len(j["suspect_anchors"]) for j in per_job.values())}  # fmt: skip
+
+
+def _check_family(ctx: _Ctx, fam: str, rows: list, jobs: list[dict], client, marks_dir=None) -> dict:
     rep: dict = {k: [] for k in KINDS}
     f_job: dict[str, dict[tuple[str, int], object]] = defaultdict(dict)
     for r in rows:
@@ -173,8 +205,10 @@ def _check_family(ctx: _Ctx, fam: str, rows: list, jobs: list[dict], client) -> 
     carded: set[tuple[str, int]] = set()
     seen: dict[tuple, str] = {}  # card identity -> first job key
     n_cards = n_verdicts = 0
+    docs: dict[str, dict] = {}
     for j in jobs:
         doc = client.results(j["id"])
+        docs[j["key"]] = doc
         items, labels, f = _items_of(doc), _verdict_labels(doc), f_job.get(j["key"], {})
         n_cards, n_verdicts = n_cards + len(items), n_verdicts + len(labels)
         carded.update((it["clip"], int(it["frame_index"])) for it in items)
@@ -187,7 +221,7 @@ def _check_family(ctx: _Ctx, fam: str, rows: list, jobs: list[dict], client) -> 
     expected = {fr for d in f_job.values() for fr in d}
     return {
         "jobs": len(jobs), "frames_expected": len(expected), "cards": n_cards, "verdicts": n_verdicts,
-        "counts": {k: len(rep[k]) for k in KINDS}, **rep, "_expected": expected,
+        "counts": {k: len(rep[k]) for k in KINDS}, **rep, "controls": _controls_block(docs, marks_dir), "_expected": expected,
     }  # fmt: skip
 
 
@@ -211,6 +245,7 @@ def reconcile(
     now: datetime | None = None,
     split_fn: Callable[[str], str] | None = None,
     dataset: str | None = None,
+    marks_dir=None,
 ) -> dict:
     """The report dict (schema ``ball-reconcile/v1``); ``report["ok"]`` is false iff any violation was found."""
     ctx = _Ctx(store, now or datetime.now(UTC), split_fn or _default_split, stuck_days)
@@ -220,7 +255,7 @@ def reconcile(
             by_family[family_of(r.job_key)].append(r)
     filt = {"kind": "ball_check", "limit": "5000", **({"dataset": dataset} if dataset else {})}
     live = [j for j in client.list_jobs(**filt) if j.get("status") != "cancelled"]
-    fams = {fam: _check_family(ctx, fam, by_family[fam], [j for j in live if family_of(j.get("key")) == fam], client) for fam in families}
+    fams = {fam: _check_family(ctx, fam, by_family[fam], [j for j in live if family_of(j.get("key")) == fam], client, marks_dir) for fam in families}
     _check_cross_family(fams)
     for rep in fams.values():
         rep.pop("_expected")
@@ -236,4 +271,9 @@ def summary(report: dict) -> str:
     for fam, f in report["families"].items():
         c = ", ".join(f"{k}={n}" for k, n in f["counts"].items() if n) or "clean"
         lines.append(f"  {fam}: {f['jobs']} jobs, {f['frames_expected']} frames expected, {f['cards']} cards, {f['verdicts']} verdicts; {c}")
+        k = f.get("controls") or {}
+        if k.get("control_cards") or k.get("suspect_anchors"):
+            a = k["agreement"]
+            rate = "n/a" if a["rate"] is None else f"{a['rate']:.0%}"
+            lines.append(f"    controls: {k['control_cards']} cards ({k['control_cards_open']} open), agreement {rate} ({a['agree']}/{a['agree'] + a['disagree']}), {k['suspect_anchors']} suspect anchor(s)")
     return "\n".join(lines)
