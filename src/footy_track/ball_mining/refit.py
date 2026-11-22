@@ -40,6 +40,7 @@ from collections.abc import Iterator
 from datetime import UTC, datetime
 from pathlib import Path
 
+from footy_track.ball_mining import anchor_controls
 from footy_track.ball_mining.threshold import (
     CORRECT,
     WRONG,
@@ -151,6 +152,8 @@ def rows_from_results(doc: dict) -> list[dict]:
             "p_real": meta.get("p_real"), "pi": s.get("pi"), "scorer_version": meta.get("scorer_version") or s.get("scorer_version"),
             "verdict": lab.get("verdict"), "clip": meta.get("pool_clip") or lab.get("clip"), "frame": lab.get("frame_index"), "job": doc["job"]["id"],
             "gold_kind": (s.get("gold") or {}).get("kind"),
+            "anchor_id": s.get("anchor_id"), "hop": s.get("hop"), "window_id": s.get("window_id"),
+            "control": s.get("bucket") == SEARCH_BUCKET and bool(s.get("gold")), "expected": (s.get("gold") or {}).get("expected"),
         })  # fmt: skip
     return rows
 
@@ -193,6 +196,8 @@ def hit_rates(rows: list[dict]) -> dict[str, dict]:
     """``{bucket: {n, correct, wrong, unsure, hit_rate}}``; hit_rate = correct / (correct + wrong)."""
     c: dict[str, Counter] = defaultdict(Counter)
     for r in rows:
+        if r.get("control"):
+            continue  # S-gold controls are reported by `anchor_controls.agreement`, not as search hits
         v = r.get("verdict")
         k = (
             "correct"
@@ -348,7 +353,7 @@ def compute_state(
     state = {
         "schema": STATE_SCHEMA, "ts": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"), "job_id": job["id"], "round": job.get("key"),
         "trigger": "close" if closed else "refit", "closed": closed, "scorer_version": scorer, "n_verdicts": len(decided),
-        "n_rows_other_scorer": len(fit_rows) - len(same), "n_search_excluded": len(rows) - len(fit_rows), "hit_rates": hit_rates(rows), "gold": gold_check(rows), "calibration": cal,
+        "n_rows_other_scorer": len(fit_rows) - len(same), "n_search_excluded": len(rows) - len(fit_rows), "search_controls": anchor_controls.agreement(rows), "hit_rates": hit_rates(rows), "gold": gold_check(rows), "calibration": cal,
         "threshold": {"global": ltt.as_dict(), "per_match": {m: r.as_dict() for m, r in per_match.items()}, "grid": [0.99, 0.50, 0.01],
                       "method": "learn-then-test, fixed sequence from high t, exact binomial", **kw},
         "auto_accept": {"threshold": ltt.effective_threshold, "scale": ltt.effective_scale, "fallback": ltt.fallback},

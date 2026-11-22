@@ -33,6 +33,7 @@ from pathlib import Path
 from footy_track import splits
 from footy_track.ball_eval import job_suggest as J  # noqa: N812
 from footy_track.ball_eval.panel_score import BALL
+from footy_track.ball_mining import anchor_controls as ctl
 from footy_track.ball_mining import clips as clips_mod
 from footy_track.ball_mining import refit
 from footy_track.ball_mining import round as rnd
@@ -546,6 +547,7 @@ def window_digest(
     generator_ver: str,
     teacher_version: str | None,
     cal: dict | None,
+    suspects: frozenset[Key] = frozenset(),
     candidate_source: dict | None = None,
 ) -> str:
     """Skip key: same window, frames, candidates, anchors, forbidden, judged set and versions -> same output."""
@@ -561,6 +563,9 @@ def window_digest(
         ),
         "judged": sorted(f for (c, f) in judged if c == clip and f in fs),
     }
+    sus = sorted(f for (c, f) in suspects if c == clip and f in fs)
+    if sus:  # only when present, so the digest of a window with no suspect anchor is unchanged
+        doc["suspects"] = sus
     if candidate_source:  # only present for jobs with a recorded source: digests of the others are unchanged
         doc["src"] = candidate_source
     return hashlib.sha1(json.dumps(doc, sort_keys=True).encode()).hexdigest()
@@ -628,13 +633,18 @@ def run_search(
     cal: dict | None = None,
     window_frames: int = WINDOW_FRAMES,
     write: bool = True,
+    suspects: Iterable[Key] = (),
 ) -> list[dict]:
     """Search every window of the job: load candidates + anchors (task 1), constrained Viterbi (task 2), rank, write.
 
     Returns one search document per window that has an anchor. With ``write`` the document is stored as
     ``<marks>/search/<window_id>/vNNN.json`` (``search_round`` = N, monotonic per window); if the latest version has
     the same input digest nothing is written and that document is returned with ``reused: true``.
-    Frames outside the job's selected set F or split are never read nor emitted."""
+    Frames outside the job's selected set F or split are never read nor emitted.
+
+    ``suspects`` are anchors marked suspect (``anchor_controls``): they are released (not an anchor, not a card, never
+    re-asked), the input digest changes, so the window gets a NEW immutable version; a window left with no anchor still gets
+    a (card-less) version so the latest file no longer carries cards derived from the suspect anchor."""
     scope = job_scope(job)
     marks = Path(marks_dir) if marks_dir else datasets.get(job.get("dataset")).marks_dir
     selected = resolve_selected(job, store, clip_of_game=clip_of_game)
@@ -644,18 +654,23 @@ def run_search(
     # the loaders return frames of the job's items; narrow everything to F (selected_frame may be a subset)
     cands.by_frame = {k: v for k, v in cands.by_frame.items() if k in selected}
     anchorset.anchors = {k: v for k, v in anchorset.anchors.items() if k in selected}
+    sus = frozenset((canonical_clip_id(c), int(f)) for c, f in suspects) & selected
+    released = {k: v for k, v in anchorset.anchors.items() if k in sus}
+    anchorset.anchors = {k: v for k, v in anchorset.anchors.items() if k not in sus}
     anchorset.forbidden = {k: v for k, v in anchorset.forbidden.items() if k in selected}
     term = terminal_frames(store, selected, game_of_clip=lambda c: c) if store is not None else ()
-    judged = judged_frames(marks, pending=pending, terminal=term, anchors=anchorset)
+    judged = judged_frames(marks, pending=pending, terminal=term, anchors=anchorset) | frozenset(released)  # still answered
     gen = generator_version(cands.detector)
     csrc = cands.source_info
     teacher_version = teacher_version or (csrc or {}).get("teacher_version")  # the eval source's offline_vN rides on every card
     docs = []
     for wid, (clip, start, frames) in split_windows(selected, window_frames).items():
-        if not any((clip, f) in anchorset.anchors for f in frames):
+        w_sus = sorted(f for (c, f) in sus if c == clip and f in set(frames))
+        if not any((clip, f) in anchorset.anchors for f in frames) and not w_sus:
             continue
         digest = window_digest(
             wid, frames, clip, cands, anchorset=anchorset, judged=judged, generator_ver=gen, teacher_version=teacher_version, cal=cal,
+            suspects=sus,
             candidate_source=csrc,
         )
         prev = latest_search(marks, wid) if write else None
@@ -670,14 +685,14 @@ def run_search(
         )
         check_emittable(r.cards, selected, scope.split)
 
-        def build(v, r=r, digest=digest, n=n):
+        def build(v, r=r, digest=digest, n=n, w_sus=w_sus):
             return {
                 "schema": SEARCH_SCHEMA, "version": v, "window_id": r.window_id, "job_id": scope.job_id,
                 "dataset": scope.dataset, "split": scope.split, "clip": r.clip, "start": r.start, "end": r.end,
                 "digest": digest, "generator_version": gen, "teacher_version": teacher_version, "run_id": run_id,
                 "candidate_source": csrc,
                 "search_round": v, "n_anchors": r.n_anchors, "n_forbidden": r.n_forbidden, "hop_cap": HOP_CAP,
-                "decay": HOP_DECAY, "cards": r.cards, "unreachable": r.unreachable, "beyond_cap": r.beyond_cap,
+                "decay": HOP_DECAY, "suspect_anchors": w_sus, "cards": r.cards, "unreachable": r.unreachable, "beyond_cap": r.beyond_cap,
             }
 
         doc = _write_search(marks, wid, build) if write else build(1)
@@ -728,7 +743,7 @@ def item_from_card(card: dict, *, digest: str, split: str | None, file_version: 
     meta = {
         k: card.get(k)
         for k in ("anchor_id", "hop", "direction", "source", "generator_version", "teacher_version", "run_id",
-                  "search_round", "margin", "p_cal", "candidate_source")
+                  "search_round", "margin", "p_cal", "window_id", "candidate_source")
     }  # fmt: skip
     meta["source"] = card.get("source") or "search"  # "seed" for the eval flow's first card of a window
     sampling = {"regime": "train" if split == "train" else "eval", "bucket": card.get("bucket") or SEARCH_BUCKET, "split": split, **meta}
@@ -802,6 +817,37 @@ def search_order(unanswered: list[tuple[int, dict]]) -> list[int]:
     return [fill.get(pos, pos) for pos, _ in unanswered]
 
 
+def _plan_controls(res: dict, take: list, ranked: list, budget: int, taken: set, gold, playable, rate: float) -> tuple[list, list[dict]]:
+    """``(search cards to append, control specs to inject)`` within ``budget`` cards: controls bring the job's S cards to
+    ``rate`` cumulatively (controls already in the job counted), at least one search card is kept, and the search cards give
+    way to the controls when the cap headroom is tight."""
+    if not take or gold is None:
+        return take, []
+    mine = [p["item"] for p in res.get("items") or [] if (p["item"].get("sampling") or {}).get("bucket") == SEARCH_BUCKET]
+    n_ctl = ctl.n_controls_due(sum(1 for it in mine if not ctl.is_control_item(it)) + len(take), sum(1 for it in mine if ctl.is_control_item(it)), rate)
+    taken = taken | {(c["clip"], int(c["frame_index"])) for c, _ in ranked}
+    controls = ctl.pick_controls(gold, job_id=res["job"]["id"], split=take[0][1].get("split"), taken=taken, n=min(n_ctl, budget - 1), playable=playable)
+    return take[: budget - len(controls)], controls
+
+
+def _interleave_controls(items: list[dict], take: list[tuple[dict, dict]], controls: list[dict]) -> list[dict]:
+    """Search items with each control placed right after its host S card (spread evenly through ``take``); a control is the
+    host's card spec with the known frame and box, so its ``search`` block (anchor, window, rank, margin...) mirrors the host's."""
+    n, k = len(take), len(controls)
+    after: dict[int, list[dict]] = {}
+    for j, c in enumerate(controls):
+        h = min(n - 1, (j + 1) * n // (k + 1))
+        card, d = take[h]
+        spec = {**card, "clip": c["clip"], "frame_index": c["frame_index"], "bbox": c["bbox"]}
+        it = item_from_card(spec, digest=d["digest"], split=d.get("split"), file_version=d.get("version"))
+        after.setdefault(h, []).append(ctl.mark_item(it, c))
+    out: list[dict] = []
+    for i, it in enumerate(items):
+        out.append(it)
+        out.extend(after.get(i, []))
+    return out
+
+
 def _is_rev_conflict(e: Exception) -> bool:
     return isinstance(e, jobs_client.JobsError) and e.status == 409 and isinstance(e.body, dict) and "rev" in e.body
 
@@ -817,6 +863,10 @@ def push_search(
     tries: int = APPEND_TRIES,
     reorder: bool = True,
     dry_run: bool = False,
+    gold=None,
+    selected: Iterable[Key] = (),
+    playable=None,
+    control_rate: float = ctl.CONTROL_RATE,
 ) -> dict:
     """Append the cards of ``docs`` (search documents from :func:`run_search`) to job ``ref`` and reorder the unanswered ones.
 
@@ -828,7 +878,12 @@ def push_search(
       live is left alone.
 
     ``client`` is anything with ``results`` / ``list_jobs`` / ``append`` / ``reorder`` (default ``jobs_client``); the server
-    errors other than a rev conflict propagate (fail closed, as the refit does). Returns a small JSON-able summary."""
+    errors other than a rev conflict propagate (fail closed, as the refit does). Returns a small JSON-able summary.
+
+    ``gold`` (rows of ``gold.load_gold``) switches on the S-gold controls (``anchor_controls``): in the same append call, enough
+    known-answer cards are mixed in that controls are about ``control_rate`` of the job's S cards (cumulative; the controls
+    already in the job are counted, so a retry adds 0). They are drawn from the job's own split, never from ``selected`` (its F)
+    nor a frame already carded, and they take cap headroom like any card (the search cards give way, at least one is kept)."""
     client = client or jobs_client
     today = today or date_cls.today().isoformat()
     open_max = rnd.OPEN_CARDS_MAX if open_max is None else open_max
@@ -848,11 +903,15 @@ def push_search(
         out.setdefault("already_in_job", len(ranked) - len(fresh))
         room = headroom(client.list_jobs(kind="ball_check", progress="true"), res, today, open_max=open_max, daily_max=daily_max)
         out.setdefault("headroom", room)  # as found, before this run appended anything
-        take = fresh[: min(room["room"], MAX_APPEND_PER_CALL)]
+        budget = min(room["room"], MAX_APPEND_PER_CALL)
+        take, controls = _plan_controls(res, fresh[:budget], ranked, budget, have | set(selected), gold, playable, control_rate)
+        out["controls_planned"] = len(controls)
         if not take or dry_run:
-            out["would_add"] = len(take) if dry_run else 0
+            out["would_add"] = len(take) + len(controls) if dry_run else 0
             break
         items = [item_from_card(c, digest=d["digest"], split=d.get("split"), file_version=d.get("version")) for c, d in take]
+        if controls:
+            items = _interleave_controls(items, take, controls)
         out["append_attempts"] += 1
         try:
             r = client.append(ref, items, by=APPEND_BY, note=f"anchor search {len(items)} cards", if_rev=int(job.get("rev") or 0))
@@ -865,6 +924,7 @@ def push_search(
                 break
             continue
         out["added"] += int(r["added"])
+        out["controls_added"] = out.get("controls_added", 0) + (len(controls) if r["added"] else 0)
         out["skipped_duplicates"] += int(r.get("skipped_duplicates") or 0)
         if not r["added"]:
             break  # the server saw them all already: converged

@@ -35,12 +35,14 @@ import json
 import os
 import sys
 import urllib.error
+from datetime import UTC, datetime
 from pathlib import Path
 
 from footy_track.ball_eval import eval_flow
+from footy_track.ball_mining import anchor_controls as ctl
 from footy_track.ball_mining import anchor_search as A  # noqa: N812
 from footy_track.ball_mining import refit
-from footy_track.labeller import jobs_client
+from footy_track.labeller import datasets, jobs_client
 
 ERRORS = (
     jobs_client.JobsError,
@@ -56,6 +58,34 @@ ERRORS = (
 def full_job(doc: dict) -> dict:
     """The job dict the generator reads (``results`` returns the job without its items)."""
     return {**doc["job"], "items": [p["item"] for p in doc.get("items") or []]}
+
+
+def load_controls_gold(dataset: str, marks: Path):
+    """``(gold rows, playable)`` for the S-gold controls of a job of ``dataset``: the gold GT of the dataset's own marks and of the
+    round's gold datasets (as ``round.plan_round`` reads them), restricted at draw time to clips the dataset's clips dir serves
+    (``playable`` returns the served stem). ``(None, None)`` when nothing can be read (controls are then simply not added)."""
+    from footy_track.ball_mining import round as rnd  # noqa: PLC0415
+    from footy_track.ball_mining import traindata  # noqa: PLC0415
+    from footy_track.ball_mining.gold import load_gold_multi  # noqa: PLC0415
+    from footy_track.ball_mining.miner import default_match_of  # noqa: PLC0415
+
+    dirs = [Path(marks)]
+    for n in rnd.RoundConfig.gold_datasets:
+        try:
+            dirs.append(datasets.get(n).marks_dir)
+        except datasets.UnknownDatasetError:
+            continue
+    try:
+        gold = load_gold_multi(dirs, match_of=lambda c: default_match_of(c) or c)
+        resolver = traindata.ClipResolver([datasets.get(dataset).clips_dir])
+    except (datasets.UnknownDatasetError, OSError, ValueError):
+        return None, None
+
+    def playable(clip: str) -> str | None:
+        p = resolver.find(clip)
+        return p.stem if p else None
+
+    return gold, playable
 
 
 def run_job(
@@ -74,6 +104,10 @@ def run_job(
     open_max: int | None = None,
     daily_max: int | None = None,
     lock_wait_s: float = 0.0,
+    gold=None,
+    playable=None,
+    controls: bool = True,
+    control_rate: float = ctl.CONTROL_RATE,
 ) -> dict:
     """Search + push for job ``ref`` under the job mutex. Returns a JSON-able summary with ``status`` ``ok`` / ``skipped_busy`` /
     ``skipped`` and ``noop`` (nothing new was written or appended)."""
@@ -100,8 +134,17 @@ def run_job(
                 for it in fj["items"]
                 if it.get("frame_index") is not None
             ]
-            docs = A.run_search(fj, marks_dir=marks, root=root, pool_path=pool_path, store=store, pending=pending,
+            # wrong-anchor controls: verdicts -> suspect anchors (recorded once), released by the regenerated search
+            rows = refit.rows_from_results(doc)
+            found = ctl.detect_suspects(rows)
+            new_sus = found if dry_run else ctl.record_suspects(marks, job["id"], found, ts=datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"))
+            entries = ctl.read_suspects(marks, job["id"]) if not dry_run else [*ctl.read_suspects(marks, job["id"]), *found]
+            sus = ctl.suspect_keys(entries, job["id"])
+            prev = [p for k in sorted(sus) if (p := A.latest_search(marks, A.window_id_of(k[0], k[1] // window_frames * window_frames, window_frames)))]
+            docs = A.run_search(fj, marks_dir=marks, root=root, pool_path=pool_path, store=store, pending=pending, suspects=sus,
                                 teacher_version=teacher_version, run_id=run_id, window_frames=window_frames, write=not dry_run)  # fmt: skip
+            if controls and gold is None:
+                gold, playable = load_controls_gold(job["dataset"], marks)
             fb = None
             if eval_flow.is_eval_job(job):  # eval family: seed cards per window + the no-candidate full-frame check
                 from footy_track.ball_mining import anchor_fallback  # noqa: PLC0415
@@ -116,6 +159,10 @@ def run_job(
                 open_max=open_max,
                 daily_max=daily_max,
                 dry_run=dry_run,
+                gold=gold if controls else None,
+                playable=playable,
+                selected=A.resolve_selected(fj, store),
+                control_rate=control_rate,
             )
             if eval_flow.is_eval_job(job):
                 fb = anchor_fallback.push_fallback(
@@ -124,13 +171,16 @@ def run_job(
     except refit.JobBusy as e:
         return {**out, "status": "skipped_busy", "detail": str(e), "noop": True}
     new_files = sum(1 for d in docs if not d.get("reused"))
+    impact = ctl.suspect_impact(doc, entries, prev_docs=prev)
+    controls_report = {"agreement": ctl.agreement(rows), "suspect_anchors": len(sus), "newly_suspect": [e["anchor_id"] for e in new_sus],
+                       "impact": impact, "controls_added": push.get("controls_added", 0)}  # fmt: skip
     changed = bool(push.get("added")) or bool(fb and (fb.get("frames") and any(g.get("added") or g.get("created") for g in fb["groups"]))) or (
         new_files > 0
         and not dry_run
-        and any(d.get("cards") for d in docs if not d.get("reused"))
+        and (any(d.get("cards") for d in docs if not d.get("reused")) or bool(sus))  # a suspect released = a new, maybe card-less, file
     )
     return {**out, "status": "ok", "dry_run": dry_run, "windows": len(docs), "new_files": new_files, "reused": len(docs) - new_files,
-            "cards_offered": push.get("offered", 0), "push": push, "fallback": fb, "noop": not changed}  # fmt: skip
+            "cards_offered": push.get("offered", 0), "push": push, "fallback": fb, "controls": controls_report, "noop": not changed}  # fmt: skip
 
 
 def sweep(*, client=None, dataset: str | None = None, **kw) -> dict:

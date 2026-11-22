@@ -23,6 +23,7 @@ def main(argv: list[str] | None = None, *, client=None, store: FeatureStore | No
     ap.add_argument("--db", type=Path, help="feature store DuckDB (required unless a store is injected)")
     ap.add_argument("--family", choices=[*reconcile.FAMILIES, "all"], default="all")
     ap.add_argument("--dataset", default=None, help="restrict to jobs of this labelling dataset")
+    ap.add_argument("--marks-dir", type=Path, default=None, help="marks dir holding suspects/<job>.jsonl (default: the --dataset's)")
     ap.add_argument("--stuck-days", type=float, default=reconcile.DEFAULT_STUCK_DAYS)
     ap.add_argument("--json", type=Path, help="write the JSON report here (default: print it to stdout)")
     ap.add_argument("--apply", action="store_true", help="reserved; refuses")
@@ -35,7 +36,15 @@ def main(argv: list[str] | None = None, *, client=None, store: FeatureStore | No
             ap.error("--db is required")
         store = FeatureStore.open(args.db, create=False)
     fams = tuple(reconcile.FAMILIES) if args.family == "all" else (args.family,)
-    rep = reconcile.reconcile(store, client or jobs_client, families=fams, stuck_days=args.stuck_days, dataset=args.dataset, split_fn=split_fn)
+    marks = args.marks_dir
+    if marks is None and args.dataset:
+        from footy_track.labeller import datasets  # noqa: PLC0415
+
+        try:
+            marks = datasets.get(args.dataset).marks_dir
+        except datasets.UnknownDatasetError:
+            marks = None
+    rep = reconcile.reconcile(store, client or jobs_client, families=fams, stuck_days=args.stuck_days, dataset=args.dataset, split_fn=split_fn, marks_dir=marks)
     text = json.dumps(rep, indent=2, default=str)
     if args.json:
         args.json.write_text(text)
