@@ -31,7 +31,6 @@ from pathlib import Path
 
 from footy_track import splits
 from footy_track.ball_eval import job_suggest as J  # noqa: N812
-from footy_track.ball_eval import panel_suggest as PS  # noqa: N812
 from footy_track.ball_eval.panel_score import BALL
 from footy_track.ball_mining import clips as clips_mod
 from footy_track.clip_id import canonical_clip_id
