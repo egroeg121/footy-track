@@ -37,6 +37,7 @@ import sys
 import urllib.error
 from pathlib import Path
 
+from footy_track.ball_eval import eval_flow
 from footy_track.ball_mining import anchor_search as A  # noqa: N812
 from footy_track.ball_mining import refit
 from footy_track.labeller import jobs_client
@@ -101,6 +102,12 @@ def run_job(
             ]
             docs = A.run_search(fj, marks_dir=marks, root=root, pool_path=pool_path, store=store, pending=pending,
                                 teacher_version=teacher_version, run_id=run_id, window_frames=window_frames, write=not dry_run)  # fmt: skip
+            fb = None
+            if eval_flow.is_eval_job(job):  # eval family: seed cards per window + the no-candidate full-frame check
+                from footy_track.ball_mining import anchor_fallback  # noqa: PLC0415
+
+                docs, plan = eval_flow.augment(fj, docs, marks_dir=marks, store=store, pending=pending, run_id=run_id)
+                open_max = eval_flow.EVAL_OPEN_CARDS_MAX if open_max is None else open_max  # its own cap, not the round's
             push = A.push_search(
                 ref,
                 docs,
@@ -110,20 +117,24 @@ def run_job(
                 daily_max=daily_max,
                 dry_run=dry_run,
             )
+            if eval_flow.is_eval_job(job):
+                fb = anchor_fallback.push_fallback(
+                    fj, eval_flow.fallback_docs(docs, plan), client=client, store=store, marks_dir=marks, dry_run=dry_run
+                )
     except refit.JobBusy as e:
         return {**out, "status": "skipped_busy", "detail": str(e), "noop": True}
     new_files = sum(1 for d in docs if not d.get("reused"))
-    changed = bool(push.get("added")) or (
+    changed = bool(push.get("added")) or bool(fb and (fb.get("frames") and any(g.get("added") or g.get("created") for g in fb["groups"]))) or (
         new_files > 0
         and not dry_run
         and any(d.get("cards") for d in docs if not d.get("reused"))
     )
     return {**out, "status": "ok", "dry_run": dry_run, "windows": len(docs), "new_files": new_files, "reused": len(docs) - new_files,
-            "cards_offered": push.get("offered", 0), "push": push, "noop": not changed}  # fmt: skip
+            "cards_offered": push.get("offered", 0), "push": push, "fallback": fb, "noop": not changed}  # fmt: skip
 
 
 def sweep(*, client=None, dataset: str | None = None, **kw) -> dict:
-    """:func:`run_job` over every live ``ball-round/*`` job (optionally of ``dataset``); a failing job is reported and the
+    """:func:`run_job` over every live ``ball-round/*`` and ``ball-eval/*`` job (optionally of ``dataset``); a failing job is reported and the
     others still run. ``noop`` when every job was."""
     client = client or jobs_client
     f = {"kind": "ball_check", "progress": "true"}
@@ -131,7 +142,7 @@ def sweep(*, client=None, dataset: str | None = None, **kw) -> dict:
         f["dataset"] = dataset
     results, errors = [], 0
     for j in client.list_jobs(**f):
-        if not refit.is_round_job(j) or j.get("status") not in refit.LIVE:
+        if not (refit.is_round_job(j) or eval_flow.is_eval_job(j)) or j.get("status") not in refit.LIVE:
             continue
         try:
             results.append(run_job(j["id"], client=client, **kw))
