@@ -157,6 +157,8 @@ class CandidateSet:
     source: str
     detector: str | None = None
     by_frame: dict[Key, list[Cand]] = field(default_factory=dict)
+    #: ``candidate_source`` block of the suggest file (eval jobs: ``{kind, id, version, teacher_version?, ...}``), else None
+    source_info: dict | None = None
 
     def get(self, clip: str, frame: int) -> list[Cand]:
         return self.by_frame.get((canonical_clip_id(clip), int(frame)), [])
@@ -171,7 +173,7 @@ def candidates_from_suggest_doc(doc: dict, scope: JobScope) -> CandidateSet:
     job is refused (a job never reads another job's file)."""
     if doc.get("job_id") != scope.job_id:
         raise SplitError(f"suggest file belongs to job {doc.get('job_id')!r}, not {scope.job_id!r}")
-    out = CandidateSet("job_suggest", (doc.get("detector") or {}).get("sha8"))
+    out = CandidateSet("job_suggest", (doc.get("detector") or {}).get("sha8"), source_info=doc.get("candidate_source"))
     for key, entry in (doc.get("boxes") or {}).items():
         if not entry:
             continue
@@ -361,7 +363,13 @@ def resolve_selected(job: dict, store=None, *, clip_of_game=lambda g: g) -> froz
     scope = job_scope(job)
     if store is None:
         return scope.frames
-    df = store.read_selected_frames(job_key=scope.job_id)
+    # progress / reconciler / eval flow record F under the job KEY (``ball-eval/...``); older callers used the job id
+    df = None
+    for jk in (job.get("key"), scope.job_id):
+        if jk:
+            df = store.read_selected_frames(job_key=jk)
+            if df is not None and len(df):
+                break
     if df is None or len(df) == 0:
         return scope.frames
     out = set()
@@ -371,6 +379,17 @@ def resolve_selected(job: dict, store=None, *, clip_of_game=lambda g: g) -> froz
             raise SplitError(f"selected_frame {clip}:{r.frame_index} is {r.split!r}, job {scope.job_id!r} is {scope.split!r}")
         out.add((clip, int(r.frame_index)))
     return frozenset(out)
+
+
+def job_with_selected(job: dict, selected: Iterable[Key]) -> dict:
+    """``job`` whose frame set also covers every frame of its selected set F. A ``ball_check`` job holds cards, and F can be
+    larger than the cards offered so far (the eval panel: one seed card per window, the rest are appended as the search
+    reaches them), yet the loaders must see candidates, anchors and human labels of ALL of F. Other kinds are returned as is."""
+    if job.get("kind") != "ball_check":
+        return job
+    have = {(canonical_clip_id(it["clip"]), int(it["frame_index"])) for it in job.get("items") or []}
+    extra = [{"clip": c, "frame_index": f} for c, f in sorted(set(selected) - have)]
+    return {**job, "items": [*(job.get("items") or []), *extra]} if extra else job
 
 
 def terminal_frames(store, selected: Iterable[Key], *, game_of_clip=lambda c: c) -> frozenset[Key]:
@@ -444,6 +463,7 @@ def generate_window(
     window_frames: int = WINDOW_FRAMES,
     hop_cap: int = HOP_CAP,
     decay: float = HOP_DECAY,
+    candidate_source: dict | None = None,
 ) -> SearchResult:
     """Constrained Viterbi over one window (sampled ``frames`` of one clip), ranked frontier cards.
 
@@ -507,7 +527,7 @@ def generate_window(
             "hop": hop, "margin": None if (m is None or math.isinf(m)) else float(m),
             "direction": direction, "anchor_id": f"{job_id}:{anchor.clip}:{anchor.frame}",
             "source": "search", "generator_version": generator_ver, "teacher_version": teacher_version,
-            "run_id": run_id, "search_round": search_round, "window_id": window_id,
+            "run_id": run_id, "search_round": search_round, "window_id": window_id, "candidate_source": candidate_source,
             "rank_conf": round(base * decay**hop + bonus, 6),
         })
     res.cards.sort(key=_rank_key)
@@ -528,6 +548,7 @@ def window_digest(
     teacher_version: str | None,
     cal: dict | None,
     suspects: frozenset[Key] = frozenset(),
+    candidate_source: dict | None = None,
 ) -> str:
     """Skip key: same window, frames, candidates, anchors, forbidden, judged set and versions -> same output."""
     fs = set(frames)
@@ -545,6 +566,8 @@ def window_digest(
     sus = sorted(f for (c, f) in suspects if c == clip and f in fs)
     if sus:  # only when present, so the digest of a window with no suspect anchor is unchanged
         doc["suspects"] = sus
+    if candidate_source:  # only present for jobs with a recorded source: digests of the others are unchanged
+        doc["src"] = candidate_source
     return hashlib.sha1(json.dumps(doc, sort_keys=True).encode()).hexdigest()
 
 
@@ -625,8 +648,9 @@ def run_search(
     scope = job_scope(job)
     marks = Path(marks_dir) if marks_dir else datasets.get(job.get("dataset")).marks_dir
     selected = resolve_selected(job, store, clip_of_game=clip_of_game)
-    cands = load_candidates(job, root=root, pool_path=pool_path)
-    anchorset = load_anchors(job, marks_dir=marks)
+    jobf = job_with_selected(job, selected)
+    cands = load_candidates(jobf, root=root, pool_path=pool_path)
+    anchorset = load_anchors(jobf, marks_dir=marks)
     # the loaders return frames of the job's items; narrow everything to F (selected_frame may be a subset)
     cands.by_frame = {k: v for k, v in cands.by_frame.items() if k in selected}
     anchorset.anchors = {k: v for k, v in anchorset.anchors.items() if k in selected}
@@ -637,6 +661,8 @@ def run_search(
     term = terminal_frames(store, selected, game_of_clip=lambda c: c) if store is not None else ()
     judged = judged_frames(marks, pending=pending, terminal=term, anchors=anchorset) | frozenset(released)  # still answered
     gen = generator_version(cands.detector)
+    csrc = cands.source_info
+    teacher_version = teacher_version or (csrc or {}).get("teacher_version")  # the eval source's offline_vN rides on every card
     docs = []
     for wid, (clip, start, frames) in split_windows(selected, window_frames).items():
         w_sus = sorted(f for (c, f) in sus if c == clip and f in set(frames))
@@ -645,6 +671,7 @@ def run_search(
         digest = window_digest(
             wid, frames, clip, cands, anchorset=anchorset, judged=judged, generator_ver=gen, teacher_version=teacher_version, cal=cal,
             suspects=sus,
+            candidate_source=csrc,
         )
         prev = latest_search(marks, wid) if write else None
         if prev is not None and prev.get("digest") == digest:
@@ -654,6 +681,7 @@ def run_search(
         r = generate_window(
             wid, clip, start, frames, cands, anchorset=anchorset, judged=judged, job_id=scope.job_id, generator_ver=gen,
             teacher_version=teacher_version, run_id=run_id, search_round=n, cal=cal, window_frames=window_frames,
+            candidate_source=csrc,
         )
         check_emittable(r.cards, selected, scope.split)
 
@@ -662,6 +690,7 @@ def run_search(
                 "schema": SEARCH_SCHEMA, "version": v, "window_id": r.window_id, "job_id": scope.job_id,
                 "dataset": scope.dataset, "split": scope.split, "clip": r.clip, "start": r.start, "end": r.end,
                 "digest": digest, "generator_version": gen, "teacher_version": teacher_version, "run_id": run_id,
+                "candidate_source": csrc,
                 "search_round": v, "n_anchors": r.n_anchors, "n_forbidden": r.n_forbidden, "hop_cap": HOP_CAP,
                 "decay": HOP_DECAY, "suspect_anchors": w_sus, "cards": r.cards, "unreachable": r.unreachable, "beyond_cap": r.beyond_cap,
             }
@@ -714,10 +743,10 @@ def item_from_card(card: dict, *, digest: str, split: str | None, file_version: 
     meta = {
         k: card.get(k)
         for k in ("anchor_id", "hop", "direction", "source", "generator_version", "teacher_version", "run_id",
-                  "search_round", "margin", "p_cal", "window_id")
+                  "search_round", "margin", "p_cal", "window_id", "candidate_source")
     }  # fmt: skip
-    meta["source"] = "search"
-    sampling = {"regime": "train" if split == "train" else "eval", "bucket": SEARCH_BUCKET, "split": split, **meta}
+    meta["source"] = card.get("source") or "search"  # "seed" for the eval flow's first card of a window
+    sampling = {"regime": "train" if split == "train" else "eval", "bucket": card.get("bucket") or SEARCH_BUCKET, "split": split, **meta}
     search = {
         **meta, "window_id": card.get("window_id"), "rank": card.get("rank"), "rank_conf": card.get("rank_conf"),
         "raw_conf": card.get("raw_conf"), "cand_source": card.get("cand_source"), "tid": card.get("tid"),
