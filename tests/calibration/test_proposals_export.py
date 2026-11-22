@@ -114,7 +114,8 @@ def test_sampling_is_seeded_stable_and_records_inclusion_probabilities():
     ids = lambda ps: sorted(int(rows.frame[p.row]) for p in ps)  # noqa: E731
     assert ids(a) == ids(b) and ids(a) != ids(c)
     assert all(0 < p.pi <= 1 for p in a) and all(p.strata for p in a)
-    assert da["segment_floor"]["picked"] == 4  # one per segment of >= 100 frames
+    n_long = int((np.bincount(rows.segment) >= pe.FLOOR_SEGMENT_FRAMES).sum())
+    assert da["segment_floor"]["picked"] == n_long  # one per segment of >= FLOOR_SEGMENT_FRAMES frames
     rec_seg = {int(rows.segment[p.row]) for p in a if "recovered_segment" in p.strata}
     assert rec_seg == {3} and sum("recovered_segment" in p.strata for p in a) == pe.RECOVERED_MIN
     # per-segment cap of the budgeted strata

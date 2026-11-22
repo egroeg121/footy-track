@@ -50,8 +50,9 @@ BOUNDARY_FRAMES = 25
 SEGMENT_CAP = 3
 #: recovered segments get at least this many frames (design: >= 5 per flagged or recovered segment)
 RECOVERED_MIN = 5
-#: segments of at least this many frames get at least one frame (design)
-FLOOR_SEGMENT_FRAMES = 100
+#: segments of at least this many frames get at least one frame (design said 100; raised to 500 so the per-segment
+#: floor does not eat the ~300-frame budget meant for the accepted / calibrated status strata)
+FLOOR_SEGMENT_FRAMES = 500
 
 #: share of the remaining budget of every budgeted stratum (design 3b; the status strata ``uncalibrated`` 10% and
 #: ``not_broadcast`` 5% and the far-touchline tertiles are not implemented: see the module notes in the script)
