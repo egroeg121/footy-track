@@ -1,0 +1,1308 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Tracking players, actions, and events in football matches.">
+      
+      
+      
+        <link rel="canonical" href="https://egroeg121.github.io/footy-track/design/calibration_match_flow/">
+      
+      
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.6.20">
+    
+    
+      
+        <title>Calibration: production flow, match video to versioned per-frame calibration - Footy Scan</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.e53b48f4.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+    
+  </head>
+  
+  
+    <body dir="ltr">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#calibration-production-flow-match-video-to-versioned-per-frame-calibration" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="Footy Scan" class="md-header__button md-logo" aria-label="Footy Scan" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Footy Scan
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Calibration: production flow, match video to versioned per-frame calibration
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="Footy Scan" class="md-nav__button md-logo" aria-label="Footy Scan" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Footy Scan
+  </label>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Overview
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Architecture
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../pipeline-and-labels/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Pipeline and labels
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../data/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Data
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    Training
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            Training
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../training/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Training
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../training/notable_runs/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Notable Training Runs
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../inference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Inference
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../inference-web/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Inference web app
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../ball-tracking-eval/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Ball tracking evaluation
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../feature_store/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Feature store
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../datasets_and_progress/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Versioned datasets and progress
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_11" >
+        
+          
+          <label class="md-nav__link" for="__nav_11" id="__nav_11_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    Design
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_11_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_11">
+            <span class="md-nav__icon md-icon"></span>
+            Design
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../pipeline_overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Pipeline Overview
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../player_reid/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Player Re-ID
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tracking-pipeline/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Tracking Pipeline Design
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../claude_autolabel_loop/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Claude-assisted Ball Labelling
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../system_design/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    System Design
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../system_overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    System Overview
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../pipeline_architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Pipeline Architecture
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../timings/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Time Formats
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../data_formats/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Data Formats
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_12" >
+        
+          
+          <label class="md-nav__link" for="__nav_12" id="__nav_12_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    Development
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_12_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_12">
+            <span class="md-nav__icon md-icon"></span>
+            Development
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Getting Started
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../agent_guidelines/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Agent Guidelines
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../contributing-docs/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    How to contribute to the docs
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../todo/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    TODO
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#0-concept-and-decisions" class="md-nav__link">
+    <span class="md-ellipsis">
+      0. Concept and decisions
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#1-what-exists-vs-what-is-missing" class="md-nav__link">
+    <span class="md-ellipsis">
+      1. What exists vs what is missing
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="1. What exists vs what is missing">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#11-exists-v" class="md-nav__link">
+    <span class="md-ellipsis">
+      1.1 Exists (V)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#12-missing-v-for-match-video-versioned-per-frame-calibration-in-the-store" class="md-nav__link">
+    <span class="md-ellipsis">
+      1.2 Missing (V) for "match video -&gt; versioned per-frame calibration in the store"
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#13-other-local-branchesworktrees-searched" class="md-nav__link">
+    <span class="md-ellipsis">
+      1.3 Other local branches/worktrees (searched)
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-rig-scheme-match-level-global-search-then-fixed-rig-solves-u-pending-experiment-d" class="md-nav__link">
+    <span class="md-ellipsis">
+      2. Rig scheme: match-level global search, then fixed-rig solves (U, pending experiment D)
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="2. Rig scheme: match-level global search, then fixed-rig solves (U, pending experiment D)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#21-rejected-two-level-per-segment-rig-scheme" class="md-nav__link">
+    <span class="md-ellipsis">
+      2.1 Rejected: two-level per-segment rig scheme
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#22-revised-design" class="md-nav__link">
+    <span class="md-ellipsis">
+      2.2 Revised design
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#23-versioning-and-partial-re-runs" class="md-nav__link">
+    <span class="md-ellipsis">
+      2.3 Versioning and partial re-runs
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-prefect-flow-design-u" class="md-nav__link">
+    <span class="md-ellipsis">
+      3. Prefect flow design (U)
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3b-human-review-the-existing-proposals-page-u" class="md-nav__link">
+    <span class="md-ellipsis">
+      3b. Human review: the existing proposals page (U)
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-open-risks-with-evidence" class="md-nav__link">
+    <span class="md-ellipsis">
+      4. Open risks, with evidence
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-phased-plan-small-prs-each-with-an-acceptance-test" class="md-nav__link">
+    <span class="md-ellipsis">
+      5. Phased plan (small PRs, each with an acceptance test)
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-questions-for-the-user" class="md-nav__link">
+    <span class="md-ellipsis">
+      6. Questions for the user
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+
+<h1 id="calibration-production-flow-match-video-to-versioned-per-frame-calibration">Calibration: production flow, match video to versioned per-frame calibration<a class="headerlink" href="#calibration-production-flow-match-video-to-versioned-per-frame-calibration" title="Permanent link">&para;</a></h1>
+<p>Status: design, revised 2026-11-22 after the P3 evidence run (rig scheme pending experiment D). No code changed. Classical only (no trained detector, no PnLCalib).
+Scope: the workflow around the existing PTZ V3 pipeline (<code>reports/ptz_v3.md</code>, <code>ptz_v3_weak.md</code>), not new geometry.
+Claims marked (V) were checked in code or files this session; (U) are unvalidated or proposed.</p>
+<p>KB pages relied on: <code>prefect-job-system</code> (pools, queues, merlin move, one-heavy-process etiquette, S3 pattern),
+<code>footy-datasets-and-progress</code> (three versioned datasets, <code>eval_result</code>, nightly flow, DuckDB not LanceDB on the mini),
+<code>footy-data-plane-reconciliation</code> (one authority per data class). Memory: <code>gpu-tests-via-prefect</code>,
+<code>mini-cpu-one-heavy-process</code>, <code>versioned-datasets-goal</code>.</p>
+<h2 id="0-concept-and-decisions">0. Concept and decisions<a class="headerlink" href="#0-concept-and-decisions" title="Permanent link">&para;</a></h2>
+<p>User concept: per-frame detection gives good locks; aggregate across many frames and shots to re-adjust the shared
+rig (match-wide bundle adjustment); offline. That is V3. Decisions: classical only; the rig (C, roll, k1) is shared by all
+segments of a match, but a segment may come from a different camera and must then be flagged, not forced.</p>
+<p>Decisions 2026-11-20 (user):
+- <strong>Label-free at inference.</strong> No label-derived prior in a production run (rig JSONs from GT points become eval references only); labels build the eval set (calibration GT + accepted proposals). A run that used any label-derived input is marked <code>contaminated</code> in eval.
+- <strong>Outlier segments: all three, in order.</strong> Flag first (never forced onto rig<em>); then try their own camera variant (existing recovery <code>rig_variants</code>, e.g. gantry C_x +-32.7 m); a segment that still fails gets H = NaN and is queued for the calibration editor, where it becomes eval GT (not an inference input).
+- </em><em>Rollout: Man City first</em><em>, then the other known matches.
+- </em><em>Accuracy bar (confirmed):</em><em> &lt;= 1 m at ordinary depths, &lt;= 2 m at the far touchline, &gt; 5 m = failure. Gate tuned on accepted/rejected review proposals.
+- </em><em>Two-level per-segment rig scheme dropped</em><em> (P3, section 2.1); rig comes from a match-level global search (section 2.2, pending experiment D).
+- </em><em>Review via the existing proposals page</em>* (<code>calibration_proposals</code>, accept -&gt; <code>calibration_gt</code> with origin, section 3b), not a new verdict mode.</p>
+<p><strong>Decision (user, 2026-11-20): inference is label-free.</strong> No human labels and no GT-derived priors (<code>leave_clip_out_rig</code>,
+<code>camera_rigs/*.json</code> fitted from labels) may enter a production run. Hand labels exist only to build the <strong>evaluation
+set</strong> (calibration GT, plus accepted proposals, section 3b). Consequences:
+- The rig prior for a new ground must come from generic camera priors (gantry height/distance ranges) plus the match's
+  own evidence; <code>fit_shared</code>'s GT-derived prior is for research only. <code>ptz_v3.md</code> section 6 already shows a label-free
+  rig within 0.16 m of the GT rig on Man City, from a good start; a bad start (5 m off) did not converge, so the
+  start-diversity of the global search carries the weight; P3 confirmed this (section 2.1) and experiment D tests label-free starts.
+- k1 is estimated from the match (free in the refine, or fixed per ground) or left as a diagnostic; it is never
+  seeded from labels (P3: k1 0 / 0.0147 / 0.03 changes GT error by less than noise). Where lines and GT points disagree on k1 (0.032 vs 0.0147), report the effect on metre error
+  rather than choosing silently.
+- Any evaluation of a label-free run on a GT frame is clean only if no label touched the run; runs using a GT-derived
+  rig are marked <code>contaminated</code> in <code>eval_result</code> (section 3).
+- Existing per-ground rig JSONs remain usable as <em>evaluation references</em>, not as inputs.</p>
+<h2 id="1-what-exists-vs-what-is-missing">1. What exists vs what is missing<a class="headerlink" href="#1-what-exists-vs-what-is-missing" title="Permanent link">&para;</a></h2>
+<h3 id="11-exists-v">1.1 Exists (V)<a class="headerlink" href="#11-exists-v" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Piece</th>
+<th>Where</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Per-segment solver</td>
+<td><code>calibration/ptz_temporal.py</code> (<code>solve_segment</code>, <code>joint_solve</code>), <code>scripts/ptz_temporal_segment.py::run</code></td>
+<td>anchors every ~100 frames (lines-only search), motion pairs, joint solve with the rig <strong>fixed</strong> (<code>free_shared=()</code>), recovery pass for weak segments (<code>ptz_recover.py</code>, only when standard pass accepts &lt;50%). Writes <code>calib_full.npz</code> (marker, shipped last), <code>line_f1_full.json</code>, <code>meta.json</code>, <code>solve_full.json</code>. No GT needed (<code>clip_gt</code> stubbed).</td>
+</tr>
+<tr>
+<td>Match-wide rig fit</td>
+<td><code>ptz_temporal.fit_shared</code>, <code>fit_shared_multistart</code>; driver <code>scripts/ptz_temporal.py</code> <code>shared</code> and <code>sharedms</code></td>
+<td>Bundle fit of C, roll, k1 over single-frame <code>Unit</code>s. Cost knobs: multistart over C seeds, <code>free=</code> to fix k1.</td>
+</tr>
+<tr>
+<td>Fan-out flow</td>
+<td><code>~/code/jobs/footy_ptz_temporal.py</code> (deployment <code>ptz_temporal.prefect.yaml</code>, <code>ptz-temporal-match</code>, pool <code>cpu</code>, queue <code>desktop</code>), NOT in the footy-track repo</td>
+<td>one flow run per match, thread pool of <code>max_parallel</code> segments, rsync mp4 to desktop, run <code>ptz_temporal_segment</code> niced, ship results back to <code>scratch/temporal/&lt;match&gt;_segNNN@&lt;rig stem&gt;/</code>, <code>calib_full.npz</code> as done marker, <code>skip_existing</code>, one retry, dry-run plan. Mini is refused. Takes <code>rig_json</code> as a <strong>parameter</strong>.</td>
+</tr>
+<tr>
+<td>Combine</td>
+<td><code>calibration/match_calibration.py</code>, <code>scripts/calibration_match_combine.py</code></td>
+<td>picks main vs recovery result per segment, writes <code>&lt;calibration root&gt;/ptz_v3/&lt;match&gt;.parquet</code> + <code>.manifest.json</code> (content sha256, <code>version_id = ptz_v3+&lt;sha8&gt;</code>, <code>_history/</code> on <code>--update</code>, refuses silent overwrite). <code>KNOWN_MATCHES</code> hard-codes 4 matches to rig stems.</td>
+</tr>
+<tr>
+<td>Reader / UI</td>
+<td><code>MatchCalibration</code>, <code>labeller/calibration_match.py</code> + page</td>
+<td>projection by global frame.</td>
+</tr>
+<tr>
+<td>Store ingest of GT/proposals</td>
+<td><code>feature_store/ingest_calibration.py</code></td>
+<td><strong>only</strong> <code>calibration_gt/</code>, <code>calibration_proposals/</code>, <code>frame_type/</code> sidecars.</td>
+</tr>
+<tr>
+<td>Eval</td>
+<td><code>~/code/jobs/footy_nightly_eval.py</code> calibration adapter</td>
+<td>scores <code>calibration_proposals</code> runs only (n=14, success@5px 0.64 on 2026-11-17).</td>
+</tr>
+</tbody>
+</table>
+<h3 id="12-missing-v-for-match-video-versioned-per-frame-calibration-in-the-store">1.2 Missing (V) for "match video -&gt; versioned per-frame calibration in the store"<a class="headerlink" href="#12-missing-v-for-match-video-versioned-per-frame-calibration-in-the-store" title="Permanent link">&para;</a></h3>
+<ol>
+<li><strong>No whole-match orchestration of the rig.</strong> The Prefect flow takes a fixed <code>rig_json</code>. The shared fit (<code>shared</code>, <code>sharedms</code>) is a manual
+   research subcommand: it uses <code>MATCH_DIRS</code> keys <code>mancity|villa|bmth</code>, reads from <code>/mnt/storage/footy_data</code>, takes its prior from
+   <code>leave_clip_out_rig(clip)</code> (GT-derived) and its output (<code>C / roll_deg / k1</code> in <code>ms_*.json</code>) must be hand-converted to a rig JSON
+   (<code>ptz_v3.md</code> section C says so). Nothing runs prep -&gt; shared fit -&gt; solve -&gt; combine in one go. A new match has no rig JSON.</li>
+<li><strong>No per-segment disagreement measure.</strong> <code>fit_shared</code> sees ~1 anchored frame per segment (95 frames from 162 Man City
+   segments; 42 from 121 Bournemouth), then per-segment solves freeze that rig. (P3: more evidence per segment did not improve the rig;
+   search/convergence did, section 2.1.) Nothing scores how well each segment agrees with the shared rig (section 2.2 (d)).</li>
+<li><strong>No outlier-segment handling.</strong> Different-camera segments are only handled in the weak-segment recovery (<code>rig_variants</code>: C_x = 0, +-32.7 m, chosen from 4 probe frames), only
+   when the standard pass accepts &lt;50%, and the variant is stored in <code>meta.json</code>/<code>camera_variant</code>, not diagnosed per segment from the main run.</li>
+<li><strong>Combine is not run by any flow</strong>, and <code>rerun_weak</code> handling is by directory convention.</li>
+<li><strong>No ingest of the match Parquet into the feature store.</strong> <code>RunKind.CALIBRATION</code> does not exist (grep: no <code>RunKind</code> in <code>src</code>); the store's <code>calibration</code>
+   table (PK <code>game_id, source, run_id, frame_index</code>, <code>H DOUBLE[9]</code>, <code>quality</code>, <code>distortion_k1</code>, <code>review_status</code>) takes ~100k rows/match; its <code>h_convention</code> string
+   (<code>normalised_image_to_pitch_m</code>) differs from match_calibration's (<code>undistorted_normalised_image_to_pitch_m</code>), and <code>frame.calibration_model_version</code> is deprecated. The
+   <code>frame_calibration_best</code> view picks by source/status; machine run rows must not out-rank hand GT (U: check the view's ordering).</li>
+<li><strong>No dataset version / per-version metrics for dense calibration.</strong> The calibration dataset (v1: 99 items, 74/21/4) is GT clips; nothing scores the V3 output against it
+   (V3 reports score 20 + 5 + 3 + 1 GT frames by hand, <code>err5</code> in the driver).</li>
+<li><strong>Quality gate is implicit</strong>: <code>accepted</code> = F1 &gt;= 0.5 on both neighbouring evidence frames; never validated against GT outside the scored frames (<code>ptz_v3.md</code> section 8).</li>
+</ol>
+<h3 id="13-other-local-branchesworktrees-searched">1.3 Other local branches/worktrees (searched)<a class="headerlink" href="#13-other-local-branchesworktrees-searched" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Every calibration branch I could check is already merged into main or contains nothing orchestration-related: <code>exp/calib-temporal-flow</code>, <code>exp/calib-temporal-weak-vit</code>, <code>feat/calibration-match-files</code>, <code>feat/calibration-store</code> are 0 commits ahead of origin/main.</li>
+<li>The only whole-match orchestration is the <strong>jobs-repo</strong> flow above (<code>~/code/jobs</code>, own git repo, default <code>code_ref</code> now pinned to a footy-track main sha by P0). It covers fan-out + resume only; nothing for the shared rig, combine, gate, ingest, or versioning. The design below extends that flow; it does not duplicate it.</li>
+<li><code>footy_calibration.py</code> in jobs is the LLM pre-labeller (proposals), <code>footy_pnlcalib.py</code> is the (deferred) trained-detector path: both unrelated.</li>
+</ul>
+<h2 id="2-rig-scheme-match-level-global-search-then-fixed-rig-solves-u-pending-experiment-d">2. Rig scheme: match-level global search, then fixed-rig solves (U, pending experiment D)<a class="headerlink" href="#2-rig-scheme-match-level-global-search-then-fixed-rig-solves-u-pending-experiment-d" title="Permanent link">&para;</a></h2>
+<p>Evidence: P3 (<code>reports/ptz_v4_two_level.md</code> on <code>exp/ptz-two-level-p3</code>, appendix A). The whole design below is <strong>pending experiment D</strong> (section 5); until D reports, <code>fit_shared</code> multistart stays the fallback.</p>
+<h3 id="21-rejected-two-level-per-segment-rig-scheme">2.1 Rejected: two-level per-segment rig scheme<a class="headerlink" href="#21-rejected-two-level-per-segment-rig-scheme" title="Permanent link">&para;</a></h3>
+<p>Per-segment free (C, roll) estimates plus a covariance-weighted consensus, then re-solve, was tested label-free on 162 Man City segments (P3) and dropped:
+- Single-start L1: rig<em> 3.06 m from the GT-points rig (C_y -63.65 vs -66.58); per-segment median error 2.69 m (&lt; 1 m for 2 of 145); GT frame median 0.40 vs 0.26 m for the existing fit (near third 0.58 vs 0.28 m, 32 of 39 frames worse, p &lt; 0.001); 8.5 CPU-h vs ~0.1 CPU-h for the <code>fit_shared</code> rig fit. None of the six gantry segments produced an estimate, so d_i flagged nothing.
+- Per-segment multistart only reaches parity (rig</em> 0.17 m, GT 0.26 vs 0.26 m) at ~10 CPU-h, ~100x the cost, and the covariances are still unusable as weights.
+- Causes (appendix A): (1) the optimiser stops on a long, curved C_y / C_z / f valley: <code>lm_solve</code> in <code>ptz_temporal.py</code> stops when a step gains &lt; 1e-4 x total cost (2-7 units on a ridge with 130-300 to give), or stalls on a rough floor; tolerance 1e-6 / 1e-8 moves errors e.g. 2.81 -&gt; 1.65 m, more iterations beyond that do not help. From the GT rig the same code stays within 0.1-0.7 m at a lower cost, so the objective is fine for pan-rich segments and each estimate scales with its start (4 m off moves ~1 m; 7.6 m off does not move). (2) Narrow-pan, zoomed segments (pan 2-5 deg, e.g. 080, 104) are genuinely unidentifiable: the per-segment optimum is 2-4 m off. (3) The per-segment covariance is 30-280x overconfident, and estimates sit 15-40 profile sd from the optimum because the solver stopped. Ruled out: evidence diversity as the reason <code>fit_shared</code> works (pooling did not move the estimate; multistart seeds near the truth and free k1 did), and anchors (2-6 per segment, no effect). k1 does not matter here (0 / 0.0147 / 0.03 within noise).</p>
+<h3 id="22-revised-design">2.2 Revised design<a class="headerlink" href="#22-revised-design" title="Permanent link">&para;</a></h3>
+<p>(a) <strong>Match-level global search over camera centre.</strong> Frames sampled across all segments (as <code>fit_shared</code> does, ~1 anchored frame per segment, or more); coarse grid over (C_y, C_z) (add C_x and roll as needed) with <strong>fixed-C per-frame pose solves</strong> (1-5 s per seed per segment); lowest total cost wins. Alternative: multistart <code>fit_shared</code> seeded on the same grid. Start is a generic label-free prior (gantry height / distance ranges), never from GT.
+(b) <strong>Converged local refine</strong> from the best cell: tighter stopping rule (relative tolerance 1e-6 to 1e-8 instead of 1e-4 in <code>lm_solve</code>); k1 free or fixed per ground, as the next experiment decides (P3: k1 barely matters).
+(c) <strong>Fixed-rig per-segment solves</strong> as today (<code>free_shared=()</code>, recovery pass for weak segments, variants for second cameras).
+(d) <strong>Per-segment diagnostic, no per-segment rig fit:</strong> fixed-C profile cost at the shared rig (1-5 s per segment) plus calibrated / accepted fraction from <code>meta.json</code>. P3 shows the fractions already isolate the six gantry segments (0% calibrated) with no new code.
+(e) <strong>Deferred:</strong> a bigger joint solve over many frames, and cross-segment rotation-only links (stacking frames of different segments on each other). Test only once (a)/(b) are fixed.</p>
+<p>Cost class: the existing fit (~0.1 CPU-h) plus a grid of fixed-C solves, then one fixed-rig pass (Man City 97.6k frames, desktop 0.16-0.25 CPU-s/frame, 4.4-7 CPU-h); no multi-pass iteration. Heavy CPU on the desktop only, one heavy process (<code>mini-cpu-one-heavy-process</code>).</p>
+<h3 id="23-versioning-and-partial-re-runs">2.3 Versioning and partial re-runs<a class="headerlink" href="#23-versioning-and-partial-re-runs" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Work dir stem <code>&lt;clip&gt;@&lt;rig stem&gt;-&lt;hash8&gt;</code> (P0, merged) so a changed rig never reuses a stale dir under <code>skip_existing</code>.</li>
+<li>Cache key per segment <code>(segment mp4 sha, code sha, k1, rig hash)</code>: a changed rig re-runs all segments, unchanged skips. No L1' round, so segment caches are not needed and <code>keep_cache</code> stays off.</li>
+</ul>
+<h2 id="3-prefect-flow-design-u">3. Prefect flow design (U)<a class="headerlink" href="#3-prefect-flow-design-u" title="Permanent link">&para;</a></h2>
+<p>New flow <code>calibrate-match</code> in <code>~/code/jobs</code> (own deployment, pool <code>cpu</code>, parent on <code>mini-host</code>/merlin; children use the <code>desktop</code> queue). Parameters: <code>match</code>, <code>ground</code>, <code>version</code> (e.g. <code>ptz_v3</code>), <code>max_cpu_hours</code>, <code>dry_run</code>, <code>resume</code>. No rig JSON in production (label-free); an optional <code>rig_json</code> is an eval-only, <code>contaminated</code> path.</p>
+<ol>
+<li><strong>plan</strong>: read <code>segments.json</code>, segment hashes, dry-run CPU estimate, refuse if over budget.</li>
+<li><strong>rig search</strong> (desktop, one process): section 2.2 (a)+(b); writes <code>rig_search.json</code> (grid costs, chosen rig, refine result, k1). Abort-with-report if the cost surface has no clear winner (wrong-camera match, e.g. Bournemouth).</li>
+<li><strong>fixed-rig solves</strong>: fan out the existing <code>ptz-temporal-match</code> machinery (reuse <code>calibrate_segment</code>, do not fork) with the rig fixed; weak segments via the existing recovery / variants.</li>
+<li><strong>diagnostic + gate</strong> (per frame, written as <code>quality</code>): accepted (F1 &gt;= 0.5 both sides) / calibrated-unconfirmed / uncalibrated / <code>other_camera</code>; per segment the profile cost and accepted / calibrated fractions. Abstain (NaN H) for segments with no confirmed anchor or unresolved outliers; no interpolation across abstained frames; unresolved segments are queued for the calibration editor (eval GT, not an inference input).</li>
+<li><strong>Combine</strong>: <code>combine_match</code> (existing), manifest extended with rig, <code>rig_search.json</code> hash, per-segment diagnostic, code sha; <code>KNOWN_MATCHES</code> becomes a parameter.</li>
+<li><strong>Ingest</strong> (new <code>feature_store/ingest_match_calibration.py</code>): rows in <code>calibration</code> with <code>source='ptz_v3'</code>, <code>run_id=&lt;version_id&gt;</code>, <code>H</code>, <code>quality</code>, <code>distortion_k1</code>, <code>review_status</code> mapped (never <code>hand</code>), <code>dataset_tag='calibration_match'</code>; bulk path (DuckDB on mini pinned 1.3-1.5.3), idempotent by <code>run_id</code>; add <code>RunKind.CALIBRATION</code>; resolve the <code>h_convention</code> mismatch in the ingest.</li>
+<li><strong>Proposals export + review job</strong> (section 3b): export the seeded sample to <code>calibration_proposals/&lt;clip&gt;.json</code>, submit a labelling job via <code>POST /api/jobs</code>.</li>
+<li><strong>Report artifact</strong>: Prefect markdown + <code>reports/calibration/&lt;match&gt;/&lt;version_id&gt;.md</code> (fractions per segment, rig, profile costs, flagged segments, CPU/wall, failures).</li>
+</ol>
+<p>Resume: segments by done marker keyed on the rig hash; rig search by hash of its inputs; combine by content hash; ingest by <code>run_id</code>. Failed segments do not abort the match (flow ends <code>Failed</code> after combine, listing them).</p>
+<p>Versioning and metrics: the calibration dataset is GT; V3 output is a model result scored on it. Extend the nightly eval adapter: per stored <code>version_id</code>, score H on GT frames (clip -&gt; match frame via <code>pts_frame_map</code>), <code>err5_median/p90/p95</code> split near / mid / far, <code>answered_frac</code>, <code>gross_frac</code> (&gt; 5 m), plus <code>accepted_frac</code> / <code>calibrated_frac</code>; <code>eval_result</code> rows <code>model_name='ptz_v3'</code>, <code>model_version=version_id</code>, global split authority, <code>contaminated=true</code> if any label-derived input. <code>ptz-rig</code> GT frames are not independent of a fixed-C solve (<code>ptz_v3.md</code> Bournemouth): scored separately.</p>
+<h2 id="3b-human-review-the-existing-proposals-page-u">3b. Human review: the existing proposals page (U)<a class="headerlink" href="#3b-human-review-the-existing-proposals-page-u" title="Permanent link">&para;</a></h2>
+<p>Reuse the existing review path (V): <code>labeller/calibration_proposals.py</code> reads <code>calibration_proposals/&lt;clip&gt;.json</code>; <strong>accept</strong> copies a proposal into <code>calibration_gt</code> with <code>origin</code>; <strong>reject</strong> records a reason. No new verdict mode, log, table or job kind on the match page.
+- <strong>Exporter</strong> (new, after combine): for each sampled frame, project the <strong>visible pitch keypoints through that frame's stored H</strong> into proposal keypoints, then <strong>distort them with the row's k1</strong> (division model, as <code>lens.py</code> / the editor do: stored H takes undistorted coords, proposal points are observed coords), so accepting reproduces H and k1; origin <code>ptz_v3@&lt;version_id&gt;</code>; drawn from the stored row, never recomputed.
+- <strong>Sampling</strong> (stratified, fixed seed <code>default_rng(sha256(match, seed))</code> over global frame ids, so every version is asked about the same frames): ~300 frames per match; status (accepted 50%, calibrated-not-accepted 25%, uncalibrated main-camera 10%, not-broadcast negatives 5%); zoom / pan / far-touchline-visible tertiles; segment boundaries and recovery seams; &gt;= 5 frames per flagged or recovered segment; &lt;= 3 per segment per stratum; &gt;= 1 per segment of &gt;= 100 frames. Inclusion probabilities stored with each proposal.
+- <strong>Circularity rule:</strong> proposals from version V are never used to score version V. Accepted proposals feed % good (Horvitz-Thompson over inclusion probabilities, segment-clustered intervals), gate tuning (precision of <code>accepted</code>, F1 threshold sweep; the first version gives only an interval), and GT for <em>other</em> versions, always flagged by <code>origin</code>. Metres error for a version comes from hand-clicked / hand-edited frames or other-version proposals. Rejection reasons give failure-mode counts.
+- <strong>Neighbours:</strong> a decision covers one frame of one version; never propagate to unsampled frames. Adjacent frames share anchors (correlated errors) and a good sample does not certify a segment: a segment-level claim needs &gt;= 3 decisions spread across it; a rejected accepted-frame queues extra samples from its segment.</p>
+<h2 id="4-open-risks-with-evidence">4. Open risks, with evidence<a class="headerlink" href="#4-open-risks-with-evidence" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>Bournemouth is a different camera</strong>: Vitality is low (C_z 7.8 m, C_y -50.8) vs Emirates (15.7, -66.6); lines weak (23/121 anchors accepted at F1 &gt;= 0.55); GT rig from 7 frames (C_y bootstrap sd 1.6 m); k1 0.035 (sd 0.018) vs 0.0147 Emirates. Rig does NOT transfer between grounds (<code>ptz_v2.md</code>: "transfer weaker"); per-ground rig is required. Within Bournemouth the label-free C landed 0.14 m from the rig (multi-start), so within-match estimation works; the 2nd-half has no segments dir. Only one match per ground has been looked at: <em>rig transfer between matches of the same ground is assumed, not tested beyond Man City -&gt; Villa (leave-match-out, 19 GT frames, all answered after the rig change, median 0.45 m)</em>.</li>
+<li><strong>Second camera positions inside a match</strong>: Man City gantry (C_x +-32.7) on ~8 of 22 weak segments, Bournemouth seg100 at C_x -36.6; others (seg015, 066, 083, 103, 156) are unrecoverable by the three tried positions (seg156 fits C_x -11.5 / -21.5). The flow must carry an explicit <code>unrecoverable</code> state; 11 of 22 weak segments recovered (0% -&gt; 53% of the weak segments' frames); 9 of the 22 end with 0% calibrated.</li>
+<li><strong>Far-touchline metre error is uncharacterised under V3</strong>: V1 far half slightly worse; V3 numbers are grid medians over the whole visible grid. The C_y/f ridge says depth error will grow with distance from the camera. No measurement by depth exists (section 5, experiment D; P3 gives a first split: far third worst in every arm, 0.33-0.51 m median, p95 1.4-1.7 m, 39 frames).</li>
+<li><strong>k1 disagreement</strong>: lines 0.027-0.034 vs GT points 0.0147 (Emirates), 0.009-0.019 vs 0.035 (Bournemouth). Unresolved; fixing it costs nothing measurable in pitch error on 20 + 5 GT frames but the true lens is unknown. Mitigation: fixed per-ground k1, k1 divergence reported.</li>
+<li><strong>Acceptance is not validated against GT</strong> (F1 &gt;= 0.5 chosen by the author; the sample is small). Gate thresholds are provisional until section 3 metrics exist.</li>
+<li><strong>Frame-index correctness</strong>: seek inaccuracy and dropped frames (Bournemouth segments hold ~13% fewer frames than <code>segments.json</code>; <code>CAP_PROP_POS_FRAMES</code> not exact) matter for the global-frame mapping in combine (<code>pts_frame_map</code>); a pts-based map exists, but is verified only on a few segments.</li>
+<li><strong>Cost surprises</strong>: one fixed-rig pass is 4.4-8.5 CPU-h for Man City on the desktop (P3 measured 8.5 h at a 4 m-off rig); desktop is shared with GPU/other flows; memory fault history (<code>desktop-ubuntu-hardware-fault</code>): keep the memory floor (<code>min_avail_gb</code>).</li>
+<li><strong>Unverified here</strong>: whether the global search finds the basin from a label-free start on other matches (experiment D, Man City only); Bournemouth / Villa untested.</li>
+</ul>
+<h2 id="5-phased-plan-small-prs-each-with-an-acceptance-test">5. Phased plan (small PRs, each with an acceptance test)<a class="headerlink" href="#5-phased-plan-small-prs-each-with-an-acceptance-test" title="Permanent link">&para;</a></h2>
+<p>Status: P0 merged (jobs #3: rig-hash work-dir stem, <code>KNOWN_MATCHES</code> parameter). P1 / P2 (per-segment rig estimate, consensus) closed unmerged (#123, #124). P3 evidence run done: two-level rejected (section 2.1).</p>
+<table>
+<thead>
+<tr>
+<th>PR</th>
+<th>Content</th>
+<th>Acceptance</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>D (next, experiment, no infra)</strong></td>
+<td>On the <strong>40 Man City GT frames</strong> (10 of 14 GT segments) using cached data: compare (i) existing <code>fit_shared</code> from a generic label-free start, current stopping rule vs tight (1e-6 / 1e-8), (ii) match-level (C_y, C_z) grid search with fixed-C pose solves + converged refine; k1 free vs fixed. Report metres error by depth (near / mid / far median, p90/p95, within 1 / 2 / 5 m) and rig distance to the GT-points rig; also from a start 5-8 m off</td>
+<td>Decision memo in <code>reports/</code>: go/no-go on (a)+(b); target &lt;= 1 m ordinary depths, &lt;= 2 m far touchline, no frame &gt; 5 m, label-free start</td>
+</tr>
+<tr>
+<td>P4</td>
+<td><code>calibrate-match</code> flow (jobs): plan, rig search, fixed-rig solves, diagnostic + gate, combine, report</td>
+<td>Man City end to end from empty scratch with no rig JSON: manifest records rig, resume after a kill does not re-solve done segments, identical re-run = <code>unchanged</code></td>
+</tr>
+<tr>
+<td>P5</td>
+<td><code>ingest_match_calibration</code> + <code>RunKind.CALIBRATION</code>, bulk path</td>
+<td>row count = calibrated frames; re-run no-op; <code>frame_calibration_best</code> still prefers hand GT; 100k rows under ~1 min on the mini</td>
+</tr>
+<tr>
+<td>P6</td>
+<td>Eval adapter: <code>ptz_v3@&lt;version_id&gt;</code> on GT clips, near/mid/far split, nightly wiring, <code>/progress</code> series</td>
+<td><code>eval_result</code> rows for the version; contamination flag set for GT-rig variants</td>
+</tr>
+<tr>
+<td>P6b</td>
+<td>Proposals exporter (stratified fixed-seed sample, keypoints projected through stored H), job submission, origin flags into ingest</td>
+<td>accepting an exported proposal reproduces the stored H; same seed gives the same frame ids for two versions; scoring excludes same-version proposals</td>
+</tr>
+<tr>
+<td>P7</td>
+<td>Second ground (Bournemouth), gantry / high-camera handling, deferred items of 2.2(e) if justified</td>
+<td>Bournemouth rig within ~1.5 m of vitality.json C_y and C_z within 0.5 m; gantry segments flagged, not forced</td>
+</tr>
+</tbody>
+</table>
+<p>D is the only item that spends meaningful CPU before the architecture commits; if it fails, keep <code>fit_shared</code> multistart and the rest of the flow.</p>
+<h2 id="6-questions-for-the-user">6. Questions for the user<a class="headerlink" href="#6-questions-for-the-user" title="Permanent link">&para;</a></h2>
+<p>Answered: label-free at inference (section 0); outlier segments: flag, then variant, then NaN + editor (section 0); accuracy bar confirmed (section 0); review budget (moot: review runs through the existing proposals page at the user's pace); rollout Man City first (section 0). Obsolete, removed: cache retention (no L1' round).</p>
+<p>Open:
+1. <strong>Store trade-off</strong>: ingest only accepted frames (smaller) or all calibrated frames with a quality column? Should machine rows ever appear in <code>frame_calibration_best</code>, or only as a separate versioned dataset?
+2. <strong>Bournemouth halves</strong>: the second half has no <code>split_video_broadcast_frames</code> yet; needed before P7?</p>
+<p>(Desktop CPU for experiment D: approved 2026-11-22.)</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      <script id="__config" type="application/json">{"base": "../..", "features": [], "search": "../../assets/javascripts/workers/search.973d3a69.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.f55a23d4.min.js"></script>
+      
+    
+  </body>
+</html>
