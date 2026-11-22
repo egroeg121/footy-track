@@ -212,7 +212,8 @@ def _query_frame_states(store: FeatureStore):
     return store.query(
         """
         SELECT s.game_id, s.frame_index, f.frame_uri,
-               max(CASE WHEN s.cls_group = 'ball' THEN s.state END) AS ball_state,
+               max(CASE WHEN s.cls_group = 'ball'
+                        THEN CASE WHEN s.reason IS NULL THEN s.state ELSE 'partial' END END) AS ball_state,
                max(CASE WHEN s.cls_group = 'player' THEN s.state END) AS player_state,
                bool_or(c.game_id IS NOT NULL) AS is_complete
         FROM frame_label_state s

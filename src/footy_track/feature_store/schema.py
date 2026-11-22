@@ -77,7 +77,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from enum import StrEnum
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from footy_track.constants import BALL_TAG, IN_PLAY_BALL_TAG, OUT_OF_PLAY_BALL_TAG
 from footy_track.projection.projector import H_QUALITY_THRESHOLD
@@ -146,6 +146,36 @@ class LabelMethod(StrEnum):
     OFFLINE_AUDITED = "offline_audited"  # teacher output that passed auto_ok rules + blind audit (silver)
 
 
+class FrameReason(StrEnum):
+    """Why a ball ``frame_label_state`` row is ``unusable`` / ``deferred`` (ball_anchor_iteration.md 3.1).
+
+    NULL reason on ``absent`` means a human full-frame ``no_ball``; on ``complete`` a labelled ball.
+    """
+
+    NOT_BROADCAST = "not_broadcast"  # unusable: not a broadcast frame (ball ``absent``)
+    UNSURE_X2 = "unsure_x2"  # deferred: ``unsure`` answered twice (ball ``partial``)
+    WINDOW_REJECTED = "window_rejected"  # deferred: the window was rejected (ball ``partial``)
+    VIDEO_UNREADABLE = "video_unreadable"  # deferred: the frame could not be decoded (ball ``partial``)
+
+
+class TerminalState(StrEnum):
+    """Terminal per-frame state of a selected frame (ball_anchor_iteration.md 3.1)."""
+
+    BALL = "ball"
+    NO_BALL = "no_ball"
+    UNUSABLE = "unusable"
+    DEFERRED = "deferred"
+
+
+#: ``(state, reason)`` pairs a ``reason`` may legally sit on.
+REASON_STATE: dict[str, str] = {
+    FrameReason.NOT_BROADCAST: LabelState.ABSENT,
+    FrameReason.UNSURE_X2: LabelState.PARTIAL,
+    FrameReason.WINDOW_REJECTED: LabelState.PARTIAL,
+    FrameReason.VIDEO_UNREADABLE: LabelState.PARTIAL,
+}
+
+
 class PlayerCheckVerdict(StrEnum):
     """Outcome of one Player Check card (docs/design/full_frame_labelling.md section 4c)."""
 
@@ -212,6 +242,41 @@ class FrameLabelStateRow(_Row):
     teacher_version: str | None = None  # offline_vN, for offline_audited rows
     verified_by: str | None = None
     verified_at: datetime | None = None
+    reason: FrameReason | None = None  # unusable / deferred reason (ball group only), else NULL
+    generator_version: str | None = None  # candidate generator that produced the card, if any
+
+    @model_validator(mode="after")
+    def _reason_matches_state(self) -> FrameLabelStateRow:
+        if self.reason is None:
+            return self
+        if self.cls_group != ClsGroup.BALL:
+            raise ValueError("reason is only valid on ball rows")
+        want = REASON_STATE[self.reason]
+        if self.state != want:
+            raise ValueError(f"reason {self.reason.value!r} requires state {want.value!r}, got {self.state.value!r}")
+        return self
+
+
+class SelectedFrameRow(_Row):
+    """One frame of the expected set F of a job/window (ball_anchor_iteration.md sections 6, 7.7).
+
+    Written by the creator of the job BEFORE any candidate card exists; the reconciler diffs it
+    against job items and ``frame_label_state``.
+    """
+
+    job_key: str
+    game_id: str
+    frame_index: int = Field(..., ge=0)
+    window_id: str | None = None
+    split: str  # splits.Split: train / eval_heldout_match / eval_in_match
+    selected_at: datetime | None = None  # defaults to now() on first write; kept on re-write
+
+    @field_validator("split")
+    @classmethod
+    def _known_split(cls, v: str) -> str:
+        if v not in ("train", "eval_heldout_match", "eval_in_match"):
+            raise ValueError(f"unknown split {v!r}")
+        return v
 
 
 class PlayerCheckRow(_Row):
@@ -600,11 +665,30 @@ DDL: tuple[str, ...] = (
         teacher_version  VARCHAR,
         verified_by      VARCHAR,
         verified_at      TIMESTAMP,
+        reason           VARCHAR,
+        generator_version VARCHAR,
         PRIMARY KEY (game_id, frame_index, cls_group),
         CHECK (cls_group IN ('ball', 'player')),
         CHECK (state IN ('complete', 'absent', 'partial', 'unreviewed')),
         CHECK (method IN ('hand_series', 'hand_frame', 'verdict',
-                          'sidecar_marker', 'offline_audited'))
+                          'sidecar_marker', 'offline_audited')),
+        CHECK (reason IS NULL OR reason IN ('not_broadcast', 'unsure_x2',
+                                            'window_rejected', 'video_unreadable'))
+    );
+    """,
+    # Stores created before per-frame reasons existed: add the columns (no-op on new ones).
+    "ALTER TABLE frame_label_state ADD COLUMN IF NOT EXISTS reason VARCHAR;",
+    "ALTER TABLE frame_label_state ADD COLUMN IF NOT EXISTS generator_version VARCHAR;",
+    # Expected set F per job/window (ball_anchor_iteration.md section 6): what the reconciler diffs.
+    """
+    CREATE TABLE IF NOT EXISTS selected_frame (
+        job_key      VARCHAR,
+        game_id      VARCHAR,
+        frame_index  INTEGER,
+        window_id    VARCHAR,
+        split        VARCHAR,
+        selected_at  TIMESTAMP,
+        PRIMARY KEY (job_key, game_id, frame_index)
     );
     """,
     # Player Check decisions per (frame, cluster); the frame sweep uses cluster_id '__sweep__'.
@@ -734,7 +818,7 @@ VIEWS: tuple[str, ...] = (
     CREATE OR REPLACE VIEW frame_complete AS
         SELECT game_id, frame_index
         FROM frame_label_state
-        WHERE state IN ('complete', 'absent')
+        WHERE state IN ('complete', 'absent') AND reason IS NULL
         GROUP BY game_id, frame_index
         HAVING count(DISTINCT cls_group) = 2;
     """,
@@ -884,6 +968,7 @@ TABLES: tuple[str, ...] = (
     "track_meta",
     "detection_review",
     "frame_label_state",
+    "selected_frame",
     "player_check",
     "series",
     "calibration",

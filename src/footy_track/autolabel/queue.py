@@ -189,7 +189,7 @@ def _store_sets(db: Path | None):
     def gold(g: str) -> set[int]:
         q = st.query(
             "SELECT DISTINCT frame_index FROM frame_label_state WHERE game_id = ? "
-            f"AND method IN {GOLD_METHODS} AND state IN ('complete','absent')", [g],
+            f"AND method IN {GOLD_METHODS} AND state IN ('complete','absent') AND reason IS NULL", [g],
         )  # fmt: skip
         return {int(i) for i in q["frame_index"]}
 

@@ -204,7 +204,7 @@ def load_gold_frames(
     st = store.query(
         "SELECT frame_index, cls_group, state, method FROM frame_label_state "
         "WHERE game_id = ? AND method IN ('hand_series','hand_frame','verdict') "
-        "AND state IN ('complete','absent')", [game_id],
+        "AND state IN ('complete','absent') AND reason IS NULL", [game_id],
     )  # fmt: skip
     gold = store.query(
         "SELECT frame_index, label, bbox_x, bbox_y, bbox_w, bbox_h FROM detection "
