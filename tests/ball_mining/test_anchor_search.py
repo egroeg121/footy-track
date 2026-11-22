@@ -9,6 +9,7 @@ import pytest
 
 from footy_track import match_splits as ms
 from footy_track.ball_mining import anchor_search as A  # noqa: N812
+from footy_track.ball_mining import schema
 from footy_track.labeller import job_edit, jobs
 from footy_track.labeller.jobs import JobError
 
@@ -20,7 +21,7 @@ BOX = {"x": 0.40, "y": 0.50, "w": 0.02, "h": 0.04}  # centre (0.41, 0.52)
 
 
 @pytest.fixture(autouse=True)
-def register(tmp_path, monkeypatch):
+def register_splits(tmp_path, monkeypatch):
     reg = tmp_path / "match_splits.json"
     reg.write_text(json.dumps({HELD: {"split": "heldout", "aliases": []}, TRAIN: {"split": "train", "aliases": []}}))
     monkeypatch.setenv("FOOTY_MATCH_SPLITS", str(reg))
@@ -158,8 +159,6 @@ def test_load_candidates_reads_the_jobs_own_suggest_file(tmp_path):
 
 
 def test_load_candidates_from_pool_file(tmp_path):
-    from footy_track.ball_mining import schema
-
     p = schema.write_pool(make_pool([{"clip": TC, "frame": 0, "p_real": 0.3}]), tmp_path / "pool.parquet")
     cs = A.load_candidates(place_job(TC), pool_path=p)
     assert cs.source == "pool" and len(cs.get(TC, 0)) == 1

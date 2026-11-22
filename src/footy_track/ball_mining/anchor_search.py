@@ -27,14 +27,21 @@ import math
 import re
 from collections.abc import Iterable
 from dataclasses import dataclass, field
+from datetime import date as date_cls
 from pathlib import Path
 
 from footy_track import splits
 from footy_track.ball_eval import job_suggest as J  # noqa: N812
 from footy_track.ball_eval.panel_score import BALL
 from footy_track.ball_mining import clips as clips_mod
+from footy_track.ball_mining import refit
+from footy_track.ball_mining import round as rnd
+from footy_track.ball_trackers.detection_tracker import BallCandidate
+from footy_track.ball_trackers.viterbi import Anchor as VAnchor
+from footy_track.ball_trackers.viterbi import ForbiddenDisc, ViterbiBallTracker
 from footy_track.clip_id import canonical_clip_id
-from footy_track.labeller import datasets
+from footy_track.labeller import datasets, jobs_client
+from footy_track.labeller.job_edit import MAX_APPEND_PER_CALL
 
 Key = tuple[str, int]  # (canonical clip id, frame)
 
@@ -322,8 +329,6 @@ REASON_NO_PATH = "no_path"
 
 def tracker_params() -> dict:
     """The full effective ViterbiBallTracker parameters (defaults + ``TRACKER_PARAMS``) as a plain dict."""
-    from footy_track.ball_trackers.viterbi import ViterbiBallTracker  # noqa: PLC0415
-
     return dict(ViterbiBallTracker(FRAME_SIZE, **TRACKER_PARAMS)._p)
 
 
@@ -426,9 +431,9 @@ def generate_window(
     start: int,
     frames: list[int],
     cands: CandidateSet,
+    *,
     anchorset: AnchorSet,
     judged: frozenset[Key],
-    *,
     job_id: str,
     generator_ver: str,
     teacher_version: str | None,
@@ -444,10 +449,6 @@ def generate_window(
     Cards: unjudged frames with ``hop <= hop_cap`` that have a pick; ordered by (hop, margin ascending, confidence
     descending); ``unreachable``: unjudged frames with no candidate in the motion gate (or no path). A window with
     no anchor yields nothing (a search needs a seed)."""
-    from footy_track.ball_trackers.detection_tracker import BallCandidate  # noqa: PLC0415
-    from footy_track.ball_trackers.viterbi import Anchor as VAnchor  # noqa: PLC0415
-    from footy_track.ball_trackers.viterbi import ForbiddenDisc, ViterbiBallTracker  # noqa: PLC0415
-
     res = SearchResult(window_id, clip, start, start + window_frames)
     frames = sorted(frames)
     w_anchors = sorted((a for (c, f), a in anchorset.anchors.items() if c == clip and f in set(frames)), key=lambda a: a.frame)
@@ -490,8 +491,6 @@ def generate_window(
             continue
         match = next((c for c in cands.get(clip, f) if abs(c.cx - (pt.x + pt.w / 2)) < 1e-9 and abs(c.cy - (pt.y + pt.h / 2)) < 1e-9), None)
         conf = match.conf if match else None
-        from footy_track.ball_mining import refit  # noqa: PLC0415
-
         p_cal = refit.calibrated(conf, cal) if (match and cal and cal.get("fitted")) else None
         base = p_cal if p_cal is not None else (conf or 0.0)
         tid = match.tid if match else 0
@@ -517,8 +516,16 @@ def generate_window(
 
 
 def window_digest(
-    window_id: str, frames: list[int], clip: str, cands: CandidateSet, anchorset: AnchorSet, judged: frozenset[Key],
-    generator_ver: str, teacher_version: str | None, cal: dict | None,
+    window_id: str,
+    frames: list[int],
+    clip: str,
+    cands: CandidateSet,
+    *,
+    anchorset: AnchorSet,
+    judged: frozenset[Key],
+    generator_ver: str,
+    teacher_version: str | None,
+    cal: dict | None,
 ) -> str:
     """Skip key: same window, frames, candidates, anchors, forbidden, judged set and versions -> same output."""
     fs = set(frames)
@@ -621,14 +628,16 @@ def run_search(
     for wid, (clip, start, frames) in split_windows(selected, window_frames).items():
         if not any((clip, f) in anchorset.anchors for f in frames):
             continue
-        digest = window_digest(wid, frames, clip, cands, anchorset, judged, gen, teacher_version, cal)
+        digest = window_digest(
+            wid, frames, clip, cands, anchorset=anchorset, judged=judged, generator_ver=gen, teacher_version=teacher_version, cal=cal
+        )
         prev = latest_search(marks, wid) if write else None
         if prev is not None and prev.get("digest") == digest:
             docs.append({**prev, "reused": True})
             continue
         n = ((_search_versions(marks, wid) or [(0, None)])[-1][0] + 1) if write else 1
         r = generate_window(
-            wid, clip, start, frames, cands, anchorset, judged, job_id=scope.job_id, generator_ver=gen,
+            wid, clip, start, frames, cands, anchorset=anchorset, judged=judged, job_id=scope.job_id, generator_ver=gen,
             teacher_version=teacher_version, run_id=run_id, search_round=n, cal=cal, window_frames=window_frames,
         )
         check_emittable(r.cards, selected, scope.split)
@@ -642,9 +651,195 @@ def run_search(
                 "decay": HOP_DECAY, "cards": r.cards, "unreachable": r.unreachable, "beyond_cap": r.beyond_cap,
             }
 
-        if write:
-            doc = _write_search(marks, wid, build)
-        else:
-            doc = build(1)
+        doc = _write_search(marks, wid, build) if write else build(1)
         docs.append({**doc, "reused": False})
     return docs
+
+
+# ===========================================================================================================
+# CLIENT (design task 4): push the generator's cards into the live round job within the caps, then reorder.
+# Nothing above this line depends on it; the generator API is unchanged.
+#
+# Safety, in the order the flow runs (design 7.3, 7.4, 7.6):
+#   * read the job (``results``: rev + every card + answered state) and the job list (caps);
+#   * drop cards whose frame already has a card in the job -> a retried append adds 0, a crash between append and
+#     reorder just leaves the new cards in place and the rerun goes straight to the reorder;
+#   * take at most the headroom of ``round.tick_decision`` (open training cards < 100, today's cards < 600), best first;
+#   * ONE ``append`` call with ``if_rev`` (the server writes it as one transaction under the job lock: all or none);
+#     a 409 re-reads and retries, bounded;
+#   * reorder the unanswered cards so S cards sit in rank order in the slots they occupy (``refit.apply_order``: the
+#     same ``if_rev`` retry loop the refit uses).
+# ===========================================================================================================
+
+SEARCH_BUCKET = "S"
+APPEND_BY = "ball_anchor_search"
+APPEND_TRIES = 3  # rev conflicts tolerated on the append before giving up (the next run converges)
+LIVE = refit.LIVE
+_BBOX_DIGITS = 5  # the server's append dedupe rounds boxes to this many digits
+
+
+def _bbox_key(bbox: dict) -> tuple[float, ...]:
+    return tuple(round(float(bbox.get(k, 0)), _BBOX_DIGITS) for k in "xywh")
+
+
+def card_key(card: dict) -> tuple[str, int, tuple[float, ...]]:
+    """``(clip, frame, rounded bbox)``: the identity of a card spec (what the server dedupes an inline card on)."""
+    return (card["clip"], int(card["frame_index"]), _bbox_key(card["bbox"]))
+
+
+def idempotency_key(digest: str, card: dict) -> str:
+    """Stable key of one card of one search file: ``sha1(file digest | clip | frame | bbox)``."""
+    clip, frame, box = card_key(card)
+    return hashlib.sha1(f"{digest}|{clip}|{frame}|{box}".encode()).hexdigest()[:16]
+
+
+def item_from_card(card: dict, *, digest: str, split: str | None, file_version: int | None = None) -> dict:
+    """The ``ball_check`` item of one card spec: clip, frame, bbox, plus the hidden ``sampling`` (bucket ``S``) and ``search``
+    blocks that persist with the verdict."""
+    meta = {
+        k: card.get(k)
+        for k in ("anchor_id", "hop", "direction", "source", "generator_version", "teacher_version", "run_id",
+                  "search_round", "margin", "p_cal")
+    }  # fmt: skip
+    meta["source"] = "search"
+    sampling = {"regime": "train" if split == "train" else "eval", "bucket": SEARCH_BUCKET, "split": split, **meta}
+    search = {
+        **meta, "window_id": card.get("window_id"), "rank": card.get("rank"), "rank_conf": card.get("rank_conf"),
+        "raw_conf": card.get("raw_conf"), "cand_source": card.get("cand_source"), "tid": card.get("tid"),
+        "digest": digest, "file_version": file_version, "idem": idempotency_key(digest, card),
+    }  # fmt: skip
+    p = card.get("p_cal") if card.get("p_cal") is not None else card.get("raw_conf")
+    item = {
+        "clip": card["clip"], "frame_index": int(card["frame_index"]), "bbox": dict(card["bbox"]),
+        "sources": ["anchor_search"], "sampling": sampling, "search": search,
+    }  # fmt: skip
+    if p is not None:
+        item["p_real"] = round(float(p), 5)
+    return item
+
+
+def _ranked_cards(docs: Iterable[dict]) -> list[tuple[dict, dict]]:
+    """``(card, its search document)`` of every window, best first (hop, margin, confidence; ties by clip / frame)."""
+    pairs = [(c, d) for d in docs for c in d.get("cards") or []]
+    return sorted(pairs, key=lambda p: _rank_key(p[0]))
+
+
+def _today_added(items: Iterable[dict], today: str) -> int:
+    return sum(1 for it in items if str((it.get("added_by") or {}).get("ts") or "").startswith(today))
+
+
+def headroom(job_list: list[dict], res: dict, today: str, *, open_max: int, daily_max: int) -> dict:
+    """How many cards may still be appended: ``min(open_max - open, daily_max - today)`` (never below 0).
+
+    For a round job (``ball-round/*``) the counts are ``round.tick_decision``'s over every round job; cards this job received
+    today although its key is of an earlier day are added to ``today_cards`` (the tick counts a round by its key's date).
+    For any other job only the job itself is counted: its open cards and what it was given today."""
+    job = res["job"]
+    items = [p["item"] for p in res.get("items") or []]
+    if refit.is_round_job(job):
+        tick = rnd.tick_decision(job_list, today, open_max=open_max, daily_max=daily_max)
+        open_cards, today_cards = tick["open_cards"], tick["today_cards"]
+        if not str(job["key"]).startswith(f"{rnd.KEY_PREFIX}/{today}/"):
+            today_cards += _today_added(items, today)
+    else:
+        open_cards = sum(1 for p in res.get("items") or [] if not (p["total"] and p["done"] >= p["total"]))
+        today_cards = _today_added(items, today)
+    room = max(0, min(open_max - open_cards, daily_max - today_cards))
+    return {"room": room, "open_cards": open_cards, "today_cards": today_cards, "open_max": open_max, "daily_max": daily_max}
+
+
+def _search_sort_key(it: dict) -> tuple:
+    s = it.get("search") or {}
+    m = s.get("margin")
+    return (
+        s.get("rank") if s.get("rank") is not None else math.inf,
+        s.get("hop") if s.get("hop") is not None else math.inf,
+        math.inf if m is None else m,
+        -(s.get("rank_conf") or 0.0),
+        str(s.get("window_id") or ""),
+        it["frame_index"],
+    )
+
+
+def search_order(unanswered: list[tuple[int, dict]]) -> list[int]:
+    """New order of the unanswered item positions: the S cards are re-dealt in generator-rank order inside the slots S cards
+    already hold, every other card keeps its slot (R / A / G / U / M interleaving is the round's, not ours). A permutation."""
+    slots = [pos for pos, it in unanswered if (it.get("sampling") or {}).get("bucket") == SEARCH_BUCKET]
+    cards = sorted(
+        ((pos, it) for pos, it in unanswered if (it.get("sampling") or {}).get("bucket") == SEARCH_BUCKET),
+        key=lambda p: (_search_sort_key(p[1]), p[0]),
+    )
+    fill = dict(zip(slots, (pos for pos, _ in cards), strict=True))
+    return [fill.get(pos, pos) for pos, _ in unanswered]
+
+
+def _is_rev_conflict(e: Exception) -> bool:
+    return isinstance(e, jobs_client.JobsError) and e.status == 409 and isinstance(e.body, dict) and "rev" in e.body
+
+
+def push_search(
+    ref: str,
+    docs: Iterable[dict],
+    *,
+    client=None,
+    today: str | None = None,
+    open_max: int | None = None,
+    daily_max: int | None = None,
+    tries: int = APPEND_TRIES,
+    reorder: bool = True,
+    dry_run: bool = False,
+) -> dict:
+    """Append the cards of ``docs`` (search documents from :func:`run_search`) to job ``ref`` and reorder the unanswered ones.
+
+    * at most the cap headroom (see :func:`headroom`) is appended, best card first across all windows;
+    * a card whose frame already has a card in the job is skipped (a retry adds 0);
+    * the append carries ``if_rev``; a 409 re-reads the job and re-plans, ``tries`` times, then reports
+      ``append: "rev_conflict"`` (nothing was written; the next run converges);
+    * then the unanswered cards are reordered (:func:`search_order`) with the same retry loop as the refit; a job that is not
+      live is left alone.
+
+    ``client`` is anything with ``results`` / ``list_jobs`` / ``append`` / ``reorder`` (default ``jobs_client``); the server
+    errors other than a rev conflict propagate (fail closed, as the refit does). Returns a small JSON-able summary."""
+    client = client or jobs_client
+    today = today or date_cls.today().isoformat()
+    open_max = rnd.OPEN_CARDS_MAX if open_max is None else open_max
+    daily_max = rnd.DAILY_CARDS_MAX if daily_max is None else daily_max
+    ranked = _ranked_cards(docs)
+    out: dict = {"offered": len(ranked), "added": 0, "skipped_duplicates": 0, "append_attempts": 0}
+    conflicts = 0
+    while True:
+        res = client.results(ref)
+        job = res["job"]
+        out["job"] = job["id"]
+        if job.get("status") not in LIVE:
+            out["append"] = f"skipped, job is {job.get('status')}"
+            return out
+        have = {(p["item"]["clip"], int(p["item"]["frame_index"])) for p in res.get("items") or []}
+        fresh = [(c, d) for c, d in ranked if (c["clip"], int(c["frame_index"])) not in have]
+        out.setdefault("already_in_job", len(ranked) - len(fresh))
+        room = headroom(client.list_jobs(kind="ball_check", progress="true"), res, today, open_max=open_max, daily_max=daily_max)
+        out.setdefault("headroom", room)  # as found, before this run appended anything
+        take = fresh[: min(room["room"], MAX_APPEND_PER_CALL)]
+        if not take or dry_run:
+            out["would_add"] = len(take) if dry_run else 0
+            break
+        items = [item_from_card(c, digest=d["digest"], split=d.get("split"), file_version=d.get("version")) for c, d in take]
+        out["append_attempts"] += 1
+        try:
+            r = client.append(ref, items, by=APPEND_BY, note=f"anchor search {len(items)} cards", if_rev=int(job.get("rev") or 0))
+        except jobs_client.JobsError as e:
+            if not _is_rev_conflict(e):
+                raise
+            conflicts += 1
+            if conflicts >= tries:
+                out["append"] = "rev_conflict"
+                break
+            continue
+        out["added"] += int(r["added"])
+        out["skipped_duplicates"] += int(r.get("skipped_duplicates") or 0)
+        if not r["added"]:
+            break  # the server saw them all already: converged
+    if reorder and not dry_run and out.get("append") != "rev_conflict":
+        doc = client.results(ref)
+        out.update(refit.apply_order(client, ref, doc, search_order, by=APPEND_BY, note="anchor search rank"))
+    return out
