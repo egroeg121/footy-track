@@ -840,7 +840,7 @@ def _robust_w(r: Array, c: float, quad: Array) -> Array:
 LM_REL_TOL = 1e-4
 
 
-def lm_solve(rs: _Resid, x0: Array, n_iter: int = 25, log=None, tag: str = "", rel_tol: float = LM_REL_TOL
+def lm_solve(rs: _Resid, x0: Array, n_iter: int = 25, log=None, tag: str = "", *, rel_tol: float = LM_REL_TOL
              ) -> tuple[Array, dict]:
     """Levenberg-Marquardt with IRLS Cauchy weights on all data rows (the smoothness / prior rows stay quadratic).
     Stops when a step gains less than ``rel_tol`` x the total cost (default :data:`LM_REL_TOL`, the production rule),
