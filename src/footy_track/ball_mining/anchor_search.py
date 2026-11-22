@@ -21,15 +21,16 @@ All coordinates are normalised (0..1 of the frame); candidate / anchor positions
 
 from __future__ import annotations
 
+import hashlib
 import json
 import math
+import re
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from footy_track import splits
 from footy_track.ball_eval import job_suggest as J  # noqa: N812
-from footy_track.ball_eval import panel_suggest as PS  # noqa: N812
 from footy_track.ball_eval.panel_score import BALL
 from footy_track.ball_mining import clips as clips_mod
 from footy_track.clip_id import canonical_clip_id
@@ -297,3 +298,353 @@ def load_anchors(job: dict, *, marks_dir: Path | None = None) -> AnchorSet:
             if c:
                 out.forbidden.setdefault(k, []).append(Forbidden(k[0], k[1], *c))
     return out
+
+
+# ===========================================================================================================
+# GENERATOR (design task 3): constrained Viterbi per window -> ranked card specs + unreachable frames,
+# stored as an immutable versioned search file. Pure data: appending the cards to a job is task 4.
+# ===========================================================================================================
+
+SEARCH_SCHEMA = "anchor-search/v1"
+GENERATOR_CODE_VERSION = "anchor-gen/1"
+WINDOW_FRAMES = 250  # frames of one clip per window (autolabel.windows.DEFAULT_WINDOW_FRAMES)
+HOP_CAP = 3  # sampled steps beyond the nearest confirmation; further frames need a fresh seed
+HOP_DECAY = 0.8  # card confidence = p * HOP_DECAY ** hop
+TID_BONUS = 0.1  # ranking-confidence bonus for a candidate on the anchor's offline tracklet
+FORBIDDEN_MARGIN_PX = 6.0  # forbidden disc radius = half the rejected box + this
+TID_MATCH_NORM = 0.03  # anchor <-> candidate distance (normalised) that counts as "the anchor's candidate"
+FRAME_SIZE = (1920, 1080)
+TRACKER_PARAMS: dict = {}  # overrides of the ViterbiBallTracker defaults (part of generator_version)
+
+REASON_NO_CANDIDATE = "no_candidate_in_gate"
+REASON_NO_PATH = "no_path"
+
+
+def tracker_params() -> dict:
+    """The full effective ViterbiBallTracker parameters (defaults + ``TRACKER_PARAMS``) as a plain dict."""
+    from footy_track.ball_trackers.viterbi import ViterbiBallTracker  # noqa: PLC0415
+
+    return dict(ViterbiBallTracker(FRAME_SIZE, **TRACKER_PARAMS)._p)
+
+
+def generator_version(detector: str | None) -> str:
+    """``det:<candidate model sha8>|trk:<hash8 of tracker params>|code:<version string>``."""
+    ph = hashlib.sha1(json.dumps(tracker_params(), sort_keys=True).encode()).hexdigest()[:8]
+    return f"det:{detector or 'unknown'}|trk:{ph}|code:{GENERATOR_CODE_VERSION}"
+
+
+def window_id_of(clip: str, start: int, window_frames: int = WINDOW_FRAMES) -> str:
+    """Filesystem-safe id of the window ``[start, start + window_frames)`` of one clip."""
+    return f"{clip}_f{start:06d}-{start + window_frames:06d}"
+
+
+def split_windows(frames: Iterable[Key], window_frames: int = WINDOW_FRAMES) -> dict[str, tuple[str, int, list[int]]]:
+    """Group frames into windows of ``window_frames`` consecutive frame numbers of ONE clip (never across clips).
+
+    Returns ``{window_id: (clip, start, sorted sampled frames)}``."""
+    out: dict[str, tuple[str, int, list[int]]] = {}
+    for clip, f in sorted(set(frames)):
+        start = (f // window_frames) * window_frames
+        out.setdefault(window_id_of(clip, start, window_frames), (clip, start, []))[2].append(f)
+    return out
+
+
+def resolve_selected(job: dict, store=None, *, clip_of_game=lambda g: g) -> frozenset[Key]:
+    """The job's selected set F: ``selected_frame`` rows of ``job_key == job id`` when the store has any, else the job's
+    item frames. Every selected row must be in the job's one split (``SplitError`` otherwise)."""
+    scope = job_scope(job)
+    if store is None:
+        return scope.frames
+    df = store.read_selected_frames(job_key=scope.job_id)
+    if df is None or len(df) == 0:
+        return scope.frames
+    out = set()
+    for r in df.itertuples(index=False):
+        clip = canonical_clip_id(clip_of_game(r.game_id))
+        if scope.split is not None and (r.split != scope.split or clip_split(clip) != scope.split):
+            raise SplitError(f"selected_frame {clip}:{r.frame_index} is {r.split!r}, job {scope.job_id!r} is {scope.split!r}")
+        out.add((clip, int(r.frame_index)))
+    return frozenset(out)
+
+
+def terminal_frames(store, selected: Iterable[Key], *, game_of_clip=lambda c: c) -> frozenset[Key]:
+    """Frames of ``selected`` whose ball ``frame_label_state`` is already terminal (ball / no_ball / unusable / deferred)."""
+    by_clip: dict[str, list[int]] = {}
+    for c, f in selected:
+        by_clip.setdefault(c, []).append(f)
+    out = set()
+    for c, fs in by_clip.items():
+        out.update((c, f) for f in store.read_ball_terminal_states(game_of_clip(c), fs))
+    return frozenset(out)
+
+
+def judged_frames(
+    marks_dir: Path | None, *, pending: Iterable[Key] = (), terminal: Iterable[Key] = (), anchors: AnchorSet | None = None
+) -> frozenset[Key]:
+    """Frames that must not get a card: live verdicts of the dataset, ``pending`` cards of the round job(s)
+    (``round.pending_frames``), terminal ``frame_label_state`` rows (``terminal``) and anchors (human labels)."""
+    out = {(canonical_clip_id(c), int(f)) for c, f in pending} | {(canonical_clip_id(c), int(f)) for c, f in terminal}
+    if marks_dir is not None:
+        out |= clips_mod.read_verdict_frames(marks_dir)
+    if anchors is not None:
+        out |= set(anchors.anchors)
+    return frozenset(out)
+
+
+@dataclass
+class SearchResult:
+    """Output of :func:`generate_window`: ranked card specs and the frames the search could not reach."""
+
+    window_id: str
+    clip: str
+    start: int
+    end: int
+    cards: list[dict] = field(default_factory=list)
+    unreachable: list[dict] = field(default_factory=list)  # {clip, frame, window_id, reason}
+    beyond_cap: list[dict] = field(default_factory=list)  # {clip, frame, hop}: needs a fresh seed
+    n_anchors: int = 0
+    n_forbidden: int = 0
+
+
+def _rank_key(card: dict) -> tuple:
+    m = card["margin"]
+    return (card["hop"], math.inf if m is None else m, -card["rank_conf"], card["clip"], card["frame_index"])
+
+
+def _anchor_cand_tid(cands: CandidateSet, a: Anchor) -> int:
+    best, bd = 0, TID_MATCH_NORM
+    for c in cands.get(a.clip, a.frame):
+        d = math.hypot(c.cx - a.cx, c.cy - a.cy)
+        if d <= bd and c.tid:
+            best, bd = c.tid, d
+    return best
+
+
+def generate_window(
+    window_id: str,
+    clip: str,
+    start: int,
+    frames: list[int],
+    cands: CandidateSet,
+    anchorset: AnchorSet,
+    judged: frozenset[Key],
+    *,
+    job_id: str,
+    generator_ver: str,
+    teacher_version: str | None,
+    run_id: str | None,
+    search_round: int,
+    cal: dict | None = None,
+    window_frames: int = WINDOW_FRAMES,
+    hop_cap: int = HOP_CAP,
+    decay: float = HOP_DECAY,
+) -> SearchResult:
+    """Constrained Viterbi over one window (sampled ``frames`` of one clip), ranked frontier cards.
+
+    Cards: unjudged frames with ``hop <= hop_cap`` that have a pick; ordered by (hop, margin ascending, confidence
+    descending); ``unreachable``: unjudged frames with no candidate in the motion gate (or no path). A window with
+    no anchor yields nothing (a search needs a seed)."""
+    from footy_track.ball_trackers.detection_tracker import BallCandidate  # noqa: PLC0415
+    from footy_track.ball_trackers.viterbi import Anchor as VAnchor  # noqa: PLC0415
+    from footy_track.ball_trackers.viterbi import ForbiddenDisc, ViterbiBallTracker  # noqa: PLC0415
+
+    res = SearchResult(window_id, clip, start, start + window_frames)
+    frames = sorted(frames)
+    w_anchors = sorted((a for (c, f), a in anchorset.anchors.items() if c == clip and f in set(frames)), key=lambda a: a.frame)
+    if not frames or not w_anchors:
+        return res
+    fw, fh = FRAME_SIZE
+    discs = [
+        ForbiddenDisc(f, (d.cx, d.cy), max(d.w * fw, d.h * fh) / 2 + FORBIDDEN_MARGIN_PX)
+        for f in frames
+        if (clip, f) not in anchorset.anchors
+        for d in anchorset.forbidden.get((clip, f), [])
+    ]
+    res.n_anchors, res.n_forbidden = len(w_anchors), len(discs)
+    trk = ViterbiBallTracker(FRAME_SIZE, **TRACKER_PARAMS)
+    for f in frames:
+        trk.update(f, [BallCandidate(c.cx - c.w / 2, c.cy - c.h / 2, c.w, c.h, c.conf) for c in cands.get(clip, f)])
+    out = trk.constrained_points([VAnchor(a.frame, (a.cx, a.cy)) for a in w_anchors], discs)
+
+    pos = {f: i for i, f in enumerate(frames)}
+    a_idx = [(pos[a.frame], a) for a in w_anchors]
+    tid_of = {a.frame: _anchor_cand_tid(cands, a) for a in w_anchors}
+    for i, f in enumerate(frames):
+        if (clip, f) in judged:
+            continue
+        before = [(i - j, a) for j, a in a_idx if j < i]
+        after = [(j - i, a) for j, a in a_idx if j > i]
+        nb = min(before, key=lambda x: x[0]) if before else None
+        na = min(after, key=lambda x: x[0]) if after else None
+        near = min([x for x in (nb, na) if x], key=lambda x: (x[0], x[1].frame))
+        hop, anchor = near
+        if hop > hop_cap:
+            res.beyond_cap.append({"clip": clip, "frame": f, "hop": hop})
+            continue
+        pt = out.points[i]
+        if out.unreachable[i] or pt.x is None:
+            res.unreachable.append({
+                "clip": clip, "frame": f, "window_id": window_id,
+                "reason": REASON_NO_CANDIDATE if out.unreachable[i] else REASON_NO_PATH,
+            })
+            continue
+        match = next((c for c in cands.get(clip, f) if abs(c.cx - (pt.x + pt.w / 2)) < 1e-9 and abs(c.cy - (pt.y + pt.h / 2)) < 1e-9), None)
+        conf = match.conf if match else None
+        from footy_track.ball_mining import refit  # noqa: PLC0415
+
+        p_cal = refit.calibrated(conf, cal) if (match and cal and cal.get("fitted")) else None
+        base = p_cal if p_cal is not None else (conf or 0.0)
+        tid = match.tid if match else 0
+        bonus = TID_BONUS if tid and tid == tid_of.get(anchor.frame) else 0.0
+        m = out.margin[i]
+        direction = "both" if (nb and na and nb[0] <= hop_cap and na[0] <= hop_cap) else ("fwd" if near is nb else "bwd")
+        res.cards.append({
+            "clip": clip, "frame_index": f,
+            "bbox": {"x": pt.x, "y": pt.y, "w": pt.w, "h": pt.h},
+            "conf": None if conf is None else round(conf * decay**hop, 6),
+            "raw_conf": conf, "p_cal": p_cal, "tid": tid or None,
+            "cand_source": "detected" if match else "interpolated",
+            "hop": hop, "margin": None if (m is None or math.isinf(m)) else float(m),
+            "direction": direction, "anchor_id": f"{job_id}:{anchor.clip}:{anchor.frame}",
+            "source": "search", "generator_version": generator_ver, "teacher_version": teacher_version,
+            "run_id": run_id, "search_round": search_round, "window_id": window_id,
+            "rank_conf": round(base * decay**hop + bonus, 6),
+        })
+    res.cards.sort(key=_rank_key)
+    for r, c in enumerate(res.cards):
+        c["rank"] = r
+    return res
+
+
+def window_digest(
+    window_id: str, frames: list[int], clip: str, cands: CandidateSet, anchorset: AnchorSet, judged: frozenset[Key],
+    generator_ver: str, teacher_version: str | None, cal: dict | None,
+) -> str:
+    """Skip key: same window, frames, candidates, anchors, forbidden, judged set and versions -> same output."""
+    fs = set(frames)
+    doc = {
+        "w": window_id, "frames": sorted(fs), "gen": generator_ver, "teacher": teacher_version,
+        "hop": [HOP_CAP, HOP_DECAY, TID_BONUS, FORBIDDEN_MARGIN_PX],
+        "cal": cal if cal and cal.get("fitted") else None,
+        "cands": [[f, [[c.cx, c.cy, c.w, c.h, c.conf, c.tid] for c in cands.get(clip, f)]] for f in sorted(fs)],
+        "anchors": sorted((a.frame, a.cx, a.cy) for (c, f), a in anchorset.anchors.items() if c == clip and f in fs),
+        "forbidden": sorted(
+            (f, d.cx, d.cy, d.w, d.h) for (c, f), ds in anchorset.forbidden.items() if c == clip and f in fs for d in ds
+        ),
+        "judged": sorted(f for (c, f) in judged if c == clip and f in fs),
+    }
+    return hashlib.sha1(json.dumps(doc, sort_keys=True).encode()).hexdigest()
+
+
+_SEARCH_NAME = re.compile(r"^v(\d{3,})\.json$")
+
+
+def search_dir(marks_dir: str | Path, window_id: str) -> Path:
+    return Path(marks_dir) / "search" / window_id
+
+
+def _search_versions(marks_dir: str | Path, window_id: str) -> list[tuple[int, Path]]:
+    d = search_dir(marks_dir, window_id)
+    if not d.is_dir():
+        return []
+    return sorted((int(m.group(1)), p) for p in d.iterdir() if (m := _SEARCH_NAME.match(p.name)))
+
+
+def latest_search(marks_dir: str | Path, window_id: str) -> dict | None:
+    for _, p in reversed(_search_versions(marks_dir, window_id)):
+        try:
+            doc = json.loads(p.read_text())
+        except (OSError, ValueError):
+            continue
+        if isinstance(doc, dict) and doc.get("schema") == SEARCH_SCHEMA:
+            return doc
+    return None
+
+
+def _write_search(marks_dir: str | Path, window_id: str, build) -> dict:
+    """Write the next immutable ``vNNN.json`` (``build(version) -> doc``); an exclusive create, retried on a race."""
+    from footy_track.labeller import jobs  # noqa: PLC0415
+
+    vs = _search_versions(marks_dir, window_id)
+    v = (vs[-1][0] if vs else 0) + 1
+    while True:
+        doc = build(v)
+        if jobs._write_atomic(search_dir(marks_dir, window_id) / f"v{v:03d}.json", doc, exclusive=True):
+            return doc
+        v += 1
+
+
+def check_emittable(cards: Iterable[dict], selected: frozenset[Key], split: str | None) -> None:
+    """Guard: every emitted frame belongs to the job's selected set F and to the job's one split."""
+    for c in cards:
+        k = (canonical_clip_id(c["clip"]), int(c["frame_index"]))
+        if k not in selected:
+            raise SplitError(f"generator would emit {k}, which is not in the job's selected set")
+        if split is not None and clip_split(k[0]) != split:
+            raise SplitError(f"generator would emit {k} of split {clip_split(k[0])!r} into a {split!r} job")
+
+
+def run_search(
+    job: dict,
+    *,
+    marks_dir: Path | None = None,
+    root: Path | None = None,
+    pool_path: Path | None = None,
+    store=None,
+    clip_of_game=lambda g: g,
+    pending: Iterable[Key] = (),
+    teacher_version: str | None = None,
+    run_id: str | None = None,
+    cal: dict | None = None,
+    window_frames: int = WINDOW_FRAMES,
+    write: bool = True,
+) -> list[dict]:
+    """Search every window of the job: load candidates + anchors (task 1), constrained Viterbi (task 2), rank, write.
+
+    Returns one search document per window that has an anchor. With ``write`` the document is stored as
+    ``<marks>/search/<window_id>/vNNN.json`` (``search_round`` = N, monotonic per window); if the latest version has
+    the same input digest nothing is written and that document is returned with ``reused: true``.
+    Frames outside the job's selected set F or split are never read nor emitted."""
+    scope = job_scope(job)
+    marks = Path(marks_dir) if marks_dir else datasets.get(job.get("dataset")).marks_dir
+    selected = resolve_selected(job, store, clip_of_game=clip_of_game)
+    cands = load_candidates(job, root=root, pool_path=pool_path)
+    anchorset = load_anchors(job, marks_dir=marks)
+    # the loaders return frames of the job's items; narrow everything to F (selected_frame may be a subset)
+    cands.by_frame = {k: v for k, v in cands.by_frame.items() if k in selected}
+    anchorset.anchors = {k: v for k, v in anchorset.anchors.items() if k in selected}
+    anchorset.forbidden = {k: v for k, v in anchorset.forbidden.items() if k in selected}
+    term = terminal_frames(store, selected, game_of_clip=lambda c: c) if store is not None else ()
+    judged = judged_frames(marks, pending=pending, terminal=term, anchors=anchorset)
+    gen = generator_version(cands.detector)
+    docs = []
+    for wid, (clip, start, frames) in split_windows(selected, window_frames).items():
+        if not any((clip, f) in anchorset.anchors for f in frames):
+            continue
+        digest = window_digest(wid, frames, clip, cands, anchorset, judged, gen, teacher_version, cal)
+        prev = latest_search(marks, wid) if write else None
+        if prev is not None and prev.get("digest") == digest:
+            docs.append({**prev, "reused": True})
+            continue
+        n = ((_search_versions(marks, wid) or [(0, None)])[-1][0] + 1) if write else 1
+        r = generate_window(
+            wid, clip, start, frames, cands, anchorset, judged, job_id=scope.job_id, generator_ver=gen,
+            teacher_version=teacher_version, run_id=run_id, search_round=n, cal=cal, window_frames=window_frames,
+        )
+        check_emittable(r.cards, selected, scope.split)
+
+        def build(v, r=r, digest=digest, n=n):
+            return {
+                "schema": SEARCH_SCHEMA, "version": v, "window_id": r.window_id, "job_id": scope.job_id,
+                "dataset": scope.dataset, "split": scope.split, "clip": r.clip, "start": r.start, "end": r.end,
+                "digest": digest, "generator_version": gen, "teacher_version": teacher_version, "run_id": run_id,
+                "search_round": v, "n_anchors": r.n_anchors, "n_forbidden": r.n_forbidden, "hop_cap": HOP_CAP,
+                "decay": HOP_DECAY, "cards": r.cards, "unreachable": r.unreachable, "beyond_cap": r.beyond_cap,
+            }
+
+        if write:
+            doc = _write_search(marks, wid, build)
+        else:
+            doc = build(1)
+        docs.append({**doc, "reused": False})
+    return docs
