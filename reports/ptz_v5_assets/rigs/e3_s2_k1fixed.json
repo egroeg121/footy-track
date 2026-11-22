@@ -1,0 +1,22 @@
+{
+ "C": [
+  1.2997977828065326,
+  -65.29606426107998,
+  15.26799039638671
+ ],
+ "roll": -0.006693027320478694,
+ "k1": 0.03,
+ "sigma_C": [
+  1.0,
+  3.0,
+  1.0
+ ],
+ "pitch": [
+  105.0,
+  68.0
+ ],
+ "info": {
+  "ground": "e3_s2_k1fixed",
+  "source": "ptz_v5 rig search e3, label-free, start s2; reference rig NOT used"
+ }
+}
