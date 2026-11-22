@@ -17,7 +17,7 @@ segments of a match, but a segment may come from a different camera and must the
 
 Decisions 2026-11-20 (user):
 - **Label-free at inference.** No label-derived prior in a production run (rig JSONs from GT points become eval references only); labels build the eval set (calibration GT + accepted proposals). A run that used any label-derived input is marked `contaminated` in eval.
-- **Outlier segments: all three, in order.** Flag first (never forced onto rig*); then try their own camera variant (cluster of rig_i); a segment that still fails gets H = NaN and is queued for the calibration editor, where it becomes eval GT (not an inference input).
+- **Outlier segments: all three, in order.** Flag first (never forced onto rig*); then try their own camera variant (existing recovery `rig_variants`, e.g. gantry C_x +-32.7 m); a segment that still fails gets H = NaN and is queued for the calibration editor, where it becomes eval GT (not an inference input).
 - **Rollout: Man City first**, then the other known matches.
 - **Accuracy bar (confirmed):** <= 1 m at ordinary depths, <= 2 m at the far touchline, > 5 m = failure. Gate tuned on accepted/rejected review proposals.
 - **Two-level per-segment rig scheme dropped** (P3, section 2.1); rig comes from a match-level global search (section 2.2, pending experiment D).
@@ -57,9 +57,9 @@ set** (calibration GT, plus accepted proposals, section 3b). Consequences:
    research subcommand: it uses `MATCH_DIRS` keys `mancity|villa|bmth`, reads from `/mnt/storage/footy_data`, takes its prior from
    `leave_clip_out_rig(clip)` (GT-derived) and its output (`C / roll_deg / k1` in `ms_*.json`) must be hand-converted to a rig JSON
    (`ptz_v3.md` section C says so). Nothing runs prep -> shared fit -> solve -> combine in one go. A new match has no rig JSON.
-2. **Cross-segment aggregation is one-way and thin.** `fit_shared` sees ~1 anchored frame per segment (95 frames from 162 Man City
-   segments; 42 from 121 Bournemouth), then per-segment solves freeze that rig. No feedback: the segments' own (far richer) evidence
-   never refines the rig, and no per-segment disagreement is measured.
+2. **No per-segment disagreement measure.** `fit_shared` sees ~1 anchored frame per segment (95 frames from 162 Man City
+   segments; 42 from 121 Bournemouth), then per-segment solves freeze that rig. (P3: more evidence per segment did not improve the rig;
+   search/convergence did, section 2.1.) Nothing scores how well each segment agrees with the shared rig (section 2.2 (d)).
 3. **No outlier-segment handling.** Different-camera segments are only handled in the weak-segment recovery (`rig_variants`: C_x = 0, +-32.7 m, chosen from 4 probe frames), only
    when the standard pass accepts <50%, and the variant is stored in `meta.json`/`camera_variant`, not diagnosed per segment from the main run.
 4. **Combine is not run by any flow**, and `rerun_weak` handling is by directory convention.
@@ -74,7 +74,7 @@ set** (calibration GT, plus accepted proposals, section 3b). Consequences:
 ### 1.3 Other local branches/worktrees (searched)
 
 - Every calibration branch I could check is already merged into main or contains nothing orchestration-related: `exp/calib-temporal-flow`, `exp/calib-temporal-weak-vit`, `feat/calibration-match-files`, `feat/calibration-store` are 0 commits ahead of origin/main.
-- The only whole-match orchestration is the **jobs-repo** flow above (`~/code/jobs`, own git repo, default `code_ref=exp/calib-temporal-flow`, a branch now merged). It covers fan-out + resume only; nothing for the shared rig, combine, gate, ingest, or versioning. The design below extends that flow; it does not duplicate it.
+- The only whole-match orchestration is the **jobs-repo** flow above (`~/code/jobs`, own git repo, default `code_ref` now pinned to a footy-track main sha by P0). It covers fan-out + resume only; nothing for the shared rig, combine, gate, ingest, or versioning. The design below extends that flow; it does not duplicate it.
 - `footy_calibration.py` in jobs is the LLM pre-labeller (proposals), `footy_pnlcalib.py` is the (deferred) trained-detector path: both unrelated.
 
 ## 2. Rig scheme: match-level global search, then fixed-rig solves (U, pending experiment D)
@@ -120,7 +120,7 @@ Versioning and metrics: the calibration dataset is GT; V3 output is a model resu
 ## 3b. Human review: the existing proposals page (U)
 
 Reuse the existing review path (V): `labeller/calibration_proposals.py` reads `calibration_proposals/<clip>.json`; **accept** copies a proposal into `calibration_gt` with `origin`; **reject** records a reason. No new verdict mode, log, table or job kind on the match page.
-- **Exporter** (new, after combine): for each sampled frame, project the **visible pitch keypoints through that frame's stored H** into proposal keypoints, so accepting reproduces H; origin `ptz_v3@<version_id>`; drawn from the stored row, never recomputed.
+- **Exporter** (new, after combine): for each sampled frame, project the **visible pitch keypoints through that frame's stored H** into proposal keypoints, then **distort them with the row's k1** (division model, as `lens.py` / the editor do: stored H takes undistorted coords, proposal points are observed coords), so accepting reproduces H and k1; origin `ptz_v3@<version_id>`; drawn from the stored row, never recomputed.
 - **Sampling** (stratified, fixed seed `default_rng(sha256(match, seed))` over global frame ids, so every version is asked about the same frames): ~300 frames per match; status (accepted 50%, calibrated-not-accepted 25%, uncalibrated main-camera 10%, not-broadcast negatives 5%); zoom / pan / far-touchline-visible tertiles; segment boundaries and recovery seams; >= 5 frames per flagged or recovered segment; <= 3 per segment per stratum; >= 1 per segment of >= 100 frames. Inclusion probabilities stored with each proposal.
 - **Circularity rule:** proposals from version V are never used to score version V. Accepted proposals feed % good (Horvitz-Thompson over inclusion probabilities, segment-clustered intervals), gate tuning (precision of `accepted`, F1 threshold sweep; the first version gives only an interval), and GT for *other* versions, always flagged by `origin`. Metres error for a version comes from hand-clicked / hand-edited frames or other-version proposals. Rejection reasons give failure-mode counts.
 - **Neighbours:** a decision covers one frame of one version; never propagate to unsampled frames. Adjacent frames share anchors (correlated errors) and a good sample does not certify a segment: a segment-level claim needs >= 3 decisions spread across it; a rejected accepted-frame queues extra samples from its segment.
@@ -133,7 +133,7 @@ Reuse the existing review path (V): `labeller/calibration_proposals.py` reads `c
 - **k1 disagreement**: lines 0.027-0.034 vs GT points 0.0147 (Emirates), 0.009-0.019 vs 0.035 (Bournemouth). Unresolved; fixing it costs nothing measurable in pitch error on 20 + 5 GT frames but the true lens is unknown. Mitigation: fixed per-ground k1, k1 divergence reported.
 - **Acceptance is not validated against GT** (F1 >= 0.5 chosen by the author; the sample is small). Gate thresholds are provisional until section 3 metrics exist.
 - **Frame-index correctness**: seek inaccuracy and dropped frames (Bournemouth segments hold ~13% fewer frames than `segments.json`; `CAP_PROP_POS_FRAMES` not exact) matter for the global-frame mapping in combine (`pts_frame_map`); a pts-based map exists, but is verified only on a few segments.
-- **Cost surprises**: 2-3 passes (7-21 CPU-h Man City on the desktop); desktop is shared with GPU/other flows; memory fault history (`desktop-ubuntu-hardware-fault`): keep the memory floor (`min_avail_gb`).
+- **Cost surprises**: one fixed-rig pass is 4.4-8.5 CPU-h for Man City on the desktop (P3 measured 8.5 h at a 4 m-off rig); desktop is shared with GPU/other flows; memory fault history (`desktop-ubuntu-hardware-fault`): keep the memory floor (`min_avail_gb`).
 - **Unverified here**: whether the global search finds the basin from a label-free start on other matches (experiment D, Man City only); Bournemouth / Villa untested.
 
 
@@ -159,4 +159,5 @@ Answered: label-free at inference (section 0); outlier segments: flag, then vari
 Open:
 1. **Store trade-off**: ingest only accepted frames (smaller) or all calibrated frames with a quality column? Should machine rows ever appear in `frame_calibration_best`, or only as a separate versioned dataset?
 2. **Bournemouth halves**: the second half has no `split_video_broadcast_frames` yet; needed before P7?
-3. **Desktop time for D**: OK to spend a few CPU-hours on the desktop cpu queue, niced?
+
+(Desktop CPU for experiment D: approved 2026-11-22.)
