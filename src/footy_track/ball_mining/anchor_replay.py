@@ -259,8 +259,8 @@ def simulate_window(  # noqa: PLR0915
         nonlocal cards, covered, res
         if anchors.anchors:
             res = A.generate_window(
-                window_id, clip, start, grid, cands, anchors, frozenset(judged), job_id="replay", generator_ver=gen,
-                teacher_version=None, run_id="replay", search_round=out.taps + 1, window_frames=cfg.window_frames,
+                window_id, clip, start, grid, cands, anchorset=anchors, judged=frozenset(judged),
+                job_id="replay", generator_ver=gen, teacher_version=None, run_id="replay", search_round=out.taps + 1, window_frames=cfg.window_frames,
                 hop_cap=cfg.hop_cap,
             )
             cards = res.cards if cfg.order == "design" else sorted(res.cards, key=_margin_key)
