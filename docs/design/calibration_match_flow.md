@@ -1,6 +1,6 @@
 # Calibration: production flow, match video to versioned per-frame calibration
 
-Status: design, revised 2026-11-22 after the P3 evidence run (rig scheme pending experiment D). No code changed. Classical only (no trained detector, no PnLCalib).
+Status: design, revised 2026-11-22 after the P3 evidence run (rig scheme decided by experiment D). No code changed. Classical only (no trained detector, no PnLCalib).
 Scope: the workflow around the existing PTZ V3 pipeline (`reports/ptz_v3.md`, `ptz_v3_weak.md`), not new geometry.
 Claims marked (V) were checked in code or files this session; (U) are unvalidated or proposed.
 
@@ -20,7 +20,7 @@ Decisions 2026-11-20 (user):
 - **Outlier segments: all three, in order.** Flag first (never forced onto rig*); then try their own camera variant (existing recovery `rig_variants`, e.g. gantry C_x +-32.7 m); a segment that still fails gets H = NaN and is queued for the calibration editor, where it becomes eval GT (not an inference input).
 - **Rollout: Man City first**, then the other known matches.
 - **Accuracy bar (confirmed):** <= 1 m at ordinary depths, <= 2 m at the far touchline, > 5 m = failure. Gate tuned on accepted/rejected review proposals.
-- **Two-level per-segment rig scheme dropped** (P3, section 2.1); rig comes from a match-level global search (section 2.2, pending experiment D).
+- **Two-level per-segment rig scheme dropped** (P3, section 2.1); rig comes from a multistart `fit_shared` over one frame per segment (section 2.2, decided by experiment D).
 - **Review via the existing proposals page** (`calibration_proposals`, accept -> `calibration_gt` with origin, section 3b), not a new verdict mode.
 
 **Decision (user, 2026-11-20): inference is label-free.** No human labels and no GT-derived priors (`leave_clip_out_rig`,
@@ -29,7 +29,7 @@ set** (calibration GT, plus accepted proposals, section 3b). Consequences:
 - The rig prior for a new ground must come from generic camera priors (gantry height/distance ranges) plus the match's
   own evidence; `fit_shared`'s GT-derived prior is for research only. `ptz_v3.md` section 6 already shows a label-free
   rig within 0.16 m of the GT rig on Man City, from a good start; a bad start (5 m off) did not converge, so the
-  start-diversity of the global search carries the weight; P3 confirmed this (section 2.1) and experiment D tests label-free starts.
+  start-diversity of the multistart carries the weight; P3 confirmed this (section 2.1) and experiment D confirmed label-free starts work for pitch accuracy (section 2.2).
 - k1 is estimated from the match (free in the refine, or fixed per ground) or left as a diagnostic; it is never
   seeded from labels (P3: k1 0 / 0.0147 / 0.03 changes GT error by less than noise). Where lines and GT points disagree on k1 (0.032 vs 0.0147), report the effect on metre error
   rather than choosing silently.
@@ -77,9 +77,9 @@ set** (calibration GT, plus accepted proposals, section 3b). Consequences:
 - The only whole-match orchestration is the **jobs-repo** flow above (`~/code/jobs`, own git repo, default `code_ref` now pinned to a footy-track main sha by P0). It covers fan-out + resume only; nothing for the shared rig, combine, gate, ingest, or versioning. The design below extends that flow; it does not duplicate it.
 - `footy_calibration.py` in jobs is the LLM pre-labeller (proposals), `footy_pnlcalib.py` is the (deferred) trained-detector path: both unrelated.
 
-## 2. Rig scheme: match-level global search, then fixed-rig solves (U, pending experiment D)
+## 2. Rig scheme: multistart shared fit, then fixed-rig solves (V, experiment D)
 
-Evidence: P3 (`reports/ptz_v4_two_level.md` on `exp/ptz-two-level-p3`, appendix A). The whole design below is **pending experiment D** (section 5); until D reports, `fit_shared` multistart stays the fallback.
+Evidence: P3 (`reports/ptz_v4_two_level.md` on `exp/ptz-two-level-p3`, appendix A). Experiment D (section 5) decided the rig fit; report `reports/ptz_v5_rig_search.md` (tables `reports/ptz_v5_assets/tables.md`) on branch `exp/ptz-rig-search`.
 
 ### 2.1 Rejected: two-level per-segment rig scheme
 Per-segment free (C, roll) estimates plus a covariance-weighted consensus, then re-solve, was tested label-free on 162 Man City segments (P3) and dropped:
@@ -88,13 +88,14 @@ Per-segment free (C, roll) estimates plus a covariance-weighted consensus, then 
 - Causes (appendix A): (1) the optimiser stops on a long, curved C_y / C_z / f valley: `lm_solve` in `ptz_temporal.py` stops when a step gains < 1e-4 x total cost (2-7 units on a ridge with 130-300 to give), or stalls on a rough floor; tolerance 1e-6 / 1e-8 moves errors e.g. 2.81 -> 1.65 m, more iterations beyond that do not help. From the GT rig the same code stays within 0.1-0.7 m at a lower cost, so the objective is fine for pan-rich segments and each estimate scales with its start (4 m off moves ~1 m; 7.6 m off does not move). (2) Narrow-pan, zoomed segments (pan 2-5 deg, e.g. 080, 104) are genuinely unidentifiable: the per-segment optimum is 2-4 m off. (3) The per-segment covariance is 30-280x overconfident, and estimates sit 15-40 profile sd from the optimum because the solver stopped. Ruled out: evidence diversity as the reason `fit_shared` works (pooling did not move the estimate; multistart seeds near the truth and free k1 did), and anchors (2-6 per segment, no effect). k1 does not matter here (0 / 0.0147 / 0.03 within noise).
 
 ### 2.2 Revised design
-(a) **Match-level global search over camera centre.** Frames sampled across all segments (as `fit_shared` does, ~1 anchored frame per segment, or more); coarse grid over (C_y, C_z) (add C_x and roll as needed) with **fixed-C per-frame pose solves** (1-5 s per seed per segment); lowest total cost wins. Alternative: multistart `fit_shared` seeded on the same grid. Start is a generic label-free prior (gantry height / distance ranges), never from GT.
-(b) **Converged local refine** from the best cell: tighter stopping rule (relative tolerance 1e-6 to 1e-8 instead of 1e-4 in `lm_solve`); k1 free or fixed per ground, as the next experiment decides (P3: k1 barely matters).
+(a) **Rig fit (experiment D result): `fit_shared_multistart` over one frame per segment** (the middle frame of each segment the lines-only search accepts; 89 units on Man City), started from the generic label-free prior (gantry height / distance ranges, never GT), **k1 free**, with the **tight LM stopping rule on the finalists** (`rel_tol=1e-8`, `n_iter=100`; `lm_solve` takes `rel_tol`, default `LM_REL_TOL = 1e-4` so other callers are unchanged). The coarse (C_y, C_z) grid search with fixed-C pose solves (E3) was not needed: about 3x the CPU and no better.
+(b) **Cost and evidence:** about 3.3 CPU-min per match for the rig fit (vs 2.7 for the old rule, 10 for the grid search). All 18 label-free rigs (3 starts, 4 to 7.6 m off) met the accuracy bar on the 39 answered Man City GT frames (frame median 0.26-0.45 m, far-touchline p95 1.4-1.8 m, nothing above 5 m); E2 with k1 free had the smallest start-to-start spread (0.30-0.31 m). k1 free was not worse than fixed (small sample).
+**Caveat: the rig itself is not identified.** Fitted C lies 0.2-2.9 m from the GT-points rig, and the 89-frame cost is flat to about 1% along the C_y / C_z / f ridge, so it cannot rank rigs inside that scatter (the GT-points rig had a higher cost than 13 of 18 fits). The per-frame pose absorbs the error: a rig 2-3 m off costs only 0.05-0.2 m of frame-median pitch error. Consequences: (i) rig-hash versions (section 2.3) will change between runs and starts even when pitch accuracy does not, so a version bump is not evidence of a change in quality; (ii) evaluation must be on pitch metres (`eval_result`, GT frames), never on rig distance or rig cost.
 (c) **Fixed-rig per-segment solves** as today (`free_shared=()`, recovery pass for weak segments, variants for second cameras).
 (d) **Per-segment diagnostic, no per-segment rig fit:** fixed-C profile cost at the shared rig (1-5 s per segment) plus calibrated / accepted fraction from `meta.json`. P3 shows the fractions already isolate the six gantry segments (0% calibrated) with no new code.
 (e) **Deferred:** a bigger joint solve over many frames, and cross-segment rotation-only links (stacking frames of different segments on each other). Test only once (a)/(b) are fixed.
 
-Cost class: the existing fit (~0.1 CPU-h) plus a grid of fixed-C solves, then one fixed-rig pass (Man City 97.6k frames, desktop 0.16-0.25 CPU-s/frame, 4.4-7 CPU-h); no multi-pass iteration. Heavy CPU on the desktop only, one heavy process (`mini-cpu-one-heavy-process`).
+Cost class: the rig fit (~3.3 CPU-min), then one fixed-rig pass (Man City 97.6k frames, desktop 0.16-0.25 CPU-s/frame, 4.4-7 CPU-h); no multi-pass iteration. Heavy CPU on the desktop only, one heavy process (`mini-cpu-one-heavy-process`).
 
 ### 2.3 Versioning and partial re-runs
 - Work dir stem `<clip>@<rig stem>-<hash8>` (P0, merged) so a changed rig never reuses a stale dir under `skip_existing`.
@@ -105,7 +106,7 @@ Cost class: the existing fit (~0.1 CPU-h) plus a grid of fixed-C solves, then on
 New flow `calibrate-match` in `~/code/jobs` (own deployment, pool `cpu`, parent on `mini-host`/merlin; children use the `desktop` queue). Parameters: `match`, `ground`, `version` (e.g. `ptz_v3`), `max_cpu_hours`, `dry_run`, `resume`. No rig JSON in production (label-free); an optional `rig_json` is an eval-only, `contaminated` path.
 
 1. **plan**: read `segments.json`, segment hashes, dry-run CPU estimate, refuse if over budget.
-2. **rig search** (desktop, one process): section 2.2 (a)+(b); writes `rig_search.json` (grid costs, chosen rig, refine result, k1). Abort-with-report if the cost surface has no clear winner (wrong-camera match, e.g. Bournemouth).
+2. **rig search** (desktop, one process): section 2.2 (a)+(b); writes `rig_search.json` (per-start screening and final costs, chosen rig, k1). Abort-with-report if the finalists disagree wildly or most segments are rejected (wrong-camera match, e.g. Bournemouth); the cost cannot rank rigs within ~1-3 m, so do not gate on small cost differences.
 3. **fixed-rig solves**: fan out the existing `ptz-temporal-match` machinery (reuse `calibrate_segment`, do not fork) with the rig fixed; weak segments via the existing recovery / variants.
 4. **diagnostic + gate** (per frame, written as `quality`): accepted (F1 >= 0.5 both sides) / calibrated-unconfirmed / uncalibrated / `other_camera`; per segment the profile cost and accepted / calibrated fractions. Abstain (NaN H) for segments with no confirmed anchor or unresolved outliers; no interpolation across abstained frames; unresolved segments are queued for the calibration editor (eval GT, not an inference input).
 5. **Combine**: `combine_match` (existing), manifest extended with rig, `rig_search.json` hash, per-segment diagnostic, code sha; `KNOWN_MATCHES` becomes a parameter.
@@ -129,12 +130,12 @@ Reuse the existing review path (V): `labeller/calibration_proposals.py` reads `c
 
 - **Bournemouth is a different camera**: Vitality is low (C_z 7.8 m, C_y -50.8) vs Emirates (15.7, -66.6); lines weak (23/121 anchors accepted at F1 >= 0.55); GT rig from 7 frames (C_y bootstrap sd 1.6 m); k1 0.035 (sd 0.018) vs 0.0147 Emirates. Rig does NOT transfer between grounds (`ptz_v2.md`: "transfer weaker"); per-ground rig is required. Within Bournemouth the label-free C landed 0.14 m from the rig (multi-start), so within-match estimation works; the 2nd-half has no segments dir. Only one match per ground has been looked at: *rig transfer between matches of the same ground is assumed, not tested beyond Man City -> Villa (leave-match-out, 19 GT frames, all answered after the rig change, median 0.45 m)*.
 - **Second camera positions inside a match**: Man City gantry (C_x +-32.7) on ~8 of 22 weak segments, Bournemouth seg100 at C_x -36.6; others (seg015, 066, 083, 103, 156) are unrecoverable by the three tried positions (seg156 fits C_x -11.5 / -21.5). The flow must carry an explicit `unrecoverable` state; 11 of 22 weak segments recovered (0% -> 53% of the weak segments' frames); 9 of the 22 end with 0% calibrated.
-- **Far-touchline metre error is uncharacterised under V3**: V1 far half slightly worse; V3 numbers are grid medians over the whole visible grid. The C_y/f ridge says depth error will grow with distance from the camera. No measurement by depth exists (section 5, experiment D; P3 gives a first split: far third worst in every arm, 0.33-0.51 m median, p95 1.4-1.7 m, 39 frames).
+- **Far-touchline metre error (V3), Man City only**: V1 far half slightly worse; V3 numbers are grid medians over the whole visible grid. The C_y/f ridge says depth error will grow with distance from the camera. Experiment D measured it on Man City (39 GT frames): far third median 0.34-0.63 m, p95 1.4-1.8 m across 18 rigs, within the 2 m bar; other grounds untested.
 - **k1 disagreement**: lines 0.027-0.034 vs GT points 0.0147 (Emirates), 0.009-0.019 vs 0.035 (Bournemouth). Unresolved; fixing it costs nothing measurable in pitch error on 20 + 5 GT frames but the true lens is unknown. Mitigation: fixed per-ground k1, k1 divergence reported.
 - **Acceptance is not validated against GT** (F1 >= 0.5 chosen by the author; the sample is small). Gate thresholds are provisional until section 3 metrics exist.
 - **Frame-index correctness**: seek inaccuracy and dropped frames (Bournemouth segments hold ~13% fewer frames than `segments.json`; `CAP_PROP_POS_FRAMES` not exact) matter for the global-frame mapping in combine (`pts_frame_map`); a pts-based map exists, but is verified only on a few segments.
 - **Cost surprises**: one fixed-rig pass is 4.4-8.5 CPU-h for Man City on the desktop (P3 measured 8.5 h at a 4 m-off rig); desktop is shared with GPU/other flows; memory fault history (`desktop-ubuntu-hardware-fault`): keep the memory floor (`min_avail_gb`).
-- **Unverified here**: whether the global search finds the basin from a label-free start on other matches (experiment D, Man City only); Bournemouth / Villa untested.
+- **Unverified here**: whether the multistart rig fit gives the same pitch accuracy from a label-free start on other matches (experiment D, Man City only); Bournemouth / Villa untested.
 
 
 ## 5. Phased plan (small PRs, each with an acceptance test)
@@ -143,7 +144,7 @@ Status: P0 merged (jobs #3: rig-hash work-dir stem, `KNOWN_MATCHES` parameter). 
 
 | PR | Content | Acceptance |
 |---|---|---|
-| **D (next, experiment, no infra)** | On the **40 Man City GT frames** (10 of 14 GT segments) using cached data: compare (i) existing `fit_shared` from a generic label-free start, current stopping rule vs tight (1e-6 / 1e-8), (ii) match-level (C_y, C_z) grid search with fixed-C pose solves + converged refine; k1 free vs fixed. Report metres error by depth (near / mid / far median, p90/p95, within 1 / 2 / 5 m) and rig distance to the GT-points rig; also from a start 5-8 m off | Decision memo in `reports/`: go/no-go on (a)+(b); target <= 1 m ordinary depths, <= 2 m far touchline, no frame > 5 m, label-free start |
+| **D (done, 2026-11-22; `reports/ptz_v5_rig_search.md` on `exp/ptz-rig-search`)** | On the **40 Man City GT frames** (10 of 14 GT segments) using cached data: compare (i) existing `fit_shared` from a generic label-free start, current stopping rule vs tight (1e-6 / 1e-8), (ii) match-level (C_y, C_z) grid search with fixed-C pose solves + converged refine; k1 free vs fixed. Report metres error by depth (near / mid / far median, p90/p95, within 1 / 2 / 5 m) and rig distance to the GT-points rig; also from a start 5-8 m off | Decision memo in `reports/`: go/no-go on (a)+(b); **result: go on multistart + tight rule + k1 free, grid search dropped (section 2.2)**; target <= 1 m ordinary depths, <= 2 m far touchline, no frame > 5 m, label-free start |
 | P4 | `calibrate-match` flow (jobs): plan, rig search, fixed-rig solves, diagnostic + gate, combine, report | Man City end to end from empty scratch with no rig JSON: manifest records rig, resume after a kill does not re-solve done segments, identical re-run = `unchanged` |
 | P5 | `ingest_match_calibration` + `RunKind.CALIBRATION`, bulk path | row count = calibrated frames; re-run no-op; `frame_calibration_best` still prefers hand GT; 100k rows under ~1 min on the mini |
 | P6 | Eval adapter: `ptz_v3@<version_id>` on GT clips, near/mid/far split, nightly wiring, `/progress` series | `eval_result` rows for the version; contamination flag set for GT-rig variants |
@@ -160,4 +161,4 @@ Open:
 1. **Store trade-off**: ingest only accepted frames (smaller) or all calibrated frames with a quality column? Should machine rows ever appear in `frame_calibration_best`, or only as a separate versioned dataset?
 2. **Bournemouth halves**: the second half has no `split_video_broadcast_frames` yet; needed before P7?
 
-(Desktop CPU for experiment D: approved 2026-11-22.)
+(Desktop CPU for experiment D: approved 2026-11-22; done.)

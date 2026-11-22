@@ -339,3 +339,23 @@ def test_weak_pair_is_a_chain_break_in_segments():
     assert pte.segments(shot, pairs) == [(0, 60)]  # unguarded: one run across the bad pair
     guarded, _ = pt.reject_weak_pairs(pairs)
     assert pte.segments(shot, guarded) == [(0, 30), (31, 60)]
+
+
+def test_lm_rel_tol_default_is_unchanged_and_tight_rule_runs_at_least_as_long():
+    """``rel_tol`` defaults to the production rule (1e-4): omitting it, passing the default, and ``fit_shared`` /
+    ``joint_solve`` defaults are bit-identical; a tighter rule never stops earlier and never ends at a higher cost."""
+    assert pt.LM_REL_TOL == 1e-4
+    rng = np.random.default_rng(2)
+    cams = [_cam(70.0 + 6 * k, 12.0 + (k % 3) * 2.5, 2400.0 + 500 * (k % 4), roll_deg=0.2, k1=0.014) for k in range(10)]
+    cams = [c for c in cams if len(_visible_keypoints(c)) >= 4]
+    truth = np.array([[c.pan, c.tilt, c.logf] for c in cams])
+    units = [pt.Unit(k, [0], (truth[k] + rng.normal(0, 1, 3) * [0.004, 0.003, 0.02])[None], {0: _evidence(c)})
+             for k, c in enumerate(cams)]
+    rig0 = ptz.Rig(C_TRUE + [1.0, 5.0, -2.0], 0.2 * np.pi / 180, 0.014, (5.0, 10.0, 3.0))
+    kw = {"free": ("Cx", "Cy", "Cz", "k1")}
+    a, _, ia = pt.fit_shared(units, rig0, PitchModel(), **kw)
+    b, _, ib = pt.fit_shared(units, rig0, PitchModel(), rel_tol=pt.LM_REL_TOL, **kw)
+    assert np.array_equal(a.vec(), b.vec()) and ia == ib
+    c, _, ic = pt.fit_shared(units, rig0, PitchModel(), rel_tol=1e-9, **kw)
+    assert ic["stage2"]["iters"] >= ia["stage2"]["iters"]
+    assert ic["stage2"]["cost"] <= ia["stage2"]["cost"] + 1e-9
