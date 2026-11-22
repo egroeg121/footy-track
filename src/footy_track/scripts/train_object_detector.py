@@ -8,6 +8,7 @@ It can be configured with command-line arguments for the model, dataset version,
 import argparse
 import os
 from datetime import datetime
+from pathlib import Path
 
 from roboflow import Roboflow
 from ultralytics import YOLO
@@ -47,6 +48,21 @@ def apply_mps_assigner_workaround() -> None:
     TaskAlignedAssigner.forward = cpu_safe
 
 
+def resolve_model_path(model_name: str) -> str:
+    """``yolo11n`` -> ``yolo11n.pt``; an explicit ``.pt``/``.yaml`` path (e.g. fine-tuning from
+    ``/mnt/storage/models/rtdetr_1920_v11/best.pt``) is used as is. Ultralytics' ``YOLO()`` returns an
+    ``RTDETR`` model for an RT-DETR checkpoint, so no other change is needed to train one."""
+    return model_name if model_name.endswith((".pt", ".yaml")) else f"{model_name}.pt"
+
+
+def model_label(model_name: str) -> str:
+    """Path-free model tag for the run name (a ``/`` in it would nest the run directory):
+    ``yolo11n`` -> ``yolo11n``; ``/m/rtdetr_1920_v11/best.pt`` -> ``rtdetr_1920_v11_best``."""
+    path = Path(model_name)
+    stem = path.stem if model_name.endswith((".pt", ".yaml")) else path.name
+    return f"{path.parent.name}_{stem}" if path.parent.name else stem
+
+
 def train_detector(
     model_name: str,
     dataset_version: int,
@@ -60,6 +76,10 @@ def train_detector(
     device: str | None = None,
     workers: int = 8,
     cache: bool | str = True,
+    project: str = "footy_scan_detection",
+    rect: bool = False,
+    fraction: float = 1.0,
+    patience: int = 100,
 ):
     """
     Downloads a dataset from Roboflow (or uses a local path) and trains a YOLO detector.
@@ -96,10 +116,10 @@ def train_detector(
     print(f"Training device: {device}")
 
     # Set up training run
-    run_name = f"{datetime.now():%Y-%m-%d_%H-%M}_model_name={str(model_name)}_dataset_version={dataset_version}_epochs={epochs}_freeze_layers={freeze_layers}_imgsz={imgsz}"
+    run_name = f"{datetime.now():%Y-%m-%d_%H-%M}_model_name={model_label(model_name)}_dataset_version={dataset_version}_epochs={epochs}_freeze_layers={freeze_layers}_imgsz={imgsz}"
     if name_prepend:
         run_name = f"{name_prepend}_{run_name}"
-    model_path = f"{model_name}.pt"
+    model_path = resolve_model_path(model_name)
 
     if device == "mps":
         apply_mps_assigner_workaround()
@@ -120,8 +140,11 @@ def train_detector(
         augment=True,
         plots=True,
         device=device,
-        project="footy_scan_detection",
+        project=project,
         name=run_name,
+        rect=rect,
+        fraction=fraction,
+        patience=patience,
     )
     print("Training complete.")
     print(f"Model and results saved to: {results.save_dir}")
@@ -136,7 +159,8 @@ if __name__ == "__main__":
         "--model",
         type=str,
         default="yolo11n",
-        help="The YOLO model to use (e.g., yolo11n, yolo11m). '.pt' will be appended.",
+        help="The model to use (e.g., yolo11n, yolo11m, rtdetr-l). '.pt' is appended unless the value "
+        "already ends in .pt/.yaml, so a checkpoint path can be given to fine-tune from it.",
     )
     parser.add_argument(
         "--dataset-version",
@@ -204,6 +228,31 @@ if __name__ == "__main__":
         "If set, skips the Roboflow download.",
     )
 
+    parser.add_argument(
+        "--name-prepend", type=str, default="", help="Prefix for the run name."
+    )
+    parser.add_argument(
+        "--project",
+        type=str,
+        default="footy_scan_detection",
+        help="Ultralytics project dir (runs go to <project>/<run name>).",
+    )
+    parser.add_argument(
+        "--rect",
+        action="store_true",
+        help="Rectangular batches (no mosaic): 1920x1088 instead of a 1920x1920 square. "
+        "Needed to fit imgsz 1920 on an 8 GB GPU.",
+    )
+    parser.add_argument(
+        "--fraction",
+        type=float,
+        default=1.0,
+        help="Fraction of the train set to use (e.g. 0.05 for a smoke test).",
+    )
+    parser.add_argument(
+        "--patience", type=int, default=100, help="Early-stop patience."
+    )
+
     args = parser.parse_args()
 
     train_detector(
@@ -218,4 +267,9 @@ if __name__ == "__main__":
         freeze_layers=args.freeze,
         epochs=args.epochs,
         local_dataset=args.local_dataset,
+        name_prepend=args.name_prepend,
+        project=args.project,
+        rect=args.rect,
+        fraction=args.fraction,
+        patience=args.patience,
     )

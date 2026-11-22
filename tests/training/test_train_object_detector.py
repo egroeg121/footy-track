@@ -10,7 +10,11 @@ from pathlib import Path
 
 import pytest
 
-from footy_track.scripts.train_object_detector import train_detector
+from footy_track.scripts.train_object_detector import (
+    model_label,
+    resolve_model_path,
+    train_detector,
+)
 
 
 @pytest.mark.slow
@@ -30,3 +34,13 @@ def test_train_detector_smoke(detection_dataset: Path, staged_workdir: Path) -> 
     assert isinstance(metric, float) and math.isfinite(metric) and metric >= 0, (
         f"expected finite non-negative mAP50-95, got {metric!r}"
     )
+
+
+def test_model_path_and_run_label() -> None:
+    assert resolve_model_path("yolo11n") == "yolo11n.pt"
+    assert resolve_model_path("rtdetr-l") == "rtdetr-l.pt"
+    ckpt = "/mnt/storage/models/rtdetr_1920_v11/best.pt"
+    assert resolve_model_path(ckpt) == ckpt
+    # no path separators in the run-name tag
+    assert model_label(ckpt) == "rtdetr_1920_v11_best"
+    assert model_label("yolo11n") == "yolo11n"
