@@ -5,6 +5,7 @@ jobs client over the real in-process job store (the same one the labeller API se
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime
 
 import pytest
 
@@ -15,7 +16,7 @@ from footy_track.labeller import job_edit, jobs, jobs_client
 from .conftest import LocalApi
 from .test_anchor_search import HC, TC, register_splits  # noqa: F401
 
-DAY = "2026-11-21"
+DAY = datetime.now(UTC).strftime("%Y-%m-%d")  # added_by.ts is stamped with the real UTC clock
 KEY = f"ball-round/{DAY}/1"
 BOX = {"x": 0.4, "y": 0.5, "w": 0.02, "h": 0.04}
 
@@ -136,7 +137,7 @@ def test_daily_cap_counts_cards_created_today(ds, cl):
 
 
 def test_cards_added_today_to_a_round_of_an_earlier_day_count_against_the_daily_cap(ds, cl):
-    jid = submit([seed(i) for i in range(10)], key="ball-round/2026-11-20/1")
+    jid = submit([seed(i) for i in range(10)], key="ball-round/2020-01-01/1")
     out = push(cl, jid, [doc([spec(1000 + i, i) for i in range(30)])], daily_max=14)  # tick sees 0 today; +0 added yet
     assert out["added"] == 14
     out = push(cl, jid, [doc([spec(2000 + i, i) for i in range(30)])], daily_max=14)
