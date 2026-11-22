@@ -125,6 +125,7 @@ def test_close_writes_nothing_into_the_marks_or_gt_sidecars(
     assert {p.relative_to(ds).parts[:2] for p in changed} == {
         ("ball_mining", "state"),
         ("ball_mining", "closed"),
+        ("ball_mining", "locks"),  # the per-job mutex file
     }
     assert not any(
         "ball_pool_auto" in p.read_text() for p in ds.rglob("*") if p.is_file()

@@ -2,8 +2,9 @@
 
 ``plan``   mine the pool and return the cards + report; nothing is written to the labeller.
 ``create`` tick rule (open training cards < 100 and today's cards < 600), then submit one ``ball_check`` job with
-           idempotent key ``ball-round/<date>/<n>`` and two ``prefect`` hooks attached (``ROUND_HOOKS``): every 50 verdicts the
-           labeller queues ``ball-refit/ball-refit``, on completion ``ball-round-close/ball-round-close``. The flows (jobs repo
+           idempotent key ``ball-round/<date>/<n>`` and three ``prefect`` hooks attached (``ROUND_HOOKS``): every 50 verdicts the
+           labeller queues ``ball-refit/ball-refit``, every 10 ``ball-anchor-search/ball-anchor-search`` (anchor iteration,
+           ``anchor_search.py``; it appends bucket-``S`` cards to this same job), on completion ``ball-round-close/ball-round-close``. The flows (jobs repo
            ``footy_ball_round.py``) run ``ball_round refit`` / ``close`` (``refit.py`` / ``close.py``); the labeller does no work.
 ``status`` open / today counts, the tick decision and the latest state file.
 
@@ -39,14 +40,21 @@ DAILY_CARDS_MAX = 600
 DEFAULT_DATASET = traindata.TRAIN_DATASET  # the round's own dataset: clips linked by ``create_round``, verdicts land in its marks
 DEFAULT_DATA_ROOT = "/mnt/storage/footy_data"
 
-#: Hooks attached to every round job (``hooks.validate_hooks`` shape). Both are ``prefect`` actions: the labeller only queues
+#: Hooks attached to every round job (``hooks.validate_hooks`` shape). All are ``prefect`` actions: the labeller only queues
 #: the deployment, with ``{job_id, hook, trigger, dataset, labeller_url?}`` (the job is named ``job_id``, there is no way to
 #: add the job ref to ``params`` at submit time since the id does not exist yet); the flows take those and run the CLI.
 REFIT_DEPLOYMENT = "ball-refit/ball-refit"
 CLOSE_DEPLOYMENT = "ball-round-close/ball-round-close"
+SEARCH_DEPLOYMENT = "ball-anchor-search/ball-anchor-search"
+#: Bucket tag of appended search cards. They count as open training cards (``tick_decision`` counts every card of the job) but
+#: their verdicts are excluded from the calibrated fit (``refit.exclude_search``).
+SEARCH_BUCKET = refit_mod.SEARCH_BUCKET
+SEARCH_EVERY_N = 10
 ROUND_HOOKS = [
     {"name": "refit", "trigger": {"every_n": 50, "min_interval_s": 60},
      "action": {"type": "prefect", "deployment": REFIT_DEPLOYMENT, "params": {}}},
+    {"name": "anchor-search", "trigger": {"every_n": SEARCH_EVERY_N, "min_interval_s": 60},
+     "action": {"type": "prefect", "deployment": SEARCH_DEPLOYMENT, "params": {}}},
     {"name": "close", "trigger": {"on_done": True},
      "action": {"type": "prefect", "deployment": CLOSE_DEPLOYMENT, "params": {}}},
 ]  # fmt: skip

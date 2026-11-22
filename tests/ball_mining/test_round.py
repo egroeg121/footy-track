@@ -110,13 +110,14 @@ def test_job_body_is_a_valid_ball_check_job_with_the_refit_and_close_hooks(
     )
     assert [(h["name"], h["trigger"].get("every_n"), h["trigger"].get("on_done", False), h["action"]["type"], h["action"]["deployment"]) for h in body["hooks"]] == [
         ("refit", 50, False, "prefect", "ball-refit/ball-refit"),
+        ("anchor-search", 10, False, "prefect", "ball-anchor-search/ball-anchor-search"),
         ("close", None, True, "prefect", "ball-round-close/ball-round-close")]  # fmt: skip
     job, created = jobs.submit(body, "train")  # the real validator: items, hooks, key
     again, created2 = jobs.submit(body, "train")
     assert (
         created and not created2 and again["id"] == job["id"]
     )  # idempotent on the key
-    assert [h["name"] for h in job["hooks"]] == ["refit", "close"]
+    assert [h["name"] for h in job["hooks"]] == ["refit", "anchor-search", "close"]
     assert all(jobs.is_inline(it) for it in job["items"])
 
 
@@ -135,6 +136,7 @@ def test_create_submits_once_then_the_tick_rule_blocks_the_next_round(
     assert sub["device"] == "phone"  # Ball Check cards are a phone task on the todo board
     assert [h["action"]["deployment"] for h in sub["hooks"]] == [
         "ball-refit/ball-refit",
+        "ball-anchor-search/ball-anchor-search",
         "ball-round-close/ball-round-close",
     ]  # prefect actions: the labeller only triggers the flows
     log = json.loads(

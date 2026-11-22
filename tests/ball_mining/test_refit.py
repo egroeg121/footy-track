@@ -383,12 +383,14 @@ def test_round_hooks_are_prefect_actions_for_the_two_deployments():
     cleaned = hooks.validate_hooks("ball_check", ROUND_HOOKS)
     assert [(h["name"], h["trigger"].get("every_n"), h["trigger"]["on_done"], h["action"]["type"], h["action"]["deployment"]) for h in cleaned] == [
         ("refit", 50, False, "prefect", "ball-refit/ball-refit"),
+        ("anchor-search", 10, False, "prefect", "ball-anchor-search/ball-anchor-search"),
         ("close", None, True, "prefect", "ball-round-close/ball-round-close"),
     ]  # fmt: skip
     assert all(
         h["trigger"]["min_interval_s"] >= hooks.MIN_PREFECT_INTERVAL_S for h in cleaned
     )
     assert [h["action"]["params"] for h in cleaned] == [
+        {},
         {},
         {},
     ]  # the job ref arrives as job_id, added by the labeller
@@ -455,3 +457,64 @@ def test_gold_check_counts_only_a_plain_ball_as_accepting_the_planted_error():
     assert out["accepted_wrong"] == 0 and not out["flagged"]  # fixing or rejecting a shifted gold box is the right answer
     out = gold_check(rows + [{"bucket": "G", "verdict": "ball"}])
     assert out["accepted_wrong"] == 1 and out["flagged"]  # 1/6 > 10 %
+
+
+# ---- anchor-search (bucket S) cards and the per-job mutex (design task 5, 7.4) -----------------------
+
+
+def _s_card(frame, p=0.95):
+    return card(frame, "S", p, scorer=None)
+
+
+def test_exclude_search_drops_only_s_rows():
+    rows = [{"bucket": b} for b in ("R", "A", "S", "U", "S", "G")]
+    assert [r["bucket"] for r in refit.exclude_search(rows)] == ["R", "A", "U", "G"]
+
+
+def test_s_verdicts_never_reach_learn_then_test_or_the_platt_fit(api, ds, monkeypatch):
+    items, truth, f = round_items()
+    s_items = [_s_card(f + 100 * i, 0.95) for i in range(40)]  # S cards: all rejected, p_real high, scorer_version None
+    job = submit(items + s_items, ROUND_HOOKS)
+    for pos, it in enumerate(items):
+        answer(ds, job["id"], pos, truth[it["frame_index"]])
+    _, without_s = run_refit(api, job["id"], reorder=False)
+    for pos in range(len(items), len(items) + 40):
+        answer(ds, job["id"], pos, "not_ball")
+    seen = []
+    for name in ("learn_then_test", "learn_then_test_per_match", "fit_platt"):
+        real = getattr(refit, name)
+
+        def spy(*a, _real=real, _name=name, **k):
+            rows = a[0]
+            seen.append((_name, [r["bucket"] for r in rows] if _name != "fit_platt" else None, len(rows)))
+            return _real(*a, **k)
+
+        monkeypatch.setattr(refit, name, spy)
+    _, with_s = run_refit(api, job["id"], reorder=False)
+    assert with_s["version"] > without_s["version"]
+    for name, buckets, _ in seen:
+        if buckets is not None:
+            assert "S" not in buckets, name
+    assert any(n == "learn_then_test" for n, *_ in seen)
+    assert with_s["calibration"] == without_s["calibration"]  # same n, a, b: S did not enter the fit
+    assert with_s["threshold"] == without_s["threshold"]
+    assert with_s["n_search_excluded"] == 40
+    assert with_s["hit_rates"]["S"] == {"n": 40, "correct": 0, "wrong": 40, "unsure": 0, "hit_rate": 0.0}  # reported as its own bucket
+
+
+def test_job_lock_second_holder_is_refused_then_released(tmp_path):
+    with refit.job_lock(tmp_path, "j1"):
+        with pytest.raises(refit.JobBusy), refit.job_lock(tmp_path, "j1"):
+            pass
+        with refit.job_lock(tmp_path, "j2"):  # another job is independent
+            pass
+    with refit.job_lock(tmp_path, "j1"):
+        pass
+
+
+def test_refit_skips_cleanly_while_the_job_is_locked(api, round_job, ds):
+    with refit.job_lock(ds, round_job["id"]):
+        out = refit.refit_round(round_job["id"], client=api)
+    assert out["status"] == "skipped_busy"
+    assert refit.latest_state(ds) is None
+    assert not [c for c in api.calls if c[0] == "reorder"]

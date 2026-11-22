@@ -253,6 +253,8 @@ Because `emit` can drop events and a labeller restart loses the in-memory counte
 5. `autolabel-queue-tick` (15 min): after the round tick, also top up open S cards through the sweep flow when below `open_cards_max`, inside the same daily cap. Keep `auto_conf` at 0.95 (`ball_sampling.md` §3.3).
 6. Extend `ROUND_HOOKS` in this repo (`round.py`) with the third hook; set `FOOTY_HOOKS_PREFECT_ALLOW` to include the new deployments.
 
+**Status (task 5, BUILT in this repo):** `ROUND_HOOKS` has the third hook `anchor-search` (`every_n` 10, `min_interval_s` 60, prefect `ball-anchor-search/ball-anchor-search`, params `{}`; the labeller adds `{job_id, hook, trigger, dataset, labeller_url?}`). The CLI is `python -m footy_track.scripts.ball_anchor_search run --job <ref> | sweep` (docstring there = the exact contract of the JOBS-REPO flow: `mode == "sweep"` or `job_id is None` runs `sweep`, else `run --job <job_id>`; both take `--labeller-url`). Both take the per-job mutex `refit.job_lock` (flock on `<marks>/ball_mining/locks/<job>.lock`) that refit and close also take, so the Prefect tag `ball-job:<job_id>` has a local twin; a busy job is skipped (exit 0). Bucket `S` verdicts are removed before the Platt fit and Learn-then-Test (`refit.exclude_search`) and only reported as their own `hit_rates` bucket. Items 1-5 of the list above remain JOBS-REPO work.
+
 ## 8. Task list (dependency order)
 
 Legend as in `full_frame_labelling.md` §5. All NEW.
