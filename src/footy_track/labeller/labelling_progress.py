@@ -47,18 +47,21 @@ GOLD_METHODS = frozenset({"hand_series", "hand_frame", "verdict"})
 SILVER_METHODS = frozenset({"offline_audited"})
 _LABELLED = "('complete', 'absent')"
 _LABELLED_SET = frozenset({"complete", "absent"})
+# A ball row with a ``reason`` is not a plain label: absent+not_broadcast is ``unusable`` and
+# partial+reason is ``deferred`` (ball_anchor_iteration.md 3.1); neither is "ball labelled".
 
 _FRAMES_SQL = """
-    SELECT game_id, ball, player, count(*) FROM (
+    SELECT game_id, ball, player, ball_reason, count(*) FROM (
         SELECT game_id, frame_index,
                coalesce(max(state) FILTER (WHERE cls_group = 'ball'), 'unreviewed') AS ball,
-               coalesce(max(state) FILTER (WHERE cls_group = 'player'), 'unreviewed') AS player
+               coalesce(max(state) FILTER (WHERE cls_group = 'player'), 'unreviewed') AS player,
+               max(reason) FILTER (WHERE cls_group = 'ball') AS ball_reason
         FROM frame_label_state GROUP BY game_id, frame_index
     ) GROUP BY ALL
 """
 _METHOD_SQL = f"""
     SELECT game_id, cls_group, method, coalesce(teacher_version, ''), count(*)
-    FROM frame_label_state WHERE state IN {_LABELLED}
+    FROM frame_label_state WHERE state IN {_LABELLED} AND reason IS NULL
     GROUP BY ALL
 """
 
@@ -72,7 +75,9 @@ _GROUP_KEYS = ("frames", *_STATES)
 
 
 _VIDEO_SUFFIXES = {".mp4", ".mov", ".avi", ".mkv"}
-_COUNT_KEYS = ("frames", "ball_labelled", "player_labelled", "fully_labelled", "partial")
+_COUNT_KEYS = (
+    "frames", "ball_labelled", "player_labelled", "fully_labelled", "partial", "ball_unusable", "ball_deferred",
+)
 _file_cache: dict[tuple, Any] = {}
 
 
@@ -167,6 +172,129 @@ def _split_of(game_id: str) -> str:
         return "unknown"
 
 
+# -- expected set F per job (ball_anchor_iteration.md 3.2 / 3.3) -------------------------------------
+
+STATES = ("ball", "no_ball", "unusable", "deferred")
+DEFERRED_FLAG_FRACTION = 0.10
+FAMILIES = (("eval", "ball-eval/"), ("train", "ball-round/"))  # separate job_key namespaces
+
+_FP_SQL = """
+    SELECT s.job_key, coalesce(s.window_id, ''), count(*) AS n,
+           count(*) FILTER (WHERE b.state = 'complete') AS n_ball,
+           count(*) FILTER (WHERE b.state = 'absent' AND b.reason IS NULL) AS n_no_ball,
+           count(*) FILTER (WHERE b.state = 'absent' AND b.reason = 'not_broadcast') AS n_unusable,
+           count(*) FILTER (WHERE b.state = 'absent' AND b.reason IS NOT NULL
+                            AND b.reason != 'not_broadcast') AS n_odd,
+           count(*) FILTER (WHERE b.state = 'partial' AND b.reason IS NOT NULL) AS n_deferred
+    FROM selected_frame s
+    LEFT JOIN (SELECT game_id, frame_index, state, reason FROM frame_label_state
+               WHERE cls_group = 'ball') b
+      ON b.game_id = s.game_id AND b.frame_index = s.frame_index
+    GROUP BY s.job_key, coalesce(s.window_id, '')
+"""
+
+
+def family_of(job_key: str) -> str:
+    for name, prefix in FAMILIES:
+        if job_key.startswith(prefix):
+            return name
+    return "other"
+
+
+def _bucket(n: int, ball: int, no_ball: int, unusable: int, deferred: int) -> dict[str, Any]:
+    terminal = ball + no_ball + unusable + deferred
+    return {
+        "frames_total": n,
+        "frames_terminal": terminal,
+        "by_state": {
+            "ball": ball, "no_ball": no_ball, "unusable": unusable, "deferred": deferred,
+            "outstanding": n - terminal,
+        },
+        # design 3.2: done only when every selected frame is terminal; a window with >10% deferred is flagged
+        "done": n > 0 and terminal == n,
+        "deferred_fraction": round(deferred / n, 4) if n else 0.0,
+        "flag_deferred": bool(n) and deferred / n > DEFERRED_FLAG_FRACTION,
+    }
+
+
+def _add(a: dict[str, Any], b: dict[str, Any]) -> None:
+    a["frames_total"] += b["frames_total"]
+    a["frames_terminal"] += b["frames_terminal"]
+    for k, v in b["by_state"].items():
+        a["by_state"][k] += v
+
+
+def _empty_frame_progress(state: str, error: str | None = None) -> dict[str, Any]:
+    zero = _bucket(0, 0, 0, 0, 0)
+    fams = {name: {"totals": _bucket(0, 0, 0, 0, 0), "jobs": []} for name, _ in (*FAMILIES, ("other", ""))}
+    return {"state": state, "error": error, "families": fams, "totals": zero}
+
+
+def frame_progress_from_rows(rows: list[tuple]) -> dict[str, Any]:
+    """Aggregate ``_FP_SQL`` rows into ``{families: {eval|train|other: {totals, jobs: [...]}}, totals}``.
+    Each job (and its ``windows``) carries ``frames_total / frames_terminal / by_state / done``."""
+    out = _empty_frame_progress("ok" if rows else "empty")
+    jobs: dict[str, dict[str, Any]] = {}
+    for key, window, n, ball, no_ball, unusable, odd, deferred in rows:
+        # absent+other reason is not producible by terminal writers; count it as outstanding (not terminal)
+        _ = odd
+        w = {"window_id": window or None, **_bucket(n, ball, no_ball, unusable, deferred)}
+        j = jobs.setdefault(key, {"job_key": key, "windows": [], **_bucket(0, 0, 0, 0, 0)})
+        j["windows"].append(w)
+        _add(j, w)
+    for j in jobs.values():
+        j.update({k: v for k, v in _bucket(
+            j["frames_total"], j["by_state"]["ball"], j["by_state"]["no_ball"],
+            j["by_state"]["unusable"], j["by_state"]["deferred"]).items()
+            if k in ("done", "deferred_fraction", "flag_deferred")})
+        j["done"] = bool(j["windows"]) and all(w["done"] for w in j["windows"])
+        j["windows"].sort(key=lambda w: w["window_id"] or "")
+        fam = out["families"][family_of(j["job_key"])]
+        fam["jobs"].append(j)
+        _add(fam["totals"], j)
+        _add(out["totals"], j)
+    for fam in out["families"].values():
+        fam["jobs"].sort(key=lambda j: j["job_key"])
+        fam["totals"]["done"] = bool(fam["jobs"]) and all(j["done"] for j in fam["jobs"])
+    return out
+
+
+def get_frame_progress(db: Path | None = None) -> dict[str, Any]:
+    """Frame-level progress of every job's expected set F (``selected_frame``) against the ball
+    terminal states in ``frame_label_state``. Tolerant: a store without ``selected_frame`` (or
+    without the ``reason`` column) gives ``state="empty"`` and zero counts, never an exception."""
+    db = Path(db) if db else default_db_path()
+    if not db.is_file():
+        return _empty_frame_progress("missing")
+    try:
+        with store_lock(db, exclusive=False):
+            conn = duckdb.connect(str(db), read_only=True)
+            try:
+                rows = conn.execute(_FP_SQL).fetchall()
+            finally:
+                conn.close()
+    except StoreLocked:
+        return _empty_frame_progress("busy", "store is being written; retry shortly")
+    except duckdb.Error as e:
+        msg = str(e)
+        if "does not exist" in msg or "not found" in msg.lower() or "not have a column" in msg:
+            return _empty_frame_progress("empty")
+        return _empty_frame_progress("error", msg.splitlines()[0][:300])
+    except OSError as e:
+        return _empty_frame_progress("error", str(e)[:300])
+    return frame_progress_from_rows(rows)
+
+
+def job_frame_progress(job_key: str, db: Path | None = None) -> dict[str, Any] | None:
+    """``{frames_total, frames_terminal, by_state}`` for one job_key, or ``None`` when it has no F rows."""
+    fp = get_frame_progress(db)
+    for fam in fp["families"].values():
+        for j in fam["jobs"]:
+            if j["job_key"] == job_key:
+                return {k: j[k] for k in ("frames_total", "frames_terminal", "by_state", "done")}
+    return None
+
+
 def _empty(state: str, error: str | None = None) -> dict[str, Any]:
     return {
         "state": state,
@@ -177,6 +305,7 @@ def _empty(state: str, error: str | None = None) -> dict[str, Any]:
         "by_split": {},
         "tiers": {"gold": 0, "silver": {"total": 0, "by_teacher_version": {}}, "other": 0},
         "teacher_versions": {},
+        "frame_progress": _empty_frame_progress("empty"),
         "groups": {
             g: {**GROUP_INFO[g], "totals": _finish_group(_empty_group(), None), "by_method": {}, "by_split": {},
                 "tiers": {"gold": 0, "silver": {"total": 0, "by_teacher_version": {}}, "other": 0}, "clips": []}
@@ -220,18 +349,27 @@ def get_labelling(
     if clips_dir is None and marks_dir is None:
         clips_dir, marks_dir = _default_dirs()
     frame_rows, method_rows, state, error = _read_store(db)
+    frame_progress = get_frame_progress(db)
     videos = _video_index(clips_dir)
-    if state != "ok" and not videos:
+    if state != "ok" and not videos and frame_progress["state"] != "ok":
         return _empty(state, error)
 
     out = _empty("ok" if state == "ok" else state, error)
+    out["frame_progress"] = frame_progress
     totals = out["totals"]
     by_split: dict[str, dict[str, int]] = defaultdict(_empty_counts)
     # per clip: legacy counts + per-group state counts, from (ball_state, player_state) combos
     acc: dict[str, dict[str, Any]] = {}
-    for game_id, ball, player, n in frame_rows:
+    for game_id, ball_raw, player, ball_reason, n in frame_rows:
         a = acc.setdefault(game_id, {"c": _empty_counts(), "ball": _empty_group(), "player": _empty_group()})
         a["c"]["frames"] += n
+        ball = ball_raw
+        unusable = ball == "absent" and ball_reason == "not_broadcast"
+        deferred = ball == "partial" and ball_reason is not None
+        a["c"]["ball_unusable"] += n * unusable
+        a["c"]["ball_deferred"] += n * deferred
+        if ball_reason is not None and ball in _LABELLED_SET:
+            ball = "partial"  # reasoned (unusable) ball rows are terminal for F but not a plain label
         lb, lp = ball in _LABELLED_SET, player in _LABELLED_SET
         a["c"]["ball_labelled"] += n * lb
         a["c"]["player_labelled"] += n * lp
@@ -255,7 +393,9 @@ def get_labelling(
         row = {
             "clip": game_id, "frames": a["c"]["frames"], "clip_frames": cf,
             "ball_labelled": a["c"]["ball_labelled"], "player_labelled": a["c"]["player_labelled"],
-            "fully_labelled": a["c"]["fully_labelled"], "partial": a["c"]["partial"], "split": _split_of(game_id),
+            "fully_labelled": a["c"]["fully_labelled"], "partial": a["c"]["partial"],
+            "ball_unusable": a["c"]["ball_unusable"], "ball_deferred": a["c"]["ball_deferred"],
+            "split": _split_of(game_id),
             "player_marked_sidecar": (_cached("s", side, _sidecar_player_frames) or 0) if side else 0,
             "groups": {g: _finish_group(dict(a[g]), cf) for g in GROUPS},
         }
