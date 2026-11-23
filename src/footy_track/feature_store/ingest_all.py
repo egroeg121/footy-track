@@ -85,6 +85,7 @@ class IngestAllReport:
     marks_dirs: list[str] = field(default_factory=list)
     gt_clips: int = 0
     gt_detections: int = 0
+    player_inferred_complete: int = 0
     gt_frames: int = 0
     ball_check_clips: int = 0
     ball_check_verdicts: int = 0
@@ -106,7 +107,7 @@ class IngestAllReport:
         out = [
             f"store: {self.db}",
             f"marks dirs: {', '.join(self.marks_dirs) or '(none)'}",
-            f"ball GT: clips={self.gt_clips} frames={self.gt_frames} detections={self.gt_detections}",
+            f"ball GT: clips={self.gt_clips} frames={self.gt_frames} detections={self.gt_detections} inferred_player_complete={self.player_inferred_complete}",
             f"ball checks: clips={self.ball_check_clips} verdicts={self.ball_check_verdicts}",
             f"calibration: games={self.calibration_games} gt_frames={self.calibration_gt_frames} "
             f"proposal/flag_frames={self.calibration_proposal_frames}",
@@ -193,6 +194,8 @@ def _ingest_sidecars(
     marks: list[Path],
     video_dirs: list[Path],
     rep: IngestAllReport,
+    *,
+    infer_player_complete: bool = True,
 ) -> None:
     seen: dict[str, Path] = {}
     for d in marks:
@@ -212,7 +215,10 @@ def _ingest_sidecars(
         vdir = next(
             (v for v in video_dirs if use_video and _find_video(v, stem)), empty
         )
-        r = ingest_gt_jsonl(store, path, video_dir=vdir)
+        r = ingest_gt_jsonl(
+            store, path, video_dir=vdir, infer_player_complete=infer_player_complete
+        )
+        rep.player_inferred_complete += r.players_inferred_complete
         rep.gt_clips += 1
         rep.gt_frames += r.frames_written
         rep.gt_detections += r.detections_written
@@ -264,6 +270,7 @@ def ingest_all(
     data_root: Path | None = None,
     marks_dirs: list[Path] | None = None,
     db_label: str = "",
+    infer_player_complete: bool = True,
 ) -> IngestAllReport:
     """Run every ingester into ``store``. Caller holds the write lock (see :func:`run`)."""
     root = Path(data_root) if data_root else splits.data_root()
@@ -271,7 +278,9 @@ def ingest_all(
     rep = IngestAllReport(db=db_label, marks_dirs=[str(m) for m in marks])
     rep.fingerprint_before = fingerprint(store)
 
-    _ingest_sidecars(store, marks, video_dirs, rep)
+    _ingest_sidecars(
+        store, marks, video_dirs, rep, infer_player_complete=infer_player_complete
+    )
 
     with tempfile.TemporaryDirectory(prefix="ball-checks-") as tmp:
         _merge_ball_check_logs(marks, Path(tmp))
@@ -323,6 +332,7 @@ def run(
     data_root: Path | None = None,
     marks_dirs: list[Path] | None = None,
     dry_run: bool = False,
+    infer_player_complete: bool = True,
 ) -> IngestAllReport:
     """Lock, open (creating) the store, ingest everything. ``dry_run`` uses an in-memory store."""
     path = Path(db) if db else default_db_path()
@@ -330,7 +340,8 @@ def run(
         store = FeatureStore.open(":memory:")
         try:
             return ingest_all(
-                store, data_root=data_root, marks_dirs=marks_dirs, db_label=":memory: (dry run)"
+                store, data_root=data_root, marks_dirs=marks_dirs, db_label=":memory: (dry run)",
+                infer_player_complete=infer_player_complete,
             )
         finally:
             store.close()
@@ -338,7 +349,8 @@ def run(
         store = FeatureStore.open(path)
         try:
             return ingest_all(
-                store, data_root=data_root, marks_dirs=marks_dirs, db_label=str(path)
+                store, data_root=data_root, marks_dirs=marks_dirs, db_label=str(path),
+                infer_player_complete=infer_player_complete,
             )
         finally:
             store.close()
@@ -350,9 +362,16 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--data-root", type=Path, default=None, help="footy data dir (default: $FOOTY_DATA)")
     ap.add_argument("--marks-dir", type=Path, action="append", default=None, help="marks dir(s) instead of the labeller registry")
     ap.add_argument("--dry-run", action="store_true", help="parse everything into an in-memory store")
+    ap.add_argument(
+        "--infer-player-complete",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="interim inferred_gt rule: human player box + ball decision => player complete (default on; --no-infer-player-complete purges)",
+    )
     args = ap.parse_args(argv)
     logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(message)s")
-    rep = run(args.db, data_root=args.data_root, marks_dirs=args.marks_dir, dry_run=args.dry_run)
+    rep = run(args.db, data_root=args.data_root, marks_dirs=args.marks_dir, dry_run=args.dry_run,
+              infer_player_complete=args.infer_player_complete)
     print("\n".join(rep.lines()))
     return 0
 

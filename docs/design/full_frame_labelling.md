@@ -42,11 +42,26 @@ A frame is **fully labelled** when each class group (`ball`, `player`) has state
 frame_label_state(game_id, frame_index, cls_group, state,  -- complete|absent|partial|unreviewed
                   method, run_id, verified_by, verified_at, PRIMARY KEY(game_id, frame_index, cls_group))
 ```
-- `method`: `hand_series` (accept-all), `hand_frame`, `verdict`, `sidecar_marker`.
+- `method`: `hand_series` (accept-all), `hand_frame`, `verdict`, `offline_audited`, `sidecar_marker`, `inferred_gt` (rank 0, lowest).
 - `run_id` points at the proposing run (provenance).
 - View `frame_complete(game_id, frame_index)` = both groups in (`complete`,`absent`). Absence of a row means `unreviewed`.
-- Writers: labeller flush writes `no_ball`, plus `complete` for ball when a human box exists. Ball Check verdicts write ball state. The series review (section 4) writes both groups. Existing GT is NOT back-filled as player-complete; only clips the user flags (`--legacy-complete-clips`) are.
+- Writers: labeller flush writes `no_ball`, plus `complete` for ball when a human box exists. Ball Check verdicts write ball state. The series review (section 4) writes both groups. Existing GT is NOT back-filled as player-complete, except clips the user flags (`--legacy-complete-clips`) and the interim `inferred_gt` rule (section 1b).
 - Missing label never implies background. Only `complete`/`absent` frames reach training. *(Superseded 2026-11-21: per group. Ball-model frames need ball `complete`/`absent`, player-model frames need player `complete`/`absent`; both groups are no longer required.)*
+
+
+### 1b. Interim rule: inferred player-complete (`inferred_gt`, user decision 2026-11-23)
+
+Pragmatic override of "existing GT is not assumed player-complete": while full-frame player labelling catches up, a frame that already has
+>= 1 **human** box (`labeller` provenance or human-checked) of a player-side class (player, referee, coach, player_sub, person) **and** a ball
+decision (human ball box, or a `no_ball` mark) gets player `complete` with `method=inferred_gt`, verified_by `inferred_gt`, run_id
+`gt_import_inferred_player_complete`. Not marked: players without a ball decision, a ball decision without players, machine-only players,
+`not_broadcast` frames, ball/no_ball conflicts. Sparse player labels are likely incomplete, so this is a known approximation.
+
+- `inferred_gt` has the lowest precedence (rank 0, below `sidecar_marker`): any `P` marker, legacy back-fill, verdict, Player Check or hand label on the frame wins, and removing that stronger row lets the inferred row return on the next ingest.
+- Re-derived on every replace ingest of a clip (delete this method's rows, then upsert): idempotent; a frame whose player boxes vanish loses its row.
+- ON by default in `ingest_all` (nightly); `--no-infer-player-complete` disables it and the next ingest purges the rows. OFF by default in `ingest_gt` (`--infer-player-complete`).
+- Revert/filter by method: `DELETE FROM frame_label_state WHERE method='inferred_gt'`, or exclude `method='inferred_gt'` in queries. Progress shows it under `by_method` and in the `other` tier (not gold or silver).
+- Existing stores are migrated on open (the `method` CHECK constraint is rebuilt once).
 
 ## 2. Exporter (`scripts/export_training_dataset.py`)
 

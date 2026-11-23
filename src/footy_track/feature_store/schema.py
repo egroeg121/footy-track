@@ -144,6 +144,10 @@ class LabelMethod(StrEnum):
     VERDICT = "verdict"  # Ball Check verdict
     SIDECAR_MARKER = "sidecar_marker"  # derived from the labeller sidecar (no_ball tag / human ball box)
     OFFLINE_AUDITED = "offline_audited"  # teacher output that passed auto_ok rules + blind audit (silver)
+    #: Interim pragmatic rule (user decision 2026-11-23): player ``complete`` inferred from existing human GT
+    #: (human player box + ball decision on the frame). Lowest rank so any real label overrides it; filter or
+    #: ``DELETE ... WHERE method='inferred_gt'`` to revert. See docs/design/full_frame_labelling.md.
+    INFERRED_GT = "inferred_gt"
 
 
 class FrameReason(StrEnum):
@@ -201,6 +205,7 @@ METHOD_RANK: dict[str, int] = {
     LabelMethod.VERDICT: 3,
     LabelMethod.OFFLINE_AUDITED: 2,
     LabelMethod.SIDECAR_MARKER: 1,
+    LabelMethod.INFERRED_GT: 0,
 }
 
 
@@ -671,7 +676,7 @@ DDL: tuple[str, ...] = (
         CHECK (cls_group IN ('ball', 'player')),
         CHECK (state IN ('complete', 'absent', 'partial', 'unreviewed')),
         CHECK (method IN ('hand_series', 'hand_frame', 'verdict',
-                          'sidecar_marker', 'offline_audited')),
+                          'sidecar_marker', 'offline_audited', 'inferred_gt')),
         CHECK (reason IS NULL OR reason IN ('not_broadcast', 'unsure_x2',
                                             'window_rejected', 'video_unreadable'))
     );

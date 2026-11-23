@@ -2150,6 +2150,21 @@ the result is a player **eval** set (Player Check `eval` flag, LAB-1475), never 
   on the frame in one write (design 6b still holds: the human saw every box; nothing is auto-accepted).
   - Tests: UNTESTED-FRONTEND
 
+## 19m. Inferred player-complete (LAB-1490..1492)
+
+Interim rule, user decision 2026-11-23; design `docs/design/full_frame_labelling.md` section 1b. Code: `feature_store/ingest_gt.py::infer_player_complete_frames`.
+
+- **LAB-1490** (MUST) `ingest_gt_jsonl(infer_player_complete=True)` writes player `complete`, method `inferred_gt`, for frames with >= 1 human
+  (`labeller` or human-checked) player-side box (player/referee/coach/player_sub/person) AND a ball decision (human ball box or `no_ball`). Frames with
+  only one of the two, machine-only players, `not_broadcast`, or a ball/no_ball conflict are not marked.
+  - Tests: `tests/feature_store/test_inferred_player_complete.py::test_rule_cases`
+- **LAB-1491** (MUST) `inferred_gt` is rank 0 (below `sidecar_marker`) in `METHOD_RANK`; any marker/legacy/verdict/hand row wins; rows are deleted and
+  rewritten each replace ingest (idempotent; vanished player boxes drop the row). Old stores get the `method` CHECK rebuilt on open.
+  - Tests: `::test_real_marker_overrides_inferred`, `::test_stronger_rows_survive_and_win`, `::test_idempotent`, `::test_removed_player_boxes_drop_the_row`, `::test_old_store_check_constraint_is_migrated`
+- **LAB-1492** (MUST) ON by default in `ingest_all`; `--no-infer-player-complete` disables it and the next ingest purges the rows (`ingest_gt` default OFF).
+  Manual purge: `DELETE FROM frame_label_state WHERE method='inferred_gt'`.
+  - Tests: `::test_off_by_default_and_flag_off_purges`
+
 ## 15. Traceability summary
 
 | Section | Requirements | Tested | UNTESTED | UNTESTED-FRONTEND |
