@@ -106,3 +106,21 @@ def test_ball_check_logs_of_one_clip_in_two_dirs_are_merged(world, tmp_path):
     ia.run(world.db, data_root=world.root, marks_dirs=[world.marks, other])
     with FeatureStore.open(world.db) as s:
         assert s.count("detection_review") == 0
+
+
+def test_fingerprint_covers_label_state_and_track_meta(world):
+    run(world)
+    assert {"frame_label_state", "track_meta"} <= set(ia.FINGERPRINT_TABLES)
+    with FeatureStore.open(world.db) as s:
+        before = ia.fingerprint(s)
+        assert ia.fingerprint(s) == before  # identical content -> identical fingerprint
+        s._conn.execute(
+            "INSERT INTO frame_label_state (game_id, frame_index, cls_group, state, method) "
+            "VALUES ('zz_extra', 7, 'player', 'complete', 'inferred_gt')"
+        )
+        assert ia.fingerprint(s) != before
+    # a no-op re-ingest of unchanged sources must not report a change
+    # (the extra row is outside the sources, so rebuild a clean baseline first)
+    with FeatureStore.open(world.db) as s:
+        s._conn.execute("DELETE FROM frame_label_state WHERE game_id = 'zz_extra'")
+    assert run(world).unchanged
