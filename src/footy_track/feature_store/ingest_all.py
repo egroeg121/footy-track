@@ -62,12 +62,16 @@ FINGERPRINT_TABLES = (
     "frame",
     "run",
     "detection",
+    "track_meta",  # ingest_gt writes gt_import_* track rows
     "detection_review",
     "calibration",
     "pitch_keypoint",
     "gt_frame",
+    "frame_label_state",  # ingest_gt (sidecar_marker / inferred_gt) and ball-check verdict states
     "broadcast_label",
 )
+# Deliberately absent: selected_frame, player_check and series are written by the labeller /
+# job reconciler, never by ingest_all, so fingerprinting them would only report other writers.
 
 #: Clip directories searched for the video behind a sidecar (fps / size), after the registry's.
 _EXTRA_VIDEO_DIRS = (
@@ -320,6 +324,7 @@ def ingest_all(
             "calibration",
             "pitch_keypoint",
             "gt_frame",
+            "frame_label_state",
             "broadcast_label",
         )
     }
