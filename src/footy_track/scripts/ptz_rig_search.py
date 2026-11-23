@@ -130,7 +130,7 @@ def main(argv: list[str] | None = None) -> int:
             "prior": str(a.prior), "prior_sha256": _sha256(a.prior), "prior_C": prior.C.tolist(), "prior_k1": prior.k1,
             "segments_json_sha256": _sha256(a.segments_json), "n_segments": len(segs), "grid": a.grid,
             "rel_tol": a.rel_tol, "n_iter": a.n_iter, "top_k": rs.TOP_K, "screen_stride": rs.SCREEN_STRIDE,
-            "free": ["Cx", "Cy", "Cz", "roll", "k1"], "code_sha": _code_sha(),
+            "free": ["Cx", "Cy", "Cz", "roll", "k1"], "code_sha": _code_sha(), "segments_filter": sorted(want),
         },
         "indirect_inputs": [],
         "n_units": len(units), "n_anchored_ok": int(sum(v.get("ok", False) for v in store.values())),
