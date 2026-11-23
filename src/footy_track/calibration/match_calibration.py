@@ -58,7 +58,8 @@ STATUS_ACCEPTED, STATUS_CALIBRATED, STATUS_UNCALIBRATED, STATUS_MISSING = (
     "accepted", "calibrated", "uncalibrated", "missing")
 SOURCES = ("main", "recovered", "none")
 
-#: known matches -> (segments dir name, rig stem of the PTZ outputs)
+#: known matches -> rig stem of the PTZ outputs. A bare stem also resolves ``<stem>-<hash8>`` dirs (:func:`resolve_rig_tag`);
+#: a match outside this table (or a fitted per-match rig) is passed as ``rig_stem=`` / ``--rig``.
 KNOWN_MATCHES: dict[str, str] = {
     "arsenal_mancity": "emirates",
     "arsenal_astonvilla": "emirates",
@@ -190,6 +191,49 @@ def choose_result(
 
 def _segment_dirname(match: str, index: int, rig: str) -> str:
     return f"{match}_seg{index:03d}@{rig}"
+
+
+class AmbiguousRig(RuntimeError):
+    """Several rig tags have finished segment dirs for the match and none was named exactly."""
+
+
+_HASHED = re.compile(r"^(?P<stem>.+)-(?P<hash>[0-9a-f]{8})$")
+
+
+def done_rig_tags(match: str, temporal: Path) -> dict[str, int]:
+    """``{<dir suffix after '@'>: number of finished segment dirs}`` of ``<match>_segNNN@<suffix>`` under ``temporal``
+    (finished = ``calib_full.npz`` present)."""
+    out: dict[str, int] = {}
+    pat = re.compile(rf"^{re.escape(match)}_seg\d+@(?P<tag>.+)$")
+    if not temporal.is_dir():
+        return out
+    for d in temporal.iterdir():
+        m = pat.match(d.name)
+        if m and (d / "calib_full.npz").is_file():
+            out[m["tag"]] = out.get(m["tag"], 0) + 1
+    return out
+
+
+def resolve_rig_tag(match: str, rig_stem: str, temporal: Path) -> str:
+    """The ``@``-suffix of the segment dirs of ``match`` for a rig named ``rig_stem``.
+
+    The rig-hash work dirs are ``<stem>-<hash8>`` (the jobs flow names them after the rig file's CONTENT hash), older ones
+    are the bare ``<stem>``. ``rig_stem`` may be either form:
+
+    * a name that already has finished dirs is used as it is (an explicit ``emirates-1a2b3c4d`` or an old ``emirates``);
+    * a bare stem without bare dirs but with exactly one ``<stem>-<hash8>`` tag resolves to that tag;
+    * several hashed tags and no bare dirs raise :class:`AmbiguousRig` listing them (name the hash); no dirs at all
+      returns ``rig_stem`` unchanged (the segments then simply have no result).
+    """
+    tags = done_rig_tags(match, temporal)
+    if rig_stem in tags:
+        return rig_stem
+    hashed = sorted(t for t in tags if (m := _HASHED.match(t)) and m["stem"] == rig_stem)
+    if len(hashed) == 1:
+        return hashed[0]
+    if len(hashed) > 1:
+        raise AmbiguousRig(f"{match}: several rig hashes for {rig_stem!r} under {temporal}: {hashed}; pass one of them as the rig")
+    return rig_stem
 
 
 def read_segments_json(match: str, root: Path | None = None) -> dict:
@@ -427,16 +471,24 @@ def combine_match(
     update: bool = False,
     dry_run: bool = False,
     frame_map: FrameMap | None = None,
+    use_rerun: bool = True,
+    provenance: dict | None = None,
 ) -> dict:
     """Write ``<out_root>/<version>/<match>.{parquet,manifest.json}`` and return the manifest.
 
     Re-running with unchanged inputs is a no-op (same content hash). A changed result raises
-    :class:`WouldOverwrite` unless ``update`` (the old pair is then moved to ``_history/``)."""
+    :class:`WouldOverwrite` unless ``update`` (the old pair is then moved to ``_history/``).
+
+    ``rig_stem``: the suffix after ``@`` of the segment dirs, bare (``emirates``) or hashed (``emirates-1a2b3c4d``);
+    see :func:`resolve_rig_tag`. ``use_rerun=False`` ignores a legacy ``<temporal>/rerun_weak`` dir (the flow's runs
+    include the recovery pass themselves). ``provenance`` is stored in the manifest as is (rig search, per-segment
+    diagnostic, code sha) and does not enter the content hash."""
     rig_stem = rig_stem or KNOWN_MATCHES.get(match)
     if rig_stem is None:
         raise ValueError(f"no rig known for {match!r}: pass rig_stem (the suffix after '@' of the segment dirs)")
     temporal = temporal or temporal_root()
-    if rerun_dir is None:
+    rig_stem = resolve_rig_tag(match, rig_stem, temporal)
+    if rerun_dir is None and use_rerun:
         cand = temporal / "rerun_weak"
         rerun_dir = cand if cand.is_dir() else None
     segments = read_segments_json(match, data_dir)
@@ -464,6 +516,8 @@ def combine_match(
         },
         **body,
     }
+    if provenance:
+        manifest["provenance"] = provenance
     out_dir = Path(out_root or calibration_root()) / version
     pq_path, mf_path = out_dir / f"{match}.parquet", out_dir / f"{match}.manifest.json"
     manifest["files"] = {"parquet": pq_path.name, "manifest": mf_path.name}

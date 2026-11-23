@@ -14,6 +14,7 @@ Format and conventions: ``footy_track.calibration.match_calibration``.
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
 
@@ -33,7 +34,11 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--match", action="append", default=[], help="match dir name (repeatable)")
     ap.add_argument("--all", action="store_true", help=f"every known match: {', '.join(mc.KNOWN_MATCHES)}")
-    ap.add_argument("--rig", default=None, help="rig stem of the segment dirs (after '@'); default per known match")
+    ap.add_argument("--rig", default=None,
+                    help="rig of the segment dirs (after '@'): a bare stem or '<stem>-<hash8>'; a bare stem resolves its one "
+                         "hashed tag; default per known match")
+    ap.add_argument("--no-rerun", action="store_true", help="ignore a legacy <temporal>/rerun_weak dir")
+    ap.add_argument("--provenance-json", type=Path, default=None, help="JSON object stored in the manifest as 'provenance'")
     ap.add_argument("--version", default=mc.DEFAULT_VERSION)
     ap.add_argument("--out-root", type=Path, default=None, help="default: $FOOTY_CALIBRATION_ROOT or <data>/calibration")
     ap.add_argument("--data-dir", type=Path, default=None, help="footy_data root (segments.json); default $FOOTY_DATA_DIR")
@@ -46,14 +51,16 @@ def main(argv: list[str] | None = None) -> int:
     matches = list(args.match) + (list(mc.KNOWN_MATCHES) if args.all else [])
     if not matches:
         ap.error("give --match <name> or --all")
+    provenance = json.loads(args.provenance_json.read_text()) if args.provenance_json else None
     rc = 0
     for match in dict.fromkeys(matches):
         try:
             m = mc.combine_match(
                 match, out_root=args.out_root, version=args.version, rig_stem=args.rig, data_dir=args.data_dir,
                 temporal=args.temporal, rerun_dir=args.rerun, update=args.update, dry_run=args.dry_run,
+                use_rerun=not args.no_rerun, provenance=provenance,
             )
-        except mc.WouldOverwrite as exc:
+        except (mc.WouldOverwrite, mc.AmbiguousRig) as exc:
             print(f"{match}: REFUSED {exc}", file=sys.stderr)
             rc = 2
             continue

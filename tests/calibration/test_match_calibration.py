@@ -231,3 +231,44 @@ def test_cli_dry_run_and_refusal(world, capsys, monkeypatch):
     _write_run_over(world, "m_seg000@rigx", accepted_ranges=[(0, 3)])
     assert script.main(args) == 2
     assert script.main(args + ["--update"]) == 0
+
+
+# ---- rig-hash dirs (<stem>-<hash8>), the flow's naming ------------------------------------------------------------
+
+
+def _rename_dirs(temporal, old, new):
+    for d in list(temporal.glob(f"m_seg*@{old}")):
+        d.rename(d.with_name(d.name.replace(f"@{old}", f"@{new}")))
+
+
+def test_bare_stem_resolves_the_one_hashed_tag(world):
+    base = _combine(world)
+    _rename_dirs(world["temporal"], "rigx", "rigx-0a1b2c3d")
+    assert mcal.resolve_rig_tag("m", "rigx", world["temporal"]) == "rigx-0a1b2c3d"
+    m = _combine(world, update=True)  # "rigx" now resolves to the hashed dirs; the rows are the same but the rig column changes
+    assert m["rig"] == "rigx-0a1b2c3d"
+    assert m["totals"]["frames"] == base["totals"]["frames"]  # (the legacy rerun_weak dirs keep their bare names: not matched)
+    # explicit hashed name works the same
+    m2 = mcal.combine_match("m", rig_stem="rigx-0a1b2c3d", data_dir=world["data"], temporal=world["temporal"],
+                            out_root=world["out"], frame_map=mcal._index_frame_map)
+    assert m2["status"] == "unchanged"
+
+
+def test_legacy_bare_dirs_still_win_and_ambiguity_is_refused(world):
+    t = world["temporal"]
+    assert mcal.resolve_rig_tag("m", "rigx", t) == "rigx"  # existing bare dirs keep working
+    shutil.copytree(t / "m_seg000@rigx", t / "m_seg000@rigx-11111111")
+    shutil.copytree(t / "m_seg000@rigx", t / "m_seg000@rigx-22222222")
+    assert mcal.resolve_rig_tag("m", "rigx", t) == "rigx"  # bare dirs exist: the bare name is unambiguous
+    _rename_dirs(t, "rigx", "rigx-33333333")
+    with pytest.raises(mcal.AmbiguousRig):
+        mcal.resolve_rig_tag("m", "rigx", t)
+    assert mcal.resolve_rig_tag("m", "rigx-22222222", t) == "rigx-22222222"
+    assert mcal.resolve_rig_tag("m", "nothing", t) == "nothing"
+
+
+def test_use_rerun_false_and_provenance(world):
+    m = _combine(world, use_rerun=False, provenance={"rig_search_sha256": "ab"}, dry_run=True)
+    segs = {s["segment"]: s for s in m["segments"]}
+    assert segs[1]["source"] == "main" and m["inputs"]["rerun_root"] is None
+    assert m["provenance"] == {"rig_search_sha256": "ab"}
