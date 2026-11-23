@@ -272,3 +272,16 @@ def test_use_rerun_false_and_provenance(world):
     segs = {s["segment"]: s for s in m["segments"]}
     assert segs[1]["source"] == "main" and m["inputs"]["rerun_root"] is None
     assert m["provenance"] == {"rig_search_sha256": "ab"}
+
+
+def test_in_run_recovery_counts_as_recovered(world):
+    meta = world["temporal"] / "m_seg002@rigx" / "meta.json"
+    d = json.loads(meta.read_text())
+    meta.write_text(json.dumps({**d, "rig_variant": "x-32.7", "recovery": {"used": True}}))
+    m = _combine(world, use_rerun=False)
+    segs = {s["segment"]: s for s in m["segments"]}
+    assert segs[2]["source"] == "recovered" and segs[2]["rig_variant"] == "x-32.7"
+    assert segs[0]["source"] == "main" and m["totals"]["segments_recovered"] == 1
+    d["recovery"] = {"used": False}
+    meta.write_text(json.dumps(d))
+    assert _combine(world, use_rerun=False, dry_run=True)["totals"]["segments_recovered"] == 0

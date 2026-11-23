@@ -20,8 +20,9 @@ Conventions
   16:9), exactly how ``lens.py`` / the editor distort and undistort. ``H`` is NaN where ``calibrated`` is false.
 * ``accepted`` = the frame lies in ``accepted_ranges`` of ``line_f1_full.json`` (both neighbouring evidence frames have
   line F1 >= 0.5) and is calibrated. ``calibrated`` = a solution exists, confirmed or not.
-* ``source``: ``main`` (the flow run), ``recovered`` (the weak-segment recovery re-run, kept only if it accepts
-  more frames than the main run) or ``none`` (segment has no result).
+* ``source``: ``main`` (the flow run), ``recovered`` (the weak-segment recovery: a separate re-run kept only if it
+  accepts more frames than the main run, or, in current runs, the recovery pass inside the segment run whose
+  ``meta.json["recovery"]["used"]`` is true) or ``none`` (segment has no result).
 
 Versioning: a file is immutable by default. ``combine_match`` refuses to replace a file whose content differs
 unless ``update=True``, in which case the previous pair is archived under ``<version>/_history/`` first. The manifest
@@ -334,6 +335,8 @@ def build_match_table(  # noqa: PLR0915
         main = load_segment_result(temporal / name)
         rerun = load_segment_result(rerun_dir / name) if rerun_dir else None
         res, source = choose_result(main, rerun)
+        if source == "main" and (res.meta.get("recovery") or {}).get("used"):
+            source = "recovered"  # the segment driver ran the recovery pass itself and kept its result (no separate rerun dir)
         start, n_container = int(seg["start_frame"]), int(seg["frame_count"])
         row = {
             "segment": idx,
