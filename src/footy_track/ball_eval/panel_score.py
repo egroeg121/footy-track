@@ -41,6 +41,7 @@ from __future__ import annotations
 
 import json
 import math
+import re
 import warnings
 from collections.abc import Iterable
 from dataclasses import dataclass
@@ -366,6 +367,57 @@ def _cell(est: float, draws: np.ndarray) -> dict:
     return {"est": _round(est), "lo": _round(lo), "hi": _round(hi)}
 
 
+def predictions_on_panel(panel: dict, preds: dict[Key, Pred]) -> int:
+    """Number of predictions that fall on a frame of ``panel``'s windows."""
+    return sum(
+        (w["clip"], int(f)) in preds for w in panel["windows"] for f in w["frames"]
+    )
+
+
+def predictions_from_suggest_file(
+    path: Path, panel: dict, *, min_score: float = 0.0
+) -> dict[Key, Pred]:
+    """Top-1 ball per panel frame from a ``<match>.suggest[.<sha8>[tag]].json`` file (normalised top-left xywh keyed
+    ``"<clip>:<frame>"``; null = no ball) as pixel centres of the panel's frame size."""
+    w, h = panel["width"], panel["height"]
+    out: dict[Key, Pred] = {}
+    for k, v in json.loads(Path(path).read_text()).items():
+        if not v or float(v.get("conf", 1.0)) < min_score:
+            continue
+        clip, frame = k.rsplit(":", 1)
+        out[(clip, int(frame))] = (
+            (v["x"] + v["w"] / 2) * w,
+            (v["y"] + v["h"] / 2) * h,
+            float(v.get("conf", 1.0)),
+        )
+    return out
+
+
+def suggest_file_for(
+    directory: Path, match: str, ident: str | None = None
+) -> Path | None:
+    """The suggest file of ``match`` in ``directory``. ``ident`` (e.g. ``b4ea4b22`` or ``b4ea4b22k5``) picks one exactly;
+    without it the plain ``<sha8>`` top-1 file is used (the ``k5`` top-k recompute has the same top-1), and several
+    different detectors are an error (ambiguous), never a silent pick. ``-meta`` files are never suggest files."""
+    pat = re.compile(re.escape(match) + r"\.suggest\.([0-9a-f]{8})([A-Za-z0-9]*)\.json")
+    found = {}
+    for p in sorted(Path(directory).glob(f"{match}.suggest.*.json")):
+        m = pat.fullmatch(p.name)
+        if m:
+            found[m.group(1) + m.group(2)] = (m.group(1), p)
+    if ident is not None:
+        return found[ident][1] if ident in found else None
+    plain = {sha: p for key, (sha, p) in found.items() if key == sha}
+    shas = {sha for sha, _ in found.values()}
+    if len(shas) > 1:
+        raise ValueError(
+            f"{match}: suggest files from several detectors ({sorted(shas)}); pass --suggest-ident"
+        )
+    if plain:
+        return next(iter(plain.values()))
+    return next(iter(found.values()))[1] if found else None
+
+
 def score(
     panels: list[dict],
     human: dict[Key, Human],
@@ -378,8 +430,14 @@ def score(
     model: str | None = None,
     blind_only: bool = False,
     root: Path | None = None,
+    require_predictions: bool = False,
 ) -> dict:
     """The full score report (see the module docstring). Deterministic for a given ``seed``.
+
+    A match with no prediction on any panel frame is always reported in ``warnings`` (and ``n_predictions`` = 0).
+    With ``require_predictions`` (the CLI) it is additionally NOT scored and left out of the pooled numbers
+    (``matches_without_predictions``), because "model never ran / file missing" must not read as recall 0.00;
+    library callers that really mean "the model predicted nothing" leave it off.
 
     ``blind_only`` scores the model on blind windows only (the random blind control and labels placed before
     suggestions existed): the suggesting detector is the model most favoured by its own suggestions."""
@@ -397,9 +455,25 @@ def score(
             }
             for p in panels
         ]
+    # A match with no prediction on any of its panel frames is not "recall 0.00": the model was never run on
+    # it (or its prediction file is missing / misnamed). Do not score it and do not pool it; say so loudly.
+    n_pred = {p["match"]: predictions_on_panel(p, preds) for p in panels}
+    zero = [p["match"] for p in panels if n_pred[p["match"]] == 0]
+    no_pred = zero if require_predictions else []
+    warns = [
+        f"{m}: no predictions on any panel frame"
+        + (
+            "; NOT scored and excluded from the pooled numbers "
+            if require_predictions
+            else "; its 0.00 recall means 'nothing predicted' "
+        )
+        + "(missing / misnamed prediction file, or the model was not run on this match)"
+        for m in zero
+    ]
     tables = [
         match_table(p, human, preds, radii, include_partial=include_partial)
         for p in scored
+        if p["match"] not in no_pred
     ]
     rng = np.random.default_rng(seed)
 
@@ -444,7 +518,10 @@ def score(
             if len(t.weights)
             else {},
             "metrics": metric_block(pt, bt) if pt is not None else {},
+            "n_predictions": n_pred[t.match],
         }
+    for m in no_pred:
+        report_matches[m] = {"status": "no_predictions", "n_predictions": 0, "metrics": {}}
 
     live = [i for i, p in enumerate(point) if p is not None]
     pooled: dict = {}
@@ -486,6 +563,8 @@ def score(
         "blind_only": blind_only,
         "panel_code_sha": sorted({p.get("code_sha") for p in panels}),
         "matches": report_matches,
+        "matches_without_predictions": no_pred,
+        "warnings": warns,
         "pooled": pooled,
         "qa": qa_report(panels, human),
         "suggestions": suggestion_report(
