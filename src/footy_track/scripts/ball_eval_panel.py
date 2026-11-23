@@ -294,6 +294,15 @@ def _predictions(args: argparse.Namespace, panels: list[dict]) -> dict:
             Path(args.pred), units=args.pred_units, size=size, min_score=args.min_score
         )
     out: dict = {}
+    if args.pred_format == "suggest":
+        d = Path(args.pred)
+        for p in panels:
+            f = S.suggest_file_for(d, p["match"], args.suggest_ident)
+            if f is None:
+                print(f"WARNING: no suggest file for {p['match']} in {d}", file=sys.stderr)
+                continue
+            out.update(S.predictions_from_suggest_file(f, p, min_score=args.min_score))
+        return out
     for p in panels:
         size = (p["width"], p["height"])
         for clip in sorted({w["clip"] for w in p["windows"]}):
@@ -322,11 +331,22 @@ def cmd_score(args: argparse.Namespace) -> int:
         model=args.model,
         blind_only=args.blind_only,
         root=args.root,
+        require_predictions=True,
     )
     text = json.dumps(report, indent=1, sort_keys=True)
     if args.out:
         Path(args.out).write_text(text + "\n")
     print(_pretty(report) if args.pretty else text)
+    for w in report["warnings"]:
+        print(f"WARNING: {w}", file=sys.stderr)
+    if report["matches_without_predictions"] and not args.allow_missing_predictions:
+        print(
+            "ERROR: no predictions for "
+            + ", ".join(report["matches_without_predictions"])
+            + " (pass --allow-missing-predictions to score the rest anyway)",
+            file=sys.stderr,
+        )
+        return 2
     return 0
 
 
@@ -341,12 +361,13 @@ def _pretty(rep: dict) -> str:
     for scope, block in [
         ("match-averaged", rep["pooled"].get("match_averaged", {})),
         ("frame-weighted", rep["pooled"].get("frame_weighted", {})),
-        *[(m, d.get("metrics", {})) for m, d in rep["matches"].items()],
+        *[(m, d.get("metrics", {})) for m, d in rep["matches"].items() if d.get("metrics")],
     ]:
         for r, cells in block.items():
             lines.append(
                 f"{scope:<42} {r:<5} recall {fmt(cells['recall'])}  precision {fmt(cells['precision'])}  false_ball {fmt(cells['false_ball'])}"
             )
+    lines += [f"WARNING: {w}" for w in rep.get("warnings", [])]
     lines.append("QA " + json.dumps(rep["qa"], sort_keys=True))
     sg = rep.get("suggestions") or {}
     for scope, blk in [("pooled", sg.get("pooled")), *sorted((sg.get("matches") or {}).items())]:
@@ -523,10 +544,23 @@ def main(argv: list[str] | None = None) -> int:  # noqa: PLR0915
     s.add_argument(
         "--pred",
         required=True,
-        help="predictions jsonl, or a directory with --pred-format machine_labels|cache",
+        help="predictions jsonl, or a directory with --pred-format machine_labels|cache|suggest "
+        "(suggest: the panel dir holding <match>.suggest.<sha8>.json)",
     )
     s.add_argument(
-        "--pred-format", choices=["jsonl", "machine_labels", "cache"], default="jsonl"
+        "--pred-format",
+        choices=["jsonl", "machine_labels", "cache", "suggest"],
+        default="jsonl",
+    )
+    s.add_argument(
+        "--suggest-ident",
+        default=None,
+        help="--pred-format suggest: exact file ident, e.g. b4ea4b22 or b4ea4b22k5 (default: the plain sha8 file)",
+    )
+    s.add_argument(
+        "--allow-missing-predictions",
+        action="store_true",
+        help="exit 0 even when a match has no predictions (it is still reported and left out of the pooled numbers)",
     )
     s.add_argument("--pred-units", choices=["px", "norm"], default="px")
     s.add_argument("--min-score", type=float, default=0.0)

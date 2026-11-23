@@ -581,3 +581,115 @@ def test_cli_score_end_to_end(tmp_path, monkeypatch, capsys):
         "est"
     ] == pytest.approx(0.8)
     assert json.loads(capsys.readouterr().out)["schema"] == S.SCHEMA
+
+
+def _cli_world(tmp_path, matches):
+    """Panel files + sidecars for ``matches`` under tmp_path; returns {match: (panel, preds)}."""
+    out = {}
+    for m in matches:
+        p, _, preds = synth(m, [([1] * 5, [1, 1, 1, 1, 0])] * 3, pi=0.25, clip=f"{m}_c0")
+        pf = P.panel_path(m, root=tmp_path)
+        pf.parent.mkdir(parents=True, exist_ok=True)
+        pf.write_text(json.dumps({**p, "schema": P.SCHEMA, "N_windows": 12}))
+        marks = P.marks_dir(root=tmp_path)
+        marks.mkdir(exist_ok=True)
+        _write(
+            marks / f"{m}_c0.jsonl",
+            [
+                {
+                    "frame_index": f,
+                    "bbox": {"x": 0.49, "y": 0.49, "w": 0.02, "h": 0.02},
+                    "center": {"x": 0.5, "y": 0.5},
+                    "tags": ["in_play_ball", "labeller"],
+                }
+                for w in p["windows"]
+                for f in w["frames"]
+            ],
+        )
+        out[m] = (p, preds)
+    return out
+
+
+def test_list_panels_ignores_suggest_and_meta_files(tmp_path):
+    world = _cli_world(tmp_path, ["hm_a", "hm_b"])
+    d = P.panel_path("hm_a", root=tmp_path).parent
+    for name in (
+        "hm_a.suggest.b4ea4b22.json",
+        "hm_a.suggest.b4ea4b22k5.json",
+        "hm_a.suggest-meta.b4ea4b22.json",
+        "hm_a.suggest-meta.b4ea4b22k5.json",
+        ".hidden.json",
+    ):
+        (d / name).write_text("{}")
+    assert sorted(P.list_panels(root=tmp_path)) == ["hm_a", "hm_b"]
+    # scoring every panel (no --match) used to crash on the suggest-meta files
+    pj = _write(
+        tmp_path / "p.jsonl",
+        [
+            {"clip": c, "frame": f, "x": x, "y": y, "score": s}
+            for _, preds in world.values()
+            for (c, f), (x, y, s) in preds.items()
+        ],
+    )
+    assert cli.main(["--root", str(tmp_path), "score", "--pred", str(pj), "--draws", "20"]) == 0
+
+
+def test_score_fails_loudly_when_a_match_has_no_predictions(tmp_path, capsys):
+    world = _cli_world(tmp_path, ["hm_a", "hm_b"])
+    pj = _write(
+        tmp_path / "p.jsonl",
+        [
+            {"clip": c, "frame": f, "x": x, "y": y, "score": s}
+            for (c, f), (x, y, s) in world["hm_a"][1].items()
+        ],
+    )
+    out = tmp_path / "r.json"
+    args = ["--root", str(tmp_path), "score", "--pred", str(pj), "--draws", "20", "--out", str(out)]
+    assert cli.main(args) == 2
+    err = capsys.readouterr().err
+    assert "hm_b" in err and "no predictions" in err
+    rep = json.loads(out.read_text())
+    assert rep["matches_without_predictions"] == ["hm_b"]
+    assert rep["matches"]["hm_b"] == {"status": "no_predictions", "n_predictions": 0, "metrics": {}}
+    assert rep["pooled"]["n_matches"] == 1  # hm_b is not pooled as a 0.00
+    assert rep["warnings"]
+    assert cli.main([*args, "--allow-missing-predictions"]) == 0
+
+
+def test_suggest_files_are_a_prediction_source_and_variants_are_explicit(tmp_path):
+    world = _cli_world(tmp_path, ["hm_a"])
+    p, preds = world["hm_a"]
+    d = P.panel_path("hm_a", root=tmp_path).parent
+    sug = {
+        f"{c}:{f}": {"x": x / p["width"] - 0.01, "y": y / p["height"] - 0.01, "w": 0.02, "h": 0.02, "conf": s}
+        for (c, f), (x, y, s) in preds.items()
+    }
+    (d / "hm_a.suggest.b4ea4b22.json").write_text(json.dumps(sug))
+    (d / "hm_a.suggest.b4ea4b22k5.json").write_text(json.dumps(sug))
+    (d / "hm_a.suggest-meta.b4ea4b22.json").write_text("{}")
+    assert S.suggest_file_for(d, "hm_a").name == "hm_a.suggest.b4ea4b22.json"
+    assert S.suggest_file_for(d, "hm_a", "b4ea4b22k5").name == "hm_a.suggest.b4ea4b22k5.json"
+    assert S.suggest_file_for(d, "hm_a", "nope") is None
+    (d / "hm_a.suggest.deadbeef.json").write_text("{}")
+    with pytest.raises(ValueError, match="several detectors"):
+        S.suggest_file_for(d, "hm_a")
+    got = S.predictions_from_suggest_file(d / "hm_a.suggest.b4ea4b22.json", p)
+    assert got.keys() == preds.keys()
+    k = next(iter(preds))
+    assert got[k][:2] == pytest.approx(preds[k][:2])
+
+
+def test_cli_suggest_format_reports_a_match_without_a_suggest_file(tmp_path, capsys):
+    world = _cli_world(tmp_path, ["hm_a", "hm_leeds"])
+    p, preds = world["hm_a"]
+    d = P.panel_path("hm_a", root=tmp_path).parent
+    sug = {
+        f"{c}:{f}": {"x": x / p["width"], "y": y / p["height"], "w": 0.0, "h": 0.0, "conf": s}
+        for (c, f), (x, y, s) in preds.items()
+    }
+    (d / "hm_a.suggest.b4ea4b22.json").write_text(json.dumps(sug))
+    rc = cli.main(
+        ["--root", str(tmp_path), "score", "--pred", str(d), "--pred-format", "suggest", "--draws", "20"]
+    )
+    assert rc == 2
+    assert "hm_leeds" in capsys.readouterr().err

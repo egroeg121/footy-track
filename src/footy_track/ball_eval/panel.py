@@ -38,6 +38,7 @@ import json
 import logging
 import os
 import random
+import re
 import subprocess
 import tempfile
 import time
@@ -660,11 +661,23 @@ def write_panel(
             fcntl.flock(lf, fcntl.LOCK_UN)
 
 
+_SIDE_FILE_RE = re.compile(r"\.suggest(-meta)?\.")
+
+
 def list_panels(
     version: str = PANEL_VERSION, root: Path | None = None
 ) -> dict[str, Path]:
+    """``{match: panel file}`` for real panel files only. The panel dir also holds
+    ``<match>.suggest.<sha8>[k5].json`` and ``<match>.suggest-meta.<sha8>[k5].json`` (and ``.prev-``
+    backups, which do not end in ``.json``); those are not panels."""
     d = panel_dir(version, root)
-    return {p.stem: p for p in sorted(d.glob("*.json"))} if d.is_dir() else {}
+    if not d.is_dir():
+        return {}
+    return {
+        p.stem: p
+        for p in sorted(d.glob("*.json"))
+        if not _SIDE_FILE_RE.search(p.name) and not p.name.startswith(".")
+    }
 
 
 # --------------------------------------------------------------------------------------------
