@@ -357,10 +357,30 @@ class FeatureStore:
         """Create all tables and views if they do not already exist."""
         for stmt in DDL:
             self._conn.execute(stmt)
+        self._migrate_method_check()
         for stmt in VIEWS:
             self._conn.execute(stmt)
         for stmt in EXTRA_DDL:
             self._conn.execute(stmt)
+
+    def _migrate_method_check(self) -> None:
+        """Stores created before ``inferred_gt`` have a ``method`` CHECK that rejects it: rebuild the table
+        once (copy rows, swap) so the new value is accepted. No-op once the constraint lists it."""
+        n = self._conn.execute(
+            "SELECT count(*) FROM duckdb_constraints() WHERE table_name = 'frame_label_state' "
+            "AND constraint_type = 'CHECK' AND expression LIKE '%inferred_gt%'"
+        ).fetchone()[0]
+        if n:
+            return
+        cols = ", ".join(_COLUMNS["frame_label_state"])
+        ddl = next(d for d in DDL if "CREATE TABLE IF NOT EXISTS frame_label_state" in d)
+        self._conn.execute("DROP VIEW IF EXISTS frame_complete")
+        self._conn.execute("ALTER TABLE frame_label_state RENAME TO frame_label_state_old")
+        self._conn.execute(ddl)
+        self._conn.execute(
+            f"INSERT INTO frame_label_state ({cols}) SELECT {cols} FROM frame_label_state_old"
+        )
+        self._conn.execute("DROP TABLE frame_label_state_old")
 
     def close(self) -> None:
         self._conn.close()

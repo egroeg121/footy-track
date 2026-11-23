@@ -46,6 +46,15 @@ Being ``sidecar_marker`` rows they obey the same precedence (never override stro
 rewritten on every replace ingest, so dropping a clip from the list removes its rows. An explicit
 ``players_complete`` marker on the frame wins over the back-fill row.
 
+Inferred player-complete (interim, user decision 2026-11-23; ``infer_player_complete``, default ON in
+``ingest_all``, ``--infer-player-complete`` here): a frame with >= 1 HUMAN (``labeller`` or human-checked) box of a
+player-side class AND a ball decision (human ball box, or a ``no_ball`` mark) gets player ``complete`` with method
+``inferred_gt`` (rank 0, below ``sidecar_marker``), verified_by ``inferred_gt``, run_id
+``gt_import_inferred_player_complete``. Frames with only players or only a ball decision, ``not_broadcast`` frames,
+and frames with a ball/no_ball conflict are NOT marked. Rows are deleted and rewritten on every replace ingest, so
+re-ingest is idempotent and a frame whose player boxes vanish loses its row; any marker / verdict / hand row on the
+same frame wins by precedence. Revert: ``DELETE FROM frame_label_state WHERE method='inferred_gt'``.
+
 Lines whose tags carry no recognized provenance tag are dropped (no
 detection emitted) — same fallback as before this change, now documented
 here explicitly.
@@ -133,6 +142,8 @@ _PLAYER_LABELS = {"player", "player_sub", "referee", "coach", "person"}
 _LABELLER_USER = "labeller"
 LEGACY_VERIFIED_BY = "legacy_backfill"
 LEGACY_RUN_ID = f"{GT_RUN_PREFIX}legacy_backfill"
+INFERRED_VERIFIED_BY = "inferred_gt"
+INFERRED_RUN_ID = f"{GT_RUN_PREFIX}inferred_player_complete"
 _VIDEO_SUFFIXES = (".mp4", ".mov", ".avi", ".mkv")
 
 
@@ -154,6 +165,8 @@ class GtImportReport:
     players_legacy_complete: int = (
         0  # frames back-filled complete for --legacy-complete-clips
     )
+    players_inferred_complete: int = 0  # frames marked by the inferred_gt rule
+    inferred_frames: dict[str, list[int]] = field(default_factory=dict)  # clip -> marked frames (for audits)
 
 
 def _find_video(video_dir: Path, stem: str) -> Path | None:
@@ -282,6 +295,18 @@ def _player_state_rows(
     return rows
 
 
+def infer_player_complete_frames(
+    human_player_frames: set[int],
+    human_ball_frames: set[int],
+    no_ball_frames: set[int],
+    not_broadcast_frames: set[int],
+) -> list[int]:
+    """Frames satisfying the interim ``inferred_gt`` rule: human player-side box + ball decision, broadcast, and
+    no ball/no_ball contradiction (a conflicting frame has no ball decision)."""
+    ball_decision = human_ball_frames ^ no_ball_frames  # symmetric difference drops conflicts
+    return sorted((human_player_frames & ball_decision) - not_broadcast_frames)
+
+
 def ingest_gt_jsonl(  # noqa: PLR0912, PLR0915 - one parse-then-write pass; state derivation lives in _ball_state_rows
     store: FeatureStore,
     jsonl_path: Path,
@@ -291,6 +316,7 @@ def ingest_gt_jsonl(  # noqa: PLR0912, PLR0915 - one parse-then-write pass; stat
     legacy_all_reviewed: bool = False,
     replace: bool = True,
     legacy_complete: bool = False,
+    infer_player_complete: bool = False,
 ) -> GtImportReport:
     """Import one ``<clip_stem>.jsonl`` GT-marks file into the store.
 
@@ -320,7 +346,9 @@ def ingest_gt_jsonl(  # noqa: PLR0912, PLR0915 - one parse-then-write pass; stat
     human_ball_frames: set[int] = set()
     players_marker_frames: set[int] = set()
     player_box_frames: set[int] = set()
-    human_player_frames: set[int] = set()
+    human_player_frames: set[int] = set()  # labeller-provenance player boxes (legacy back-fill)
+    human_any_player_frames: set[int] = set()  # labeller OR human-checked player boxes (inferred_gt)
+    not_broadcast_frames: set[int] = set()
 
     for raw_line in jsonl_path.read_text().splitlines():
         line = raw_line.strip()
@@ -333,6 +361,8 @@ def ingest_gt_jsonl(  # noqa: PLR0912, PLR0915 - one parse-then-write pass; stat
         tags = rec.get("tags", [])
         if "no_ball" in tags:
             no_ball_frames.add(frame_index)
+        if "not_broadcast" in tags:
+            not_broadcast_frames.add(frame_index)
         if PLAYERS_COMPLETE_TAG in tags:
             players_marker_frames.add(frame_index)
         if any(t in _SKIP_TAGS for t in tags):
@@ -347,6 +377,8 @@ def ingest_gt_jsonl(  # noqa: PLR0912, PLR0915 - one parse-then-write pass; stat
             player_box_frames.add(frame_index)
             if prov_tag == "labeller":
                 human_player_frames.add(frame_index)
+            if prov_tag == "labeller" or checked:
+                human_any_player_frames.add(frame_index)
         if prov_tag == "labeller" and obj_tag in _BALL_LABELS:
             human_ball_frames.add(frame_index)
         source = _PROVENANCE_TO_SOURCE[prov_tag]
@@ -389,6 +421,25 @@ def ingest_gt_jsonl(  # noqa: PLR0912, PLR0915 - one parse-then-write pass; stat
         report,
         human_player_frames if legacy_complete else None,
     )
+
+    if infer_player_complete:
+        inferred = infer_player_complete_frames(
+            human_any_player_frames, human_ball_frames, no_ball_frames, not_broadcast_frames
+        )
+        report.players_inferred_complete = len(inferred)
+        report.inferred_frames[stem] = inferred
+        state_rows += [
+            FrameLabelStateRow(
+                game_id=stem,
+                frame_index=fi,
+                cls_group=ClsGroup.PLAYER,
+                state=LabelState.COMPLETE,
+                method=LabelMethod.INFERRED_GT,
+                run_id=INFERRED_RUN_ID,
+                verified_by=INFERRED_VERIFIED_BY,
+            )
+            for fi in inferred
+        ]
 
     if dry_run:
         report.games.add(stem)
@@ -450,6 +501,10 @@ def ingest_gt_jsonl(  # noqa: PLR0912, PLR0915 - one parse-then-write pass; stat
                 store.delete_frame_label_states(
                     stem, group.value, LabelMethod.SIDECAR_MARKER.value
                 )
+            # Inferred rows are re-derived every ingest (also when the flag is off: switching it off purges).
+            store.delete_frame_label_states(
+                stem, ClsGroup.PLAYER.value, LabelMethod.INFERRED_GT.value
+            )
         store.upsert_frame_label_states(state_rows)
 
     return report
@@ -465,6 +520,7 @@ def ingest_gt_dir(
     legacy_all_reviewed: bool = False,
     replace: bool = True,
     legacy_complete_clips: set[str] | frozenset[str] = frozenset(),
+    infer_player_complete: bool = False,
 ) -> GtImportReport:
     total = GtImportReport()
     paths = sorted(gt_dir.glob("*.jsonl"))
@@ -479,7 +535,10 @@ def ingest_gt_dir(
             legacy_all_reviewed=legacy_all_reviewed,
             replace=replace,
             legacy_complete=path.stem in legacy_complete_clips,
+            infer_player_complete=infer_player_complete,
         )
+        total.players_inferred_complete += r.players_inferred_complete
+        total.inferred_frames.update(r.inferred_frames)
         total.players_legacy_complete += r.players_legacy_complete
         total.detections_deleted += r.detections_deleted
         total.ball_absent += r.ball_absent
@@ -554,6 +613,15 @@ def main(argv: list[str] | None = None) -> None:
         default=None,
         help="File with one legacy-complete clip stem per line (blank lines and # comments ignored).",
     )
+    parser.add_argument(
+        "--infer-player-complete",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help=(
+            "Interim rule (user decision 2026-11-23): frames with a human player-side box and a ball decision "
+            "get player 'complete' (method inferred_gt, lowest precedence). Off by default here; ON in ingest_all."
+        ),
+    )
     args = parser.parse_args(argv)
     legacy_clips = {
         c.strip() for c in args.legacy_complete_clips.split(",") if c.strip()
@@ -579,6 +647,7 @@ def main(argv: list[str] | None = None) -> None:
         legacy_all_reviewed=args.legacy_all_reviewed,
         replace=args.replace,
         legacy_complete_clips=legacy_clips,
+        infer_player_complete=args.infer_player_complete,
     )
 
     bc_dir = args.ball_checks_dir or (args.gt_dir / "ball_checks")
@@ -600,7 +669,8 @@ def main(argv: list[str] | None = None) -> None:
         f"ball state: absent={gt_report.ball_absent} complete={gt_report.ball_complete} "
         f"conflicts(left unreviewed)={gt_report.ball_state_conflicts}; "
         f"player state: complete={gt_report.players_complete} absent={gt_report.players_absent} "
-        f"legacy_backfill_complete={gt_report.players_legacy_complete} (clips named: {len(legacy_clips)})"
+        f"legacy_backfill_complete={gt_report.players_legacy_complete} (clips named: {len(legacy_clips)}) "
+        f"inferred_gt_complete={gt_report.players_inferred_complete}"
     )
     if gt_report.detections_deleted:
         print(
