@@ -906,6 +906,21 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="1. Fully labelled frame">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1b-interim-rule-inferred-player-complete-inferred_gt-user-decision-2026-11-23" class="md-nav__link">
+    <span class="md-ellipsis">
+      1b. Interim rule: inferred player-complete (inferred_gt, user decision 2026-11-23)
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -1034,11 +1049,26 @@ Costs: two inference passes (the ball model can run on crops/tiles); ball false 
 <p><div class="highlight"><pre><span></span><code>frame_label_state(game_id, frame_index, cls_group, state,  -- complete|absent|partial|unreviewed
                   method, run_id, verified_by, verified_at, PRIMARY KEY(game_id, frame_index, cls_group))
 </code></pre></div>
-- <code>method</code>: <code>hand_series</code> (accept-all), <code>hand_frame</code>, <code>verdict</code>, <code>sidecar_marker</code>.
+- <code>method</code>: <code>hand_series</code> (accept-all), <code>hand_frame</code>, <code>verdict</code>, <code>offline_audited</code>, <code>sidecar_marker</code>, <code>inferred_gt</code> (rank 0, lowest).
 - <code>run_id</code> points at the proposing run (provenance).
 - View <code>frame_complete(game_id, frame_index)</code> = both groups in (<code>complete</code>,<code>absent</code>). Absence of a row means <code>unreviewed</code>.
-- Writers: labeller flush writes <code>no_ball</code>, plus <code>complete</code> for ball when a human box exists. Ball Check verdicts write ball state. The series review (section 4) writes both groups. Existing GT is NOT back-filled as player-complete; only clips the user flags (<code>--legacy-complete-clips</code>) are.
+- Writers: labeller flush writes <code>no_ball</code>, plus <code>complete</code> for ball when a human box exists. Ball Check verdicts write ball state. The series review (section 4) writes both groups. Existing GT is NOT back-filled as player-complete, except clips the user flags (<code>--legacy-complete-clips</code>) and the interim <code>inferred_gt</code> rule (section 1b).
 - Missing label never implies background. Only <code>complete</code>/<code>absent</code> frames reach training. <em>(Superseded 2026-11-21: per group. Ball-model frames need ball <code>complete</code>/<code>absent</code>, player-model frames need player <code>complete</code>/<code>absent</code>; both groups are no longer required.)</em></p>
+<h3 id="1b-interim-rule-inferred-player-complete-inferred_gt-user-decision-2026-11-23">1b. Interim rule: inferred player-complete (<code>inferred_gt</code>, user decision 2026-11-23)<a class="headerlink" href="#1b-interim-rule-inferred-player-complete-inferred_gt-user-decision-2026-11-23" title="Permanent link">&para;</a></h3>
+<p>Pragmatic override of "existing GT is not assumed player-complete": while full-frame player labelling catches up, a frame that already has</p>
+<blockquote>
+<p>= 1 <strong>human</strong> box (<code>labeller</code> provenance or human-checked) of a player-side class (player, referee, coach, player_sub, person) <strong>and</strong> a ball
+decision (human ball box, or a <code>no_ball</code> mark) gets player <code>complete</code> with <code>method=inferred_gt</code>, verified_by <code>inferred_gt</code>, run_id
+<code>gt_import_inferred_player_complete</code>. Not marked: players without a ball decision, a ball decision without players, machine-only players,
+<code>not_broadcast</code> frames, ball/no_ball conflicts. Sparse player labels are likely incomplete, so this is a known approximation.</p>
+</blockquote>
+<ul>
+<li><code>inferred_gt</code> has the lowest precedence (rank 0, below <code>sidecar_marker</code>): any <code>P</code> marker, legacy back-fill, verdict, Player Check or hand label on the frame wins, and removing that stronger row lets the inferred row return on the next ingest.</li>
+<li>Re-derived on every replace ingest of a clip (delete this method's rows, then upsert): idempotent; a frame whose player boxes vanish loses its row.</li>
+<li>ON by default in <code>ingest_all</code> (nightly); <code>--no-infer-player-complete</code> disables it and the next ingest purges the rows. OFF by default in <code>ingest_gt</code> (<code>--infer-player-complete</code>).</li>
+<li>Revert/filter by method: <code>DELETE FROM frame_label_state WHERE method='inferred_gt'</code>, or exclude <code>method='inferred_gt'</code> in queries. Progress shows it under <code>by_method</code> and in the <code>other</code> tier (not gold or silver).</li>
+<li>Existing stores are migrated on open (the <code>method</code> CHECK constraint is rebuilt once).</li>
+</ul>
 <h2 id="2-exporter-scriptsexport_training_datasetpy">2. Exporter (<code>scripts/export_training_dataset.py</code>)<a class="headerlink" href="#2-exporter-scriptsexport_training_datasetpy" title="Permanent link">&para;</a></h2>
 <ul>
 <li><em>(Superseded 2026-11-21: the gate is per model group, not <code>frame_complete</code>; ball-only mode already does this, player-only mode is TODO.)</em> Query joins <code>frame_complete</code>; only those frames are emitted. Frames with partial state are skipped, with a manifest count.</li>
