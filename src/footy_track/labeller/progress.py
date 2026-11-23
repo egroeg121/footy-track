@@ -106,6 +106,47 @@ PERFORMANCE_SERIES: dict[str, tuple[dict[str, Any], ...]] = {
     ),
 }
 
+#: The two detectors (decision 2026-11-21, ``docs/design/full_frame_labelling.md``). The ``tracking``
+#: stage is split into these two groups on the page; their series are never pooled. ``perf`` entries
+#: have the same shape as :data:`PERFORMANCE_SERIES` lines. ``map50`` (pooled over ball and
+#: player/referee) is deliberately in neither group. Metric names are class-prefixed by
+#: ``datasets/detector_eval.py`` (``ball_*``, ``player_*``, ``referee_*``); ``ball_tracker_*`` models are
+#: ball-only. No track-level metrics (HOTA / IDF1) are recorded by anything yet.
+GROUPS: dict[str, dict[str, Any]] = {
+    "ball": {
+        "label": "Ball detection / tracking",
+        "classes": ("ball", "in_play_ball", "out_of_play_ball"),
+        "perf": (
+            {"label": "Detector F1 @10px (held-out)", "metric": "ball_f1_10px", "split": splits.EVAL_HELDOUT,
+             "model": "*", "exclude_model": "ball_tracker_*"},
+            {"label": "Detector recall @10px (held-out)", "metric": "ball_recall_10px",
+             "split": splits.EVAL_HELDOUT, "model": "*", "exclude_model": "ball_tracker_*"},
+            {"label": "Detector recall @10px (in-match)", "metric": "ball_recall_10px",
+             "split": splits.EVAL_IN_MATCH, "model": "*", "exclude_model": "ball_tracker_*"},
+            {"label": "Tracker recall @10px (held-out)", "metric": "ball_recall_10px",
+             "split": splits.EVAL_HELDOUT, "model": "ball_tracker_*"},
+        ),
+        "record_metric": "ball_recall_10px",
+    },
+    "player": {
+        "label": "Player-side detection / tracking",
+        "classes": ("player", "referee", "coach", "player_sub", "person"),
+        "perf": (
+            {"label": "Player recall (held-out)", "metric": "player_recall", "split": splits.EVAL_HELDOUT,
+             "model": "*", "exclude_model": "ball_tracker_*"},
+            {"label": "Player recall (in-match)", "metric": "player_recall", "split": splits.EVAL_IN_MATCH,
+             "model": "*", "exclude_model": "ball_tracker_*"},
+            {"label": "Player F1 (in-match)", "metric": "player_f1", "split": splits.EVAL_IN_MATCH,
+             "model": "*", "exclude_model": "ball_tracker_*"},
+            {"label": "Referee recall (in-match)", "metric": "referee_recall", "split": splits.EVAL_IN_MATCH,
+             "model": "*", "exclude_model": "ball_tracker_*"},
+        ),
+        "record_metric": "player_recall",
+    },
+}
+_BALL_KINDS = ("ball", "no_ball")  # item kinds that carry a ball verdict (a ball box or a no-ball mark)
+_cls_cache: dict[tuple, dict[str, int] | None] = {}
+
 _COLS = (
     "task", "dataset", "dataset_version", "split", "cohort_version", "model_name", "model_version",
     "metric", "value", "n_items", "run_at", "contaminated", "contamination_note",
@@ -409,11 +450,11 @@ def _pick(rows: list[dict], how: str) -> dict:
     return max(rows, key=lambda r: r["run_at"] or "")
 
 
-def performance_series(dataset: str, rows: list[dict]) -> list[dict]:
+def performance_series(dataset: str, rows: list[dict], specs: tuple | None = None) -> list[dict]:
     """One entry per :data:`PERFORMANCE_SERIES` line: ``{key, label, metric, split, points}`` with at
     most one point per dataset version (see the config for how a version's model is chosen)."""
     out = []
-    for i, spec in enumerate(PERFORMANCE_SERIES.get(dataset, ())):
+    for i, spec in enumerate(PERFORMANCE_SERIES.get(dataset, ()) if specs is None else specs):
         by_version: dict[int, list[dict]] = defaultdict(list)
         for r in rows:
             if (r["dataset"] == dataset and r["metric"] == spec["metric"] and r["split"] == spec["split"]
@@ -429,6 +470,76 @@ def performance_series(dataset: str, rows: list[dict]) -> list[dict]:
             })
         out.append({"key": f"{dataset}-{i}", "label": spec["label"], "metric": spec["metric"],
                     "split": spec["split"], "points": points})
+    return out
+
+
+def _player_frames(root: Path, dataset: str, version: int) -> dict[str, int] | None:
+    """``{split: frames with >= 1 player-side box}`` of one immutable snapshot, or ``None`` if its
+    ``items.parquet`` cannot be read. Cached per file (a version never changes)."""
+    path = snap.version_dir(dataset, version, root) / "items.parquet"
+    key = (str(path), _mtime(path))
+    if key in _cls_cache:
+        return _cls_cache[key]
+    out: dict[str, int] | None
+    try:
+        import pyarrow.parquet as pq
+
+        tbl = pq.read_table(path, columns=["split", "payload"]).to_pydict()
+        out = dict.fromkeys(SPLITS, 0)
+        side = set(GROUPS["player"]["classes"])
+        for sp, payload in zip(tbl["split"], tbl["payload"], strict=True):
+            try:
+                boxes = json.loads(payload).get("boxes") or []
+            except ValueError:
+                continue
+            if sp in out and any(b.get("label") in side for b in boxes):
+                out[sp] += 1
+    except Exception:  # noqa: BLE001 - a missing/odd snapshot only means "no per-group size"
+        out = None
+    _cls_cache[key] = out
+    return out
+
+
+def _group_charts(root: Path, growth: dict, rows: list[dict]) -> dict[str, Any]:
+    """``{ball, player}`` for the tracking stage: each group has its own size chart (frames labelled
+    for that group, per split) and performance chart. See :data:`GROUPS` for the attribution."""
+    gv = {v["version"]: v for v in growth["versions"]}
+    out: dict[str, Any] = {}
+    for g, cfg in GROUPS.items():
+        perf = []
+        for i, spec in enumerate(cfg["perf"]):
+            ser = performance_series("tracking", rows, specs=(spec,))[0]
+            ser["key"] = f"tracking-{g}-{i}"
+            perf.append(ser)
+        sizes: dict[int, dict[str, int] | None] = {}
+        for v in gv:
+            if g == "ball":
+                bsk = gv[v]["by_split_kind"]
+                sizes[v] = {sp: sum(int((bsk.get(sp) or {}).get(k, 0)) for k in _BALL_KINDS) for sp in SPLITS}
+            else:
+                sizes[v] = _player_frames(root, "tracking", v)
+        size = [{"split": sp, "label": label,
+                 "points": [{"version": v, "value": sizes[v][sp]} for v in sorted(gv) if sizes[v] is not None]}
+                for sp, label in SIZE_SERIES]
+        versions = sorted(set(gv) | {p["version"] for s in perf for p in s["points"]})
+        notes = []
+        for s in perf:
+            if s["split"] == splits.EVAL_HELDOUT and not s["points"]:
+                notes.append(f"No held-out results for '{s['metric']}': the held-out eval has no "
+                             f"{'ball' if g == 'ball' else 'player-side'} ground truth scored yet.")
+        out[g] = {
+            "label": cfg["label"], "classes": list(cfg["classes"]),
+            "size_unit": "frames with a ball verdict (ball box or no-ball)" if g == "ball"
+            else "frames with at least one player-side box",
+            "charts": {"versions": [{"version": v, "date": ((gv.get(v) or {}).get("created_at") or "")[:10] or None}
+                                    for v in versions],
+                       "size": size, "performance": perf},
+            "performance_empty": not any(s["points"] for s in perf),
+            "notes": list(dict.fromkeys(notes)),
+            "record_cmd": ("python -m footy_track.datasets results record --task tracking --dataset tracking "
+                           f"--dataset-version <N> --split eval_heldout_match --model <name> --model-version <v> "
+                           f"--metric {cfg['record_metric']} --value <x> --n-items <n>"),
+        }
     return out
 
 
@@ -536,6 +647,8 @@ def _build(root: Path, db: Path) -> dict[str, Any]:
             "health": health["datasets"][ds],
             "charts": _charts(ds, growth[ds], results["rows"]),
         }
+        if ds == "tracking":  # legacy keys above stay; ball and player-side are never pooled below
+            datasets[ds]["groups"] = _group_charts(root, growth[ds], results["rows"])
     return {
         "generated_at": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "paths": {"datasets_root": str(root), "store": str(db)},
