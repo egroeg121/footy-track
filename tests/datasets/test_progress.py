@@ -475,3 +475,75 @@ def test_wired_into_server_and_hub():
     assert 'href="/progress"' in (LABELLER / "web" / "main.html").read_text()
     page = (LABELLER / "web" / "progress.html").read_text()
     assert "/api/progress" in page and "contaminated" in page and "<svg" in page.lower() or "svg" in page
+
+
+# ---- tracking split into ball vs player-side groups (never pooled) -----------------------------------------
+def _write_items(root: Path, version: int, rows: list[tuple]) -> None:
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
+    payloads = [json.dumps({"boxes": [{"label": lb} for lb in labels], "checks": [], "marker": None})
+                for _, labels, *_k in rows]
+    d = root / "datasets" / "tracking" / f"v{version}"
+    pq.write_table(pa.table({"split": [r[0] for r in rows], "payload": payloads,
+                                "label_kind": [r[2] if len(r) > 2 else "other_boxes" for r in rows]}), d / "items.parquet")
+
+
+def test_tracking_groups_split_ball_and_player_side(env, client):
+    registers(env)
+    kinds = {"train": {"ball": 4, "no_ball": 1, "check_only": 9}, "eval_in_match": {"ball": 2},
+             "eval_heldout_match": {"ball": 3, "check_only": 5}}
+    write_manifest(env, manifest("tracking", 1, {"train": 14, "eval_in_match": 2, "eval_heldout_match": 8}, kinds=kinds))
+    _write_items(env, 1, [("train", ["player", "referee", "in_play_ball"], "ball"), ("train", ["in_play_ball"], "ball"),
+                          ("train", ["coach"], "other_boxes"), ("eval_in_match", ["player"], "other_boxes"),
+                          ("eval_heldout_match", ["in_play_ball"], "ball")])
+    db = Path(os.environ["FOOTY_FEATURE_STORE"])
+    seed_results(db, [
+        rr(task="tracking", dataset="tracking", model_name="detector", metric="ball_recall_10px", value=0.7,
+           split="eval_heldout_match", contaminated=False),
+        rr(task="tracking", dataset="tracking", model_name="detector", metric="player_recall", value=0.95,
+           split="eval_in_match", contaminated=True),
+        rr(task="tracking", dataset="tracking", model_name="detector", metric="map50", value=0.9,
+           split="eval_in_match", contaminated=True),
+        rr(task="tracking", dataset="tracking", model_name="ball_tracker_viterbi", metric="ball_recall_10px",
+           value=0.6, split="eval_heldout_match", contaminated=False),
+    ])
+    d = client.get("/api/progress?refresh=true").json()["datasets"]["tracking"]
+    assert d["charts"]["performance"] and "growth" in d          # legacy keys intact
+    g = d["groups"]
+    assert set(g) == {"ball", "player"}
+    size = lambda grp: {s["split"]: s["points"][0]["value"] for s in g[grp]["charts"]["size"]}  # noqa: E731
+    assert size("ball") == {"train": 5, "eval_in_match": 2, "eval_heldout_match": 3}   # ball + no_ball, not check_only
+    assert size("player") == {"train": 2, "eval_in_match": 1, "eval_heldout_match": 0}  # frames with player-side boxes
+    for grp in ("ball", "player"):
+        full = {s["split"]: s["points"][0]["value"] for s in g[grp]["charts"]["fully_labelled"]}
+        assert full == {"train": 1, "eval_in_match": 0, "eval_heldout_match": 0}      # ball verdict AND player box
+        assert all(s["informational"] for s in g[grp]["charts"]["fully_labelled"])
+        assert all(full[sp] <= size(grp)[sp] for sp in full)                         # subset of the group's own count
+        assert g[grp]["charts"]["fully_labelled"] != g[grp]["charts"]["size"]        # never pooled into size
+    assert g["ball"]["charts"]["fully_labelled"] == g["player"]["charts"]["fully_labelled"]
+    pts = lambda grp: {s["label"]: s["points"] for s in g[grp]["charts"]["performance"]}  # noqa: E731
+    b, p = pts("ball"), pts("player")
+    assert b["Detector recall @10px (held-out)"][0]["value"] == 0.7
+    assert b["Tracker recall @10px (held-out)"][0]["model_name"] == "ball_tracker_viterbi"
+    assert p["Player recall (in-match)"][0]["contaminated"] is True      # contaminated flag carried through
+    assert not any(s["metric"] == "map50" for grp in g.values() for s in grp["charts"]["performance"])
+    assert not any("player" in s["metric"] for s in g["ball"]["charts"]["performance"])
+    assert not g["ball"]["performance_empty"] and not g["player"]["performance_empty"]
+    assert p["Player recall (held-out)"] == [] and any("held-out" in n for n in g["player"]["notes"])
+
+
+def test_tracking_groups_empty_state_has_record_command(env, client):
+    registers(env)
+    write_manifest(env, manifest("tracking", 1, {"train": 3}))   # no items.parquet, no store
+    g = client.get("/api/progress?refresh=true").json()["datasets"]["tracking"]["groups"]
+    for grp in ("ball", "player"):
+        assert g[grp]["performance_empty"] is True
+        assert "results record --task tracking" in g[grp]["record_cmd"]
+    assert g["player"]["charts"]["size"][0]["points"] == []       # unreadable snapshot: no invented numbers
+    assert "player_recall" in g["player"]["record_cmd"] and "ball_recall_10px" in g["ball"]["record_cmd"]
+
+
+def test_page_renders_tracking_as_two_group_stages():
+    html = (LABELLER / "web" / "progress.html").read_text()
+    assert "x.groups" in html and "o.group" in html and "record_cmd" in html
