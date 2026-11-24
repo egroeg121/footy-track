@@ -145,7 +145,7 @@ GROUPS: dict[str, dict[str, Any]] = {
     },
 }
 _BALL_KINDS = ("ball", "no_ball")  # item kinds that carry a ball verdict (a ball box or a no-ball mark)
-_cls_cache: dict[tuple, dict[str, int] | None] = {}
+_cls_cache: dict[tuple, dict[str, dict[str, int]] | None] = {}
 
 _COLS = (
     "task", "dataset", "dataset_version", "split", "cohort_version", "model_name", "model_version",
@@ -473,27 +473,30 @@ def performance_series(dataset: str, rows: list[dict], specs: tuple | None = Non
     return out
 
 
-def _player_frames(root: Path, dataset: str, version: int) -> dict[str, int] | None:
-    """``{split: frames with >= 1 player-side box}`` of one immutable snapshot, or ``None`` if its
-    ``items.parquet`` cannot be read. Cached per file (a version never changes)."""
+def _frame_counts(root: Path, dataset: str, version: int) -> dict[str, dict[str, int]] | None:
+    """``{"player": {split: n}, "full": {split: n}}`` of one immutable snapshot, or ``None`` if its
+    ``items.parquet`` cannot be read. ``player`` = frames with >= 1 player-side box; ``full`` = frames
+    that also carry a ball verdict (item kind ``ball`` / ``no_ball``). Cached per file."""
     path = snap.version_dir(dataset, version, root) / "items.parquet"
     key = (str(path), _mtime(path))
     if key in _cls_cache:
         return _cls_cache[key]
-    out: dict[str, int] | None
+    out: dict[str, dict[str, int]] | None
     try:
         import pyarrow.parquet as pq
 
-        tbl = pq.read_table(path, columns=["split", "payload"]).to_pydict()
-        out = dict.fromkeys(SPLITS, 0)
+        tbl = pq.read_table(path, columns=["split", "label_kind", "payload"]).to_pydict()
+        out = {"player": dict.fromkeys(SPLITS, 0), "full": dict.fromkeys(SPLITS, 0)}
         side = set(GROUPS["player"]["classes"])
-        for sp, payload in zip(tbl["split"], tbl["payload"], strict=True):
+        for sp, kind, payload in zip(tbl["split"], tbl["label_kind"], tbl["payload"], strict=True):
             try:
                 boxes = json.loads(payload).get("boxes") or []
             except ValueError:
                 continue
-            if sp in out and any(b.get("label") in side for b in boxes):
-                out[sp] += 1
+            if sp in out["player"] and any(b.get("label") in side for b in boxes):
+                out["player"][sp] += 1
+                if kind in _BALL_KINDS:
+                    out["full"][sp] += 1
     except Exception:  # noqa: BLE001 - a missing/odd snapshot only means "no per-group size"
         out = None
     _cls_cache[key] = out
@@ -512,15 +515,22 @@ def _group_charts(root: Path, growth: dict, rows: list[dict]) -> dict[str, Any]:
             ser["key"] = f"tracking-{g}-{i}"
             perf.append(ser)
         sizes: dict[int, dict[str, int] | None] = {}
+        full: dict[int, dict[str, int] | None] = {}
         for v in gv:
+            fc = _frame_counts(root, "tracking", v)
+            full[v] = fc["full"] if fc else None
             if g == "ball":
                 bsk = gv[v]["by_split_kind"]
                 sizes[v] = {sp: sum(int((bsk.get(sp) or {}).get(k, 0)) for k in _BALL_KINDS) for sp in SPLITS}
             else:
-                sizes[v] = _player_frames(root, "tracking", v)
+                sizes[v] = fc["player"] if fc else None
         size = [{"split": sp, "label": label,
                  "points": [{"version": v, "value": sizes[v][sp]} for v in sorted(gv) if sizes[v] is not None]}
                 for sp, label in SIZE_SERIES]
+        # informational, identical in both groups (the intersection); never added to the group's own series
+        fully = [{"split": sp, "label": f"fully labelled, {label} (both groups)", "informational": True,
+                  "points": [{"version": v, "value": full[v][sp]} for v in sorted(gv) if full[v] is not None]}
+                 for sp, label in SIZE_SERIES]
         versions = sorted(set(gv) | {p["version"] for s in perf for p in s["points"]})
         notes = []
         for s in perf:
@@ -531,9 +541,10 @@ def _group_charts(root: Path, growth: dict, rows: list[dict]) -> dict[str, Any]:
             "label": cfg["label"], "classes": list(cfg["classes"]),
             "size_unit": "frames with a ball verdict (ball box or no-ball)" if g == "ball"
             else "frames with at least one player-side box",
+            "fully_labelled_unit": "frames with a ball verdict AND at least one player-side box (informational, not a training gate)",
             "charts": {"versions": [{"version": v, "date": ((gv.get(v) or {}).get("created_at") or "")[:10] or None}
                                     for v in versions],
-                       "size": size, "performance": perf},
+                       "size": size, "fully_labelled": fully, "performance": perf},
             "performance_empty": not any(s["points"] for s in perf),
             "notes": list(dict.fromkeys(notes)),
             "record_cmd": ("python -m footy_track.datasets results record --task tracking --dataset tracking "

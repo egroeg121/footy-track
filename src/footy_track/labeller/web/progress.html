@@ -308,7 +308,7 @@ function lineChart(series, versions, opts) {
     for (let i = 1; i < pts.length; i++) {
       const a = pts[i - 1], b = pts[i], changed = opts.modelChanged && a.model_version !== b.model_version;
       if (changed) dashed = true;
-      g += `<line x1="${x(a.version)}" y1="${y(a.value)}" x2="${x(b.version)}" y2="${y(b.value)}" stroke="${s.color}" stroke-width="2" stroke-linecap="round"${changed ? ' stroke-dasharray="4 4"' : ""}/>`;
+      g += `<line x1="${x(a.version)}" y1="${y(a.value)}" x2="${x(b.version)}" y2="${y(b.value)}" stroke="${s.color}" stroke-width="2" stroke-linecap="round"${changed || s.dashed ? ' stroke-dasharray="4 4"' : ""}/>`;
     }
     for (const p of pts) {
       const cx = x(p.version), cy = y(p.value);
@@ -356,6 +356,8 @@ function lineChart(series, versions, opts) {
 
 function sizeChart(c, o) {
   const series = c.size.map(s => ({key: s.split, label: s.label, color: SIZE_COLOR[s.split], points: s.points}));
+  // informational intersection of both groups: dashed, own colour (shown as a line only when it has points)
+  for (const s of c.fully_labelled || []) if (s.points.length) series.push({key: "full-" + s.split, label: s.label, color: "var(--muted)", dashed: true, points: s.points});
   const top = niceMax(Math.max(1, ...series.flatMap(s => s.points.map(p => p.value))));
   return lineChart(series, c.versions, {
     max: top, ticks: [0, top / 2, top], fmt: v => fmtN(Math.round(v)), label: true,
@@ -391,7 +393,7 @@ function stageSection(ds, x, d, o) {
       const ch = build(c); card.appendChild(ch);
       flags.hollow ||= ch.flags.hollow; flags.dashed ||= ch.flags.dashed;
     }
-    if (o.group && title === "Dataset size") card.insertAdjacentHTML("beforeend", `<div class="muted">Unit: ${esc(o.group.size_unit)}; classes ${o.group.classes.map(esc).join(", ")}.</div>`);
+    if (o.group && title === "Dataset size") card.insertAdjacentHTML("beforeend", `<div class="muted">Unit: ${esc(o.group.size_unit)}. Dashed grey lines: ${esc(o.group.fully_labelled_unit)}, the same in both stages; classes ${o.group.classes.map(esc).join(", ")}.</div>`);
     row.appendChild(card);
   }
   if (o.group) {

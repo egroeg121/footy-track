@@ -478,14 +478,15 @@ def test_wired_into_server_and_hub():
 
 
 # ---- tracking split into ball vs player-side groups (never pooled) -----------------------------------------
-def _write_items(root: Path, version: int, rows: list[tuple[str, list[str]]]) -> None:
+def _write_items(root: Path, version: int, rows: list[tuple]) -> None:
     import pyarrow as pa
     import pyarrow.parquet as pq
 
     payloads = [json.dumps({"boxes": [{"label": lb} for lb in labels], "checks": [], "marker": None})
-                for _, labels in rows]
+                for _, labels, *_k in rows]
     d = root / "datasets" / "tracking" / f"v{version}"
-    pq.write_table(pa.table({"split": [s for s, _ in rows], "payload": payloads}), d / "items.parquet")
+    pq.write_table(pa.table({"split": [r[0] for r in rows], "payload": payloads,
+                                "label_kind": [r[2] if len(r) > 2 else "other_boxes" for r in rows]}), d / "items.parquet")
 
 
 def test_tracking_groups_split_ball_and_player_side(env, client):
@@ -493,8 +494,9 @@ def test_tracking_groups_split_ball_and_player_side(env, client):
     kinds = {"train": {"ball": 4, "no_ball": 1, "check_only": 9}, "eval_in_match": {"ball": 2},
              "eval_heldout_match": {"ball": 3, "check_only": 5}}
     write_manifest(env, manifest("tracking", 1, {"train": 14, "eval_in_match": 2, "eval_heldout_match": 8}, kinds=kinds))
-    _write_items(env, 1, [("train", ["player", "referee"]), ("train", ["in_play_ball"]), ("train", ["coach"]),
-                          ("eval_in_match", ["player"]), ("eval_heldout_match", ["in_play_ball"])])
+    _write_items(env, 1, [("train", ["player", "referee", "in_play_ball"], "ball"), ("train", ["in_play_ball"], "ball"),
+                          ("train", ["coach"], "other_boxes"), ("eval_in_match", ["player"], "other_boxes"),
+                          ("eval_heldout_match", ["in_play_ball"], "ball")])
     db = Path(os.environ["FOOTY_FEATURE_STORE"])
     seed_results(db, [
         rr(task="tracking", dataset="tracking", model_name="detector", metric="ball_recall_10px", value=0.7,
@@ -513,6 +515,13 @@ def test_tracking_groups_split_ball_and_player_side(env, client):
     size = lambda grp: {s["split"]: s["points"][0]["value"] for s in g[grp]["charts"]["size"]}  # noqa: E731
     assert size("ball") == {"train": 5, "eval_in_match": 2, "eval_heldout_match": 3}   # ball + no_ball, not check_only
     assert size("player") == {"train": 2, "eval_in_match": 1, "eval_heldout_match": 0}  # frames with player-side boxes
+    for grp in ("ball", "player"):
+        full = {s["split"]: s["points"][0]["value"] for s in g[grp]["charts"]["fully_labelled"]}
+        assert full == {"train": 1, "eval_in_match": 0, "eval_heldout_match": 0}      # ball verdict AND player box
+        assert all(s["informational"] for s in g[grp]["charts"]["fully_labelled"])
+        assert all(full[sp] <= size(grp)[sp] for sp in full)                         # subset of the group's own count
+        assert g[grp]["charts"]["fully_labelled"] != g[grp]["charts"]["size"]        # never pooled into size
+    assert g["ball"]["charts"]["fully_labelled"] == g["player"]["charts"]["fully_labelled"]
     pts = lambda grp: {s["label"]: s["points"] for s in g[grp]["charts"]["performance"]}  # noqa: E731
     b, p = pts("ball"), pts("player")
     assert b["Detector recall @10px (held-out)"][0]["value"] == 0.7
